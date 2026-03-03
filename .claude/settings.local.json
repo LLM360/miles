@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Bash(do python:*)",
+      "Bash(do:*)",
+      "Bash(PYTHONPATH=/Users/doug/miles:*)",
+      "Bash(export:*)",
+      "Bash(grep:*)",
+      "Bash(mkdir -p /tmp/miles_ci_backup)",
+      "Bash(cp /Users/doug/miles/.github/workflows/pr-test.yml.j2 /tmp/miles_ci_backup/pr-test.yml.j2)",
+      "Bash(git checkout:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git rebase:*)",
+      "Bash(GIT_EDITOR=true git rebase --continue)"
+    ]
+  }
+}
