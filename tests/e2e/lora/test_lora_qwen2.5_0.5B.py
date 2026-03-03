@@ -1,3 +1,4 @@
+# CI test trigger for lora suite
 """E2E test for LoRA training with Qwen2.5-0.5B on GSM8K.
 
 Uses the Megatron backend with bridge mode.  Runs a short GRPO training loop
