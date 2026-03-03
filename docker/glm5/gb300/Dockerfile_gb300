@@ -1,0 +1,46 @@
+# GLM5 on GB300 (NVIDIA Blackwell, sm103a, CUDA 13, ARM64)
+#
+# Two-stage build:
+#   Stage 1 (build_commands in preset.py) → base image msc/glm5_gb300:{hash}
+#   Stage 2 (this Dockerfile)             → final image with repos + setup
+#
+# Usage:
+#   1. Build base image via msc: msc exec 'echo done'  (uses .msc/preset.py build_commands)
+#   2. Build final image:        bash miles/docker/glm5/gb300/build_gb300.sh
+#
+# Base image: lmsysorg/sglang:v0.5.7-cu130-runtime + build_commands from preset.py
+# Produces:   yuemingy/miles:glm5-gb300
+
+ARG BASE_IMAGE=docker.io/msc/glm5_gb300:5ff88c1f4fb3
+FROM ${BASE_IMAGE}
+
+# Copy repos into image
+COPY workspace/miles /workspace/miles
+COPY workspace/sglang /workspace/sglang
+
+# Python requirements from miles
+RUN pip install -r /workspace/miles/requirements.txt
+
+# Megatron-LM patch
+RUN cp /workspace/miles/docker/patch/latest/megatron.patch /root/Megatron-LM/ && \
+    cd /root/Megatron-LM && git update-index --refresh && \
+    git apply megatron.patch --3way && rm megatron.patch
+
+# Transformers patch
+RUN cd $(python -c "import transformers, os; print(os.path.dirname(os.path.dirname(transformers.__file__)))") && \
+    patch -p2 < /workspace/miles/docker/glm5/transformers.patch
+
+# CLI wrappers (base image missing pip entry points)
+RUN printf '#!/bin/bash\npython -m torch.distributed.run "$@"\n' > /usr/local/bin/torchrun && chmod +x /usr/local/bin/torchrun && \
+    printf '#!/bin/bash\npython -m huggingface_hub.commands.huggingface_cli "$@"\n' > /usr/local/bin/huggingface-cli && chmod +x /usr/local/bin/huggingface-cli && \
+    ln -sf /usr/local/bin/huggingface-cli /usr/local/bin/hf
+
+# Pin huggingface-hub <1.0 (transformers/datasets compat)
+RUN pip install "huggingface-hub<1.0,>=0.34.0"
+
+# Rebuild FlashMLA with GB300 (sm103a) support
+# Uses sgl-project/sglang commit 8acd4d7 to patch flashmla_utils.h + cutlass/arch/config.h
+RUN bash /workspace/sglang/sgl-kernel/build_flashmla_gb300.sh
+
+# Install miles (editable)
+RUN pip install -e /workspace/miles --no-deps
