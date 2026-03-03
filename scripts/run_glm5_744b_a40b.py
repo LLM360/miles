@@ -93,8 +93,7 @@ class ScriptArgs(U.ExecuteTrainConfig):
     def __post_init__(self):
         if self.hardware == "GB300":
             assert not self.megatron_use_deepep, (
-                "Known issue: Megatron's DeepEP fail on GB300. "
-                "Please specify --no-megatron-use-deepep."
+                "Known issue: Megatron's DeepEP fail on GB300. " "Please specify --no-megatron-use-deepep."
             )
         if self.num_nodes == 1:
             self.enable_pd = False
@@ -316,7 +315,7 @@ def _execute_train(args: ScriptArgs):
 
     else:
         sglang_decode_max_bs = 256
-        sglang_world_size = min(8, args.num_gpus_per_node) 
+        sglang_world_size = min(8, args.num_gpus_per_node)
 
     sglang_args = (
         f"--rollout-num-gpus-per-engine {sglang_world_size} "
@@ -372,16 +371,11 @@ def _execute_train(args: ScriptArgs):
         f"--num-gpus-per-node {args.num_gpus_per_node} "
         "--colocate "
     )
-    
+
     if args.megatron_use_deepep:
-        misc_args += (
-            "--moe-enable-deepep "
-            "--moe-token-dispatcher-type flex "
-        ) 
+        misc_args += "--moe-enable-deepep " "--moe-token-dispatcher-type flex "
     else:
-        misc_args += (
-            "--moe-token-dispatcher-type alltoall "
-        )
+        misc_args += "--moe-token-dispatcher-type alltoall "
 
     train_args = (
         f"{ckpt_args} "
