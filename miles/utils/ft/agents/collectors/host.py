@@ -44,7 +44,7 @@ class HostCollector(BaseCollector):
 
     async def close(self) -> None:
         if self._kmsg_reader is not None:
-            self._kmsg_reader._close_kmsg()
+            self._kmsg_reader.close()
 
     def _collect_sync(self) -> list[MetricSample]:
         samples: list[MetricSample] = []
@@ -177,7 +177,7 @@ class _KmsgReader:
                 break
             except OSError:
                 logger.warning("Error reading /dev/kmsg, switching to dmesg fallback")
-                self._close_kmsg()
+                self.close()
                 self._use_dmesg_fallback = True
                 self._last_dmesg_time = datetime.now(timezone.utc)
                 break
@@ -206,7 +206,7 @@ class _KmsgReader:
 
         return []
 
-    def _close_kmsg(self) -> None:
+    def close(self) -> None:
         if self._file_handle is not None:
             try:
                 os.close(self._file_handle)

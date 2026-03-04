@@ -12,13 +12,11 @@ logger = logging.getLogger(__name__)
 
 class GpuCollector(BaseCollector):
     def __init__(self) -> None:
-        self._nvml_available = False
         self._pynvml: ModuleType | None = None
         try:
             import pynvml
 
             pynvml.nvmlInit()
-            self._nvml_available = True
             self._pynvml = pynvml
         except Exception:
             logger.warning("pynvml unavailable — GpuCollector will report all GPUs as unavailable")
@@ -28,16 +26,16 @@ class GpuCollector(BaseCollector):
         return CollectorOutput(metrics=metrics)
 
     async def close(self) -> None:
-        if self._nvml_available and self._pynvml is not None:
+        if self._pynvml is not None:
             try:
                 self._pynvml.nvmlShutdown()
             except Exception:
                 logger.warning("nvmlShutdown failed", exc_info=True)
-            self._nvml_available = False
+            self._pynvml = None
 
     def _collect_sync(self) -> list[MetricSample]:
         pynvml = self._pynvml
-        if not self._nvml_available or pynvml is None:
+        if pynvml is None:
             return []
 
         samples: list[MetricSample] = []
