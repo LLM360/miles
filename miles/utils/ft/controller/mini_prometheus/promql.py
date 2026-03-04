@@ -184,14 +184,15 @@ def parse_promql(query: str) -> PromQLExpr:
             )
 
             if after_func:
-                compare = _find_compare_op(after_func)
-                if compare:
-                    _, op, threshold_str = compare
-                    return RangeFunctionCompare(
-                        func=range_func,
-                        op=op,
-                        threshold=float(threshold_str),
-                    )
+                for op_str in _COMPARE_OPS:
+                    if after_func.startswith(op_str):
+                        threshold_str = after_func[len(op_str):].strip()
+                        if threshold_str:
+                            return RangeFunctionCompare(
+                                func=range_func,
+                                op=CompareOp(op_str),
+                                threshold=float(threshold_str),
+                            )
 
             return range_func
 
