@@ -21,11 +21,11 @@ class NetworkCollector(BaseCollector):
 
     def __init__(
         self,
-        sysfs_net_path: str = "/sys/class/net",
+        sysfs_net_path: Path = Path("/sys/class/net"),
         interface_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> None:
-        self._sysfs_net_path = Path(sysfs_net_path)
+        self._sysfs_net_path = sysfs_net_path
         self._include_patterns = interface_patterns or _DEFAULT_INCLUDE_PATTERNS
         self._exclude_patterns = exclude_patterns or _DEFAULT_EXCLUDE_PATTERNS
 

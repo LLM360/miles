@@ -1,48 +1,17 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from miles.utils.ft.agents.collectors.gpu import GpuCollector
-
-
-def _make_mock_pynvml(
-    device_count: int = 8,
-    temperature: int = 65,
-    remap_info: tuple[int, int, int, int] = (0, 0, 0, 0),
-    pcie_throughput_kb: int = 1048576,
-    utilization_gpu: int = 50,
-    failing_handle_indices: set[int] | None = None,
-) -> MagicMock:
-    failing = failing_handle_indices or set()
-    mock = MagicMock()
-    mock.NVML_TEMPERATURE_GPU = 0
-    mock.NVML_PCIE_UTIL_TX_BYTES = 1
-
-    mock.nvmlInit.return_value = None
-    mock.nvmlShutdown.return_value = None
-    mock.nvmlDeviceGetCount.return_value = device_count
-
-    def get_handle(index: int) -> object:
-        if index in failing:
-            raise RuntimeError(f"GPU {index} handle failed")
-        return f"handle-{index}"
-
-    mock.nvmlDeviceGetHandleByIndex.side_effect = get_handle
-    mock.nvmlDeviceGetTemperature.return_value = temperature
-    mock.nvmlDeviceGetRemappedRows.return_value = remap_info
-    mock.nvmlDeviceGetPcieThroughput.return_value = pcie_throughput_kb
-    mock.nvmlDeviceGetUtilizationRates.return_value = SimpleNamespace(gpu=utilization_gpu)
-
-    return mock
+from tests.fast.utils.ft.conftest import make_mock_pynvml
 
 
 class TestGpuCollector:
     @pytest.mark.asyncio()
     async def test_normal_8_gpus_produces_48_metrics(self) -> None:
-        mock_pynvml = _make_mock_pynvml(device_count=8)
+        mock_pynvml = make_mock_pynvml(device_count=8)
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
             collector = GpuCollector()
             result = await collector.collect()
@@ -61,7 +30,7 @@ class TestGpuCollector:
 
     @pytest.mark.asyncio()
     async def test_failing_handle_reports_gpu_unavailable(self) -> None:
-        mock_pynvml = _make_mock_pynvml(device_count=4, failing_handle_indices={2})
+        mock_pynvml = make_mock_pynvml(device_count=4, failing_handle_indices={2})
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
             collector = GpuCollector()
             result = await collector.collect()
@@ -87,7 +56,7 @@ class TestGpuCollector:
 
     @pytest.mark.asyncio()
     async def test_row_remap_pending_value(self) -> None:
-        mock_pynvml = _make_mock_pynvml(
+        mock_pynvml = make_mock_pynvml(
             device_count=1,
             remap_info=(0, 0, 3, 1),
         )
@@ -105,7 +74,7 @@ class TestGpuCollector:
 
     @pytest.mark.asyncio()
     async def test_close_calls_nvml_shutdown(self) -> None:
-        mock_pynvml = _make_mock_pynvml(device_count=1)
+        mock_pynvml = make_mock_pynvml(device_count=1)
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
             collector = GpuCollector()
             await collector.close()
@@ -114,7 +83,7 @@ class TestGpuCollector:
 
     @pytest.mark.asyncio()
     async def test_pcie_bandwidth_conversion(self) -> None:
-        mock_pynvml = _make_mock_pynvml(
+        mock_pynvml = make_mock_pynvml(
             device_count=1,
             pcie_throughput_kb=2097152,
         )
@@ -128,7 +97,7 @@ class TestGpuCollector:
 
     @pytest.mark.asyncio()
     async def test_collect_interval_default(self) -> None:
-        mock_pynvml = _make_mock_pynvml(device_count=0)
+        mock_pynvml = make_mock_pynvml(device_count=0)
         with patch.dict("sys.modules", {"pynvml": mock_pynvml}):
             collector = GpuCollector()
 

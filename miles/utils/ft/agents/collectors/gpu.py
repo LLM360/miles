@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from types import ModuleType
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models import CollectorOutput, MetricSample
@@ -10,15 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 class GpuCollector(BaseCollector):
-    collect_interval: float = 10.0
-
     def __init__(self) -> None:
         self._nvml_available = False
+        self._pynvml: ModuleType | None = None
         try:
             import pynvml
 
             pynvml.nvmlInit()
             self._nvml_available = True
+            self._pynvml = pynvml
         except Exception:
             logger.warning("pynvml unavailable — GpuCollector will report all GPUs as unavailable")
 
@@ -27,20 +28,17 @@ class GpuCollector(BaseCollector):
         return CollectorOutput(metrics=metrics)
 
     async def close(self) -> None:
-        if self._nvml_available:
+        if self._nvml_available and self._pynvml is not None:
             try:
-                import pynvml
-
-                pynvml.nvmlShutdown()
+                self._pynvml.nvmlShutdown()
             except Exception:
                 logger.warning("nvmlShutdown failed", exc_info=True)
             self._nvml_available = False
 
     def _collect_sync(self) -> list[MetricSample]:
-        if not self._nvml_available:
-            return self._collect_unavailable()
-
-        import pynvml
+        pynvml = self._pynvml
+        if not self._nvml_available or pynvml is None:
+            return []
 
         samples: list[MetricSample] = []
         try:
@@ -60,25 +58,21 @@ class GpuCollector(BaseCollector):
                 continue
 
             samples.append(MetricSample(name="gpu_available", labels=gpu_label, value=1.0))
-            self._collect_temperature(handle, gpu_label, samples)
-            self._collect_row_remap(handle, gpu_label, samples)
-            self._collect_pcie_bandwidth(handle, gpu_label, samples)
-            self._collect_utilization(handle, gpu_label, samples)
+            self._collect_temperature(pynvml, handle, gpu_label, samples)
+            self._collect_row_remap(pynvml, handle, gpu_label, samples)
+            self._collect_pcie_bandwidth(pynvml, handle, gpu_label, samples)
+            self._collect_utilization(pynvml, handle, gpu_label, samples)
 
         return samples
 
-    def _collect_unavailable(self) -> list[MetricSample]:
-        return []
-
     @staticmethod
     def _collect_temperature(
+        pynvml: ModuleType,
         handle: object,
         gpu_label: dict[str, str],
         samples: list[MetricSample],
     ) -> None:
         try:
-            import pynvml
-
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
             samples.append(MetricSample(name="gpu_temperature_celsius", labels=gpu_label, value=float(temp)))
         except Exception:
@@ -86,13 +80,12 @@ class GpuCollector(BaseCollector):
 
     @staticmethod
     def _collect_row_remap(
+        pynvml: ModuleType,
         handle: object,
         gpu_label: dict[str, str],
         samples: list[MetricSample],
     ) -> None:
         try:
-            import pynvml
-
             remap_info = pynvml.nvmlDeviceGetRemappedRows(handle)
             pending = remap_info[2]
             failure = remap_info[3]
@@ -103,13 +96,12 @@ class GpuCollector(BaseCollector):
 
     @staticmethod
     def _collect_pcie_bandwidth(
+        pynvml: ModuleType,
         handle: object,
         gpu_label: dict[str, str],
         samples: list[MetricSample],
     ) -> None:
         try:
-            import pynvml
-
             throughput_kb_per_s = pynvml.nvmlDeviceGetPcieThroughput(
                 handle, pynvml.NVML_PCIE_UTIL_TX_BYTES,
             )
@@ -120,13 +112,12 @@ class GpuCollector(BaseCollector):
 
     @staticmethod
     def _collect_utilization(
+        pynvml: ModuleType,
         handle: object,
         gpu_label: dict[str, str],
         samples: list[MetricSample],
     ) -> None:
         try:
-            import pynvml
-
             rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
             samples.append(MetricSample(name="gpu_tensorcore_utilization", labels=gpu_label, value=float(rates.gpu)))
         except Exception:

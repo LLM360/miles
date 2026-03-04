@@ -1,5 +1,8 @@
 from datetime import timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from typing import NamedTuple
+from unittest.mock import MagicMock
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.controller.controller import FtController
@@ -212,3 +215,73 @@ class FakeNodeAgent:
     async def cleanup_training_processes(self, training_job_id: str) -> None:
         self.cleanup_called = True
         self.cleanup_job_id = training_job_id
+
+
+# ---------------------------------------------------------------------------
+# hw-collectors test helpers
+# ---------------------------------------------------------------------------
+
+
+class FakeKmsgReader:
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = lines
+        self._consumed = False
+
+    def read_new_lines(self) -> list[str]:
+        if self._consumed:
+            return []
+        self._consumed = True
+        return list(self._lines)
+
+
+def make_mock_pynvml(
+    device_count: int = 8,
+    temperature: int = 65,
+    remap_info: tuple[int, int, int, int] = (0, 0, 0, 0),
+    pcie_throughput_kb: int = 1048576,
+    utilization_gpu: int = 50,
+    failing_handle_indices: set[int] | None = None,
+) -> MagicMock:
+    failing = failing_handle_indices or set()
+    mock = MagicMock()
+    mock.NVML_TEMPERATURE_GPU = 0
+    mock.NVML_PCIE_UTIL_TX_BYTES = 1
+
+    mock.nvmlInit.return_value = None
+    mock.nvmlShutdown.return_value = None
+    mock.nvmlDeviceGetCount.return_value = device_count
+
+    def get_handle(index: int) -> object:
+        if index in failing:
+            raise RuntimeError(f"GPU {index} handle failed")
+        return f"handle-{index}"
+
+    mock.nvmlDeviceGetHandleByIndex.side_effect = get_handle
+    mock.nvmlDeviceGetTemperature.return_value = temperature
+    mock.nvmlDeviceGetRemappedRows.return_value = remap_info
+    mock.nvmlDeviceGetPcieThroughput.return_value = pcie_throughput_kb
+    mock.nvmlDeviceGetUtilizationRates.return_value = SimpleNamespace(gpu=utilization_gpu)
+
+    return mock
+
+
+def create_sysfs_interface(
+    base: Path,
+    name: str,
+    operstate: str = "up",
+    rx_errors: int = 0,
+    tx_errors: int = 0,
+    rx_dropped: int = 0,
+    tx_dropped: int = 0,
+) -> None:
+    iface_dir = base / name
+    iface_dir.mkdir(parents=True, exist_ok=True)
+
+    (iface_dir / "operstate").write_text(operstate + "\n")
+
+    stats_dir = iface_dir / "statistics"
+    stats_dir.mkdir(exist_ok=True)
+    (stats_dir / "rx_errors").write_text(str(rx_errors) + "\n")
+    (stats_dir / "tx_errors").write_text(str(tx_errors) + "\n")
+    (stats_dir / "rx_dropped").write_text(str(rx_dropped) + "\n")
+    (stats_dir / "tx_dropped").write_text(str(tx_dropped) + "\n")

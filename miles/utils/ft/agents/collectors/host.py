@@ -15,7 +15,7 @@ from miles.utils.ft.models import CollectorOutput, MetricSample
 logger = logging.getLogger(__name__)
 
 _XID_PATTERN = re.compile(r"NVRM: Xid.*?: (\d+)")
-_KERNEL_EVENT_KEYWORDS = ("kernel panic", "MCE", "oom-killer", "Hardware Error")
+_KERNEL_EVENT_KEYWORDS = ("kernel panic", "mce", "oom-killer", "hardware error")
 
 _DISK_COLLECT_EVERY_N = 30
 
@@ -26,8 +26,8 @@ class HostCollector(BaseCollector):
     def __init__(
         self,
         xid_window_seconds: float = 300.0,
-        disk_mounts: list[str] | None = None,
-        kmsg_path: str = "/dev/kmsg",
+        disk_mounts: list[Path] | None = None,
+        kmsg_path: Path = Path("/dev/kmsg"),
     ) -> None:
         self._xid_window_seconds = xid_window_seconds
         self._disk_mounts = disk_mounts or []
@@ -57,7 +57,7 @@ class HostCollector(BaseCollector):
 
             line_lower = line.lower()
             for keyword in _KERNEL_EVENT_KEYWORDS:
-                if keyword.lower() in line_lower:
+                if keyword in line_lower:
                     kernel_event_count += 1
                     break
 
@@ -105,7 +105,7 @@ class HostCollector(BaseCollector):
                 available_bytes = stat.f_bavail * stat.f_frsize
                 samples.append(MetricSample(
                     name="disk_available_bytes",
-                    labels={"mount": mount},
+                    labels={"mount": str(mount)},
                     value=float(available_bytes),
                 ))
             except Exception:
@@ -120,8 +120,6 @@ class HostCollector(BaseCollector):
 
         for device_dir in sorted(sys_block.iterdir()):
             stat_file = device_dir / "stat"
-            if not stat_file.exists():
-                continue
             try:
                 text = stat_file.read_text().strip()
                 fields = text.split()
@@ -137,7 +135,7 @@ class HostCollector(BaseCollector):
 
 
 class _KmsgReader:
-    def __init__(self, kmsg_path: str = "/dev/kmsg") -> None:
+    def __init__(self, kmsg_path: Path = Path("/dev/kmsg")) -> None:
         self._kmsg_path = kmsg_path
         self._file_handle: int | None = None
         self._use_dmesg_fallback = False

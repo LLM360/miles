@@ -5,35 +5,14 @@ from pathlib import Path
 import pytest
 
 from miles.utils.ft.agents.collectors.network import NetworkCollector
-
-
-def _create_sysfs_interface(
-    base: Path,
-    name: str,
-    operstate: str = "up",
-    rx_errors: int = 0,
-    tx_errors: int = 0,
-    rx_dropped: int = 0,
-    tx_dropped: int = 0,
-) -> None:
-    iface_dir = base / name
-    iface_dir.mkdir(parents=True, exist_ok=True)
-
-    (iface_dir / "operstate").write_text(operstate + "\n")
-
-    stats_dir = iface_dir / "statistics"
-    stats_dir.mkdir(exist_ok=True)
-    (stats_dir / "rx_errors").write_text(str(rx_errors) + "\n")
-    (stats_dir / "tx_errors").write_text(str(tx_errors) + "\n")
-    (stats_dir / "rx_dropped").write_text(str(rx_dropped) + "\n")
-    (stats_dir / "tx_dropped").write_text(str(tx_dropped) + "\n")
+from tests.fast.utils.ft.conftest import create_sysfs_interface
 
 
 class TestNetworkCollector:
     @pytest.mark.asyncio()
     async def test_nic_up(self, tmp_path: Path) -> None:
-        _create_sysfs_interface(tmp_path, "ib0", operstate="up")
-        collector = NetworkCollector(sysfs_net_path=str(tmp_path))
+        create_sysfs_interface(tmp_path, "ib0", operstate="up")
+        collector = NetworkCollector(sysfs_net_path=tmp_path)
 
         result = await collector.collect()
         nic_up = [m for m in result.metrics if m.name == "nic_up"]
@@ -43,8 +22,8 @@ class TestNetworkCollector:
 
     @pytest.mark.asyncio()
     async def test_nic_down(self, tmp_path: Path) -> None:
-        _create_sysfs_interface(tmp_path, "eth0", operstate="down")
-        collector = NetworkCollector(sysfs_net_path=str(tmp_path))
+        create_sysfs_interface(tmp_path, "eth0", operstate="down")
+        collector = NetworkCollector(sysfs_net_path=tmp_path)
 
         result = await collector.collect()
         nic_up = [m for m in result.metrics if m.name == "nic_up"]
@@ -53,7 +32,7 @@ class TestNetworkCollector:
 
     @pytest.mark.asyncio()
     async def test_missing_sysfs_dir(self, tmp_path: Path) -> None:
-        collector = NetworkCollector(sysfs_net_path=str(tmp_path / "nonexistent"))
+        collector = NetworkCollector(sysfs_net_path=tmp_path / "nonexistent")
         result = await collector.collect()
         assert result.metrics == []
 
@@ -61,21 +40,20 @@ class TestNetworkCollector:
     async def test_missing_operstate_file(self, tmp_path: Path) -> None:
         iface_dir = tmp_path / "ib0"
         iface_dir.mkdir()
-        # no operstate file
 
-        collector = NetworkCollector(sysfs_net_path=str(tmp_path))
+        collector = NetworkCollector(sysfs_net_path=tmp_path)
         result = await collector.collect()
         nic_up = [m for m in result.metrics if m.name == "nic_up"]
         assert len(nic_up) == 0
 
     @pytest.mark.asyncio()
     async def test_interface_filtering_excludes_lo_docker_veth(self, tmp_path: Path) -> None:
-        _create_sysfs_interface(tmp_path, "lo", operstate="up")
-        _create_sysfs_interface(tmp_path, "docker0", operstate="up")
-        _create_sysfs_interface(tmp_path, "veth1234", operstate="up")
-        _create_sysfs_interface(tmp_path, "ib0", operstate="up")
+        create_sysfs_interface(tmp_path, "lo", operstate="up")
+        create_sysfs_interface(tmp_path, "docker0", operstate="up")
+        create_sysfs_interface(tmp_path, "veth1234", operstate="up")
+        create_sysfs_interface(tmp_path, "ib0", operstate="up")
 
-        collector = NetworkCollector(sysfs_net_path=str(tmp_path))
+        collector = NetworkCollector(sysfs_net_path=tmp_path)
         result = await collector.collect()
 
         interfaces = {m.labels["interface"] for m in result.metrics if "interface" in m.labels}
@@ -86,11 +64,11 @@ class TestNetworkCollector:
 
     @pytest.mark.asyncio()
     async def test_multiple_interfaces(self, tmp_path: Path) -> None:
-        _create_sysfs_interface(tmp_path, "ib0", operstate="up", rx_errors=10)
-        _create_sysfs_interface(tmp_path, "ib1", operstate="up", tx_errors=5)
-        _create_sysfs_interface(tmp_path, "eth0", operstate="down", rx_dropped=100)
+        create_sysfs_interface(tmp_path, "ib0", operstate="up", rx_errors=10)
+        create_sysfs_interface(tmp_path, "ib1", operstate="up", tx_errors=5)
+        create_sysfs_interface(tmp_path, "eth0", operstate="down", rx_dropped=100)
 
-        collector = NetworkCollector(sysfs_net_path=str(tmp_path))
+        collector = NetworkCollector(sysfs_net_path=tmp_path)
         result = await collector.collect()
 
         ib0_rx = [
@@ -115,7 +93,7 @@ class TestNetworkCollector:
 
     @pytest.mark.asyncio()
     async def test_statistics_values(self, tmp_path: Path) -> None:
-        _create_sysfs_interface(
+        create_sysfs_interface(
             tmp_path, "ib0",
             operstate="up",
             rx_errors=42,
@@ -123,7 +101,7 @@ class TestNetworkCollector:
             rx_dropped=3,
             tx_dropped=1,
         )
-        collector = NetworkCollector(sysfs_net_path=str(tmp_path))
+        collector = NetworkCollector(sysfs_net_path=tmp_path)
         result = await collector.collect()
 
         metrics_by_name = {m.name: m.value for m in result.metrics}
@@ -134,11 +112,11 @@ class TestNetworkCollector:
 
     @pytest.mark.asyncio()
     async def test_custom_include_patterns(self, tmp_path: Path) -> None:
-        _create_sysfs_interface(tmp_path, "bond0", operstate="up")
-        _create_sysfs_interface(tmp_path, "ib0", operstate="up")
+        create_sysfs_interface(tmp_path, "bond0", operstate="up")
+        create_sysfs_interface(tmp_path, "ib0", operstate="up")
 
         collector = NetworkCollector(
-            sysfs_net_path=str(tmp_path),
+            sysfs_net_path=tmp_path,
             interface_patterns=["bond*"],
         )
         result = await collector.collect()
@@ -148,5 +126,5 @@ class TestNetworkCollector:
         assert "ib0" not in interfaces
 
     def test_default_collect_interval(self) -> None:
-        collector = NetworkCollector(sysfs_net_path="/nonexistent")
+        collector = NetworkCollector(sysfs_net_path=Path("/nonexistent"))
         assert collector.collect_interval == 30.0
