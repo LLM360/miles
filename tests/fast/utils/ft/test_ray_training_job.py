@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +11,7 @@ from miles.utils.ft.platform.ray_training_job import RayTrainingJob
 
 def _make_job(
     entrypoint: str = "python train.py",
-    runtime_env: dict | None = None,
+    runtime_env: dict[str, Any] | None = None,
     poll_interval_seconds: int = 0,
 ) -> tuple[RayTrainingJob, MagicMock]:
     mock_client = MagicMock()
@@ -51,7 +52,7 @@ class TestSubmitTraining:
 
     @pytest.mark.asyncio
     async def test_does_not_mutate_original_runtime_env(self) -> None:
-        original_env: dict = {"working_dir": "/data", "env_vars": {"MY_VAR": "1"}}
+        original_env: dict[str, Any] = {"working_dir": "/data", "env_vars": {"MY_VAR": "1"}}
         original_env_copy = {
             "working_dir": "/data",
             "env_vars": {"MY_VAR": "1"},
