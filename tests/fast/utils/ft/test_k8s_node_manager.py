@@ -59,6 +59,14 @@ class TestUnmarkNodeBad:
         assert body["metadata"]["labels"][LABEL_KEY] is None
         assert body["metadata"]["labels"][REASON_LABEL_KEY] is None
 
+    @pytest.mark.asyncio
+    async def test_raises_on_api_failure(self) -> None:
+        manager, mock_core_v1 = _make_manager_with_mock_api()
+        mock_core_v1.patch_node.side_effect = Exception("K8s API unreachable")
+
+        with pytest.raises(Exception, match="K8s API unreachable"):
+            await manager.unmark_node_bad(node_id="node-2")
+
 
 class TestGetBadNodes:
     @pytest.mark.asyncio
@@ -101,3 +109,11 @@ class TestGetBadNodes:
 
         assert len(result) == 5
         assert result == [f"node-{i}" for i in range(5)]
+
+    @pytest.mark.asyncio
+    async def test_raises_on_api_failure(self) -> None:
+        manager, mock_core_v1 = _make_manager_with_mock_api()
+        mock_core_v1.list_node.side_effect = Exception("K8s API unreachable")
+
+        with pytest.raises(Exception, match="K8s API unreachable"):
+            await manager.get_bad_nodes()

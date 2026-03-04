@@ -104,6 +104,31 @@ class TestStopTraining:
                 await job.stop_training(timeout_seconds=5)
 
     @pytest.mark.asyncio
+    async def test_stop_completes_when_job_fails(self) -> None:
+        job, mock_client = _make_job(poll_interval_seconds=0)
+        mock_client.submit_job.return_value = "job-1"
+        await job.submit_training()
+
+        mock_client.get_job_status.side_effect = ["RUNNING", "FAILED"]
+
+        await job.stop_training(timeout_seconds=10)
+
+        mock_client.stop_job.assert_called_once_with("job-1")
+        assert mock_client.get_job_status.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_stop_completes_when_job_succeeds(self) -> None:
+        job, mock_client = _make_job(poll_interval_seconds=0)
+        mock_client.submit_job.return_value = "job-1"
+        await job.submit_training()
+
+        mock_client.get_job_status.return_value = "SUCCEEDED"
+
+        await job.stop_training(timeout_seconds=10)
+
+        mock_client.stop_job.assert_called_once_with("job-1")
+
+    @pytest.mark.asyncio
     async def test_stop_with_no_active_job_is_noop(self) -> None:
         job, mock_client = _make_job()
 

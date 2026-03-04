@@ -18,3 +18,8 @@ class TestLauncherCli:
         assert "--platform" in result.output
         assert "--ray-address" in result.output
         assert "--entrypoint" in result.output
+
+    def test_invalid_platform_raises_error(self) -> None:
+        result = runner.invoke(app, ["--platform", "unknown"])
+        assert result.exit_code != 0
+        assert "Unknown platform" in result.output

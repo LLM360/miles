@@ -6,7 +6,6 @@ import structlog
 from kubernetes_asyncio import config as k8s_config
 from kubernetes_asyncio.client import ApiClient, CoreV1Api
 
-from miles.utils.ft.platform.protocols import NodeManagerProtocol
 
 log = structlog.get_logger(__name__)
 
@@ -94,7 +93,3 @@ class K8sNodeManager:
             elapsed_seconds=round(elapsed, 3),
         )
         return names
-
-
-def _check_protocol_conformance() -> None:
-    _: type[NodeManagerProtocol] = K8sNodeManager  # type: ignore[assignment]

@@ -8,7 +8,7 @@ from uuid import uuid4
 import structlog
 from ray.job_submission import JobSubmissionClient
 
-from miles.utils.ft.platform.protocols import JobStatus, TrainingJobProtocol
+from miles.utils.ft.platform.protocols import JobStatus
 
 log = structlog.get_logger(__name__)
 
@@ -41,7 +41,7 @@ class RayTrainingJob:
         self,
         client: JobSubmissionClient,
         entrypoint: str,
-        runtime_env: dict | None = None,
+        runtime_env: dict[str, Any] | None = None,
         poll_interval_seconds: int = _DEFAULT_POLL_INTERVAL_SECONDS,
     ) -> None:
         self._client = client
@@ -118,7 +118,10 @@ class RayTrainingJob:
         elapsed = time.monotonic() - start
 
         status_str = _parse_ray_status(raw_status)
-        job_status = _RAY_STATUS_TO_JOB_STATUS.get(status_str, JobStatus.FAILED)
+        job_status = _RAY_STATUS_TO_JOB_STATUS.get(status_str)
+        if job_status is None:
+            log.warning("unknown_ray_status", raw_status=status_str)
+            job_status = JobStatus.FAILED
 
         log.info(
             "get_training_status",
@@ -128,7 +131,3 @@ class RayTrainingJob:
             elapsed_seconds=round(elapsed, 3),
         )
         return job_status
-
-
-def _check_protocol_conformance() -> None:
-    _: type[TrainingJobProtocol] = RayTrainingJob  # type: ignore[assignment]
