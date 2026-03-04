@@ -11,4 +11,5 @@ class BaseFaultDetector(ABC):
         self,
         metric_store: MetricStoreProtocol,
         mini_wandb: MiniWandb,
+        rank_placement: dict[int, str],
     ) -> Decision: ...
