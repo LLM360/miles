@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import fnmatch
 import logging
 from pathlib import Path
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models import CollectorOutput, MetricSample
+from miles.utils.ft.models import MetricSample
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +33,6 @@ class NetworkCollector(BaseCollector):
         self._sysfs_net_path = sysfs_net_path
         self._include_patterns = interface_patterns or _DEFAULT_INCLUDE_PATTERNS
         self._exclude_patterns = exclude_patterns or _DEFAULT_EXCLUDE_PATTERNS
-
-    async def collect(self) -> CollectorOutput:
-        metrics = await asyncio.to_thread(self._collect_sync)
-        return CollectorOutput(metrics=metrics)
 
     def _collect_sync(self) -> list[MetricSample]:
         if not self._sysfs_net_path.exists():
