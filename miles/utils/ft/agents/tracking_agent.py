@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+
+from miles.utils.ft.agents._controller_handle import ControllerHandleMixin
 
 logger = logging.getLogger(__name__)
 
 
-class FtTrackingAgent:
+class FtTrackingAgent(ControllerHandleMixin):
     """Forwards training metrics to FtController via Ray fire-and-forget calls.
 
     Designed to be registered as a hook in tracking_utils.log(), so that all
@@ -16,10 +17,9 @@ class FtTrackingAgent:
     """
 
     def __init__(self, rank: int, run_id: str | None = None) -> None:
+        super().__init__()
         self._rank = rank
         self._run_id = run_id or os.environ.get("FT_TRAINING_RUN_ID", "")
-        self._controller_handle: Any | None = None
-        self._controller_lookup_failed: bool = False
 
     def log(self, *, metrics: dict[str, float], step: int) -> None:
         if not self._run_id:
@@ -38,24 +38,3 @@ class FtTrackingAgent:
             logger.warning(
                 "FtTrackingAgent.log() failed at step=%d", step, exc_info=True
             )
-
-    def _get_controller_handle(self) -> Any | None:
-        if self._controller_handle is not None:
-            return self._controller_handle
-        if self._controller_lookup_failed:
-            return None
-
-        try:
-            import ray
-
-            self._controller_handle = ray.get_actor("ft_controller")
-        except Exception:
-            self._controller_lookup_failed = True
-            logger.warning("Failed to get ft_controller actor handle", exc_info=True)
-            return None
-
-        return self._controller_handle
-
-    def _reset_controller_handle(self) -> None:
-        self._controller_handle = None
-        self._controller_lookup_failed = False
