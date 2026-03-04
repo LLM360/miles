@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
 
 from miles.utils.ft.models import RecoveryPhase
 
 _PENDING_TIMEOUT_SECONDS: int = 300
 _MAX_RETRIES: int = 3
-
-_StepHandler = Callable[[], Coroutine[Any, Any, None]]
 
 
 def _is_finite(value: float) -> bool:
