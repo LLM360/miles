@@ -15,6 +15,13 @@ class BaseFaultDetector(ABC):
         rank_placement: dict[int, str],
     ) -> Decision: ...
 
+    def on_new_run(self, run_id: str) -> None:
+        """Called when a new training run is registered.
+
+        Subclasses should override to reset stateful internal state
+        that should not carry over between runs.
+        """
+
 
 def _get_non_finite_loss(mini_wandb: MiniWandb) -> float | None:
     """Return the loss value if it is non-finite (NaN/Inf), otherwise None."""

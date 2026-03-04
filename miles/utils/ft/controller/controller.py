@@ -123,6 +123,8 @@ class FtController:
             self._mini_wandb.clear()
             self._remove_old_scrape_targets()
             self._rank_placement = {}
+            for detector in self._detectors:
+                detector.on_new_run(run_id)
 
         self._expected_world_size = world_size
         self._rank_placement[rank] = node_id
