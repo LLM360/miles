@@ -114,7 +114,7 @@ class HostCollector(BaseCollector):
                     value=float(available_bytes),
                 ))
             except Exception:
-                logger.warning("Failed to statvfs %s", mount)
+                logger.warning("Failed to statvfs %s", mount, exc_info=True)
 
         self._collect_disk_io_time(samples)
 
@@ -136,7 +136,7 @@ class HostCollector(BaseCollector):
                         value=io_time_ms / 1000.0,
                     ))
             except Exception:
-                logger.warning("Failed to read disk stat for %s", device_dir.name)
+                logger.warning("Failed to read disk stat for %s", device_dir.name, exc_info=True)
 
 
 class _KmsgReader:
@@ -203,7 +203,7 @@ class _KmsgReader:
             if result.returncode == 0 and result.stdout:
                 return result.stdout.strip().splitlines()
         except Exception:
-            logger.warning("dmesg fallback failed")
+            logger.warning("dmesg fallback failed", exc_info=True)
 
         return []
 

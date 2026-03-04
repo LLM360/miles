@@ -153,6 +153,7 @@ class FtMegatronAgent:
                         "Failed to register rank %d after %d attempts",
                         self._rank,
                         self._REGISTER_MAX_ATTEMPTS,
+                        exc_info=True,
                     )
 
     def _get_controller_handle(self) -> Any | None:
@@ -167,7 +168,7 @@ class FtMegatronAgent:
             self._controller_handle = ray.get_actor("ft_controller")
         except Exception:
             self._controller_lookup_failed = True
-            logger.warning("Failed to get ft_controller actor handle")
+            logger.warning("Failed to get ft_controller actor handle", exc_info=True)
             return None
 
         return self._controller_handle

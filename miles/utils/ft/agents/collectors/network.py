@@ -80,7 +80,7 @@ class NetworkCollector(BaseCollector):
             value = 1.0 if state == "up" else 0.0
             samples.append(MetricSample(name=mn.NODE_NETWORK_UP, labels=iface_label, value=value))
         except Exception:
-            logger.warning("Failed to read operstate for %s", iface_label["device"])
+            logger.warning("Failed to read operstate for %s", iface_label["device"], exc_info=True)
 
     @staticmethod
     def _collect_statistics(
@@ -102,4 +102,5 @@ class NetworkCollector(BaseCollector):
                     "Failed to read %s for %s",
                     stat_filename,
                     iface_label["device"],
+                    exc_info=True,
                 )

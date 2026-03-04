@@ -20,7 +20,7 @@ class GpuCollector(BaseCollector):
             pynvml.nvmlInit()
             self._pynvml = pynvml
         except Exception:
-            logger.warning("pynvml unavailable — GpuCollector will report all GPUs as unavailable")
+            logger.warning("pynvml unavailable — GpuCollector will report all GPUs as unavailable", exc_info=True)
 
     async def collect(self) -> CollectorOutput:
         metrics = await asyncio.to_thread(self._collect_sync)
@@ -52,7 +52,7 @@ class GpuCollector(BaseCollector):
             try:
                 handle = pynvml.nvmlDeviceGetHandleByIndex(index)
             except Exception:
-                logger.warning("Cannot get handle for GPU %d", index)
+                logger.warning("Cannot get handle for GPU %d", index, exc_info=True)
                 samples.append(MetricSample(name=mn.GPU_AVAILABLE, labels=gpu_label, value=0.0))
                 continue
 
@@ -75,7 +75,7 @@ class GpuCollector(BaseCollector):
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
             samples.append(MetricSample(name=mn.DCGM_FI_DEV_GPU_TEMP, labels=gpu_label, value=float(temp)))
         except Exception:
-            logger.warning("Failed to get temperature for GPU %s", gpu_label["gpu"])
+            logger.warning("Failed to get temperature for GPU %s", gpu_label["gpu"], exc_info=True)
 
     @staticmethod
     def _collect_row_remap(
@@ -89,7 +89,7 @@ class GpuCollector(BaseCollector):
             samples.append(MetricSample(name=mn.DCGM_FI_DEV_ROW_REMAP_PENDING, labels=gpu_label, value=float(pending)))
             samples.append(MetricSample(name=mn.DCGM_FI_DEV_ROW_REMAP_FAILURE, labels=gpu_label, value=float(failure)))
         except Exception:
-            logger.warning("Failed to get row remap for GPU %s", gpu_label["gpu"])
+            logger.warning("Failed to get row remap for GPU %s", gpu_label["gpu"], exc_info=True)
 
     @staticmethod
     def _collect_pcie_bandwidth(
@@ -105,7 +105,7 @@ class GpuCollector(BaseCollector):
             bytes_per_s = throughput_kb_per_s * 1024
             samples.append(MetricSample(name=mn.DCGM_FI_DEV_PCIE_TX_THROUGHPUT, labels=gpu_label, value=float(bytes_per_s)))
         except Exception:
-            logger.warning("Failed to get PCIe bandwidth for GPU %s", gpu_label["gpu"])
+            logger.warning("Failed to get PCIe bandwidth for GPU %s", gpu_label["gpu"], exc_info=True)
 
     @staticmethod
     def _collect_utilization(
@@ -118,4 +118,4 @@ class GpuCollector(BaseCollector):
             rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
             samples.append(MetricSample(name=mn.DCGM_FI_DEV_GPU_UTIL, labels=gpu_label, value=float(rates.gpu)))
         except Exception:
-            logger.warning("Failed to get utilization for GPU %s", gpu_label["gpu"])
+            logger.warning("Failed to get utilization for GPU %s", gpu_label["gpu"], exc_info=True)

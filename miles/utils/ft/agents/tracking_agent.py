@@ -51,7 +51,7 @@ class FtTrackingAgent:
             self._controller_handle = ray.get_actor("ft_controller")
         except Exception:
             self._controller_lookup_failed = True
-            logger.warning("Failed to get ft_controller actor handle")
+            logger.warning("Failed to get ft_controller actor handle", exc_info=True)
             return None
 
         return self._controller_handle
