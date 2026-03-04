@@ -4,7 +4,7 @@ import re
 
 from miles.utils.ft.models import MetricSample
 
-_METRIC_LINE_RE = re.compile(r"^(\w+)(\{([^}]*)\})?\s+(.+?)(\s+\d+)?$")
+_METRIC_LINE_RE = re.compile(r"^([\w:]+)(\{([^}]*)\})?\s+(.+?)(\s+\d+)?$")
 
 
 def parse_prometheus_text(text: str) -> list[MetricSample]:
@@ -14,13 +14,13 @@ def parse_prometheus_text(text: str) -> list[MetricSample]:
         if not line or line.startswith("#"):
             continue
 
-        label_match = _METRIC_LINE_RE.match(line)
-        if not label_match:
+        line_match = _METRIC_LINE_RE.match(line)
+        if not line_match:
             continue
 
-        name = label_match.group(1)
-        labels_str = label_match.group(3) or ""
-        value_str = label_match.group(4)
+        name = line_match.group(1)
+        labels_str = line_match.group(3) or ""
+        value_str = line_match.group(4)
 
         labels: dict[str, str] = {}
         if labels_str:

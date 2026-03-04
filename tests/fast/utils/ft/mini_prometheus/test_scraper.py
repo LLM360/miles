@@ -65,3 +65,36 @@ class TestParsePrometheusText:
         text = "\n\nmetric_a 1.0\n\nmetric_b 2.0\n\n"
         samples = parse_prometheus_text(text)
         assert len(samples) == 2
+
+    def test_colon_in_metric_name(self) -> None:
+        text = 'job:request_latency_seconds:mean5m{job="api"} 0.42\n'
+        samples = parse_prometheus_text(text)
+        assert len(samples) == 1
+        assert samples[0].name == "job:request_latency_seconds:mean5m"
+        assert samples[0].labels == {"job": "api"}
+
+    def test_positive_infinity(self) -> None:
+        text = "metric_a +Inf\n"
+        samples = parse_prometheus_text(text)
+        assert len(samples) == 1
+        assert samples[0].value == float("inf")
+
+    def test_negative_infinity(self) -> None:
+        text = "metric_a -Inf\n"
+        samples = parse_prometheus_text(text)
+        assert len(samples) == 1
+        assert samples[0].value == float("-inf")
+
+    def test_nan_value(self) -> None:
+        import math
+
+        text = "metric_a NaN\n"
+        samples = parse_prometheus_text(text)
+        assert len(samples) == 1
+        assert math.isnan(samples[0].value)
+
+    def test_negative_value(self) -> None:
+        text = "metric_a -1.5\n"
+        samples = parse_prometheus_text(text)
+        assert len(samples) == 1
+        assert samples[0].value == -1.5

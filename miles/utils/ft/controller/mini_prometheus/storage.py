@@ -113,9 +113,10 @@ class MiniPrometheus:
                         exc_info=True,
                     )
 
-            await asyncio.gather(
-                *(_scrape_target(tid, addr) for tid, addr in targets)
-            )
+            await asyncio.gather(*(
+                _scrape_target(target_id, address)
+                for target_id, address in targets
+            ))
 
     async def start(self) -> None:
         self._running = True
