@@ -322,6 +322,34 @@ def make_test_controller(
 
 
 # ---------------------------------------------------------------------------
+# Diagnostic scheduler fakes (recovery milestone)
+# ---------------------------------------------------------------------------
+
+
+class FakeDiagnosticScheduler:
+    """Programmable stub for DiagnosticScheduler in recovery tests."""
+
+    def __init__(self, decision: Decision | None = None) -> None:
+        self._decision = decision or Decision(
+            action=ActionType.NOTIFY_HUMAN,
+            reason="fake diagnostic — all passed",
+        )
+        self.call_count: int = 0
+        self.last_trigger_reason: str | None = None
+        self.last_suspect_node_ids: list[str] | None = None
+
+    async def run_diagnostic_pipeline(
+        self,
+        trigger_reason: str,
+        suspect_node_ids: list[str] | None = None,
+    ) -> Decision:
+        self.call_count += 1
+        self.last_trigger_reason = trigger_reason
+        self.last_suspect_node_ids = suspect_node_ids
+        return self._decision
+
+
+# ---------------------------------------------------------------------------
 # Agent test helpers (agent-skeleton milestone)
 # ---------------------------------------------------------------------------
 
