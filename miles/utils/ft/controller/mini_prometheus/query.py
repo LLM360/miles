@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Iterator
 
@@ -31,55 +31,51 @@ class TimeSeriesSample:
     value: float
 
 
+@dataclass
+class SeriesStore:
+    series: dict[_SeriesKey, deque[TimeSeriesSample]] = field(default_factory=dict)
+    label_maps: dict[_SeriesKey, dict[str, str]] = field(default_factory=dict)
+    name_index: dict[str, set[_SeriesKey]] = field(default_factory=dict)
+
+    def iter_matching(
+        self, selector: MetricSelector,
+    ) -> Iterator[tuple[dict[str, str], deque[TimeSeriesSample]]]:
+        for key in self.name_index.get(selector.name, []):
+            samples = self.series.get(key)
+            if not samples:
+                continue
+
+            labels = self.label_maps[key]
+            if not match_labels(labels, selector.matchers):
+                continue
+
+            yield labels, samples
+
+
 # ---------------------------------------------------------------------------
 # Public query functions
 # ---------------------------------------------------------------------------
 
 
-def instant_query(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
-    query: str,
-) -> pl.DataFrame:
+def instant_query(store: SeriesStore, query: str) -> pl.DataFrame:
     expr = parse_promql(query)
-    return _evaluate_instant(series, label_maps, name_index, expr)
+    return _evaluate_instant(store, expr)
 
 
 def range_query(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
+    store: SeriesStore,
     query: str,
     start: datetime,
     end: datetime,
     step: timedelta,
 ) -> pl.DataFrame:
     expr = parse_promql(query)
-    return _evaluate_range(series, label_maps, name_index, expr, start=start, end=end, step=step)
+    return _evaluate_range(store, expr, start=start, end=end, step=step)
 
 
 # ---------------------------------------------------------------------------
 # Internal: shared helpers
 # ---------------------------------------------------------------------------
-
-
-def _iter_matching_series(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
-    selector: MetricSelector,
-) -> Iterator[tuple[dict[str, str], deque[TimeSeriesSample]]]:
-    for key in name_index.get(selector.name, []):
-        samples = series.get(key)
-        if not samples:
-            continue
-
-        labels = label_maps[key]
-        if not match_labels(labels, selector.matchers):
-            continue
-
-        yield labels, samples
 
 
 def _filter_by_compare(
@@ -90,75 +86,64 @@ def _filter_by_compare(
     return df.filter(compare_col(pl.col("value"), op, threshold))
 
 
+def _to_dataframe(
+    rows: list[dict[str, object]], empty: pl.DataFrame,
+) -> pl.DataFrame:
+    if not rows:
+        return empty
+    return pl.DataFrame(rows)
+
+
 # ---------------------------------------------------------------------------
 # Internal: instant evaluation
 # ---------------------------------------------------------------------------
 
 
-def _evaluate_instant(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
-    expr: PromQLExpr,
-) -> pl.DataFrame:
+def _evaluate_instant(store: SeriesStore, expr: PromQLExpr) -> pl.DataFrame:
     if isinstance(expr, MetricSelector):
-        return _instant_selector(series, label_maps, name_index, expr)
+        return _instant_selector(store, expr)
 
     if isinstance(expr, CompareExpr):
-        df = _instant_selector(series, label_maps, name_index, expr.selector)
+        df = _instant_selector(store, expr.selector)
         return _filter_by_compare(df, expr.op, expr.threshold)
 
     if isinstance(expr, RangeFunction):
-        return _instant_range_function(series, label_maps, name_index, expr)
+        return _instant_range_function(store, expr)
 
     if isinstance(expr, RangeFunctionCompare):
-        df = _instant_range_function(series, label_maps, name_index, expr.func)
+        df = _instant_range_function(store, expr.func)
         return _filter_by_compare(df, expr.op, expr.threshold)
 
     raise ValueError(f"Unsupported expression type: {type(expr)}")
 
 
-def _instant_selector(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
-    selector: MetricSelector,
-) -> pl.DataFrame:
-    rows: list[dict] = []
-    for labels, samples in _iter_matching_series(series, label_maps, name_index, selector):
+def _instant_selector(store: SeriesStore, selector: MetricSelector) -> pl.DataFrame:
+    rows: list[dict[str, object]] = []
+    for labels, samples in store.iter_matching(selector):
         latest = samples[-1]
-        row: dict = {"__name__": selector.name, "value": latest.value}
+        row: dict[str, object] = {"__name__": selector.name, "value": latest.value}
         row.update(labels)
         rows.append(row)
 
-    if not rows:
-        return _EMPTY_INSTANT
-    return pl.DataFrame(rows)
+    return _to_dataframe(rows, empty=_EMPTY_INSTANT)
 
 
-def _instant_range_function(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
-    func: RangeFunction,
-) -> pl.DataFrame:
+def _instant_range_function(store: SeriesStore, func: RangeFunction) -> pl.DataFrame:
     now = datetime.now(timezone.utc)
     window_start = now - func.duration
-    rows: list[dict] = []
+    rows: list[dict[str, object]] = []
 
-    for labels, samples in _iter_matching_series(series, label_maps, name_index, func.selector):
+    for labels, samples in store.iter_matching(func.selector):
         window_samples = [s for s in samples if s.timestamp >= window_start]
         if not window_samples:
             continue
 
         value = _apply_range_function(func.func_name, window_samples)
-        row: dict = {"__name__": func.selector.name, "value": value}
+        row: dict[str, object] = {"__name__": func.selector.name, "value": value}
         row.update(labels)
         rows.append(row)
 
-    if not rows:
-        return _EMPTY_INSTANT
-    return pl.DataFrame(rows)
+    return _to_dataframe(rows, empty=_EMPTY_INSTANT)
 
 
 # ---------------------------------------------------------------------------
@@ -167,19 +152,17 @@ def _instant_range_function(
 
 
 def _evaluate_range(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
+    store: SeriesStore,
     expr: PromQLExpr,
     start: datetime,
     end: datetime,
     step: timedelta,
 ) -> pl.DataFrame:
     if isinstance(expr, MetricSelector):
-        return _range_selector(series, label_maps, name_index, expr, start=start, end=end, step=step)
+        return _range_selector(store, expr, start=start, end=end, step=step)
 
     if isinstance(expr, CompareExpr):
-        df = _range_selector(series, label_maps, name_index, expr.selector, start=start, end=end, step=step)
+        df = _range_selector(store, expr.selector, start=start, end=end, step=step)
         return _filter_by_compare(df, expr.op, expr.threshold)
 
     raise ValueError(
@@ -188,21 +171,19 @@ def _evaluate_range(
 
 
 def _range_selector(
-    series: dict[_SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[_SeriesKey, dict[str, str]],
-    name_index: dict[str, set[_SeriesKey]],
+    store: SeriesStore,
     selector: MetricSelector,
     start: datetime,
     end: datetime,
     step: timedelta,
 ) -> pl.DataFrame:
-    rows: list[dict] = []
-    for labels, samples in _iter_matching_series(series, label_maps, name_index, selector):
+    rows: list[dict[str, object]] = []
+    for labels, samples in store.iter_matching(selector):
         for sample in samples:
             if sample.timestamp > end:
                 break
             if sample.timestamp >= start:
-                row: dict = {
+                row: dict[str, object] = {
                     "__name__": selector.name,
                     "timestamp": sample.timestamp,
                     "value": sample.value,
@@ -210,9 +191,7 @@ def _range_selector(
                 row.update(labels)
                 rows.append(row)
 
-    if not rows:
-        return _EMPTY_RANGE
-    return pl.DataFrame(rows)
+    return _to_dataframe(rows, empty=_EMPTY_RANGE)
 
 
 # ---------------------------------------------------------------------------
