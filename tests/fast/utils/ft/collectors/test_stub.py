@@ -19,7 +19,6 @@ class TestStubCollector:
         assert result == CollectorOutput(metrics=[])
 
 
-
 class TestBaseCollectorABC:
     def test_cannot_instantiate_directly(self) -> None:
         with pytest.raises(TypeError, match="abstract method"):
