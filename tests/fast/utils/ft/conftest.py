@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import NamedTuple
 from unittest.mock import MagicMock
+
+from prometheus_client import CollectorRegistry
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.controller.detectors._metric_names import (
@@ -14,6 +18,7 @@ from miles.utils.ft.controller.detectors._metric_names import (
     TRAINING_JOB_STATUS,
 )
 from miles.utils.ft.controller.controller import FtController
+from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
@@ -26,6 +31,18 @@ from miles.utils.ft.models import (
     MetricSample,
 )
 from miles.utils.ft.platform.protocols import JobStatus
+
+
+def get_sample_value(
+    registry: CollectorRegistry,
+    metric_name: str,
+) -> float | None:
+    """Read the current value of a metric from a CollectorRegistry."""
+    for metric_family in registry.collect():
+        for sample in metric_family.samples:
+            if sample.name == metric_name:
+                return sample.value
+    return None
 
 
 def make_metric(
@@ -174,6 +191,16 @@ class FakeNodeManager:
         return sorted(self._bad_nodes)
 
 
+class FakeNotifier:
+    """Records all send() calls for assertion in tests."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str]] = []
+
+    async def send(self, title: str, content: str, severity: str) -> None:
+        self.calls.append((title, content, severity))
+
+
 class FakeTrainingJob:
     """Programmable implementation of TrainingJobProtocol for testing."""
 
@@ -249,25 +276,39 @@ class ControllerTestHarness(NamedTuple):
     training_job: FakeTrainingJob
     metric_store: MiniPrometheus
     mini_wandb: MiniWandb
+    controller_exporter: ControllerExporter
+    notifier: FakeNotifier | None
 
 
 def make_test_controller(
     detectors: list[BaseFaultDetector] | None = None,
     status_sequence: list[JobStatus] | None = None,
+    notifier: FakeNotifier | None = FakeNotifier,
     tick_interval: float = 0.01,
+    controller_exporter: ControllerExporter | None = None,
 ) -> ControllerTestHarness:
-    """Construct a Controller and all its dependencies for testing."""
+    """Construct a Controller and all its dependencies for testing.
+
+    ``notifier`` defaults to a fresh FakeNotifier instance. Pass ``None``
+    explicitly to create a Controller without a notifier.
+    """
+    real_notifier: FakeNotifier | None = FakeNotifier() if notifier is FakeNotifier else notifier
     node_manager = FakeNodeManager()
     training_job = FakeTrainingJob(status_sequence=status_sequence)
     metric_store = MiniPrometheus(config=MiniPrometheusConfig())
     mini_wandb = MiniWandb()
+    if controller_exporter is None:
+        controller_exporter = ControllerExporter(registry=CollectorRegistry())
     controller = FtController(
         node_manager=node_manager,
         training_job=training_job,
         metric_store=metric_store,
         mini_wandb=mini_wandb,
+        notifier=real_notifier,
         detectors=detectors,
         tick_interval=tick_interval,
+        controller_exporter=controller_exporter,
+        scrape_target_manager=metric_store,
     )
     return ControllerTestHarness(
         controller=controller,
@@ -275,6 +316,8 @@ def make_test_controller(
         training_job=training_job,
         metric_store=metric_store,
         mini_wandb=mini_wandb,
+        controller_exporter=controller_exporter,
+        notifier=real_notifier,
     )
 
 

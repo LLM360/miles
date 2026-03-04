@@ -1,17 +1,25 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 
 import pytest
+from prometheus_client import CollectorRegistry
 
-from miles.utils.ft.metric_names import TRAINING_JOB_STATUS
+from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysMarkBadDetector,
     AlwaysNoneDetector,
     FixedDecisionDetector,
+    get_sample_value,
     make_test_controller,
 )
+
+
+async def _raise_runtime_error(*_args: object, **_kwargs: object) -> None:
+    raise RuntimeError("notifier broken")
 
 
 class TestTickEmptyDetectorChain:
@@ -303,49 +311,68 @@ class TestDetectorChain:
         assert trailing_detector.call_count == 0
 
 
-class TestTrainingJobStatusInjection:
+class TestTrainingJobStatusExporter:
+    """Verify training job status is pushed to the ControllerExporter gauge."""
+
     @pytest.mark.asyncio
-    async def test_tick_injects_training_job_status(self) -> None:
-        harness = make_test_controller()
+    async def test_tick_updates_training_job_status_gauge(self) -> None:
+        registry = CollectorRegistry()
+        exporter = ControllerExporter(registry=registry)
+        harness = make_test_controller(controller_exporter=exporter)
 
         await harness.controller._tick()
 
-        df = harness.metric_store.instant_query(TRAINING_JOB_STATUS)
-        assert not df.is_empty()
-        assert df["value"][0] == 1
+        assert get_sample_value(registry, "ft_training_job_status") == 1.0
 
     @pytest.mark.asyncio
     async def test_failed_status_maps_to_negative(self) -> None:
+        registry = CollectorRegistry()
+        exporter = ControllerExporter(registry=registry)
         harness = make_test_controller(
             status_sequence=[JobStatus.FAILED],
+            controller_exporter=exporter,
         )
 
         await harness.controller._tick()
 
-        df = harness.metric_store.instant_query(TRAINING_JOB_STATUS)
-        assert df["value"][0] == -1
+        assert get_sample_value(registry, "ft_training_job_status") == -1.0
 
     @pytest.mark.asyncio
     async def test_stopped_status_maps_to_zero(self) -> None:
+        registry = CollectorRegistry()
+        exporter = ControllerExporter(registry=registry)
         harness = make_test_controller(
             status_sequence=[JobStatus.STOPPED],
+            controller_exporter=exporter,
         )
 
         await harness.controller._tick()
 
-        df = harness.metric_store.instant_query(TRAINING_JOB_STATUS)
-        assert df["value"][0] == 0
+        assert get_sample_value(registry, "ft_training_job_status") == 0.0
 
     @pytest.mark.asyncio
     async def test_pending_status_maps_to_two(self) -> None:
+        registry = CollectorRegistry()
+        exporter = ControllerExporter(registry=registry)
         harness = make_test_controller(
             status_sequence=[JobStatus.PENDING],
+            controller_exporter=exporter,
         )
 
         await harness.controller._tick()
 
-        df = harness.metric_store.instant_query(TRAINING_JOB_STATUS)
-        assert df["value"][0] == 2
+        assert get_sample_value(registry, "ft_training_job_status") == 2.0
+
+    @pytest.mark.asyncio
+    async def test_tick_count_incremented(self) -> None:
+        registry = CollectorRegistry()
+        exporter = ControllerExporter(registry=registry)
+        harness = make_test_controller(controller_exporter=exporter)
+
+        await harness.controller._tick()
+        await harness.controller._tick()
+
+        assert get_sample_value(registry, "ft_controller_tick_count_total") == 2.0
 
 
 class TestExecuteDecision:
@@ -374,11 +401,84 @@ class TestExecuteDecision:
         assert harness.controller._tick_count == 1
 
     @pytest.mark.asyncio
-    async def test_notify_human_does_not_raise(self) -> None:
+    async def test_notify_human_sends_notification(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="test notify",
         ))
         harness = make_test_controller(detectors=[detector])
         await harness.controller._tick()
+
         assert harness.controller._tick_count == 1
+        assert harness.notifier is not None
+        assert len(harness.notifier.calls) == 1
+        title, content, severity = harness.notifier.calls[0]
+        assert title == "Fault Alert"
+        assert content == "test notify"
+        assert severity == "critical"
+
+    @pytest.mark.asyncio
+    async def test_notify_human_without_notifier(self) -> None:
+        detector = FixedDecisionDetector(decision=Decision(
+            action=ActionType.NOTIFY_HUMAN,
+            reason="test notify no notifier",
+        ))
+        harness = make_test_controller(detectors=[detector], notifier=None)
+        await harness.controller._tick()
+        assert harness.controller._tick_count == 1
+
+    @pytest.mark.asyncio
+    async def test_none_decision_does_not_notify(self) -> None:
+        harness = make_test_controller(detectors=[AlwaysNoneDetector()])
+        await harness.controller._tick()
+
+        assert harness.notifier is not None
+        assert len(harness.notifier.calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_mark_bad_does_not_notify(self) -> None:
+        harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
+        await harness.controller._tick()
+
+        assert harness.notifier is not None
+        assert len(harness.notifier.calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_enter_recovery_does_not_notify(self) -> None:
+        detector = FixedDecisionDetector(decision=Decision(
+            action=ActionType.ENTER_RECOVERY,
+            trigger="crash",
+            reason="test recovery",
+        ))
+        harness = make_test_controller(detectors=[detector])
+        await harness.controller._tick()
+
+        assert harness.notifier is not None
+        assert len(harness.notifier.calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_notify_human_notifier_exception_does_not_crash(self) -> None:
+        harness = make_test_controller(
+            detectors=[FixedDecisionDetector(decision=Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason="test with broken notifier",
+            ))],
+        )
+        assert harness.notifier is not None
+        harness.notifier.send = _raise_runtime_error
+        await harness.controller._tick()
+        assert harness.controller._tick_count == 1
+
+    @pytest.mark.asyncio
+    async def test_notify_human_sends_on_every_tick(self) -> None:
+        detector = FixedDecisionDetector(decision=Decision(
+            action=ActionType.NOTIFY_HUMAN,
+            reason="persistent fault",
+        ))
+        harness = make_test_controller(detectors=[detector])
+
+        await harness.controller._tick()
+        await harness.controller._tick()
+
+        assert harness.notifier is not None
+        assert len(harness.notifier.calls) == 2
