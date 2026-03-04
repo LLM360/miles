@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -77,6 +78,17 @@ class TestNodeAgentMiniPrometheusIntegration:
 
             df2 = prom.instant_query("ft_node_gpu_temperature_celsius")
             assert 85.0 in df2["value"].to_list()
+
+            now = datetime.now(timezone.utc)
+            df_range = prom.range_query(
+                "ft_node_gpu_temperature_celsius",
+                start=now - timedelta(minutes=5),
+                end=now,
+                step=timedelta(seconds=10),
+            )
+            range_values = df_range["value"].to_list()
+            assert 60.0 in range_values
+            assert 85.0 in range_values
         finally:
             await agent.stop()
 

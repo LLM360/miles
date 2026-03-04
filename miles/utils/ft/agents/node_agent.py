@@ -25,13 +25,14 @@ class FtNodeAgent:
         self._node_id = node_id
         self._collectors = collectors or []
         self._collect_interval = collect_interval_seconds
+        self._stopped = False
 
         self._registry = CollectorRegistry()
         self._gauges: dict[_GaugeKey, Gauge] = {}
 
-        httpd, port = start_http_server(port=0, registry=self._registry)
+        httpd, _thread = start_http_server(port=0, registry=self._registry)
         self._httpd = httpd
-        self._port = port
+        self._port: int = httpd.server_port
         self._loop_task: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------
@@ -42,7 +43,7 @@ class FtNodeAgent:
         return f"http://localhost:{self._port}"
 
     async def start(self) -> None:
-        if self._loop_task is not None:
+        if self._stopped or self._loop_task is not None:
             return
         if self._collectors:
             self._loop_task = asyncio.get_running_loop().create_task(
@@ -50,6 +51,10 @@ class FtNodeAgent:
             )
 
     async def stop(self) -> None:
+        if self._stopped:
+            return
+        self._stopped = True
+
         if self._loop_task is not None:
             self._loop_task.cancel()
             try:

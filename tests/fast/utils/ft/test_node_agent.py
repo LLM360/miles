@@ -1,7 +1,9 @@
 import asyncio
+from collections.abc import AsyncIterator
 
 import httpx
 import pytest
+import pytest_asyncio
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.stub import StubCollector
@@ -16,8 +18,8 @@ class _FailingCollector(BaseCollector):
 
 
 class TestFtNodeAgentExporter:
-    @pytest.fixture()
-    async def agent(self) -> FtNodeAgent:
+    @pytest_asyncio.fixture()
+    async def agent(self) -> AsyncIterator[FtNodeAgent]:
         agent = FtNodeAgent(node_id="test-node-0")
         yield agent
         await agent.stop()
@@ -106,6 +108,33 @@ class TestFtNodeAgentExporter:
         finally:
             await agent.stop()
 
+    @pytest.mark.asyncio()
+    async def test_update_exporter_overwrites_value(self) -> None:
+        agent = FtNodeAgent(node_id="test-node-overwrite")
+        try:
+            agent._update_exporter([
+                MetricSample(
+                    name="gpu_temperature_celsius",
+                    labels={"gpu": "0"},
+                    value=60.0,
+                ),
+            ])
+            agent._update_exporter([
+                MetricSample(
+                    name="gpu_temperature_celsius",
+                    labels={"gpu": "0"},
+                    value=90.0,
+                ),
+            ])
+
+            address = agent.get_exporter_address()
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{address}/metrics")
+
+            assert "90.0" in response.text
+        finally:
+            await agent.stop()
+
 
 class TestFtNodeAgentCollectionLoop:
     @pytest.mark.asyncio()
@@ -175,6 +204,29 @@ class TestFtNodeAgentCollectionLoop:
             await agent.stop()
 
     @pytest.mark.asyncio()
+    async def test_all_collectors_failing_keeps_loop_alive(self) -> None:
+        agent = FtNodeAgent(
+            node_id="test-node-all-fail",
+            collectors=[_FailingCollector(), _FailingCollector()],
+            collect_interval_seconds=0.1,
+        )
+        try:
+            await agent.start()
+            await asyncio.sleep(0.3)
+
+            assert agent._loop_task is not None
+            assert not agent._loop_task.done()
+
+            address = agent.get_exporter_address()
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{address}/metrics")
+
+            assert response.status_code == 200
+            assert "ft_node_" not in response.text
+        finally:
+            await agent.stop()
+
+    @pytest.mark.asyncio()
     async def test_multiple_metrics_exported(self) -> None:
         test_collector = TestCollector(metrics=[
             MetricSample(
@@ -207,9 +259,55 @@ class TestFtNodeAgentCollectionLoop:
             await agent.stop()
 
 
+class TestFtNodeAgentLifecycle:
+    @pytest.mark.asyncio()
+    async def test_start_twice_is_idempotent(self) -> None:
+        test_collector = TestCollector(metrics=[
+            MetricSample(name="dummy", labels={}, value=1.0),
+        ])
+        agent = FtNodeAgent(
+            node_id="test-node-double-start",
+            collectors=[test_collector],
+            collect_interval_seconds=0.1,
+        )
+        try:
+            await agent.start()
+            first_task = agent._loop_task
+            await agent.start()
+
+            assert agent._loop_task is first_task
+        finally:
+            await agent.stop()
+
+    @pytest.mark.asyncio()
+    async def test_stop_without_start(self) -> None:
+        agent = FtNodeAgent(node_id="test-node-no-start")
+        await agent.stop()
+
+    @pytest.mark.asyncio()
+    async def test_stop_twice_is_safe(self) -> None:
+        agent = FtNodeAgent(
+            node_id="test-node-double-stop",
+            collectors=[TestCollector()],
+            collect_interval_seconds=0.1,
+        )
+        await agent.start()
+        await agent.stop()
+        await agent.stop()
+
+    @pytest.mark.asyncio()
+    async def test_start_with_empty_collectors(self) -> None:
+        agent = FtNodeAgent(node_id="test-node-empty-collectors", collectors=[])
+        try:
+            await agent.start()
+            assert agent._loop_task is None
+        finally:
+            await agent.stop()
+
+
 class TestFtNodeAgentStubMethods:
-    @pytest.fixture()
-    async def agent(self) -> FtNodeAgent:
+    @pytest_asyncio.fixture()
+    async def agent(self) -> AsyncIterator[FtNodeAgent]:
         agent = FtNodeAgent(node_id="test-node-stubs")
         yield agent
         await agent.stop()
