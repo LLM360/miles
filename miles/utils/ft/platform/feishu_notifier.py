@@ -12,6 +12,9 @@ class FeishuWebhookNotifier:
         self._webhook_url = webhook_url
         self._client = httpx.AsyncClient(timeout=10.0)
 
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
     async def send(self, title: str, content: str, severity: str) -> None:
         payload = {
             "msg_type": "interactive",

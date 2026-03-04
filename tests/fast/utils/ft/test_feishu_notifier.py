@@ -9,8 +9,10 @@ from miles.utils.ft.platform.feishu_notifier import FeishuWebhookNotifier
 
 class TestFeishuWebhookNotifier:
     @pytest.fixture
-    def notifier(self) -> FeishuWebhookNotifier:
-        return FeishuWebhookNotifier(webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/test-token")
+    async def notifier(self) -> FeishuWebhookNotifier:
+        instance = FeishuWebhookNotifier(webhook_url="https://open.feishu.cn/open-apis/bot/v2/hook/test-token")
+        yield instance
+        await instance.aclose()
 
     @pytest.mark.asyncio
     async def test_send_posts_correct_json(self, notifier: FeishuWebhookNotifier) -> None:
@@ -47,5 +49,19 @@ class TestFeishuWebhookNotifier:
         with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=mock_response):
             with caplog.at_level(logging.WARNING):
                 await notifier.send(title="Fault Alert", content="test error", severity="critical")
+
+            assert "feishu_webhook_send_failed" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_send_connect_error_does_not_raise(
+        self, notifier: FeishuWebhookNotifier, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        with patch.object(
+            notifier._client, "post",
+            new_callable=AsyncMock,
+            side_effect=httpx.ConnectError("connection refused"),
+        ):
+            with caplog.at_level(logging.WARNING):
+                await notifier.send(title="Alert", content="unreachable", severity="warning")
 
             assert "feishu_webhook_send_failed" in caplog.text

@@ -37,7 +37,7 @@ def _build_k8s_ray_components(
 
 
 def _build_notifier(platform_mode: str) -> NotificationProtocol | None:
-    webhook_url = os.environ.get("FT_FEISHU_WEBHOOK_URL")
+    webhook_url = (os.environ.get("FT_FEISHU_WEBHOOK_URL") or "").strip()
     if webhook_url:
         from miles.utils.ft.platform.feishu_notifier import FeishuWebhookNotifier
 

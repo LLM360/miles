@@ -223,11 +223,14 @@ class FtController:
                 decision.reason,
             )
             if self._notifier is not None:
-                await self._notifier.send(
-                    title="Fault Alert",
-                    content=decision.reason,
-                    severity="critical",
-                )
+                try:
+                    await self._notifier.send(
+                        title="Fault Alert",
+                        content=decision.reason,
+                        severity="critical",
+                    )
+                except Exception:
+                    logger.exception("notifier_send_failed")
             return
 
         raise ValueError(f"Unknown action type: {decision.action}")
