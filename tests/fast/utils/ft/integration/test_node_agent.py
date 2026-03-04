@@ -2,27 +2,16 @@ import asyncio
 
 import pytest
 
-from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.node_agent import FtNodeAgent
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models import CollectorOutput, MetricSample
-
-
-class _TestCollector(BaseCollector):
-    def __init__(self, metrics: list[MetricSample] | None = None) -> None:
-        self._metrics = metrics or []
-
-    def set_metrics(self, metrics: list[MetricSample]) -> None:
-        self._metrics = metrics
-
-    async def collect(self) -> CollectorOutput:
-        return CollectorOutput(metrics=self._metrics)
+from miles.utils.ft.models import MetricSample
+from tests.fast.utils.ft.conftest import TestCollector
 
 
 class TestNodeAgentMiniPrometheusIntegration:
     @pytest.mark.asyncio()
     async def test_scrape_and_instant_query(self) -> None:
-        test_collector = _TestCollector(metrics=[
+        test_collector = TestCollector(metrics=[
             MetricSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
@@ -35,6 +24,7 @@ class TestNodeAgentMiniPrometheusIntegration:
             collect_interval_seconds=0.1,
         )
         try:
+            await agent.start()
             await asyncio.sleep(0.3)
 
             prom = MiniPrometheus(config=MiniPrometheusConfig())
@@ -51,7 +41,7 @@ class TestNodeAgentMiniPrometheusIntegration:
 
     @pytest.mark.asyncio()
     async def test_updated_values_visible_after_rescrape(self) -> None:
-        test_collector = _TestCollector(metrics=[
+        test_collector = TestCollector(metrics=[
             MetricSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
@@ -64,6 +54,7 @@ class TestNodeAgentMiniPrometheusIntegration:
             collect_interval_seconds=0.1,
         )
         try:
+            await agent.start()
             await asyncio.sleep(0.3)
 
             prom = MiniPrometheus(config=MiniPrometheusConfig())
@@ -91,7 +82,7 @@ class TestNodeAgentMiniPrometheusIntegration:
 
     @pytest.mark.asyncio()
     async def test_multiple_metrics_all_queryable(self) -> None:
-        test_collector = _TestCollector(metrics=[
+        test_collector = TestCollector(metrics=[
             MetricSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
@@ -114,6 +105,7 @@ class TestNodeAgentMiniPrometheusIntegration:
             collect_interval_seconds=0.1,
         )
         try:
+            await agent.start()
             await asyncio.sleep(0.3)
 
             prom = MiniPrometheus(config=MiniPrometheusConfig())
@@ -134,7 +126,7 @@ class TestNodeAgentMiniPrometheusIntegration:
 
     @pytest.mark.asyncio()
     async def test_label_filter_query(self) -> None:
-        test_collector = _TestCollector(metrics=[
+        test_collector = TestCollector(metrics=[
             MetricSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
@@ -152,6 +144,7 @@ class TestNodeAgentMiniPrometheusIntegration:
             collect_interval_seconds=0.1,
         )
         try:
+            await agent.start()
             await asyncio.sleep(0.3)
 
             prom = MiniPrometheus(config=MiniPrometheusConfig())

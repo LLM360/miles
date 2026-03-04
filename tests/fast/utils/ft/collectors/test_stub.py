@@ -18,12 +18,6 @@ class TestStubCollector:
         result = await stub.collect()
         assert result == CollectorOutput(metrics=[])
 
-    @pytest.mark.asyncio()
-    async def test_collect_returns_collector_output_type(
-        self, stub: StubCollector
-    ) -> None:
-        result = await stub.collect()
-        assert isinstance(result, CollectorOutput)
 
 
 class TestBaseCollectorABC:

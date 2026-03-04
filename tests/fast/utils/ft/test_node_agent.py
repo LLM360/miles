@@ -7,17 +7,7 @@ from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.stub import StubCollector
 from miles.utils.ft.agents.node_agent import FtNodeAgent
 from miles.utils.ft.models import CollectorOutput, MetricSample
-
-
-class _TestCollector(BaseCollector):
-    def __init__(self, metrics: list[MetricSample] | None = None) -> None:
-        self._metrics = metrics or []
-
-    def set_metrics(self, metrics: list[MetricSample]) -> None:
-        self._metrics = metrics
-
-    async def collect(self) -> CollectorOutput:
-        return CollectorOutput(metrics=self._metrics)
+from tests.fast.utils.ft.conftest import TestCollector
 
 
 class _FailingCollector(BaseCollector):
@@ -28,7 +18,7 @@ class _FailingCollector(BaseCollector):
 class TestFtNodeAgentExporter:
     @pytest.fixture()
     async def agent(self) -> FtNodeAgent:
-        agent = FtNodeAgent(node_id="test-node-0", start_loop=False)
+        agent = FtNodeAgent(node_id="test-node-0")
         yield agent
         await agent.stop()
 
@@ -55,7 +45,6 @@ class TestFtNodeAgentExporter:
         agent = FtNodeAgent(
             node_id="test-node-stub",
             collectors=[StubCollector()],
-            start_loop=False,
         )
         try:
             agent._update_exporter([])
@@ -71,7 +60,7 @@ class TestFtNodeAgentExporter:
 
     @pytest.mark.asyncio()
     async def test_update_exporter_creates_gauges(self) -> None:
-        agent = FtNodeAgent(node_id="test-node-gauge", start_loop=False)
+        agent = FtNodeAgent(node_id="test-node-gauge")
         try:
             metrics = [
                 MetricSample(
@@ -101,7 +90,7 @@ class TestFtNodeAgentExporter:
 
     @pytest.mark.asyncio()
     async def test_update_exporter_unlabeled_metric(self) -> None:
-        agent = FtNodeAgent(node_id="test-node-unlabeled", start_loop=False)
+        agent = FtNodeAgent(node_id="test-node-unlabeled")
         try:
             metrics = [
                 MetricSample(name="uptime_seconds", labels={}, value=123.0),
@@ -121,7 +110,7 @@ class TestFtNodeAgentExporter:
 class TestFtNodeAgentCollectionLoop:
     @pytest.mark.asyncio()
     async def test_collection_loop_updates_exporter(self) -> None:
-        test_collector = _TestCollector(metrics=[
+        test_collector = TestCollector(metrics=[
             MetricSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
@@ -134,6 +123,7 @@ class TestFtNodeAgentCollectionLoop:
             collect_interval_seconds=0.1,
         )
         try:
+            await agent.start()
             await asyncio.sleep(0.3)
 
             address = agent.get_exporter_address()
@@ -147,7 +137,7 @@ class TestFtNodeAgentCollectionLoop:
 
     @pytest.mark.asyncio()
     async def test_stop_cancels_loop(self) -> None:
-        test_collector = _TestCollector(metrics=[
+        test_collector = TestCollector(metrics=[
             MetricSample(name="dummy", labels={}, value=1.0),
         ])
         agent = FtNodeAgent(
@@ -155,6 +145,7 @@ class TestFtNodeAgentCollectionLoop:
             collectors=[test_collector],
             collect_interval_seconds=0.1,
         )
+        await agent.start()
 
         assert agent._loop_task is not None
         await agent.stop()
@@ -162,7 +153,7 @@ class TestFtNodeAgentCollectionLoop:
 
     @pytest.mark.asyncio()
     async def test_failing_collector_does_not_crash_loop(self) -> None:
-        good_collector = _TestCollector(metrics=[
+        good_collector = TestCollector(metrics=[
             MetricSample(name="good_metric", labels={}, value=42.0),
         ])
         agent = FtNodeAgent(
@@ -171,6 +162,7 @@ class TestFtNodeAgentCollectionLoop:
             collect_interval_seconds=0.1,
         )
         try:
+            await agent.start()
             await asyncio.sleep(0.3)
 
             address = agent.get_exporter_address()
@@ -184,7 +176,7 @@ class TestFtNodeAgentCollectionLoop:
 
     @pytest.mark.asyncio()
     async def test_multiple_metrics_exported(self) -> None:
-        test_collector = _TestCollector(metrics=[
+        test_collector = TestCollector(metrics=[
             MetricSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
@@ -202,6 +194,7 @@ class TestFtNodeAgentCollectionLoop:
             collect_interval_seconds=0.1,
         )
         try:
+            await agent.start()
             await asyncio.sleep(0.3)
 
             address = agent.get_exporter_address()
@@ -217,7 +210,7 @@ class TestFtNodeAgentCollectionLoop:
 class TestFtNodeAgentStubMethods:
     @pytest.fixture()
     async def agent(self) -> FtNodeAgent:
-        agent = FtNodeAgent(node_id="test-node-stubs", start_loop=False)
+        agent = FtNodeAgent(node_id="test-node-stubs")
         yield agent
         await agent.stop()
 

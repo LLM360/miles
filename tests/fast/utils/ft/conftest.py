@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 
 from prometheus_client import CollectorRegistry, Gauge, start_http_server
 
@@ -22,7 +21,6 @@ class FtNodeAgent:
         node_id: str,
         collectors: list[BaseCollector] | None = None,
         collect_interval_seconds: float = _DEFAULT_COLLECT_INTERVAL_SECONDS,
-        start_loop: bool = True,
     ) -> None:
         self._node_id = node_id
         self._collectors = collectors or []
@@ -34,12 +32,7 @@ class FtNodeAgent:
         httpd, port = start_http_server(port=0, registry=self._registry)
         self._httpd = httpd
         self._port = port
-
         self._loop_task: asyncio.Task[None] | None = None
-        if start_loop and self._collectors:
-            self._loop_task = asyncio.get_event_loop().create_task(
-                self._collection_loop()
-            )
 
     # ------------------------------------------------------------------
     # Public API
@@ -47,6 +40,14 @@ class FtNodeAgent:
 
     def get_exporter_address(self) -> str:
         return f"http://localhost:{self._port}"
+
+    async def start(self) -> None:
+        if self._loop_task is not None:
+            return
+        if self._collectors:
+            self._loop_task = asyncio.get_running_loop().create_task(
+                self._collection_loop()
+            )
 
     async def stop(self) -> None:
         if self._loop_task is not None:
@@ -58,6 +59,7 @@ class FtNodeAgent:
             self._loop_task = None
 
         self._httpd.shutdown()
+        self._httpd.server_close()
 
     # ------------------------------------------------------------------
     # Stub methods (future milestones)
@@ -86,17 +88,20 @@ class FtNodeAgent:
         while True:
             all_metrics: list[MetricSample] = []
 
-            for collector in self._collectors:
-                try:
-                    output = await collector.collect()
-                    all_metrics.extend(output.metrics)
-                except Exception:
+            results = await asyncio.gather(
+                *(collector.collect() for collector in self._collectors),
+                return_exceptions=True,
+            )
+            for collector, result in zip(self._collectors, results):
+                if isinstance(result, Exception):
                     logger.warning(
-                        "Collector %s failed on node %s",
+                        "Collector %s failed on node %s: %s",
                         type(collector).__name__,
                         self._node_id,
-                        exc_info=True,
+                        result,
                     )
+                else:
+                    all_metrics.extend(result.metrics)
 
             self._update_exporter(all_metrics)
             await asyncio.sleep(self._collect_interval)
