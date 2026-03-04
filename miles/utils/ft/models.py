@@ -1,6 +1,31 @@
+from datetime import datetime, timedelta
 from enum import Enum
+from typing import Literal, NamedTuple, Protocol
 
 from pydantic import BaseModel, ConfigDict
+
+
+class StepValue(NamedTuple):
+    step: int
+    value: float
+
+
+class TimedStepValue(NamedTuple):
+    step: int
+    timestamp: datetime
+    value: float
+
+
+class TrainingMetricStoreProtocol(Protocol):
+    def latest(self, metric_name: str, rank: int) -> float | None: ...
+
+    def query_last_n_steps(
+        self, metric_name: str, rank: int, last_n: int,
+    ) -> list[StepValue]: ...
+
+    def query_time_window(
+        self, metric_name: str, rank: int, window: timedelta,
+    ) -> list[TimedStepValue]: ...
 
 
 class FtBaseModel(BaseModel):
@@ -11,6 +36,7 @@ class MetricSample(FtBaseModel):
     name: str
     labels: dict[str, str]
     value: float
+    metric_type: Literal["gauge", "counter"] = "gauge"
 
 
 class CollectorOutput(FtBaseModel):
@@ -24,11 +50,49 @@ class ActionType(str, Enum):
     NOTIFY_HUMAN = "notify_human"
 
 
+class TriggerType(str, Enum):
+    NONE = ""
+    HANG = "hang"
+    NAN_LOSS = "nan_loss"
+    CRASH = "crash"
+    HARDWARE = "hardware"
+    NETWORK = "network"
+    MFU_DECLINE = "mfu_decline"
+
+
+class NodeFault(FtBaseModel):
+    node_id: str
+    reason: str
+
+
 class Decision(FtBaseModel):
     action: ActionType
     bad_node_ids: list[str] = []
     reason: str
-    trigger: str = ""
+    trigger: TriggerType = TriggerType.NONE
+
+    @classmethod
+    def from_node_faults(
+        cls,
+        faults: "list[NodeFault]",
+        *,
+        fallback_reason: str,
+    ) -> "Decision":
+        if not faults:
+            return cls(action=ActionType.NONE, reason=fallback_reason)
+
+        seen: set[str] = set()
+        bad_node_ids: list[str] = []
+        for fault in faults:
+            if fault.node_id not in seen:
+                seen.add(fault.node_id)
+                bad_node_ids.append(fault.node_id)
+
+        return cls(
+            action=ActionType.MARK_BAD_AND_RESTART,
+            bad_node_ids=sorted(bad_node_ids),
+            reason="; ".join(f.reason for f in faults),
+        )
 
 
 class DiagnosticResult(FtBaseModel):
@@ -36,3 +100,24 @@ class DiagnosticResult(FtBaseModel):
     node_id: str
     passed: bool
     details: str
+
+
+class RecoveryPhase(str, Enum):
+    CHECK_ALERTS = "check_alerts"
+    REATTEMPTING = "reattempting"
+    MONITORING = "monitoring"
+    DIAGNOSING = "diagnosing"
+    EVICT_AND_RESTART = "evict_and_restart"
+    NOTIFY = "notify"
+    DONE = "done"
+
+
+RECOVERY_PHASE_TO_INT: dict[RecoveryPhase, int] = {
+    RecoveryPhase.CHECK_ALERTS: 1,
+    RecoveryPhase.REATTEMPTING: 2,
+    RecoveryPhase.MONITORING: 3,
+    RecoveryPhase.DIAGNOSING: 4,
+    RecoveryPhase.EVICT_AND_RESTART: 5,
+    RecoveryPhase.NOTIFY: 6,
+    RecoveryPhase.DONE: 7,
+}

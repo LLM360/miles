@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
@@ -40,8 +39,7 @@ class HostCollector(BaseCollector):
 
     async def collect(self) -> CollectorOutput:
         self._collect_count += 1
-        metrics = await asyncio.to_thread(self._collect_sync)
-        return CollectorOutput(metrics=metrics)
+        return await super().collect()
 
     async def close(self) -> None:
         if self._kmsg_reader is not None:
@@ -53,12 +51,14 @@ class HostCollector(BaseCollector):
         new_lines = self._read_kmsg_lines()
         now = datetime.now(timezone.utc)
 
+        new_xid_count = 0
         kernel_event_count = 0
         for line in new_lines:
             xid_match = _XID_PATTERN.search(line)
             if xid_match:
                 xid_code = int(xid_match.group(1))
                 self._xid_events.append((now, xid_code))
+                new_xid_count += 1
 
             line_lower = line.lower()
             for keyword in _KERNEL_EVENT_KEYWORDS:
@@ -82,9 +82,10 @@ class HostCollector(BaseCollector):
             ))
 
         samples.append(MetricSample(
-            name=mn.XID_COUNT_RECENT,
+            name=mn.XID_COUNT_TOTAL,
             labels={},
-            value=float(len(self._xid_events)),
+            value=float(new_xid_count),
+            metric_type="counter",
         ))
 
         samples.append(MetricSample(
@@ -94,7 +95,7 @@ class HostCollector(BaseCollector):
         ))
 
         if self._collect_count % _DISK_COLLECT_EVERY_N == 1 or _DISK_COLLECT_EVERY_N == 1:
-            self._collect_disk(samples)
+            samples.extend(self._collect_disk())
 
         return samples
 
@@ -103,7 +104,9 @@ class HostCollector(BaseCollector):
             self._kmsg_reader = _KmsgReader(kmsg_path=self._kmsg_path)
         return self._kmsg_reader.read_new_lines()
 
-    def _collect_disk(self, samples: list[MetricSample]) -> None:
+    def _collect_disk(self) -> list[MetricSample]:
+        samples: list[MetricSample] = []
+
         for mount in self._disk_mounts:
             try:
                 stat = os.statvfs(mount)
@@ -116,13 +119,15 @@ class HostCollector(BaseCollector):
             except Exception:
                 logger.warning("Failed to statvfs %s", mount, exc_info=True)
 
-        self._collect_disk_io_time(samples)
+        samples.extend(self._collect_disk_io_time())
+        return samples
 
-    def _collect_disk_io_time(self, samples: list[MetricSample]) -> None:
+    def _collect_disk_io_time(self) -> list[MetricSample]:
         sys_block = Path("/sys/block")
         if not sys_block.exists():
-            return
+            return []
 
+        samples: list[MetricSample] = []
         for device_dir in sorted(sys_block.iterdir()):
             stat_file = device_dir / "stat"
             try:
@@ -137,6 +142,8 @@ class HostCollector(BaseCollector):
                     ))
             except Exception:
                 logger.warning("Failed to read disk stat for %s", device_dir.name, exc_info=True)
+
+        return samples
 
 
 class _KmsgReader:
@@ -191,7 +198,7 @@ class _KmsgReader:
             return []
 
         since_str = self._last_dmesg_time.strftime("%Y-%m-%d %H:%M:%S")
-        self._last_dmesg_time = datetime.now(timezone.utc)
+        new_time = datetime.now(timezone.utc)
 
         try:
             result = subprocess.run(
@@ -200,8 +207,10 @@ class _KmsgReader:
                 text=True,
                 timeout=5,
             )
-            if result.returncode == 0 and result.stdout:
-                return result.stdout.strip().splitlines()
+            if result.returncode == 0:
+                self._last_dmesg_time = new_time
+                if result.stdout:
+                    return result.stdout.strip().splitlines()
         except Exception:
             logger.warning("dmesg fallback failed", exc_info=True)
 

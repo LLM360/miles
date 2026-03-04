@@ -8,6 +8,7 @@ from miles.utils.ft.models import (
     DiagnosticResult,
     FtBaseModel,
     MetricSample,
+    TriggerType,
 )
 
 
@@ -27,8 +28,9 @@ class TestMetricSample:
             MetricSample(name="test", labels={"a": "b"})  # type: ignore[call-arg]
 
     def test_empty_labels(self) -> None:
-        sample = MetricSample(name="xid_count_recent", labels={}, value=3.0)
+        sample = MetricSample(name="xid_count_total", labels={}, value=3.0, metric_type="counter")
         assert sample.labels == {}
+        assert sample.metric_type == "counter"
 
 
 class TestFtBaseModelExtraForbid:
@@ -75,7 +77,7 @@ class TestDecision:
     def test_default_fields(self) -> None:
         decision = Decision(action=ActionType.NONE, reason="all clear")
         assert decision.bad_node_ids == []
-        assert decision.trigger == ""
+        assert decision.trigger == TriggerType.NONE
 
     def test_mark_bad_with_nodes(self) -> None:
         decision = Decision(

@@ -1,8 +1,12 @@
+import asyncio
 import logging
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+_MAX_RETRIES = 3
+_INITIAL_BACKOFF_SECONDS = 1.0
 
 
 class LarkWebhookNotifier:
@@ -29,12 +33,25 @@ class LarkWebhookNotifier:
             },
         }
 
-        try:
-            response = await self._client.post(self._webhook_url, json=payload)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            logger.warning(
-                "lark_webhook_send_failed url=%s error=%s",
-                self._webhook_url,
-                exc,
-            )
+        last_error: Exception | None = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                response = await self._client.post(self._webhook_url, json=payload)
+                response.raise_for_status()
+                return
+            except httpx.HTTPError as exc:
+                last_error = exc
+                if attempt < _MAX_RETRIES - 1:
+                    backoff = _INITIAL_BACKOFF_SECONDS * (2 ** attempt)
+                    logger.warning(
+                        "lark_webhook_send_failed attempt=%d/%d url=%s, retrying in %.1fs",
+                        attempt + 1, _MAX_RETRIES, self._webhook_url, backoff,
+                        exc_info=True,
+                    )
+                    await asyncio.sleep(backoff)
+
+        logger.error(
+            "lark_webhook_send_failed_all_retries url=%s",
+            self._webhook_url,
+            exc_info=last_error is not None,
+        )

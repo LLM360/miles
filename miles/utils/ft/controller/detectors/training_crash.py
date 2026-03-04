@@ -1,26 +1,19 @@
-import math
-
-from miles.utils.ft.controller.detectors._metric_names import TRAINING_JOB_STATUS
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
-from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.models import ActionType, Decision
-
-_JOB_STATUS_FAILED = -1
+from miles.utils.ft.controller.detectors.base import (
+    BaseFaultDetector,
+    DetectorContext,
+    _get_non_finite_loss,
+)
+from miles.utils.ft.models import TrainingMetricStoreProtocol
+from miles.utils.ft.models import ActionType, Decision, TriggerType
+from miles.utils.ft.platform.protocols import JobStatus
 
 
 class TrainingCrashDetector(BaseFaultDetector):
-    def evaluate(
-        self,
-        metric_store: MetricStoreProtocol,
-        mini_wandb: MiniWandb,
-        rank_placement: dict[int, str],
-    ) -> Decision:
-        df = metric_store.instant_query(f"{TRAINING_JOB_STATUS} == {_JOB_STATUS_FAILED}")
-        if df.is_empty():
+    def evaluate(self, ctx: DetectorContext) -> Decision:
+        if ctx.job_status != JobStatus.FAILED:
             return Decision(action=ActionType.NONE, reason="training job not failed")
 
-        trigger = self._determine_trigger(mini_wandb)
+        trigger = self._determine_trigger(ctx.mini_wandb)
 
         return Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -28,9 +21,8 @@ class TrainingCrashDetector(BaseFaultDetector):
             trigger=trigger,
         )
 
-    def _determine_trigger(self, mini_wandb: MiniWandb) -> str:
-        latest_loss = mini_wandb.latest("loss", rank=0)
-        if latest_loss is not None and not math.isfinite(latest_loss):
-            return "nan_loss"
+    def _determine_trigger(self, mini_wandb: TrainingMetricStoreProtocol) -> TriggerType:
+        if _get_non_finite_loss(mini_wandb) is not None:
+            return TriggerType.NAN_LOSS
 
-        return "crash"
+        return TriggerType.CRASH

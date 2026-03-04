@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import fnmatch
 import logging
 from pathlib import Path
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models import CollectorOutput, MetricSample
+from miles.utils.ft.models import MetricSample
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +34,6 @@ class NetworkCollector(BaseCollector):
         self._include_patterns = interface_patterns or _DEFAULT_INCLUDE_PATTERNS
         self._exclude_patterns = exclude_patterns or _DEFAULT_EXCLUDE_PATTERNS
 
-    async def collect(self) -> CollectorOutput:
-        metrics = await asyncio.to_thread(self._collect_sync)
-        return CollectorOutput(metrics=metrics)
-
     def _collect_sync(self) -> list[MetricSample]:
         if not self._sysfs_net_path.exists():
             logger.warning("sysfs net path %s does not exist", self._sysfs_net_path)
@@ -52,8 +47,8 @@ class NetworkCollector(BaseCollector):
                 continue
 
             iface_label = {"device": iface_name}
-            self._collect_operstate(iface_dir, iface_label, samples)
-            self._collect_statistics(iface_dir, iface_label, samples)
+            samples.extend(self._collect_operstate(iface_dir, iface_label))
+            samples.extend(self._collect_statistics(iface_dir, iface_label))
 
         return samples
 
@@ -72,26 +67,26 @@ class NetworkCollector(BaseCollector):
     def _collect_operstate(
         iface_dir: Path,
         iface_label: dict[str, str],
-        samples: list[MetricSample],
-    ) -> None:
+    ) -> list[MetricSample]:
         operstate_file = iface_dir / "operstate"
         try:
             state = operstate_file.read_text().strip().lower()
             value = 1.0 if state == "up" else 0.0
-            samples.append(MetricSample(name=mn.NODE_NETWORK_UP, labels=iface_label, value=value))
+            return [MetricSample(name=mn.NODE_NETWORK_UP, labels=iface_label, value=value)]
         except Exception:
             logger.warning("Failed to read operstate for %s", iface_label["device"], exc_info=True)
+            return []
 
     @staticmethod
     def _collect_statistics(
         iface_dir: Path,
         iface_label: dict[str, str],
-        samples: list[MetricSample],
-    ) -> None:
+    ) -> list[MetricSample]:
         stats_dir = iface_dir / "statistics"
         if not stats_dir.exists():
-            return
+            return []
 
+        samples: list[MetricSample] = []
         for stat_filename, metric_name in _STAT_FILE_TO_METRIC.items():
             stat_file = stats_dir / stat_filename
             try:
@@ -104,3 +99,5 @@ class NetworkCollector(BaseCollector):
                     iface_label["device"],
                     exc_info=True,
                 )
+
+        return samples

@@ -1,10 +1,9 @@
 from datetime import datetime, timezone
 
-from miles.utils.ft.controller.detectors._metric_names import NODE_GPU_TEMPERATURE
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.metric_names import DCGM_FI_DEV_GPU_TEMP
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
-from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, TrainingMetricStoreProtocol
 
 _DEFAULT_MFU_THRESHOLD_RATIO = 0.8
 _DEFAULT_CONSECUTIVE_STEPS = 10
@@ -33,36 +32,36 @@ class MfuDeclineDetector(BaseFaultDetector):
         self._dynamic_baseline: float | None = None
         self._decline_start_time: datetime | None = None
 
-    def evaluate(
-        self,
-        metric_store: MetricStoreProtocol,
-        mini_wandb: MiniWandb,
-        rank_placement: dict[int, str],
-    ) -> Decision:
-        recent_mfu = mini_wandb.query_last_n_steps("mfu", rank=0, last_n=self._consecutive_steps)
+    def on_new_run(self, run_id: str) -> None:
+        self._dynamic_baseline = None
+        self._decline_start_time = None
+
+    def evaluate(self, ctx: DetectorContext) -> Decision:
+        recent_mfu = ctx.mini_wandb.query_last_n_steps("mfu", rank=0, last_n=self._consecutive_steps)
         if len(recent_mfu) < self._consecutive_steps:
             self._decline_start_time = None
             return Decision(action=ActionType.NONE, reason="insufficient MFU data")
 
-        baseline = self._get_baseline(mini_wandb)
+        baseline = self._get_baseline(ctx.mini_wandb)
         if baseline <= 0:
             return Decision(action=ActionType.NONE, reason="no valid MFU baseline")
 
         mfu_values = [value for _, value in recent_mfu]
         avg_mfu = sum(mfu_values) / len(mfu_values)
         threshold = baseline * self._mfu_threshold_ratio
+        mfu_stats = f"{avg_mfu:.4f} < {threshold:.4f}"
 
         if avg_mfu >= threshold:
             self._decline_start_time = None
             return Decision(action=ActionType.NONE, reason="MFU within acceptable range")
 
-        high_temp_node = self._find_high_temperature_node(metric_store, rank_placement)
+        high_temp_node = self._find_high_temperature_node(ctx.metric_store, ctx.rank_placement)
         if high_temp_node is not None:
             self._decline_start_time = None
             return Decision(
                 action=ActionType.MARK_BAD_AND_RESTART,
                 bad_node_ids=[high_temp_node],
-                reason=f"MFU decline ({avg_mfu:.4f} < {threshold:.4f}) correlated with high temperature on {high_temp_node}",
+                reason=f"MFU decline ({mfu_stats}) correlated with high temperature on {high_temp_node}",
             )
 
         now = datetime.now(timezone.utc)
@@ -74,15 +73,15 @@ class MfuDeclineDetector(BaseFaultDetector):
             self._decline_start_time = None
             return Decision(
                 action=ActionType.NOTIFY_HUMAN,
-                reason=f"MFU decline ({avg_mfu:.4f} < {threshold:.4f}) persisted for {elapsed_minutes:.1f}min without identifiable cause",
+                reason=f"MFU decline ({mfu_stats}) persisted for {elapsed_minutes:.1f}min without identifiable cause",
             )
 
         return Decision(
             action=ActionType.NONE,
-            reason=f"MFU declining ({avg_mfu:.4f} < {threshold:.4f}), monitoring ({elapsed_minutes:.1f}min)",
+            reason=f"MFU declining ({mfu_stats}), monitoring ({elapsed_minutes:.1f}min)",
         )
 
-    def _get_baseline(self, mini_wandb: MiniWandb) -> float:
+    def _get_baseline(self, mini_wandb: TrainingMetricStoreProtocol) -> float:
         if self._mfu_baseline > 0:
             return self._mfu_baseline
 
@@ -104,7 +103,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         if not rank_placement:
             return None
 
-        df = metric_store.instant_query(NODE_GPU_TEMPERATURE)
+        df = metric_store.query_latest(DCGM_FI_DEV_GPU_TEMP)
         if df.is_empty():
             return None
 

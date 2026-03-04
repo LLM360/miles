@@ -3,14 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from prometheus_client import CollectorRegistry, Gauge, start_http_server
-
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models import DiagnosticResult, MetricSample
+from miles.utils.ft.agents.prometheus_exporter import PrometheusExporter
+from miles.utils.ft.models import DiagnosticResult
 
 logger = logging.getLogger(__name__)
-
-_GaugeKey = tuple[str, frozenset[str]]
 
 
 class FtNodeAgent:
@@ -28,12 +25,7 @@ class FtNodeAgent:
             for collector in self._collectors:
                 collector.collect_interval = collect_interval_seconds
 
-        self._registry = CollectorRegistry()
-        self._gauges: dict[_GaugeKey, Gauge] = {}
-
-        httpd, _thread = start_http_server(port=0, registry=self._registry)
-        self._httpd = httpd
-        self._port: int = httpd.server_port
+        self._exporter = PrometheusExporter()
         self._collector_tasks: list[asyncio.Task[None]] = []
 
     # ------------------------------------------------------------------
@@ -41,7 +33,7 @@ class FtNodeAgent:
     # ------------------------------------------------------------------
 
     def get_exporter_address(self) -> str:
-        return f"http://localhost:{self._port}"
+        return self._exporter.get_address()
 
     async def start(self) -> None:
         if self._stopped or self._collector_tasks:
@@ -73,8 +65,7 @@ class FtNodeAgent:
                     exc_info=True,
                 )
 
-        self._httpd.shutdown()
-        self._httpd.server_close()
+        self._exporter.shutdown()
 
     # ------------------------------------------------------------------
     # Stub methods (future milestones)
@@ -91,8 +82,9 @@ class FtNodeAgent:
         )
 
     async def cleanup_training_processes(self, training_job_id: str) -> None:
-        raise NotImplementedError(
-            "cleanup_training_processes will be implemented in recovery-basic milestone"
+        logger.info(
+            "cleanup_training_processes node_id=%s job_id=%s (stub — no-op)",
+            self._node_id, training_job_id,
         )
 
     # ------------------------------------------------------------------
@@ -104,7 +96,7 @@ class FtNodeAgent:
         while True:
             try:
                 result = await collector.collect()
-                self._update_exporter(result.metrics)
+                self._exporter.update_metrics(result.metrics)
             except Exception:
                 logger.warning(
                     "Collector %s failed on node %s",
@@ -114,28 +106,3 @@ class FtNodeAgent:
                 )
 
             await asyncio.sleep(collector.collect_interval)
-
-    # ------------------------------------------------------------------
-    # Exporter update
-    # ------------------------------------------------------------------
-
-    def _update_exporter(self, metrics: list[MetricSample]) -> None:
-        for sample in metrics:
-            label_keys = frozenset(sample.labels.keys())
-            key: _GaugeKey = (sample.name, label_keys)
-
-            gauge = self._gauges.get(key)
-            if gauge is None:
-                sorted_keys = sorted(label_keys)
-                gauge = Gauge(
-                    sample.name,
-                    f"FT node metric: {sample.name}",
-                    labelnames=sorted_keys,
-                    registry=self._registry,
-                )
-                self._gauges[key] = gauge
-
-            if sample.labels:
-                gauge.labels(**sample.labels).set(sample.value)
-            else:
-                gauge.set(sample.value)

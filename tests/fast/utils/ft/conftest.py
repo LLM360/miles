@@ -9,17 +9,17 @@ from unittest.mock import MagicMock
 from prometheus_client import CollectorRegistry
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.controller.detectors._metric_names import (
-    NODE_DISK_AVAILABLE_BYTES,
-    NODE_GPU_AVAILABLE,
-    NODE_GPU_TEMPERATURE,
-    NODE_NIC_UP,
-    NODE_XID_CODE_RECENT,
+from miles.utils.ft.metric_names import (
+    DCGM_FI_DEV_GPU_TEMP,
+    GPU_AVAILABLE,
+    NODE_FILESYSTEM_AVAIL_BYTES,
+    NODE_NETWORK_UP,
     TRAINING_JOB_STATUS,
+    XID_CODE_RECENT,
 )
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb
@@ -80,6 +80,20 @@ def make_fake_mini_wandb(
 EMPTY_RANK_PLACEMENT: dict[int, str] = {}
 
 
+def make_detector_context(
+    metric_store: MiniPrometheus | None = None,
+    mini_wandb: MiniWandb | None = None,
+    rank_placement: dict[int, str] | None = None,
+    job_status: JobStatus = JobStatus.RUNNING,
+) -> DetectorContext:
+    return DetectorContext(
+        metric_store=metric_store or make_fake_metric_store(),
+        mini_wandb=mini_wandb or make_fake_mini_wandb(),
+        rank_placement=rank_placement if rank_placement is not None else {},
+        job_status=job_status,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Detector test helpers — inject functions (detectors milestone)
 # ---------------------------------------------------------------------------
@@ -89,7 +103,7 @@ def inject_gpu_unavailable(
     store: MiniPrometheus, node_id: str = "node-0", gpu: str = "0",
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_GPU_AVAILABLE, labels={"gpu": gpu}, value=0.0),
+        MetricSample(name=GPU_AVAILABLE, labels={"gpu": gpu}, value=0.0),
     ])
 
 
@@ -97,7 +111,7 @@ def inject_critical_xid(
     store: MiniPrometheus, node_id: str = "node-0", xid_code: int = 48,
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_XID_CODE_RECENT, labels={"xid": str(xid_code)}, value=1.0),
+        MetricSample(name=XID_CODE_RECENT, labels={"xid": str(xid_code)}, value=1.0),
     ])
 
 
@@ -108,7 +122,7 @@ def inject_disk_fault(
     available_bytes: float = 0.0,
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_DISK_AVAILABLE_BYTES, labels={"mountpoint": mountpoint}, value=available_bytes),
+        MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": mountpoint}, value=available_bytes),
     ])
 
 
@@ -116,7 +130,7 @@ def inject_nic_down(
     store: MiniPrometheus, node_id: str = "node-0", device: str = "ib0",
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_NIC_UP, labels={"device": device}, value=0.0),
+        MetricSample(name=NODE_NETWORK_UP, labels={"device": device}, value=0.0),
     ])
 
 
@@ -124,7 +138,7 @@ def inject_nic_up(
     store: MiniPrometheus, node_id: str = "node-0", device: str = "ib0",
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_NIC_UP, labels={"device": device}, value=1.0),
+        MetricSample(name=NODE_NETWORK_UP, labels={"device": device}, value=1.0),
     ])
 
 
@@ -141,7 +155,7 @@ def inject_gpu_temperature(
     celsius: float = 65.0,
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_GPU_TEMPERATURE, labels={"gpu": gpu}, value=celsius),
+        MetricSample(name=DCGM_FI_DEV_GPU_TEMP, labels={"gpu": gpu}, value=celsius),
     ])
 
 
@@ -153,17 +167,17 @@ def inject_healthy_node(
 ) -> None:
     for i in range(num_gpus):
         store.ingest_samples(target_id=node_id, samples=[
-            MetricSample(name=NODE_GPU_AVAILABLE, labels={"gpu": str(i)}, value=1.0),
-            MetricSample(name=NODE_GPU_TEMPERATURE, labels={"gpu": str(i)}, value=65.0),
+            MetricSample(name=GPU_AVAILABLE, labels={"gpu": str(i)}, value=1.0),
+            MetricSample(name=DCGM_FI_DEV_GPU_TEMP, labels={"gpu": str(i)}, value=65.0),
         ])
 
     for i in range(num_nics):
         store.ingest_samples(target_id=node_id, samples=[
-            MetricSample(name=NODE_NIC_UP, labels={"device": f"ib{i}"}, value=1.0),
+            MetricSample(name=NODE_NETWORK_UP, labels={"device": f"ib{i}"}, value=1.0),
         ])
 
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_DISK_AVAILABLE_BYTES, labels={"mountpoint": "/data"}, value=500e9),
+        MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/data"}, value=500e9),
     ])
 
 
@@ -239,12 +253,7 @@ class FixedDecisionDetector(BaseFaultDetector):
         self.call_count = 0
         self._decision = decision
 
-    def evaluate(
-        self,
-        metric_store: MetricStoreProtocol,
-        mini_wandb: MiniWandb,
-        rank_placement: dict[int, str],
-    ) -> Decision:
+    def evaluate(self, ctx: DetectorContext) -> Decision:
         self.call_count += 1
         return self._decision
 
@@ -322,6 +331,34 @@ def make_test_controller(
 
 
 # ---------------------------------------------------------------------------
+# Diagnostic scheduler fakes (recovery milestone)
+# ---------------------------------------------------------------------------
+
+
+class FakeDiagnosticScheduler:
+    """Programmable stub for DiagnosticScheduler in recovery tests."""
+
+    def __init__(self, decision: Decision | None = None) -> None:
+        self._decision = decision or Decision(
+            action=ActionType.NOTIFY_HUMAN,
+            reason="fake diagnostic — all passed",
+        )
+        self.call_count: int = 0
+        self.last_trigger_reason: str | None = None
+        self.last_suspect_node_ids: list[str] | None = None
+
+    async def run_diagnostic_pipeline(
+        self,
+        trigger_reason: str,
+        suspect_node_ids: list[str] | None = None,
+    ) -> Decision:
+        self.call_count += 1
+        self.last_trigger_reason = trigger_reason
+        self.last_suspect_node_ids = suspect_node_ids
+        return self._decision
+
+
+# ---------------------------------------------------------------------------
 # Agent test helpers (agent-skeleton milestone)
 # ---------------------------------------------------------------------------
 
@@ -338,8 +375,8 @@ class TestCollector(BaseCollector):
     def set_metrics(self, metrics: list[MetricSample]) -> None:
         self._metrics = metrics
 
-    async def collect(self) -> CollectorOutput:
-        return CollectorOutput(metrics=self._metrics)
+    def _collect_sync(self) -> list[MetricSample]:
+        return list(self._metrics)
 
 
 class FakeNodeAgent:

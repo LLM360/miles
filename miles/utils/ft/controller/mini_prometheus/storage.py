@@ -9,8 +9,9 @@ import polars as pl
 from miles.utils.ft.controller.mini_prometheus.query import (
     TimeSeriesSample,
     _SeriesKey,
-    instant_query,
-    range_query,
+    query_latest as _query_latest,
+    query_range as _query_range,
+    range_aggregate as _range_aggregate,
 )
 from miles.utils.ft.controller.mini_prometheus.scrape_loop import ScrapeLoop
 from miles.utils.ft.models import MetricSample
@@ -75,7 +76,7 @@ class MiniPrometheus:
         ts = timestamp or datetime.now(timezone.utc)
         for sample in samples:
             labels = dict(sample.labels)
-            labels["node_id"] = target_id
+            labels.setdefault("node_id", target_id)
             key: _SeriesKey = (sample.name, frozenset(labels.items()))
 
             if key not in self._series:
@@ -91,20 +92,55 @@ class MiniPrometheus:
     # Query API (MetricStoreProtocol)
     # -------------------------------------------------------------------
 
-    def instant_query(self, query: str) -> pl.DataFrame:
-        return instant_query(self._series, self._label_maps, self._name_index, query)
-
-    def range_query(
-        self,
-        query: str,
-        start: datetime,
-        end: datetime,
-        step: timedelta,
+    def query_latest(
+        self, metric_name: str, label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
-        return range_query(
+        return _query_latest(self._series, self._label_maps, self._name_index, metric_name, label_filters)
+
+    def query_range(
+        self, metric_name: str, window: timedelta,
+        label_filters: dict[str, str] | None = None,
+    ) -> pl.DataFrame:
+        return _query_range(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
+
+    def _range_query(
+        self, func_name: str, metric_name: str, window: timedelta,
+        label_filters: dict[str, str] | None,
+    ) -> pl.DataFrame:
+        return _range_aggregate(
             self._series, self._label_maps, self._name_index,
-            query, start=start, end=end, step=step,
+            func_name, metric_name, window, label_filters,
         )
+
+    def changes(
+        self, metric_name: str, window: timedelta,
+        label_filters: dict[str, str] | None = None,
+    ) -> pl.DataFrame:
+        return self._range_query("changes", metric_name, window, label_filters)
+
+    def count_over_time(
+        self, metric_name: str, window: timedelta,
+        label_filters: dict[str, str] | None = None,
+    ) -> pl.DataFrame:
+        return self._range_query("count_over_time", metric_name, window, label_filters)
+
+    def avg_over_time(
+        self, metric_name: str, window: timedelta,
+        label_filters: dict[str, str] | None = None,
+    ) -> pl.DataFrame:
+        return self._range_query("avg_over_time", metric_name, window, label_filters)
+
+    def min_over_time(
+        self, metric_name: str, window: timedelta,
+        label_filters: dict[str, str] | None = None,
+    ) -> pl.DataFrame:
+        return self._range_query("min_over_time", metric_name, window, label_filters)
+
+    def max_over_time(
+        self, metric_name: str, window: timedelta,
+        label_filters: dict[str, str] | None = None,
+    ) -> pl.DataFrame:
+        return self._range_query("max_over_time", metric_name, window, label_filters)
 
     # -------------------------------------------------------------------
     # Internal: eviction

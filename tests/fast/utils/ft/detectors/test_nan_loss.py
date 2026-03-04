@@ -1,6 +1,5 @@
 from tests.fast.utils.ft.conftest import (
-    EMPTY_RANK_PLACEMENT,
-    make_fake_metric_store,
+    make_detector_context,
     make_fake_mini_wandb,
 )
 
@@ -13,7 +12,7 @@ class TestNanLossDetector:
         wandb = make_fake_mini_wandb(steps={1: {"loss": 2.5}})
         detector = NanLossDetector()
 
-        decision = detector.evaluate(make_fake_metric_store(), wandb, EMPTY_RANK_PLACEMENT)
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NONE
 
@@ -21,7 +20,7 @@ class TestNanLossDetector:
         wandb = make_fake_mini_wandb(steps={1: {"loss": float("nan")}})
         detector = NanLossDetector()
 
-        decision = detector.evaluate(make_fake_metric_store(), wandb, EMPTY_RANK_PLACEMENT)
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert decision.trigger == "nan_loss"
@@ -30,7 +29,7 @@ class TestNanLossDetector:
         wandb = make_fake_mini_wandb(steps={1: {"loss": float("inf")}})
         detector = NanLossDetector()
 
-        decision = detector.evaluate(make_fake_metric_store(), wandb, EMPTY_RANK_PLACEMENT)
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert decision.trigger == "nan_loss"
@@ -39,7 +38,7 @@ class TestNanLossDetector:
         wandb = make_fake_mini_wandb(steps={1: {"loss": float("-inf")}})
         detector = NanLossDetector()
 
-        decision = detector.evaluate(make_fake_metric_store(), wandb, EMPTY_RANK_PLACEMENT)
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert decision.trigger == "nan_loss"
@@ -48,6 +47,6 @@ class TestNanLossDetector:
         wandb = make_fake_mini_wandb()
         detector = NanLossDetector()
 
-        decision = detector.evaluate(make_fake_metric_store(), wandb, EMPTY_RANK_PLACEMENT)
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NONE

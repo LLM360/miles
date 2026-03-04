@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any
 from uuid import uuid4
 
-import structlog
 from ray.job_submission import JobSubmissionClient
 
 from miles.utils.ft.platform.protocols import JobStatus
 
-log = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _RAY_STATUS_TO_JOB_STATUS: dict[str, JobStatus] = {
     "PENDING": JobStatus.PENDING,
@@ -67,22 +67,20 @@ class RayTrainingJob:
         elapsed = time.monotonic() - start
 
         self._job_id = job_id
-        log.info(
-            "submit_training",
-            job_id=job_id,
-            run_id=run_id,
-            elapsed_seconds=round(elapsed, 3),
+        logger.info(
+            "submit_training job_id=%s run_id=%s elapsed_seconds=%.3f",
+            job_id, run_id, elapsed,
         )
         return run_id
 
     async def stop_training(self, timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS) -> None:
         if self._job_id is None:
-            log.warning("stop_training called with no active job")
+            logger.warning("stop_training called with no active job")
             return
 
         start = time.monotonic()
         await asyncio.to_thread(self._client.stop_job, self._job_id)
-        log.info("stop_training_requested", job_id=self._job_id)
+        logger.info("stop_training_requested job_id=%s", self._job_id)
 
         deadline = start + timeout_seconds
         while True:
@@ -97,11 +95,9 @@ class RayTrainingJob:
             status_str = _parse_ray_status(raw_status)
             if status_str in _TERMINAL_STATUSES:
                 elapsed = time.monotonic() - start
-                log.info(
-                    "stop_training_completed",
-                    job_id=self._job_id,
-                    final_status=status_str,
-                    elapsed_seconds=round(elapsed, 3),
+                logger.info(
+                    "stop_training_completed job_id=%s final_status=%s elapsed_seconds=%.3f",
+                    self._job_id, status_str, elapsed,
                 )
                 return
 
@@ -120,14 +116,11 @@ class RayTrainingJob:
         status_str = _parse_ray_status(raw_status)
         job_status = _RAY_STATUS_TO_JOB_STATUS.get(status_str)
         if job_status is None:
-            log.warning("unknown_ray_status", raw_status=status_str)
+            logger.warning("unknown_ray_status raw_status=%s", status_str)
             job_status = JobStatus.FAILED
 
-        log.info(
-            "get_training_status",
-            job_id=self._job_id,
-            raw_status=status_str,
-            job_status=job_status.value,
-            elapsed_seconds=round(elapsed, 3),
+        logger.info(
+            "get_training_status job_id=%s raw_status=%s job_status=%s elapsed_seconds=%.3f",
+            self._job_id, status_str, job_status.value, elapsed,
         )
         return job_status

@@ -6,14 +6,16 @@ import logging
 import pytest
 from prometheus_client import CollectorRegistry
 
+import miles.utils.ft.metric_names as mn
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, RecoveryPhase, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysMarkBadDetector,
     AlwaysNoneDetector,
     FixedDecisionDetector,
     get_sample_value,
+    make_detector_context,
     make_test_controller,
 )
 
@@ -33,7 +35,8 @@ class TestTickEmptyDetectorChain:
     async def test_tick_returns_none_decision(self) -> None:
         harness = make_test_controller()
         await harness.controller._tick()
-        decision = harness.controller._evaluate_detectors()
+        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        decision = harness.controller._evaluate_detectors(ctx)
         assert decision.action == ActionType.NONE
 
 
@@ -293,7 +296,8 @@ class TestDetectorChain:
             detectors=[none_detector, bad_detector],
         )
 
-        decision = harness.controller._evaluate_detectors()
+        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        decision = harness.controller._evaluate_detectors(ctx)
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert none_detector.call_count == 1
         assert bad_detector.call_count == 1
@@ -305,7 +309,8 @@ class TestDetectorChain:
             detectors=[bad_detector, trailing_detector],
         )
 
-        decision = harness.controller._evaluate_detectors()
+        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        decision = harness.controller._evaluate_detectors(ctx)
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert bad_detector.call_count == 1
         assert trailing_detector.call_count == 0
@@ -322,7 +327,7 @@ class TestTrainingJobStatusExporter:
 
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_training_job_status") == 1.0
+        assert get_sample_value(registry, mn.TRAINING_JOB_STATUS) == 1.0
 
     @pytest.mark.asyncio
     async def test_failed_status_maps_to_negative(self) -> None:
@@ -335,7 +340,7 @@ class TestTrainingJobStatusExporter:
 
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_training_job_status") == -1.0
+        assert get_sample_value(registry, mn.TRAINING_JOB_STATUS) == -1.0
 
     @pytest.mark.asyncio
     async def test_stopped_status_maps_to_zero(self) -> None:
@@ -348,7 +353,7 @@ class TestTrainingJobStatusExporter:
 
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_training_job_status") == 0.0
+        assert get_sample_value(registry, mn.TRAINING_JOB_STATUS) == 0.0
 
     @pytest.mark.asyncio
     async def test_pending_status_maps_to_two(self) -> None:
@@ -361,7 +366,7 @@ class TestTrainingJobStatusExporter:
 
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_training_job_status") == 2.0
+        assert get_sample_value(registry, mn.TRAINING_JOB_STATUS) == 2.0
 
     @pytest.mark.asyncio
     async def test_tick_count_incremented(self) -> None:
@@ -372,7 +377,7 @@ class TestTrainingJobStatusExporter:
         await harness.controller._tick()
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_controller_tick_count_total") == 2.0
+        assert get_sample_value(registry, mn.CONTROLLER_TICK_COUNT + "_total") == 2.0
 
 
 class TestExecuteDecision:
@@ -393,7 +398,7 @@ class TestExecuteDecision:
     async def test_enter_recovery_does_not_raise(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
+            trigger=TriggerType.CRASH,
             reason="test recovery",
         ))
         harness = make_test_controller(detectors=[detector])
@@ -447,7 +452,7 @@ class TestExecuteDecision:
     async def test_enter_recovery_does_not_notify(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
+            trigger=TriggerType.CRASH,
             reason="test recovery",
         ))
         harness = make_test_controller(detectors=[detector])
@@ -482,3 +487,105 @@ class TestExecuteDecision:
 
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 2
+
+
+class TestMarkBadAndRestartReal:
+    @pytest.mark.asyncio
+    async def test_marks_bad_nodes(self) -> None:
+        harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
+        await harness.controller._tick()
+
+        assert harness.node_manager.is_node_bad("node-1")
+
+    @pytest.mark.asyncio
+    async def test_stops_and_submits_training(self) -> None:
+        harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
+        await harness.controller._tick()
+
+        assert harness.training_job._stopped
+        assert harness.training_job._submitted
+
+    @pytest.mark.asyncio
+    async def test_clears_mini_wandb_before_submit(self) -> None:
+        harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
+        harness.mini_wandb.log_step(
+            run_id="test", rank=0, step=1, metrics={"loss": 1.0},
+        )
+        assert harness.mini_wandb.latest(metric_name="loss", rank=0) == 1.0
+
+        await harness.controller._tick()
+
+        assert harness.mini_wandb.latest(metric_name="loss", rank=0) is None
+
+
+class TestEnterRecovery:
+    @pytest.mark.asyncio
+    async def test_creates_recovery_orchestrator(self) -> None:
+        detector = FixedDecisionDetector(decision=Decision(
+            action=ActionType.ENTER_RECOVERY,
+            trigger="crash",
+            reason="test recovery",
+        ))
+        harness = make_test_controller(detectors=[detector])
+        assert harness.controller._recovery_orchestrator is None
+
+        await harness.controller._tick()
+
+        assert harness.controller._recovery_orchestrator is not None
+
+    @pytest.mark.asyncio
+    async def test_recovery_mode_skips_detectors(self) -> None:
+        detector = FixedDecisionDetector(decision=Decision(
+            action=ActionType.ENTER_RECOVERY,
+            trigger="crash",
+            reason="test recovery",
+        ))
+        harness = make_test_controller(detectors=[detector])
+
+        await harness.controller._tick()
+        initial_count = detector.call_count
+
+        await harness.controller._tick()
+        assert detector.call_count == initial_count
+
+    @pytest.mark.asyncio
+    async def test_recovery_complete_returns_to_monitoring(self) -> None:
+        detector = FixedDecisionDetector(decision=Decision(
+            action=ActionType.ENTER_RECOVERY,
+            trigger="crash",
+            reason="test recovery",
+        ))
+        harness = make_test_controller(
+            detectors=[detector],
+            status_sequence=[JobStatus.RUNNING],
+        )
+
+        await harness.controller._tick()
+        assert harness.controller._recovery_orchestrator is not None
+
+        harness.controller._recovery_orchestrator._context.phase = RecoveryPhase.DONE
+
+        await harness.controller._tick()
+        assert harness.controller._recovery_orchestrator is None
+
+    @pytest.mark.asyncio
+    async def test_exporter_mode_reflects_recovery(self) -> None:
+        registry = CollectorRegistry()
+        exporter = ControllerExporter(registry=registry)
+        detector = FixedDecisionDetector(decision=Decision(
+            action=ActionType.ENTER_RECOVERY,
+            trigger="crash",
+            reason="test recovery",
+        ))
+        harness = make_test_controller(
+            detectors=[detector],
+            controller_exporter=exporter,
+        )
+
+        await harness.controller._tick()
+
+        assert get_sample_value(registry, "ft_controller_mode") == 0.0
+
+        await harness.controller._tick()
+
+        assert get_sample_value(registry, "ft_controller_mode") == 1.0

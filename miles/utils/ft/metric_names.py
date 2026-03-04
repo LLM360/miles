@@ -19,7 +19,7 @@ NODE_DISK_IO_TIME_SECONDS_TOTAL = "miles_ft_node_disk_io_time_seconds_total"
 
 # Host custom metrics
 XID_CODE_RECENT = "miles_ft_xid_code_recent"
-XID_COUNT_RECENT = "miles_ft_xid_count_recent"
+XID_COUNT_TOTAL = "miles_ft_xid_count_total"
 KERNEL_EVENT_COUNT = "miles_ft_kernel_event_count"
 
 # Training heartbeat (MegatronAgent)
@@ -28,3 +28,11 @@ TRAINING_PHASE = "miles_ft_training_phase"
 
 # Controller synthetic
 TRAINING_JOB_STATUS = "miles_ft_training_job_status"
+TRAINING_LOSS_LATEST = "miles_ft_training_loss_latest"
+TRAINING_MFU_LATEST = "miles_ft_training_mfu_latest"
+
+# Controller operational
+CONTROLLER_MODE = "miles_ft_controller_mode"
+CONTROLLER_TICK_COUNT = "miles_ft_controller_tick_count"
+CONTROLLER_EVICTED_NODE_COUNT = "miles_ft_controller_evicted_node_count"
+CONTROLLER_RECOVERY_PHASE = "miles_ft_controller_recovery_phase"

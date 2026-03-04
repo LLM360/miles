@@ -418,8 +418,7 @@ class TestFtNodeAgentStubMethods:
             await agent.run_diagnostic("gpu_check")
 
     @pytest.mark.asyncio()
-    async def test_cleanup_training_processes_raises(
+    async def test_cleanup_training_processes_noop(
         self, agent: FtNodeAgent
     ) -> None:
-        with pytest.raises(NotImplementedError, match="cleanup_training_processes"):
-            await agent.cleanup_training_processes("job-123")
+        await agent.cleanup_training_processes("job-123")
