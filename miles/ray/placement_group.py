@@ -10,8 +10,6 @@ from .rollout import RolloutManager
 
 logger = logging.getLogger(__name__)
 
-_MAX_PLACEMENT_RETRIES = 3
-
 
 @ray.remote(num_gpus=1)
 class InfoActor:
@@ -94,27 +92,18 @@ def _parse_excluded_nodes(csv_string):
 
 
 def _create_placement_group_excluding(num_gpus, excluded):
-    """Create a placement group, retrying if bundles land on excluded nodes."""
-    for attempt in range(_MAX_PLACEMENT_RETRIES + 1):
-        pg, reordered_indices, reordered_gpu_ids, gpu_ids = _create_placement_group(num_gpus)
+    """Create a placement group and verify no bundles land on excluded nodes."""
+    pg, reordered_indices, reordered_gpu_ids, gpu_ids = _create_placement_group(num_gpus)
 
-        if not excluded:
-            return pg, reordered_indices, reordered_gpu_ids
-
+    if excluded:
         bad = {node for node, _gpu in gpu_ids} & excluded
-        if not bad:
-            return pg, reordered_indices, reordered_gpu_ids
+        if bad:
+            raise RuntimeError(
+                f"Placement group has bundles on excluded nodes {bad}. "
+                f"Cordon these nodes before starting training."
+            )
 
-        logger.warning(
-            "Placement group has bundles on excluded nodes %s, retry %d/%d",
-            bad, attempt + 1, _MAX_PLACEMENT_RETRIES,
-        )
-        ray.util.remove_placement_group(pg)
-
-    raise RuntimeError(
-        f"Cannot create placement group avoiding excluded nodes {excluded} "
-        f"after {_MAX_PLACEMENT_RETRIES} retries"
-    )
+    return pg, reordered_indices, reordered_gpu_ids
 
 
 def create_placement_groups(args):
