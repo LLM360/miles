@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import deque
 from dataclasses import dataclass, field
@@ -15,8 +16,8 @@ from miles.utils.ft.controller.mini_prometheus.promql import (
     PromQLExpr,
     RangeFunction,
     RangeFunctionCompare,
-    compare_col,
-    match_labels,
+    _compare_col,
+    _match_labels,
     parse_promql,
 )
 from miles.utils.ft.controller.mini_prometheus.scraper import parse_prometheus_text
@@ -88,9 +89,7 @@ class MiniPrometheus:
     # -------------------------------------------------------------------
 
     async def scrape_once(self) -> None:
-        import asyncio
-
-        import httpx
+        import httpx  # optional heavy dependency
 
         targets = list(self._scrape_targets.items())
         if not targets:
@@ -117,8 +116,6 @@ class MiniPrometheus:
             )
 
     async def start(self) -> None:
-        import asyncio
-
         self._running = True
         while self._running:
             await self.scrape_once()
@@ -157,7 +154,7 @@ class MiniPrometheus:
             df = self._instant_selector(expr.selector)
             if df.is_empty():
                 return df
-            return df.filter(compare_col(pl.col("value"), expr.op, expr.threshold))
+            return df.filter(_compare_col(pl.col("value"), expr.op, expr.threshold))
 
         if isinstance(expr, RangeFunction):
             return self._instant_range_function(expr)
@@ -166,7 +163,7 @@ class MiniPrometheus:
             df = self._instant_range_function(expr.func)
             if df.is_empty():
                 return df
-            return df.filter(compare_col(pl.col("value"), expr.op, expr.threshold))
+            return df.filter(_compare_col(pl.col("value"), expr.op, expr.threshold))
 
         raise ValueError(f"Unsupported expression type: {type(expr)}")
 
@@ -178,7 +175,7 @@ class MiniPrometheus:
                 continue
 
             labels = self._label_maps[key]
-            if not match_labels(labels, selector.matchers):
+            if not _match_labels(labels, selector.matchers):
                 continue
 
             latest = samples[-1]
@@ -201,7 +198,7 @@ class MiniPrometheus:
                 continue
 
             labels = self._label_maps[key]
-            if not match_labels(labels, func.selector.matchers):
+            if not _match_labels(labels, func.selector.matchers):
                 continue
 
             window_samples = [s for s in samples if s.timestamp >= window_start]
@@ -235,7 +232,7 @@ class MiniPrometheus:
             df = self._range_selector(expr.selector, start=start, end=end, step=step)
             if df.is_empty():
                 return df
-            return df.filter(compare_col(pl.col("value"), expr.op, expr.threshold))
+            return df.filter(_compare_col(pl.col("value"), expr.op, expr.threshold))
 
         raise ValueError(
             f"range_query not yet supported for expression type: {type(expr)}"
@@ -255,7 +252,7 @@ class MiniPrometheus:
                 continue
 
             labels = self._label_maps[key]
-            if not match_labels(labels, selector.matchers):
+            if not _match_labels(labels, selector.matchers):
                 continue
 
             for sample in samples:

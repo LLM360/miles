@@ -126,16 +126,27 @@ def _parse_metric_selector(text: str) -> MetricSelector:
 
 
 def _find_compare_op(text: str) -> tuple[str, CompareOp, str] | None:
-    for op_str in _COMPARE_OPS:
-        parts = text.split(op_str)
-        if len(parts) == 2:
-            return parts[0].strip(), CompareOp(op_str), parts[1].strip()
+    brace_depth = 0
+    for i, ch in enumerate(text):
+        if ch == "{":
+            brace_depth += 1
+        elif ch == "}":
+            brace_depth -= 1
+        elif brace_depth == 0:
+            for op_str in _COMPARE_OPS:
+                if text[i:i + len(op_str)] == op_str:
+                    left = text[:i].strip()
+                    right = text[i + len(op_str):].strip()
+                    if left and right:
+                        return left, CompareOp(op_str), right
+
     return None
 
 
 def parse_promql(query: str) -> PromQLExpr:
     query = query.strip()
 
+    # Range function: func_name(selector[duration]) [op threshold]
     for func_name in _RANGE_FUNCTIONS:
         prefix = f"{func_name}("
         if query.startswith(prefix):
@@ -184,6 +195,7 @@ def parse_promql(query: str) -> PromQLExpr:
 
             return range_func
 
+    # Compare expression: selector op threshold
     compare = _find_compare_op(query)
     if compare:
         left, op, right = compare
@@ -197,6 +209,7 @@ def parse_promql(query: str) -> PromQLExpr:
         except ValueError:
             pass
 
+    # Plain metric selector
     return _parse_metric_selector(query)
 
 
@@ -205,7 +218,7 @@ def parse_promql(query: str) -> PromQLExpr:
 # ---------------------------------------------------------------------------
 
 
-def compare_col(col: pl.Expr, op: CompareOp, threshold: float) -> pl.Expr:
+def _compare_col(col: pl.Expr, op: CompareOp, threshold: float) -> pl.Expr:
     if op == CompareOp.EQ:
         return col == threshold
     if op == CompareOp.NEQ:
@@ -231,7 +244,7 @@ def _compile_label_regex(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern)
 
 
-def match_labels(labels: dict[str, str], matchers: list[LabelMatcher]) -> bool:
+def _match_labels(labels: dict[str, str], matchers: list[LabelMatcher]) -> bool:
     for m in matchers:
         actual = labels.get(m.label, "")
         if m.op == LabelMatchOp.EQ:
