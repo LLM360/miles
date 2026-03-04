@@ -8,8 +8,8 @@ from typing import Any
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery_orchestrator._alert_checker import AlertChecker
-from miles.utils.ft.controller.recovery_orchestrator._context import (
+from miles.utils.ft.controller.recovery_orchestrator.alert_checker import AlertChecker
+from miles.utils.ft.controller.recovery_orchestrator.context import (
     RecoveryContext,
     _MAX_RETRIES,
     _PENDING_TIMEOUT_SECONDS,
