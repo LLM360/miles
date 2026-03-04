@@ -620,8 +620,8 @@ class TestEnterRecovery:
 
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_controller_mode") == 0.0
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0
 
         await harness.controller._tick()
 
-        assert get_sample_value(registry, "ft_controller_mode") == 1.0
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 1.0
