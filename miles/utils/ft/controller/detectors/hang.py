@@ -1,14 +1,14 @@
-from miles.utils.ft.controller.detectors._metric_names import (
+from datetime import timedelta
+
+from miles.utils.ft.metric_names import (
     TRAINING_ITERATION,
-    TRAINING_JOB_STATUS,
     TRAINING_PHASE,
 )
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
-from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.platform.protocols import JobStatus
 
-_JOB_STATUS_RUNNING: int = 1
 _PHASE_CHECKPOINT_SAVING: float = 2.0
 
 
@@ -21,27 +21,22 @@ class HangDetector(BaseFaultDetector):
         self._training_timeout_minutes = training_timeout_minutes
         self._checkpoint_saving_timeout_minutes = checkpoint_saving_timeout_minutes
 
-    def evaluate(
-        self,
-        metric_store: MetricStoreProtocol,
-        mini_wandb: MiniWandb,
-        rank_placement: dict[int, str],
-    ) -> Decision:
-        if not self._is_job_running(metric_store):
+    def evaluate(self, ctx: DetectorContext) -> Decision:
+        if ctx.job_status != JobStatus.RUNNING:
             return Decision(action=ActionType.NONE, reason="job not running, skipping hang check")
 
-        is_checkpoint_saving = self._is_checkpoint_saving(metric_store)
+        is_checkpoint_saving = self._is_checkpoint_saving(ctx.metric_store)
         timeout_minutes = (
             self._checkpoint_saving_timeout_minutes
             if is_checkpoint_saving
             else self._training_timeout_minutes
         )
 
-        changes = self._get_iteration_changes(metric_store, window_minutes=timeout_minutes)
-        if changes is None:
+        iteration_changes = self._get_iteration_changes(ctx.metric_store, window_minutes=timeout_minutes)
+        if iteration_changes is None:
             return Decision(action=ActionType.NONE, reason="no iteration data available")
 
-        if changes == 0:
+        if iteration_changes == 0:
             phase_info = "checkpoint_saving" if is_checkpoint_saving else "training"
             return Decision(
                 action=ActionType.ENTER_RECOVERY,
@@ -51,17 +46,13 @@ class HangDetector(BaseFaultDetector):
 
         return Decision(action=ActionType.NONE, reason="iteration progressing normally")
 
-    def _is_job_running(self, metric_store: MetricStoreProtocol) -> bool:
-        df = metric_store.instant_query(f"{TRAINING_JOB_STATUS} == {_JOB_STATUS_RUNNING}")
-        return not df.is_empty()
-
     def _is_checkpoint_saving(self, metric_store: MetricStoreProtocol) -> bool:
-        df = metric_store.instant_query(TRAINING_PHASE)
+        df = metric_store.query_latest(TRAINING_PHASE, label_filters={"rank": "0"})
         if df.is_empty():
             return False
 
         for row in df.iter_rows(named=True):
-            if row.get("rank") == "0" and row["value"] == _PHASE_CHECKPOINT_SAVING:
+            if row["value"] == _PHASE_CHECKPOINT_SAVING:
                 return True
 
         return False
@@ -69,8 +60,11 @@ class HangDetector(BaseFaultDetector):
     def _get_iteration_changes(
         self, metric_store: MetricStoreProtocol, window_minutes: int,
     ) -> float | None:
-        query = f'changes({TRAINING_ITERATION}{{rank="0"}}[{window_minutes}m])'
-        df = metric_store.instant_query(query)
+        df = metric_store.changes(
+            TRAINING_ITERATION,
+            window=timedelta(minutes=window_minutes),
+            label_filters={"rank": "0"},
+        )
         if df.is_empty():
             return None
 

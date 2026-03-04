@@ -1,4 +1,4 @@
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.hang import HangDetector
 from miles.utils.ft.controller.detectors.hardware import HighConfidenceHardwareDetector
 from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector
@@ -8,6 +8,7 @@ from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDete
 
 __all__ = [
     "BaseFaultDetector",
+    "DetectorContext",
     "HangDetector",
     "HighConfidenceHardwareDetector",
     "MfuDeclineDetector",

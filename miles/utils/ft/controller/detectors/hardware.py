@@ -1,12 +1,14 @@
-from miles.utils.ft.controller.detectors._metric_names import (
-    NODE_DISK_AVAILABLE_BYTES,
-    NODE_GPU_AVAILABLE,
-    NODE_NIC_UP,
-    NODE_XID_CODE_RECENT,
+import polars as pl
+
+from miles.utils.ft.metric_names import (
+    DCGM_FI_DEV_GPU_TEMP,
+    GPU_AVAILABLE,
+    NODE_FILESYSTEM_AVAIL_BYTES,
+    NODE_NETWORK_UP,
+    XID_CODE_RECENT,
 )
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
-from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import Decision, NodeFault
 
 _CRITICAL_XID_CODES: frozenset[int] = frozenset({48, 62, 64, 79})
@@ -22,17 +24,12 @@ class HighConfidenceHardwareDetector(BaseFaultDetector):
         self._critical_xid_codes = critical_xid_codes
         self._disk_available_threshold_bytes = disk_available_threshold_bytes
 
-    def evaluate(
-        self,
-        metric_store: MetricStoreProtocol,
-        mini_wandb: MiniWandb,
-        rank_placement: dict[int, str],
-    ) -> Decision:
+    def evaluate(self, ctx: DetectorContext) -> Decision:
         faults: list[NodeFault] = [
-            *self._check_gpu_lost(metric_store),
-            *self._check_critical_xid(metric_store),
-            *self._check_disk_fault(metric_store),
-            *self._check_majority_nic_down(metric_store),
+            *self._check_gpu_lost(ctx.metric_store),
+            *self._check_critical_xid(ctx.metric_store),
+            *self._check_disk_fault(ctx.metric_store),
+            *self._check_majority_nic_down(ctx.metric_store),
         ]
 
         return Decision.from_node_faults(
@@ -41,17 +38,21 @@ class HighConfidenceHardwareDetector(BaseFaultDetector):
         )
 
     def _check_gpu_lost(self, metric_store: MetricStoreProtocol) -> list[NodeFault]:
-        df = metric_store.instant_query(f"{NODE_GPU_AVAILABLE} == 0")
+        df = metric_store.query_latest(GPU_AVAILABLE)
         if df.is_empty():
+            return []
+
+        bad = df.filter(pl.col("value") == 0.0)
+        if bad.is_empty():
             return []
 
         return [
             NodeFault(node_id=node_id, reason=f"GPU unavailable on {node_id}")
-            for node_id in df["node_id"].unique().to_list()
+            for node_id in bad["node_id"].unique().to_list()
         ]
 
     def _check_critical_xid(self, metric_store: MetricStoreProtocol) -> list[NodeFault]:
-        df = metric_store.instant_query(NODE_XID_CODE_RECENT)
+        df = metric_store.query_latest(XID_CODE_RECENT)
         if df.is_empty():
             return []
 
@@ -64,10 +65,12 @@ class HighConfidenceHardwareDetector(BaseFaultDetector):
         return faults
 
     def _check_disk_fault(self, metric_store: MetricStoreProtocol) -> list[NodeFault]:
-        df = metric_store.instant_query(
-            f"{NODE_DISK_AVAILABLE_BYTES} < {self._disk_available_threshold_bytes}"
-        )
+        df = metric_store.query_latest(NODE_FILESYSTEM_AVAIL_BYTES)
         if df.is_empty():
+            return []
+
+        bad = df.filter(pl.col("value") < self._disk_available_threshold_bytes)
+        if bad.is_empty():
             return []
 
         return [
@@ -75,11 +78,11 @@ class HighConfidenceHardwareDetector(BaseFaultDetector):
                 node_id=row["node_id"],
                 reason=f"disk space low on {row['node_id']} ({row['value']:.0f} bytes)",
             )
-            for row in df.iter_rows(named=True)
+            for row in bad.iter_rows(named=True)
         ]
 
     def _check_majority_nic_down(self, metric_store: MetricStoreProtocol) -> list[NodeFault]:
-        df = metric_store.instant_query(NODE_NIC_UP)
+        df = metric_store.query_latest(NODE_NETWORK_UP)
         if df.is_empty():
             return []
 

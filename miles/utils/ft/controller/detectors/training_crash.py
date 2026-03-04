@@ -1,30 +1,19 @@
-import polars as pl
-
-from miles.utils.ft.controller.detectors._metric_names import TRAINING_JOB_STATUS
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, _get_non_finite_loss
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.detectors.base import (
+    BaseFaultDetector,
+    DetectorContext,
+    _get_non_finite_loss,
+)
 from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import ActionType, Decision
-
-_JOB_STATUS_FAILED = -1.0
+from miles.utils.ft.platform.protocols import JobStatus
 
 
 class TrainingCrashDetector(BaseFaultDetector):
-    def evaluate(
-        self,
-        metric_store: MetricStoreProtocol,
-        mini_wandb: MiniWandb,
-        rank_placement: dict[int, str],
-    ) -> Decision:
-        df = metric_store.query_latest(TRAINING_JOB_STATUS)
-        if df.is_empty():
+    def evaluate(self, ctx: DetectorContext) -> Decision:
+        if ctx.job_status != JobStatus.FAILED:
             return Decision(action=ActionType.NONE, reason="training job not failed")
 
-        failed = df.filter(pl.col("value") == _JOB_STATUS_FAILED)
-        if failed.is_empty():
-            return Decision(action=ActionType.NONE, reason="training job not failed")
-
-        trigger = self._determine_trigger(mini_wandb)
+        trigger = self._determine_trigger(ctx.mini_wandb)
 
         return Decision(
             action=ActionType.ENTER_RECOVERY,

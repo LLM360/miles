@@ -1,19 +1,26 @@
+from __future__ import annotations
+
 import math
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import Decision
+from miles.utils.ft.platform.protocols import JobStatus
+
+
+@dataclass
+class DetectorContext:
+    metric_store: MetricStoreProtocol
+    mini_wandb: MiniWandb
+    rank_placement: dict[int, str]
+    job_status: JobStatus
 
 
 class BaseFaultDetector(ABC):
     @abstractmethod
-    def evaluate(
-        self,
-        metric_store: MetricStoreProtocol,
-        mini_wandb: MiniWandb,
-        rank_placement: dict[int, str],
-    ) -> Decision: ...
+    def evaluate(self, ctx: DetectorContext) -> Decision: ...
 
     def on_new_run(self, run_id: str) -> None:
         """Called when a new training run is registered.

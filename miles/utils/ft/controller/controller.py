@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.mini_prometheus.protocol import (
     MetricStoreProtocol,
     ScrapeTargetManagerProtocol,
@@ -160,9 +160,16 @@ class FtController:
                 len(self._rank_placement), self._expected_world_size, self._active_run_id,
             )
 
-        await self._update_training_job_status()
+        job_status = await self._training_job.get_training_status()
+        self._update_training_job_status_exporter(job_status)
 
-        decision = self._evaluate_detectors()
+        ctx = DetectorContext(
+            metric_store=self._metric_store,
+            mini_wandb=self._mini_wandb,
+            rank_placement=self._rank_placement,
+            job_status=job_status,
+        )
+        decision = self._evaluate_detectors(ctx)
 
         logger.info(
             "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
@@ -177,13 +184,9 @@ class FtController:
     # Internal: detector chain
     # -------------------------------------------------------------------
 
-    def _evaluate_detectors(self) -> Decision:
+    def _evaluate_detectors(self, ctx: DetectorContext) -> Decision:
         for detector in self._detectors:
-            decision = detector.evaluate(
-                metric_store=self._metric_store,
-                mini_wandb=self._mini_wandb,
-                rank_placement=self._rank_placement,
-            )
+            decision = detector.evaluate(ctx)
             if decision.action != ActionType.NONE:
                 return decision
 
@@ -193,11 +196,9 @@ class FtController:
     # Internal: exporter metric updates
     # -------------------------------------------------------------------
 
-    async def _update_training_job_status(self) -> None:
-        status = await self._training_job.get_training_status()
-        status_value = _JOB_STATUS_TO_NUMERIC.get(status, 0)
-
+    def _update_training_job_status_exporter(self, status: JobStatus) -> None:
         if self._controller_exporter is not None:
+            status_value = _JOB_STATUS_TO_NUMERIC.get(status, 0)
             self._controller_exporter.update_training_job_status(status_value)
 
     def _update_exporter_metrics(self) -> None:
