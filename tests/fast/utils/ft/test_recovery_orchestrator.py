@@ -35,7 +35,21 @@ from tests.fast.utils.ft.conftest import (
 # -------------------------------------------------------------------
 
 
-def _make_orchestrator(
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.mini_wandb import MiniWandb as MiniWandbCls
+
+_OrchestratorWithStore = tuple[
+    RecoveryOrchestrator,
+    FakeNodeManager,
+    FakeTrainingJob,
+    FakeNotifier | None,
+    FakeDiagnosticScheduler,
+    MiniPrometheus,
+    MiniWandbCls,
+]
+
+
+def _make_orchestrator_with_store(
     trigger: str = "crash",
     status_sequence: list[JobStatus] | None = None,
     notifier: FakeNotifier | None = None,
@@ -44,13 +58,7 @@ def _make_orchestrator(
     global_timeout_seconds: int = 1800,
     monitoring_success_iterations: int = 10,
     monitoring_timeout_seconds: int = 600,
-) -> tuple[
-    RecoveryOrchestrator,
-    FakeNodeManager,
-    FakeTrainingJob,
-    FakeNotifier | None,
-    FakeDiagnosticScheduler,
-]:
+) -> _OrchestratorWithStore:
     node_manager = FakeNodeManager()
     training_job = FakeTrainingJob(status_sequence=status_sequence)
     metric_store = make_fake_metric_store()
@@ -70,36 +78,20 @@ def _make_orchestrator(
         monitoring_success_iterations=monitoring_success_iterations,
         monitoring_timeout_seconds=monitoring_timeout_seconds,
     )
-    return orch, node_manager, training_job, notifier, diag_scheduler
-
-
-def _make_orchestrator_with_store(
-    trigger: str = "crash",
-    status_sequence: list[JobStatus] | None = None,
-    notifier: FakeNotifier | None = None,
-    diagnostic_decision: Decision | None = None,
-    monitoring_success_iterations: int = 10,
-    monitoring_timeout_seconds: int = 600,
-):
-    """Like _make_orchestrator but returns the metric_store and mini_wandb too."""
-    node_manager = FakeNodeManager()
-    training_job = FakeTrainingJob(status_sequence=status_sequence)
-    metric_store = make_fake_metric_store()
-    mini_wandb = make_fake_mini_wandb()
-    diag_scheduler = FakeDiagnosticScheduler(decision=diagnostic_decision)
-
-    orch = RecoveryOrchestrator(
-        trigger=trigger,
-        node_manager=node_manager,
-        training_job=training_job,
-        metric_store=metric_store,
-        mini_wandb=mini_wandb,
-        notifier=notifier,
-        diagnostic_scheduler=diag_scheduler,
-        monitoring_success_iterations=monitoring_success_iterations,
-        monitoring_timeout_seconds=monitoring_timeout_seconds,
-    )
     return orch, node_manager, training_job, notifier, diag_scheduler, metric_store, mini_wandb
+
+
+def _make_orchestrator(
+    **kwargs: object,
+) -> tuple[
+    RecoveryOrchestrator,
+    FakeNodeManager,
+    FakeTrainingJob,
+    FakeNotifier | None,
+    FakeDiagnosticScheduler,
+]:
+    orch, node_mgr, job, notif, diag, _, _ = _make_orchestrator_with_store(**kwargs)  # type: ignore[arg-type]
+    return orch, node_mgr, job, notif, diag
 
 
 # -------------------------------------------------------------------

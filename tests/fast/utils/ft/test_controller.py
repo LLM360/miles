@@ -7,7 +7,7 @@ import pytest
 from prometheus_client import CollectorRegistry
 
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysMarkBadDetector,
@@ -558,9 +558,7 @@ class TestEnterRecovery:
         await harness.controller._tick()
         assert harness.controller._recovery_orchestrator is not None
 
-        harness.controller._recovery_orchestrator._context.phase = (
-            __import__("miles.utils.ft.models", fromlist=["RecoveryPhase"]).RecoveryPhase.DONE
-        )
+        harness.controller._recovery_orchestrator._context.phase = RecoveryPhase.DONE
 
         await harness.controller._tick()
         assert harness.controller._recovery_orchestrator is None

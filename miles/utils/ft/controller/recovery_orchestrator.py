@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.diagnostic_scheduler_stub import (
@@ -36,6 +38,8 @@ _DISK_AVAILABLE_THRESHOLD_BYTES: float = 1e9
 _PENDING_TIMEOUT_SECONDS: int = 300
 _MAX_RETRIES: int = 3
 
+_StepHandler = Callable[[], Coroutine[Any, Any, None]]
+
 
 @dataclass
 class RecoveryContext:
@@ -49,6 +53,7 @@ class RecoveryContext:
     global_timeout_seconds: int = 1800
     monitoring_success_iterations: int = 10
     monitoring_timeout_seconds: int = 600
+    phase_before_notify: RecoveryPhase | None = None
 
 
 class RecoveryOrchestrator:
@@ -89,6 +94,10 @@ class RecoveryOrchestrator:
     def phase(self) -> RecoveryPhase:
         return self._context.phase
 
+    @property
+    def trigger(self) -> str:
+        return self._context.trigger
+
     def is_done(self) -> bool:
         return self._context.phase == RecoveryPhase.DONE
 
@@ -99,7 +108,7 @@ class RecoveryOrchestrator:
         if self._check_global_timeout():
             return
 
-        phase_handlers: dict[RecoveryPhase, callable] = {
+        phase_handlers: dict[RecoveryPhase, _StepHandler] = {
             RecoveryPhase.CHECK_ALERTS: self._step_check_alerts,
             RecoveryPhase.REATTEMPTING: self._step_reattempting,
             RecoveryPhase.MONITORING: self._step_monitoring,
@@ -209,12 +218,9 @@ class RecoveryOrchestrator:
 
     async def _step_monitoring(self) -> None:
         status = await self._training_job.get_training_status()
+        progress = self._iteration_progress()
 
         if status == JobStatus.FAILED:
-            current_iteration = self._mini_wandb.latest(metric_name="iteration", rank=0)
-            base = self._context.reattempt_base_iteration or 0
-            progress = (int(current_iteration) - base) if current_iteration is not None else 0
-
             logger.warning(
                 "monitoring_training_failed progress_iterations=%d trigger=%s",
                 progress, self._context.trigger,
@@ -222,18 +228,13 @@ class RecoveryOrchestrator:
             self._transition(RecoveryPhase.DIAGNOSING)
             return
 
-        if status == JobStatus.RUNNING:
-            current_iteration = self._mini_wandb.latest(metric_name="iteration", rank=0)
-            base = self._context.reattempt_base_iteration or 0
-            progress = (int(current_iteration) - base) if current_iteration is not None else 0
-
-            if progress >= self._context.monitoring_success_iterations:
-                logger.info(
-                    "monitoring_success progress_iterations=%d threshold=%d",
-                    progress, self._context.monitoring_success_iterations,
-                )
-                self._transition(RecoveryPhase.DONE)
-                return
+        if status == JobStatus.RUNNING and progress >= self._context.monitoring_success_iterations:
+            logger.info(
+                "monitoring_success progress_iterations=%d threshold=%d",
+                progress, self._context.monitoring_success_iterations,
+            )
+            self._transition(RecoveryPhase.DONE)
+            return
 
         if self._context.reattempt_start_time is not None:
             elapsed = (
@@ -245,6 +246,11 @@ class RecoveryOrchestrator:
                     elapsed, self._context.trigger,
                 )
                 self._transition(RecoveryPhase.DIAGNOSING)
+
+    def _iteration_progress(self) -> int:
+        current_iteration = self._mini_wandb.latest(metric_name="iteration", rank=0)
+        base = self._context.reattempt_base_iteration or 0
+        return (int(current_iteration) - base) if current_iteration is not None else 0
 
     async def _step_diagnosing(self) -> None:
         decision = await self._diagnostic_scheduler.run_diagnostic_pipeline(
@@ -295,9 +301,11 @@ class RecoveryOrchestrator:
         self._transition(RecoveryPhase.DONE)
 
     async def _step_notify(self) -> None:
+        prev = self._context.phase_before_notify
         message = (
             f"Recovery requires human intervention. "
-            f"trigger={self._context.trigger} phase_before_notify={self._context.phase.value}"
+            f"trigger={self._context.trigger} "
+            f"phase_before_notify={prev.value if prev else 'unknown'}"
         )
         logger.warning("recovery_notify reason=%s", message)
 
@@ -319,6 +327,8 @@ class RecoveryOrchestrator:
 
     def _transition(self, new_phase: RecoveryPhase) -> None:
         old = self._context.phase
+        if new_phase == RecoveryPhase.NOTIFY:
+            self._context.phase_before_notify = old
         self._context.phase = new_phase
         logger.info("recovery_transition %s -> %s", old.value, new_phase.value)
         self._update_exporter()
@@ -331,7 +341,7 @@ class RecoveryOrchestrator:
 
     async def _retry_async(
         self,
-        func: callable,
+        func: Callable[[], Coroutine[Any, Any, None]],
         description: str,
         max_retries: int = _MAX_RETRIES,
     ) -> bool:

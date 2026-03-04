@@ -168,7 +168,7 @@ class FtController:
         if self._recovery_orchestrator is not None:
             await self._recovery_orchestrator.step()
             if self._recovery_orchestrator.is_done():
-                logger.info("recovery_complete trigger=%s", self._recovery_orchestrator._context.trigger)
+                logger.info("recovery_complete trigger=%s", self._recovery_orchestrator.trigger)
                 self._recovery_orchestrator = None
                 self._diagnosing_nodes.clear()
             self._update_exporter_metrics()
