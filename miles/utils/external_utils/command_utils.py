@@ -4,6 +4,7 @@ This file is not for miles framework itself, but as an optional utility to easil
 
 import datetime
 import json
+import logging
 import os
 import random
 import shlex
@@ -13,10 +14,13 @@ from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 
+from miles.utils.ft.platform.k8s_node_manager import query_bad_nodes
 from miles.utils.misc import exec_command, exec_command_all_ray_node
 from miles.utils.typer_utils import dataclass_cli
 
 _ = exec_command, exec_command_all_ray_node, dataclass_cli
+
+logger = logging.getLogger(__name__)
 
 repo_base_dir = Path(os.path.abspath(__file__)).resolve().parents[3]
 
@@ -185,6 +189,10 @@ def execute_train(
 
         if "--use-fault-tolerance" not in train_args:
             train_args = f"--use-fault-tolerance {train_args}"
+
+        excluded = query_bad_nodes()
+        if excluded:
+            train_args = f"--excluded-nodes {','.join(excluded)} {train_args}"
 
     runtime_env_json = json.dumps(
         {
