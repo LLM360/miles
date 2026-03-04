@@ -1,37 +1,19 @@
 from __future__ import annotations
 
-import asyncio
-import logging
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Iterator
 
 import polars as pl
 
-from miles.utils.ft.controller.mini_prometheus.promql import (
-    CompareExpr,
-    CompareOp,
-    MetricSelector,
-    PromQLExpr,
-    RangeFunction,
-    RangeFunctionCompare,
-    compare_col,
-    match_labels,
-    parse_promql,
+from miles.utils.ft.controller.mini_prometheus.query import (
+    TimeSeriesSample,
+    _SeriesKey,
+    instant_query,
+    range_query,
 )
-from miles.utils.ft.controller.mini_prometheus.scraper import parse_prometheus_text
+from miles.utils.ft.controller.mini_prometheus.scrape_loop import ScrapeLoop
 from miles.utils.ft.models import MetricSample
-
-logger = logging.getLogger(__name__)
-
-_SeriesKey = tuple[str, frozenset[tuple[str, str]]]
-
-
-@dataclass
-class _TimeSeriesSample:
-    timestamp: datetime
-    value: float
 
 
 @dataclass
@@ -43,23 +25,42 @@ class MiniPrometheusConfig:
 class MiniPrometheus:
     def __init__(self, config: MiniPrometheusConfig | None = None) -> None:
         self._config = config or MiniPrometheusConfig()
-        self._series: dict[_SeriesKey, deque[_TimeSeriesSample]] = {}
-        # Cached label dicts to avoid reconstructing from frozenset on every query
+        self._series: dict[_SeriesKey, deque[TimeSeriesSample]] = {}
         self._label_maps: dict[_SeriesKey, dict[str, str]] = {}
         self._name_index: dict[str, set[_SeriesKey]] = {}
-        self._scrape_targets: dict[str, str] = {}
-        self._running = False
         self._last_eviction_time: datetime | None = None
 
+        self._scrape_loop = ScrapeLoop(
+            store=self,
+            scrape_interval_seconds=self._config.scrape_interval.total_seconds(),
+        )
+
     # -------------------------------------------------------------------
-    # Scrape target management
+    # Scrape target management (delegated to ScrapeLoop)
     # -------------------------------------------------------------------
 
     def add_scrape_target(self, target_id: str, address: str) -> None:
-        self._scrape_targets[target_id] = address
+        self._scrape_loop.add_target(target_id=target_id, address=address)
 
     def remove_scrape_target(self, target_id: str) -> None:
-        self._scrape_targets.pop(target_id, None)
+        self._scrape_loop.remove_target(target_id)
+
+    @property
+    def _scrape_targets(self) -> dict[str, str]:
+        return self._scrape_loop.targets
+
+    # -------------------------------------------------------------------
+    # Scrape lifecycle (delegated to ScrapeLoop)
+    # -------------------------------------------------------------------
+
+    async def scrape_once(self) -> None:
+        await self._scrape_loop.scrape_once()
+
+    async def start(self) -> None:
+        await self._scrape_loop.start()
+
+    async def stop(self) -> None:
+        await self._scrape_loop.stop()
 
     # -------------------------------------------------------------------
     # Data ingestion
@@ -82,58 +83,16 @@ class MiniPrometheus:
                 self._label_maps[key] = labels
                 self._name_index.setdefault(sample.name, set()).add(key)
 
-            self._series[key].append(_TimeSeriesSample(timestamp=ts, value=sample.value))
+            self._series[key].append(TimeSeriesSample(timestamp=ts, value=sample.value))
 
         self._maybe_evict()
-
-    # -------------------------------------------------------------------
-    # HTTP scraping
-    # -------------------------------------------------------------------
-
-    async def scrape_once(self) -> None:
-        import httpx  # optional heavy dependency
-
-        targets = list(self._scrape_targets.items())
-        if not targets:
-            return
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-
-            async def _scrape_target(target_id: str, address: str) -> None:
-                try:
-                    response = await client.get(f"{address}/metrics")
-                    response.raise_for_status()
-                    samples = parse_prometheus_text(response.text)
-                    self.ingest_samples(target_id=target_id, samples=samples)
-                except Exception:
-                    logger.warning(
-                        "Failed to scrape target %s at %s",
-                        target_id,
-                        address,
-                        exc_info=True,
-                    )
-
-            await asyncio.gather(*(
-                _scrape_target(target_id, address)
-                for target_id, address in targets
-            ))
-
-    async def start(self) -> None:
-        self._running = True
-        while self._running:
-            await self.scrape_once()
-            await asyncio.sleep(self._config.scrape_interval.total_seconds())
-
-    async def stop(self) -> None:
-        self._running = False
 
     # -------------------------------------------------------------------
     # Query API (MetricStoreProtocol)
     # -------------------------------------------------------------------
 
     def instant_query(self, query: str) -> pl.DataFrame:
-        expr = parse_promql(query)
-        return self._evaluate_instant(expr)
+        return instant_query(self._series, self._label_maps, self._name_index, query)
 
     def range_query(
         self,
@@ -142,136 +101,10 @@ class MiniPrometheus:
         end: datetime,
         step: timedelta,
     ) -> pl.DataFrame:
-        expr = parse_promql(query)
-        return self._evaluate_range(expr, start=start, end=end, step=step)
-
-    # -------------------------------------------------------------------
-    # Internal: shared query helpers
-    # -------------------------------------------------------------------
-
-    _EMPTY_INSTANT = pl.DataFrame({"__name__": [], "value": []})
-    _EMPTY_RANGE = pl.DataFrame({"__name__": [], "timestamp": [], "value": []})
-
-    def _iter_matching_series(
-        self, selector: MetricSelector,
-    ) -> Iterator[tuple[dict[str, str], deque[_TimeSeriesSample]]]:
-        for key in self._name_index.get(selector.name, []):
-            samples = self._series.get(key)
-            if not samples:
-                continue
-
-            labels = self._label_maps[key]
-            if not match_labels(labels, selector.matchers):
-                continue
-
-            yield labels, samples
-
-    @staticmethod
-    def _filter_by_compare(
-        df: pl.DataFrame, op: CompareOp, threshold: float,
-    ) -> pl.DataFrame:
-        if df.is_empty():
-            return df
-        return df.filter(compare_col(pl.col("value"), op, threshold))
-
-    # -------------------------------------------------------------------
-    # Internal: instant evaluation
-    # -------------------------------------------------------------------
-
-    def _evaluate_instant(self, expr: PromQLExpr) -> pl.DataFrame:
-        if isinstance(expr, MetricSelector):
-            return self._instant_selector(expr)
-
-        if isinstance(expr, CompareExpr):
-            df = self._instant_selector(expr.selector)
-            return self._filter_by_compare(df, expr.op, expr.threshold)
-
-        if isinstance(expr, RangeFunction):
-            return self._instant_range_function(expr)
-
-        if isinstance(expr, RangeFunctionCompare):
-            df = self._instant_range_function(expr.func)
-            return self._filter_by_compare(df, expr.op, expr.threshold)
-
-        raise ValueError(f"Unsupported expression type: {type(expr)}")
-
-    def _instant_selector(self, selector: MetricSelector) -> pl.DataFrame:
-        rows: list[dict] = []
-        for labels, samples in self._iter_matching_series(selector):
-            latest = samples[-1]
-            row: dict = {"__name__": selector.name, "value": latest.value}
-            row.update(labels)
-            rows.append(row)
-
-        if not rows:
-            return self._EMPTY_INSTANT
-        return pl.DataFrame(rows)
-
-    def _instant_range_function(self, func: RangeFunction) -> pl.DataFrame:
-        now = datetime.now(timezone.utc)
-        window_start = now - func.duration
-        rows: list[dict] = []
-
-        for labels, samples in self._iter_matching_series(func.selector):
-            window_samples = [s for s in samples if s.timestamp >= window_start]
-            if not window_samples:
-                continue
-
-            value = _apply_range_function(func.func_name, window_samples)
-            row: dict = {"__name__": func.selector.name, "value": value}
-            row.update(labels)
-            rows.append(row)
-
-        if not rows:
-            return self._EMPTY_INSTANT
-        return pl.DataFrame(rows)
-
-    # -------------------------------------------------------------------
-    # Internal: range evaluation
-    # -------------------------------------------------------------------
-
-    def _evaluate_range(
-        self,
-        expr: PromQLExpr,
-        start: datetime,
-        end: datetime,
-        step: timedelta,
-    ) -> pl.DataFrame:
-        if isinstance(expr, MetricSelector):
-            return self._range_selector(expr, start=start, end=end, step=step)
-
-        if isinstance(expr, CompareExpr):
-            df = self._range_selector(expr.selector, start=start, end=end, step=step)
-            return self._filter_by_compare(df, expr.op, expr.threshold)
-
-        raise ValueError(
-            f"range_query not yet supported for expression type: {type(expr)}"
+        return range_query(
+            self._series, self._label_maps, self._name_index,
+            query, start=start, end=end, step=step,
         )
-
-    def _range_selector(
-        self,
-        selector: MetricSelector,
-        start: datetime,
-        end: datetime,
-        step: timedelta,
-    ) -> pl.DataFrame:
-        rows: list[dict] = []
-        for labels, samples in self._iter_matching_series(selector):
-            for sample in samples:
-                if sample.timestamp > end:
-                    break
-                if sample.timestamp >= start:
-                    row: dict = {
-                        "__name__": selector.name,
-                        "timestamp": sample.timestamp,
-                        "value": sample.value,
-                    }
-                    row.update(labels)
-                    rows.append(row)
-
-        if not rows:
-            return self._EMPTY_RANGE
-        return pl.DataFrame(rows)
 
     # -------------------------------------------------------------------
     # Internal: eviction
@@ -307,37 +140,3 @@ class MiniPrometheus:
                 index_set.discard(key)
                 if not index_set:
                     del self._name_index[metric_name]
-
-
-# ---------------------------------------------------------------------------
-# Range function evaluation
-# ---------------------------------------------------------------------------
-
-
-def _apply_range_function(
-    func_name: str,
-    samples: list[_TimeSeriesSample],
-) -> float:
-    if func_name == "count_over_time":
-        return float(len(samples))
-
-    if func_name == "changes":
-        if len(samples) < 2:
-            return 0.0
-        changes = sum(
-            1
-            for i in range(1, len(samples))
-            if samples[i].value != samples[i - 1].value
-        )
-        return float(changes)
-
-    if func_name == "min_over_time":
-        return min(s.value for s in samples)
-
-    if func_name == "max_over_time":
-        return max(s.value for s in samples)
-
-    if func_name == "avg_over_time":
-        return sum(s.value for s in samples) / len(samples)
-
-    raise ValueError(f"Unknown range function: {func_name}")
