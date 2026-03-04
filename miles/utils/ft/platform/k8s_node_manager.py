@@ -80,3 +80,14 @@ class K8sNodeManager:
             len(names), elapsed,
         )
         return names
+
+
+def query_bad_nodes() -> list[str]:
+    """Synchronous helper: query K8s for bad-node names. Returns [] on failure."""
+    import asyncio
+
+    try:
+        return asyncio.run(K8sNodeManager().get_bad_nodes())
+    except Exception:
+        logger.warning("Failed to query K8s bad nodes", exc_info=True)
+        return []
