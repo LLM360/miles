@@ -1,5 +1,6 @@
 """Unit tests for FtMegatronAgent."""
 
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -9,7 +10,7 @@ from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
 
 
 @pytest.fixture()
-def agent() -> FtMegatronAgent:
+def agent() -> Iterator[FtMegatronAgent]:
     agent = FtMegatronAgent(rank=0, world_size=4)
     yield agent
     agent.shutdown()
