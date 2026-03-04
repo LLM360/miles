@@ -118,6 +118,9 @@ RUN git clone https://github.com/radixark/miles.git /root/miles && \
 
 # ====================================== FT diagnostics tools ============================================
 
+# ethtool: optional network diagnostics utility
+RUN apt-get update && apt-get install -y --no-install-recommends ethtool && rm -rf /var/lib/apt/lists/*
+
 # py-spy: stack trace collection for hang diagnosis (requires SYS_PTRACE at runtime)
 RUN pip install --no-cache-dir py-spy==0.4.1
 
