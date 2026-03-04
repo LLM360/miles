@@ -1,7 +1,6 @@
 import polars as pl
 
 from miles.utils.ft.metric_names import (
-    DCGM_FI_DEV_GPU_TEMP,
     GPU_AVAILABLE,
     NODE_FILESYSTEM_AVAIL_BYTES,
     NODE_NETWORK_UP,
