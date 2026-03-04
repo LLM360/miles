@@ -11,7 +11,6 @@ from miles.utils.ft.models import DiagnosticResult, MetricSample
 logger = logging.getLogger(__name__)
 
 _MetricKey = tuple[str, frozenset[str]]
-_CounterValueKey = tuple[str, tuple[tuple[str, str], ...]]
 
 
 class FtNodeAgent:
@@ -32,7 +31,6 @@ class FtNodeAgent:
         self._registry = CollectorRegistry()
         self._gauges: dict[_MetricKey, Gauge] = {}
         self._counters: dict[_MetricKey, Counter] = {}
-        self._counter_last_values: dict[_CounterValueKey, float] = {}
 
         httpd, _thread = start_http_server(port=0, registry=self._registry)
         self._httpd = httpd
@@ -150,8 +148,8 @@ class FtNodeAgent:
             gauge.set(sample.value)
 
     def _update_counter(self, sample: MetricSample, label_keys: frozenset[str]) -> None:
-        metric_key: _MetricKey = (sample.name, label_keys)
-        counter = self._counters.get(metric_key)
+        key: _MetricKey = (sample.name, label_keys)
+        counter = self._counters.get(key)
         if counter is None:
             sorted_keys = sorted(label_keys)
             base_name = sample.name.removesuffix("_total")
@@ -161,14 +159,10 @@ class FtNodeAgent:
                 labelnames=sorted_keys,
                 registry=self._registry,
             )
-            self._counters[metric_key] = counter
+            self._counters[key] = counter
 
-        value_key: _CounterValueKey = (sample.name, tuple(sorted(sample.labels.items())))
-        last = self._counter_last_values.get(value_key, 0.0)
-        delta = sample.value - last
-        if delta > 0:
+        if sample.value > 0:
             if sample.labels:
-                counter.labels(**sample.labels).inc(delta)
+                counter.labels(**sample.labels).inc(sample.value)
             else:
-                counter.inc(delta)
-            self._counter_last_values[value_key] = sample.value
+                counter.inc(sample.value)
