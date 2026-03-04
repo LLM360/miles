@@ -106,10 +106,10 @@ class TestHighConfidenceHardwareDetector:
 
     def test_majority_nic_down(self) -> None:
         store = make_fake_metric_store()
-        inject_nic_down(store, node_id="node-0", interface="ib0")
-        inject_nic_down(store, node_id="node-0", interface="ib1")
-        inject_nic_down(store, node_id="node-0", interface="ib2")
-        inject_nic_up(store, node_id="node-0", interface="ib3")
+        inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_down(store, node_id="node-0", device="ib1")
+        inject_nic_down(store, node_id="node-0", device="ib2")
+        inject_nic_up(store, node_id="node-0", device="ib3")
         detector = HighConfidenceHardwareDetector()
 
         decision = detector.evaluate(store, make_fake_mini_wandb(), _EMPTY_RANK_PLACEMENT)
@@ -120,10 +120,10 @@ class TestHighConfidenceHardwareDetector:
 
     def test_single_nic_down_ignored(self) -> None:
         store = make_fake_metric_store()
-        inject_nic_down(store, node_id="node-0", interface="ib0")
-        inject_nic_up(store, node_id="node-0", interface="ib1")
-        inject_nic_up(store, node_id="node-0", interface="ib2")
-        inject_nic_up(store, node_id="node-0", interface="ib3")
+        inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-0", device="ib1")
+        inject_nic_up(store, node_id="node-0", device="ib2")
+        inject_nic_up(store, node_id="node-0", device="ib3")
         detector = HighConfidenceHardwareDetector()
 
         decision = detector.evaluate(store, make_fake_mini_wandb(), _EMPTY_RANK_PLACEMENT)

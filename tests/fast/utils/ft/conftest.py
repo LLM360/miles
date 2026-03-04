@@ -84,27 +84,27 @@ def inject_critical_xid(
 def inject_disk_fault(
     store: MiniPrometheus,
     node_id: str = "node-0",
-    mount: str = "/data",
+    mountpoint: str = "/data",
     available_bytes: float = 0.0,
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_DISK_AVAILABLE_BYTES, labels={"mount": mount}, value=available_bytes),
+        MetricSample(name=NODE_DISK_AVAILABLE_BYTES, labels={"mountpoint": mountpoint}, value=available_bytes),
     ])
 
 
 def inject_nic_down(
-    store: MiniPrometheus, node_id: str = "node-0", interface: str = "ib0",
+    store: MiniPrometheus, node_id: str = "node-0", device: str = "ib0",
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_NIC_UP, labels={"interface": interface}, value=0.0),
+        MetricSample(name=NODE_NIC_UP, labels={"device": device}, value=0.0),
     ])
 
 
 def inject_nic_up(
-    store: MiniPrometheus, node_id: str = "node-0", interface: str = "ib0",
+    store: MiniPrometheus, node_id: str = "node-0", device: str = "ib0",
 ) -> None:
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_NIC_UP, labels={"interface": interface}, value=1.0),
+        MetricSample(name=NODE_NIC_UP, labels={"device": device}, value=1.0),
     ])
 
 
@@ -139,11 +139,11 @@ def inject_healthy_node(
 
     for i in range(num_nics):
         store.ingest_samples(target_id=node_id, samples=[
-            MetricSample(name=NODE_NIC_UP, labels={"interface": f"ib{i}"}, value=1.0),
+            MetricSample(name=NODE_NIC_UP, labels={"device": f"ib{i}"}, value=1.0),
         ])
 
     store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_DISK_AVAILABLE_BYTES, labels={"mount": "/data"}, value=500e9),
+        MetricSample(name=NODE_DISK_AVAILABLE_BYTES, labels={"mountpoint": "/data"}, value=500e9),
     ])
 
 

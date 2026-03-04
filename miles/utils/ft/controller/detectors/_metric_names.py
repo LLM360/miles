@@ -1,13 +1,12 @@
-# NodeAgent hardware metrics (scraped from exporter, prefixed with miles_ft_node_)
-NODE_GPU_AVAILABLE = "miles_ft_node_gpu_available"
-NODE_XID_CODE_RECENT = "miles_ft_node_xid_code_recent"
-NODE_DISK_AVAILABLE_BYTES = "miles_ft_node_disk_available_bytes"
-NODE_NIC_UP = "miles_ft_node_nic_up"
-NODE_GPU_TEMPERATURE = "miles_ft_node_gpu_temperature_celsius"
-
-# Controller synthetic metrics (injected directly, no prefix)
-TRAINING_JOB_STATUS = "training_job_status"
-
-# MegatronAgent heartbeat metrics (scraped from exporter, no NodeAgent prefix)
-TRAINING_ITERATION = "training_iteration"
-TRAINING_PHASE = "training_phase"
+# Re-export metric name constants used by detectors.
+# Canonical definitions live in miles.utils.ft.metric_names.
+from miles.utils.ft.metric_names import (
+    DCGM_FI_DEV_GPU_TEMP as NODE_GPU_TEMPERATURE,
+    GPU_AVAILABLE as NODE_GPU_AVAILABLE,
+    NODE_FILESYSTEM_AVAIL_BYTES as NODE_DISK_AVAILABLE_BYTES,
+    NODE_NETWORK_UP as NODE_NIC_UP,
+    TRAINING_ITERATION,
+    TRAINING_JOB_STATUS,
+    TRAINING_PHASE,
+    XID_CODE_RECENT as NODE_XID_CODE_RECENT,
+)

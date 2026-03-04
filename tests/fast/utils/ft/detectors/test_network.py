@@ -17,13 +17,13 @@ def _make_store() -> MiniPrometheus:
 def _inject_nic_at_time(
     store: MiniPrometheus,
     node_id: str,
-    interface: str,
+    device: str,
     value: float,
     timestamp: datetime,
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
-        samples=[MetricSample(name=NODE_NIC_UP, labels={"interface": interface}, value=value)],
+        samples=[MetricSample(name=NODE_NIC_UP, labels={"device": device}, value=value)],
         timestamp=timestamp,
     )
 
