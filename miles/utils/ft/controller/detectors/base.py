@@ -18,15 +18,17 @@ class DetectorContext:
 
 
 class BaseFaultDetector(ABC):
+    """Base class for fault detectors.
+
+    Detectors must be **stateless**: ``evaluate()`` must derive its answer
+    entirely from the data available in ``DetectorContext`` (metric stores,
+    job status, rank placement).  No mutable instance state should be
+    accumulated across calls.  Constructor parameters (thresholds, config)
+    are fine because they are immutable after init.
+    """
+
     @abstractmethod
     def evaluate(self, ctx: DetectorContext) -> Decision: ...
-
-    def on_new_run(self, run_id: str) -> None:
-        """Called when a new training run is registered.
-
-        Subclasses should override to reset stateful internal state
-        that should not carry over between runs.
-        """
 
 
 def _get_non_finite_loss(mini_wandb: TrainingMetricStoreProtocol) -> float | None:

@@ -36,6 +36,7 @@ class MiniWandb:
         rank: int,
         step: int,
         metrics: dict[str, float],
+        receive_time: datetime | None = None,
     ) -> None:
         if self._active_run_id is not None and run_id != self._active_run_id:
             logger.debug(
@@ -47,7 +48,7 @@ class MiniWandb:
 
         record = _StepRecord(
             step=step,
-            receive_time=datetime.now(timezone.utc),
+            receive_time=receive_time or datetime.now(timezone.utc),
             metrics=metrics,
         )
 
