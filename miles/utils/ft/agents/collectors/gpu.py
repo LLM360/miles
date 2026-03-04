@@ -4,6 +4,7 @@ import asyncio
 import logging
 from types import ModuleType
 
+import miles.utils.ft.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models import CollectorOutput, MetricSample
 
@@ -52,10 +53,10 @@ class GpuCollector(BaseCollector):
                 handle = pynvml.nvmlDeviceGetHandleByIndex(index)
             except Exception:
                 logger.warning("Cannot get handle for GPU %d", index)
-                samples.append(MetricSample(name="gpu_available", labels=gpu_label, value=0.0))
+                samples.append(MetricSample(name=mn.GPU_AVAILABLE, labels=gpu_label, value=0.0))
                 continue
 
-            samples.append(MetricSample(name="gpu_available", labels=gpu_label, value=1.0))
+            samples.append(MetricSample(name=mn.GPU_AVAILABLE, labels=gpu_label, value=1.0))
             self._collect_temperature(pynvml, handle, gpu_label, samples)
             self._collect_row_remap(pynvml, handle, gpu_label, samples)
             self._collect_pcie_bandwidth(pynvml, handle, gpu_label, samples)
@@ -72,7 +73,7 @@ class GpuCollector(BaseCollector):
     ) -> None:
         try:
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-            samples.append(MetricSample(name="gpu_temperature_celsius", labels=gpu_label, value=float(temp)))
+            samples.append(MetricSample(name=mn.DCGM_FI_DEV_GPU_TEMP, labels=gpu_label, value=float(temp)))
         except Exception:
             logger.warning("Failed to get temperature for GPU %s", gpu_label["gpu"])
 
@@ -85,8 +86,8 @@ class GpuCollector(BaseCollector):
     ) -> None:
         try:
             _correctable, _uncorrectable, pending, failure = pynvml.nvmlDeviceGetRemappedRows(handle)
-            samples.append(MetricSample(name="gpu_row_remap_pending", labels=gpu_label, value=float(pending)))
-            samples.append(MetricSample(name="gpu_row_remap_failure", labels=gpu_label, value=float(failure)))
+            samples.append(MetricSample(name=mn.DCGM_FI_DEV_ROW_REMAP_PENDING, labels=gpu_label, value=float(pending)))
+            samples.append(MetricSample(name=mn.DCGM_FI_DEV_ROW_REMAP_FAILURE, labels=gpu_label, value=float(failure)))
         except Exception:
             logger.warning("Failed to get row remap for GPU %s", gpu_label["gpu"])
 
@@ -101,8 +102,8 @@ class GpuCollector(BaseCollector):
             throughput_kb_per_s = pynvml.nvmlDeviceGetPcieThroughput(
                 handle, pynvml.NVML_PCIE_UTIL_TX_BYTES,
             )
-            gbps = throughput_kb_per_s / (1024.0 * 1024.0)
-            samples.append(MetricSample(name="gpu_pcie_bandwidth_gbs", labels=gpu_label, value=gbps))
+            bytes_per_s = throughput_kb_per_s * 1024
+            samples.append(MetricSample(name=mn.DCGM_FI_DEV_PCIE_TX_THROUGHPUT, labels=gpu_label, value=float(bytes_per_s)))
         except Exception:
             logger.warning("Failed to get PCIe bandwidth for GPU %s", gpu_label["gpu"])
 
@@ -115,6 +116,6 @@ class GpuCollector(BaseCollector):
     ) -> None:
         try:
             rates = pynvml.nvmlDeviceGetUtilizationRates(handle)
-            samples.append(MetricSample(name="gpu_tensorcore_utilization", labels=gpu_label, value=float(rates.gpu)))
+            samples.append(MetricSample(name=mn.DCGM_FI_DEV_GPU_UTIL, labels=gpu_label, value=float(rates.gpu)))
         except Exception:
             logger.warning("Failed to get utilization for GPU %s", gpu_label["gpu"])

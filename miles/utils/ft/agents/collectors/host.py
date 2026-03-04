@@ -9,6 +9,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
+import miles.utils.ft.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models import CollectorOutput, MetricSample
 
@@ -75,19 +76,19 @@ class HostCollector(BaseCollector):
 
         for code in sorted(distinct_codes):
             samples.append(MetricSample(
-                name="xid_code_recent",
+                name=mn.XID_CODE_RECENT,
                 labels={"xid": str(code)},
                 value=1.0,
             ))
 
         samples.append(MetricSample(
-            name="xid_count_recent",
+            name=mn.XID_COUNT_RECENT,
             labels={},
             value=float(len(self._xid_events)),
         ))
 
         samples.append(MetricSample(
-            name="kernel_event_count",
+            name=mn.KERNEL_EVENT_COUNT,
             labels={},
             value=float(kernel_event_count),
         ))
@@ -108,8 +109,8 @@ class HostCollector(BaseCollector):
                 stat = os.statvfs(mount)
                 available_bytes = stat.f_bavail * stat.f_frsize
                 samples.append(MetricSample(
-                    name="disk_available_bytes",
-                    labels={"mount": str(mount)},
+                    name=mn.NODE_FILESYSTEM_AVAIL_BYTES,
+                    labels={"mountpoint": str(mount)},
                     value=float(available_bytes),
                 ))
             except Exception:
@@ -130,9 +131,9 @@ class HostCollector(BaseCollector):
                 if len(fields) >= 10:
                     io_time_ms = int(fields[9])
                     samples.append(MetricSample(
-                        name="disk_io_time_ms",
+                        name=mn.NODE_DISK_IO_TIME_SECONDS_TOTAL,
                         labels={"device": device_dir.name},
-                        value=float(io_time_ms),
+                        value=io_time_ms / 1000.0,
                     ))
             except Exception:
                 logger.warning("Failed to read disk stat for %s", device_dir.name)

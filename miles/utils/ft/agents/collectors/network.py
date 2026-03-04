@@ -5,6 +5,7 @@ import fnmatch
 import logging
 from pathlib import Path
 
+import miles.utils.ft.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models import CollectorOutput, MetricSample
 
@@ -13,7 +14,12 @@ logger = logging.getLogger(__name__)
 _DEFAULT_INCLUDE_PATTERNS = ["ib*", "eth*", "en*"]
 _DEFAULT_EXCLUDE_PATTERNS = ["lo", "docker*", "veth*"]
 
-_STAT_FILES = ["rx_errors", "tx_errors", "rx_dropped", "tx_dropped"]
+_STAT_FILE_TO_METRIC: dict[str, str] = {
+    "rx_errors": mn.NODE_NETWORK_RECEIVE_ERRS_TOTAL,
+    "tx_errors": mn.NODE_NETWORK_TRANSMIT_ERRS_TOTAL,
+    "rx_dropped": mn.NODE_NETWORK_RECEIVE_DROP_TOTAL,
+    "tx_dropped": mn.NODE_NETWORK_TRANSMIT_DROP_TOTAL,
+}
 
 
 class NetworkCollector(BaseCollector):
@@ -45,7 +51,7 @@ class NetworkCollector(BaseCollector):
             if not self._should_collect(iface_name):
                 continue
 
-            iface_label = {"interface": iface_name}
+            iface_label = {"device": iface_name}
             self._collect_operstate(iface_dir, iface_label, samples)
             self._collect_statistics(iface_dir, iface_label, samples)
 
@@ -72,9 +78,9 @@ class NetworkCollector(BaseCollector):
         try:
             state = operstate_file.read_text().strip().lower()
             value = 1.0 if state == "up" else 0.0
-            samples.append(MetricSample(name="nic_up", labels=iface_label, value=value))
+            samples.append(MetricSample(name=mn.NODE_NETWORK_UP, labels=iface_label, value=value))
         except Exception:
-            logger.warning("Failed to read operstate for %s", iface_label["interface"])
+            logger.warning("Failed to read operstate for %s", iface_label["device"])
 
     @staticmethod
     def _collect_statistics(
@@ -86,15 +92,14 @@ class NetworkCollector(BaseCollector):
         if not stats_dir.exists():
             return
 
-        for stat_name in _STAT_FILES:
-            stat_file = stats_dir / stat_name
+        for stat_filename, metric_name in _STAT_FILE_TO_METRIC.items():
+            stat_file = stats_dir / stat_filename
             try:
                 value = int(stat_file.read_text().strip())
-                metric_name = f"nic_{stat_name}"
                 samples.append(MetricSample(name=metric_name, labels=iface_label, value=float(value)))
             except Exception:
                 logger.warning(
                     "Failed to read %s for %s",
-                    stat_name,
-                    iface_label["interface"],
+                    stat_filename,
+                    iface_label["device"],
                 )

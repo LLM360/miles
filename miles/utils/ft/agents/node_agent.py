@@ -121,15 +121,14 @@ class FtNodeAgent:
 
     def _update_exporter(self, metrics: list[MetricSample]) -> None:
         for sample in metrics:
-            gauge_name = f"miles_ft_node_{sample.name}"
             label_keys = frozenset(sample.labels.keys())
-            key: _GaugeKey = (gauge_name, label_keys)
+            key: _GaugeKey = (sample.name, label_keys)
 
             gauge = self._gauges.get(key)
             if gauge is None:
                 sorted_keys = sorted(label_keys)
                 gauge = Gauge(
-                    gauge_name,
+                    sample.name,
                     f"FT node metric: {sample.name}",
                     labelnames=sorted_keys,
                     registry=self._registry,
