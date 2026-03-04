@@ -45,6 +45,7 @@ class FtController:
         self._tick_interval = tick_interval
 
         self._active_run_id: str | None = None
+        self._expected_world_size: int | None = None
         self._rank_placement: dict[int, str] = {}
         self._shutting_down: bool = False
         self._tick_count: int = 0
@@ -104,11 +105,13 @@ class FtController:
                 run_id, self._active_run_id,
             )
             self._active_run_id = run_id
+            self._expected_world_size = None
             self._mini_wandb.set_active_run_id(run_id)
             self._mini_wandb.clear()
             self._remove_old_scrape_targets()
             self._rank_placement = {}
 
+        self._expected_world_size = world_size
         self._rank_placement[rank] = node_id
         logger.info(
             "rank_registered run_id=%s rank=%d world_size=%d node_id=%s",
@@ -133,6 +136,15 @@ class FtController:
 
     async def _tick(self) -> None:
         self._tick_count += 1
+
+        if (
+            self._expected_world_size is not None
+            and len(self._rank_placement) < self._expected_world_size
+        ):
+            logger.warning(
+                "incomplete_rank_registration registered=%d expected=%d run_id=%s",
+                len(self._rank_placement), self._expected_world_size, self._active_run_id,
+            )
 
         await self._inject_training_job_status()
 

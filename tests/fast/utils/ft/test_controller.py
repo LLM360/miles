@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 
@@ -196,12 +197,9 @@ class TestRegisterRank:
         assert "rank-2" in harness.metric_store._scrape_targets
 
     @pytest.mark.asyncio
-    async def test_partial_registration_tick_still_runs(self) -> None:
-        """world_size=4 but only 3 ranks register; tick runs normally.
-
-        Controller currently does not track expected world_size,
-        so partial registration is silently accepted. A future
-        detector (heartbeat freshness) should catch this.
+    async def test_partial_registration_tick_still_runs(self, caplog: pytest.LogCaptureFixture) -> None:
+        """world_size=4 but only 3 ranks register; tick runs normally
+        but emits a WARNING about incomplete registration.
         """
         harness = make_test_controller()
 
@@ -213,9 +211,53 @@ class TestRegisterRank:
 
         assert len(harness.controller._rank_placement) == 3
         assert 3 not in harness.controller._rank_placement
+        assert harness.controller._expected_world_size == 4
 
-        await harness.controller._tick()
+        with caplog.at_level(logging.WARNING):
+            await harness.controller._tick()
+
         assert harness.controller._tick_count == 1
+        assert "incomplete_rank_registration" in caplog.text
+        assert "registered=3" in caplog.text
+        assert "expected=4" in caplog.text
+
+
+    @pytest.mark.asyncio
+    async def test_full_registration_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """All 4/4 ranks registered — tick should not emit WARNING."""
+        harness = make_test_controller()
+
+        for rank in range(4):
+            await harness.controller.register_rank(
+                run_id="run-1", rank=rank, world_size=4,
+                node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
+            )
+
+        assert harness.controller._expected_world_size == 4
+        assert len(harness.controller._rank_placement) == 4
+
+        with caplog.at_level(logging.WARNING):
+            await harness.controller._tick()
+
+        assert "incomplete_rank_registration" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_expected_world_size_reset_on_new_run(self) -> None:
+        """When a new run_id arrives, _expected_world_size is reset."""
+        harness = make_test_controller()
+
+        await harness.controller.register_rank(
+            run_id="run-1", rank=0, world_size=8,
+            node_id="node-0", exporter_address="http://node-0:9090",
+        )
+        assert harness.controller._expected_world_size == 8
+
+        await harness.controller.register_rank(
+            run_id="run-2", rank=0, world_size=4,
+            node_id="node-0", exporter_address="http://node-0:9090",
+        )
+        assert harness.controller._expected_world_size == 4
+        assert harness.controller._rank_placement == {0: "node-0"}
 
 
 class TestShutdown:
