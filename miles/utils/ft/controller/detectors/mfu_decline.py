@@ -21,12 +21,14 @@ class MfuDeclineDetector(BaseFaultDetector):
         consecutive_steps: int = _DEFAULT_CONSECUTIVE_STEPS,
         temperature_delta_threshold: float = _DEFAULT_TEMPERATURE_DELTA_THRESHOLD,
         decline_timeout_minutes: float = _DEFAULT_DECLINE_TIMEOUT_MINUTES,
+        baseline_steps: int = _DEFAULT_BASELINE_STEPS,
     ) -> None:
         self._mfu_baseline = mfu_baseline
         self._mfu_threshold_ratio = mfu_threshold_ratio
         self._consecutive_steps = consecutive_steps
         self._temperature_delta_threshold = temperature_delta_threshold
         self._decline_timeout_minutes = decline_timeout_minutes
+        self._baseline_steps = baseline_steps
 
         self._dynamic_baseline: float | None = None
         self._decline_start_time: datetime | None = None
@@ -87,7 +89,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         if self._dynamic_baseline is not None:
             return self._dynamic_baseline
 
-        baseline_data = mini_wandb.query_last_n_steps("mfu", rank=0, last_n=_DEFAULT_BASELINE_STEPS)
+        baseline_data = mini_wandb.query_last_n_steps("mfu", rank=0, last_n=self._baseline_steps)
         if not baseline_data:
             return 0.0
 

@@ -8,15 +8,15 @@ from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtoc
 from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import ActionType, Decision
 
-_JOB_STATUS_RUNNING = 1
-_PHASE_CHECKPOINT_SAVING = 2.0
+_JOB_STATUS_RUNNING: int = 1
+_PHASE_CHECKPOINT_SAVING: float = 2.0
 
 
 class HangDetector(BaseFaultDetector):
     def __init__(
         self,
-        training_timeout_minutes: float = 10.0,
-        checkpoint_saving_timeout_minutes: float = 30.0,
+        training_timeout_minutes: int = 10,
+        checkpoint_saving_timeout_minutes: int = 30,
     ) -> None:
         self._training_timeout_minutes = training_timeout_minutes
         self._checkpoint_saving_timeout_minutes = checkpoint_saving_timeout_minutes
@@ -67,7 +67,7 @@ class HangDetector(BaseFaultDetector):
         return False
 
     def _get_iteration_changes(
-        self, metric_store: MetricStoreProtocol, window_minutes: float,
+        self, metric_store: MetricStoreProtocol, window_minutes: int,
     ) -> float | None:
         query = f'changes({TRAINING_ITERATION}{{rank="0"}}[{int(window_minutes)}m])'
         df = metric_store.instant_query(query)

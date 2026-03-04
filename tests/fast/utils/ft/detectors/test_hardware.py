@@ -55,6 +55,8 @@ class TestHighConfidenceHardwareDetector:
         decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert "node-0" in decision.bad_node_ids
+        assert "XID 62" in decision.reason
 
     def test_critical_xid_64(self) -> None:
         store = make_fake_metric_store()
@@ -64,6 +66,8 @@ class TestHighConfidenceHardwareDetector:
         decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert "node-0" in decision.bad_node_ids
+        assert "XID 64" in decision.reason
 
     def test_critical_xid_79(self) -> None:
         store = make_fake_metric_store()
@@ -73,6 +77,8 @@ class TestHighConfidenceHardwareDetector:
         decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
+        assert "node-0" in decision.bad_node_ids
+        assert "XID 79" in decision.reason
 
     def test_non_critical_xid_ignored(self) -> None:
         store = make_fake_metric_store()
@@ -116,6 +122,19 @@ class TestHighConfidenceHardwareDetector:
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-0" in decision.bad_node_ids
         assert "majority NIC down" in decision.reason
+
+    def test_half_nic_down_ignored(self) -> None:
+        """Exactly 50% NICs down does not trigger (strict majority required)."""
+        store = make_fake_metric_store()
+        inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_down(store, node_id="node-0", device="ib1")
+        inject_nic_up(store, node_id="node-0", device="ib2")
+        inject_nic_up(store, node_id="node-0", device="ib3")
+        detector = HighConfidenceHardwareDetector()
+
+        decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
+
+        assert decision.action == ActionType.NONE
 
     def test_single_nic_down_ignored(self) -> None:
         store = make_fake_metric_store()

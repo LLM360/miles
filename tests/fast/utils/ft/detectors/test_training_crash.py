@@ -86,3 +86,11 @@ class TestTrainingCrashDetector:
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert decision.trigger == "crash"
+
+    def test_empty_metric_store(self) -> None:
+        store = make_fake_metric_store()
+        detector = TrainingCrashDetector()
+
+        decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
+
+        assert decision.action == ActionType.NONE

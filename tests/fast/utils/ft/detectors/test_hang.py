@@ -50,7 +50,7 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_iteration(store, value=110.0, timestamp=now - timedelta(minutes=1))
-        detector = HangDetector(training_timeout_minutes=10.0)
+        detector = HangDetector(training_timeout_minutes=10)
 
         decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
 
@@ -62,7 +62,7 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=1))
-        detector = HangDetector(training_timeout_minutes=10.0)
+        detector = HangDetector(training_timeout_minutes=10)
 
         decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
 
@@ -79,14 +79,16 @@ class TestHangDetector:
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=1))
         detector = HangDetector(
-            training_timeout_minutes=10.0,
-            checkpoint_saving_timeout_minutes=30.0,
+            training_timeout_minutes=10,
+            checkpoint_saving_timeout_minutes=30,
         )
 
         decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
 
         # Iteration constant within 30min window → hang detected even during checkpoint saving
         assert decision.action == ActionType.ENTER_RECOVERY
+        assert decision.trigger == "hang"
+        assert "checkpoint_saving" in decision.reason
 
     def test_checkpoint_saving_not_hung(self) -> None:
         """Checkpoint saving: iteration changed within 30min window → not hung."""
@@ -97,8 +99,8 @@ class TestHangDetector:
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=20))
         _inject_iteration(store, value=101.0, timestamp=now - timedelta(minutes=15))
         detector = HangDetector(
-            training_timeout_minutes=10.0,
-            checkpoint_saving_timeout_minutes=30.0,
+            training_timeout_minutes=10,
+            checkpoint_saving_timeout_minutes=30,
         )
 
         decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)
@@ -114,8 +116,8 @@ class TestHangDetector:
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=25))
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=10))
         detector = HangDetector(
-            training_timeout_minutes=10.0,
-            checkpoint_saving_timeout_minutes=30.0,
+            training_timeout_minutes=10,
+            checkpoint_saving_timeout_minutes=30,
         )
 
         decision = detector.evaluate(store, make_fake_mini_wandb(), EMPTY_RANK_PLACEMENT)

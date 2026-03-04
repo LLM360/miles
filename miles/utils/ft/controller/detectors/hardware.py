@@ -114,6 +114,6 @@ class HighConfidenceHardwareDetector(BaseFaultDetector):
             node_stats[node_id] = (down_count, total_count)
 
         for node_id, (down_count, total_count) in node_stats.items():
-            if total_count > 0 and down_count >= total_count / 2:
+            if total_count > 0 and down_count > total_count / 2:
                 bad_nodes.add(node_id)
                 reasons.append(f"majority NIC down on {node_id} ({down_count}/{total_count})")
