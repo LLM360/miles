@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
+from miles.utils.ft.controller.detectors import build_detector_chain
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.mini_prometheus.protocol import (
     MetricStoreProtocol,
@@ -92,6 +93,10 @@ def _build_notifier(platform_mode: str) -> NotificationProtocol | None:
     if platform_mode == "stub":
         return StubNotifier()
 
+    logger.warning(
+        "no_notifier_configured platform_mode=%s — fault alerts will only appear in logs",
+        platform_mode,
+    )
     return None
 
 
@@ -150,7 +155,7 @@ def main(
         training_job=training_job,
         metric_store=metric_store,
         mini_wandb=mini_wandb,
-        detectors=[],
+        detectors=build_detector_chain(),
         notifier=notifier,
         tick_interval=tick_interval,
         controller_exporter=controller_exporter,
