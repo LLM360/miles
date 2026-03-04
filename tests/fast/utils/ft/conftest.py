@@ -311,11 +311,16 @@ def make_test_controller(
     notifier: FakeNotifier | None = FakeNotifier,
     tick_interval: float = 0.01,
     controller_exporter: ControllerExporter | None = None,
+    diagnostic_scheduler: object | None = None,
 ) -> ControllerTestHarness:
     """Construct a Controller and all its dependencies for testing.
 
     ``notifier`` defaults to a fresh FakeNotifier instance. Pass ``None``
     explicitly to create a Controller without a notifier.
+
+    ``diagnostic_scheduler`` defaults to a real DiagnosticScheduler with
+    empty pipeline (same behavior as old stub). Pass a FakeDiagnosticScheduler
+    for recovery-specific tests.
     """
     real_notifier: FakeNotifier | None = FakeNotifier() if notifier is FakeNotifier else notifier
     node_manager = FakeNodeManager()
@@ -334,6 +339,7 @@ def make_test_controller(
         tick_interval=tick_interval,
         controller_exporter=controller_exporter,
         scrape_target_manager=metric_store,
+        diagnostic_scheduler=diagnostic_scheduler,
     )
     return ControllerTestHarness(
         controller=controller,

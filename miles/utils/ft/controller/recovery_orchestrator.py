@@ -8,11 +8,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.controller.detectors._metric_names import (
-    NODE_DISK_AVAILABLE_BYTES,
-    NODE_GPU_AVAILABLE,
-    NODE_NIC_UP,
-    NODE_XID_CODE_RECENT,
+from miles.utils.ft.metric_names import (
+    GPU_AVAILABLE as NODE_GPU_AVAILABLE,
+    NODE_FILESYSTEM_AVAIL_BYTES as NODE_DISK_AVAILABLE_BYTES,
+    NODE_NETWORK_UP as NODE_NIC_UP,
+    XID_CODE_RECENT as NODE_XID_CODE_RECENT,
 )
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb

@@ -6,9 +6,7 @@ from typing import Any
 
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.diagnostic_scheduler_stub import (
-    StubDiagnosticScheduler,
-)
+from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.mini_prometheus.protocol import (
     MetricStoreProtocol,
     ScrapeTargetManagerProtocol,
@@ -59,11 +57,11 @@ class FtController:
         self._tick_interval = tick_interval
         self._controller_exporter = controller_exporter
         self._scrape_target_manager = scrape_target_manager
-        self._diagnostic_scheduler: DiagnosticSchedulerProtocol = (
-            diagnostic_scheduler or StubDiagnosticScheduler()
-        )
-
         self._agents: dict[str, Any] = {}
+
+        self._diagnostic_scheduler: DiagnosticSchedulerProtocol = (
+            diagnostic_scheduler or DiagnosticScheduler(agents=self._agents)
+        )
 
         self._active_run_id: str | None = None
         self._expected_world_size: int | None = None
