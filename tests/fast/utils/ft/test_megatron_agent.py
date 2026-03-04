@@ -146,3 +146,83 @@ class TestFtMegatronAgentStep:
             finally:
                 agent._httpd.shutdown()
                 agent._httpd.server_close()
+
+
+class TestFtMegatronAgentRegisterRank:
+    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    def test_register_rank_calls_controller(
+        self, mock_get_handle: MagicMock
+    ) -> None:
+        mock_controller = MagicMock()
+        mock_ray_get = MagicMock()
+        mock_get_handle.return_value = mock_controller
+
+        with patch.dict(
+            "os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}
+        ), patch("ray.get", mock_ray_get):
+            agent = FtMegatronAgent(rank=0, world_size=4)
+            try:
+                mock_controller.register_rank.remote.assert_called_once()
+                call_kwargs = mock_controller.register_rank.remote.call_args[1]
+                assert call_kwargs["run_id"] == "test-run-1"
+                assert call_kwargs["rank"] == 0
+                assert call_kwargs["world_size"] == 4
+            finally:
+                agent._httpd.shutdown()
+                agent._httpd.server_close()
+
+    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    def test_register_rank_retries_on_failure(
+        self, mock_get_handle: MagicMock
+    ) -> None:
+        mock_controller = MagicMock()
+        mock_get_handle.return_value = mock_controller
+
+        call_count = 0
+
+        def ray_get_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise RuntimeError("simulated failure")
+            return None
+
+        with patch.dict(
+            "os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}
+        ), patch("ray.get", side_effect=ray_get_side_effect), patch(
+            "time.sleep"
+        ):
+            agent = FtMegatronAgent(rank=0, world_size=4)
+            try:
+                assert call_count == 3
+                assert mock_controller.register_rank.remote.call_count == 3
+            finally:
+                agent._httpd.shutdown()
+                agent._httpd.server_close()
+
+    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    def test_register_rank_all_attempts_fail_no_exception(
+        self, mock_get_handle: MagicMock
+    ) -> None:
+        mock_controller = MagicMock()
+        mock_get_handle.return_value = mock_controller
+
+        with patch.dict(
+            "os.environ", {"FT_TRAINING_RUN_ID": "test-run-1"}
+        ), patch(
+            "ray.get", side_effect=RuntimeError("always fails")
+        ), patch("time.sleep"):
+            agent = FtMegatronAgent(rank=2, world_size=4)
+            try:
+                assert mock_controller.register_rank.remote.call_count == 3
+            finally:
+                agent._httpd.shutdown()
+                agent._httpd.server_close()
+
+    def test_register_rank_skipped_without_run_id(self) -> None:
+        agent = FtMegatronAgent(rank=0, world_size=4)
+        try:
+            assert agent._run_id == ""
+        finally:
+            agent._httpd.shutdown()
+            agent._httpd.server_close()

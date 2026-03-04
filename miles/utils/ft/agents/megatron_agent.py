@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import socket
+import time
 from typing import Any
 
 from prometheus_client import CollectorRegistry, Gauge, start_http_server
@@ -56,6 +57,8 @@ class FtMegatronAgent:
         self._httpd = httpd
         self._port: int = httpd.server_port
 
+        self._register_rank()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -102,6 +105,45 @@ class FtMegatronAgent:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    _REGISTER_MAX_ATTEMPTS = 3
+    _REGISTER_RETRY_DELAY = 2.0
+
+    def _register_rank(self) -> None:
+        if not self._run_id:
+            logger.info("No FT_TRAINING_RUN_ID set, skipping rank registration")
+            return
+
+        controller = self._get_controller_handle()
+        if controller is None:
+            logger.warning("Cannot register rank: controller not available")
+            return
+
+        import ray
+
+        for attempt in range(self._REGISTER_MAX_ATTEMPTS):
+            try:
+                ray.get(
+                    controller.register_rank.remote(
+                        run_id=self._run_id,
+                        rank=self._rank,
+                        world_size=self._world_size,
+                        node_id=self._node_id,
+                        exporter_address=self.get_exporter_address(),
+                    ),
+                    timeout=10,
+                )
+                logger.info("Rank %d registered successfully", self._rank)
+                return
+            except Exception:
+                if attempt < self._REGISTER_MAX_ATTEMPTS - 1:
+                    time.sleep(self._REGISTER_RETRY_DELAY)
+                else:
+                    logger.warning(
+                        "Failed to register rank %d after %d attempts",
+                        self._rank,
+                        self._REGISTER_MAX_ATTEMPTS,
+                    )
 
     def _get_controller_handle(self) -> Any | None:
         if self._controller_handle is not None:
