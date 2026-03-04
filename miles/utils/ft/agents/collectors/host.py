@@ -97,7 +97,7 @@ class HostCollector(BaseCollector):
         ))
 
         if self._collect_count % _DISK_COLLECT_EVERY_N == 1 or _DISK_COLLECT_EVERY_N == 1:
-            self._collect_disk(samples)
+            samples.extend(self._collect_disk())
 
         return samples
 
@@ -106,7 +106,9 @@ class HostCollector(BaseCollector):
             self._kmsg_reader = _KmsgReader(kmsg_path=self._kmsg_path)
         return self._kmsg_reader.read_new_lines()
 
-    def _collect_disk(self, samples: list[MetricSample]) -> None:
+    def _collect_disk(self) -> list[MetricSample]:
+        samples: list[MetricSample] = []
+
         for mount in self._disk_mounts:
             try:
                 stat = os.statvfs(mount)
@@ -119,13 +121,15 @@ class HostCollector(BaseCollector):
             except Exception:
                 logger.warning("Failed to statvfs %s", mount, exc_info=True)
 
-        self._collect_disk_io_time(samples)
+        samples.extend(self._collect_disk_io_time())
+        return samples
 
-    def _collect_disk_io_time(self, samples: list[MetricSample]) -> None:
+    def _collect_disk_io_time(self) -> list[MetricSample]:
         sys_block = Path("/sys/block")
         if not sys_block.exists():
-            return
+            return []
 
+        samples: list[MetricSample] = []
         for device_dir in sorted(sys_block.iterdir()):
             stat_file = device_dir / "stat"
             try:
@@ -140,6 +144,8 @@ class HostCollector(BaseCollector):
                     ))
             except Exception:
                 logger.warning("Failed to read disk stat for %s", device_dir.name, exc_info=True)
+
+        return samples
 
 
 class _KmsgReader:
