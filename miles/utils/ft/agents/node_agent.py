@@ -117,7 +117,7 @@ class FtNodeAgent:
                 diagnostic_type=diagnostic_type,
                 node_id=self._node_id,
                 passed=False,
-                details=f"diagnostic raised exception",
+                details="diagnostic raised exception",
             )
 
     # ------------------------------------------------------------------

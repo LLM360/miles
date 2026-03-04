@@ -12,6 +12,7 @@ from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.models import ActionType, Decision, DiagnosticResult, RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
+    ControllerTestHarness,
     FakeNodeAgent,
     FixedDecisionDetector,
     make_test_controller,
@@ -38,7 +39,7 @@ def _make_agents_with_results(
 
 
 def _enter_recovery_and_skip_to_diagnosing(
-    harness: object,
+    harness: ControllerTestHarness,
     scheduler: DiagnosticScheduler,
 ) -> None:
     """Helper: create a RecoveryOrchestrator already in DIAGNOSING phase."""
@@ -46,16 +47,16 @@ def _enter_recovery_and_skip_to_diagnosing(
 
     orch = RecoveryOrchestrator(
         trigger="crash",
-        node_manager=harness.node_manager,  # type: ignore[attr-defined]
-        training_job=harness.training_job,  # type: ignore[attr-defined]
-        metric_store=harness.metric_store,  # type: ignore[attr-defined]
-        mini_wandb=harness.mini_wandb,  # type: ignore[attr-defined]
-        notifier=harness.notifier,  # type: ignore[attr-defined]
+        node_manager=harness.node_manager,
+        training_job=harness.training_job,
+        metric_store=harness.metric_store,
+        mini_wandb=harness.mini_wandb,
+        notifier=harness.notifier,
         diagnostic_scheduler=scheduler,
-        controller_exporter=harness.controller_exporter,  # type: ignore[attr-defined]
+        controller_exporter=harness.controller_exporter,
     )
     orch._context.phase = RecoveryPhase.DIAGNOSING
-    harness.controller._recovery_orchestrator = orch  # type: ignore[attr-defined]
+    harness.controller._recovery_orchestrator = orch
 
 
 class TestDiagnosticPipelineWithBadNode:

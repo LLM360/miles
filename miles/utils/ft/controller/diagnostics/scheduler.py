@@ -44,7 +44,6 @@ class DiagnosticScheduler:
             )
 
         remaining_agents = dict(self._agents)
-        all_bad_node_ids: list[str] = []
 
         for diagnostic_type in self._pipeline:
             if not remaining_agents:
@@ -57,14 +56,13 @@ class DiagnosticScheduler:
             )
 
             if bad_node_ids:
-                all_bad_node_ids.extend(bad_node_ids)
                 logger.info(
                     "diagnostic_step_found_bad step=%s bad_nodes=%s",
                     diagnostic_type, bad_node_ids,
                 )
                 return Decision(
                     action=ActionType.MARK_BAD_AND_RESTART,
-                    bad_node_ids=sorted(set(all_bad_node_ids)),
+                    bad_node_ids=sorted(bad_node_ids),
                     reason=f"diagnostic '{diagnostic_type}' failed on nodes: {bad_node_ids}",
                 )
 
@@ -84,24 +82,22 @@ class DiagnosticScheduler:
 
         Returns (bad_node_ids, remaining_agents_without_bad_nodes).
         """
+        node_ids = list(agents.keys())
         logger.info(
             "diagnostic_step_start type=%s nodes=%s",
-            diagnostic_type, list(agents.keys()),
+            diagnostic_type, node_ids,
         )
 
-        tasks: dict[str, asyncio.Task[DiagnosticResult]] = {}
-        for node_id, agent in agents.items():
-            coro = self._call_agent_diagnostic(
-                agent=agent,
+        raw_results = await asyncio.gather(*(
+            self._call_agent_diagnostic(
+                agent=agents[node_id],
                 node_id=node_id,
                 diagnostic_type=diagnostic_type,
                 timeout_seconds=timeout_seconds,
             )
-            tasks[node_id] = asyncio.ensure_future(coro)
-
-        results: dict[str, DiagnosticResult] = {}
-        for node_id, task in tasks.items():
-            results[node_id] = await task
+            for node_id in node_ids
+        ))
+        results = dict(zip(node_ids, raw_results))
 
         bad_node_ids: list[str] = []
         remaining: dict[str, Any] = {}

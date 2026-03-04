@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import pytest
 
@@ -201,7 +202,6 @@ class TestDiagnosticSchedulerErrorHandling:
 
     @pytest.mark.asyncio
     async def test_trigger_reason_logged(self, caplog: pytest.LogCaptureFixture) -> None:
-        import logging
         agents: dict[str, FakeNodeAgent] = {}
         scheduler = DiagnosticScheduler(agents=agents, pipeline=[])
 

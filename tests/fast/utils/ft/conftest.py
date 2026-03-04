@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -409,7 +410,6 @@ class SlowDiagnostic(BaseDiagnostic):
     async def run(
         self, node_id: str, timeout_seconds: int = 120,
     ) -> DiagnosticResult:
-        import asyncio
         await asyncio.sleep(self._sleep_seconds)
         return DiagnosticResult(
             diagnostic_type=self.diagnostic_type,

@@ -40,10 +40,6 @@ _MAX_RETRIES: int = 3
 _StepHandler = Callable[[], Coroutine[Any, Any, None]]
 
 
-def _is_finite(value: float) -> bool:
-    return math.isfinite(value)
-
-
 @dataclass
 class RecoveryContext:
     trigger: str
@@ -197,7 +193,7 @@ class RecoveryOrchestrator:
             iteration = self._mini_wandb.latest(metric_name="iteration", rank=0)
             self._context.reattempt_start_time = datetime.now(timezone.utc)
             self._context.reattempt_base_iteration = (
-                int(iteration) if iteration is not None and _is_finite(iteration) else 0
+                int(iteration) if iteration is not None and math.isfinite(iteration) else 0
             )
             logger.info(
                 "reattempt_running base_iteration=%s",
@@ -254,7 +250,7 @@ class RecoveryOrchestrator:
 
     def _iteration_progress(self) -> int:
         current_iteration = self._mini_wandb.latest(metric_name="iteration", rank=0)
-        if current_iteration is None or not _is_finite(current_iteration):
+        if current_iteration is None or not math.isfinite(current_iteration):
             return 0
         base = self._context.reattempt_base_iteration or 0
         return int(current_iteration) - base
