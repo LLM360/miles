@@ -44,6 +44,7 @@ class MiniPrometheus:
         self._config = config or MiniPrometheusConfig()
         self._series: dict[_SeriesKey, deque[_TimeSeriesSample]] = {}
         self._label_maps: dict[_SeriesKey, dict[str, str]] = {}
+        self._name_index: dict[str, list[_SeriesKey]] = {}
         self._scrape_targets: dict[str, str] = {}
         self._running = False
 
@@ -76,6 +77,7 @@ class MiniPrometheus:
             if key not in self._series:
                 self._series[key] = deque()
                 self._label_maps[key] = labels
+                self._name_index.setdefault(sample.name, []).append(key)
 
             self._series[key].append(_TimeSeriesSample(timestamp=ts, value=sample.value))
 
@@ -86,10 +88,17 @@ class MiniPrometheus:
     # -------------------------------------------------------------------
 
     async def scrape_once(self) -> None:
+        import asyncio
+
         import httpx
 
+        targets = list(self._scrape_targets.items())
+        if not targets:
+            return
+
         async with httpx.AsyncClient(timeout=10.0) as client:
-            for target_id, address in list(self._scrape_targets.items()):
+
+            async def _scrape_target(target_id: str, address: str) -> None:
                 try:
                     response = await client.get(f"{address}/metrics")
                     response.raise_for_status()
@@ -102,6 +111,10 @@ class MiniPrometheus:
                         address,
                         exc_info=True,
                     )
+
+            await asyncio.gather(
+                *(_scrape_target(tid, addr) for tid, addr in targets)
+            )
 
     async def start(self) -> None:
         import asyncio
@@ -159,20 +172,17 @@ class MiniPrometheus:
 
     def _instant_selector(self, selector: MetricSelector) -> pl.DataFrame:
         rows: list[dict] = []
-        for key, samples in self._series.items():
-            metric_name, _ = key
-            if metric_name != selector.name:
+        for key in self._name_index.get(selector.name, []):
+            samples = self._series.get(key)
+            if not samples:
                 continue
 
             labels = self._label_maps[key]
             if not match_labels(labels, selector.matchers):
                 continue
 
-            if not samples:
-                continue
-
             latest = samples[-1]
-            row: dict = {"__name__": metric_name, "value": latest.value}
+            row: dict = {"__name__": selector.name, "value": latest.value}
             row.update(labels)
             rows.append(row)
 
@@ -185,9 +195,9 @@ class MiniPrometheus:
         window_start = now - func.duration
         rows: list[dict] = []
 
-        for key, samples in self._series.items():
-            metric_name, _ = key
-            if metric_name != func.selector.name:
+        for key in self._name_index.get(func.selector.name, []):
+            samples = self._series.get(key)
+            if not samples:
                 continue
 
             labels = self._label_maps[key]
@@ -199,7 +209,7 @@ class MiniPrometheus:
                 continue
 
             value = _apply_range_function(func.func_name, window_samples)
-            row: dict = {"__name__": metric_name, "value": value}
+            row: dict = {"__name__": func.selector.name, "value": value}
             row.update(labels)
             rows.append(row)
 
@@ -239,9 +249,9 @@ class MiniPrometheus:
         step: timedelta,
     ) -> pl.DataFrame:
         rows: list[dict] = []
-        for key, samples in self._series.items():
-            metric_name, _ = key
-            if metric_name != selector.name:
+        for key in self._name_index.get(selector.name, []):
+            samples = self._series.get(key)
+            if not samples:
                 continue
 
             labels = self._label_maps[key]
@@ -251,7 +261,7 @@ class MiniPrometheus:
             for sample in samples:
                 if start <= sample.timestamp <= end:
                     row: dict = {
-                        "__name__": metric_name,
+                        "__name__": selector.name,
                         "timestamp": sample.timestamp,
                         "value": sample.value,
                     }
@@ -277,8 +287,17 @@ class MiniPrometheus:
                 empty_keys.append(key)
 
         for key in empty_keys:
+            metric_name, _ = key
             del self._series[key]
             self._label_maps.pop(key, None)
+            index_list = self._name_index.get(metric_name)
+            if index_list is not None:
+                try:
+                    index_list.remove(key)
+                except ValueError:
+                    pass
+                if not index_list:
+                    del self._name_index[metric_name]
 
 
 # ---------------------------------------------------------------------------

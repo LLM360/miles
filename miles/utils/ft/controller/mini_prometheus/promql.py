@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
+from functools import lru_cache
 
 import polars as pl
 
@@ -225,6 +226,11 @@ def compare_col(col: pl.Expr, op: CompareOp, threshold: float) -> pl.Expr:
 # ---------------------------------------------------------------------------
 
 
+@lru_cache(maxsize=256)
+def _compile_label_regex(pattern: str) -> re.Pattern[str]:
+    return re.compile(pattern)
+
+
 def match_labels(labels: dict[str, str], matchers: list[LabelMatcher]) -> bool:
     for m in matchers:
         actual = labels.get(m.label, "")
@@ -235,6 +241,6 @@ def match_labels(labels: dict[str, str], matchers: list[LabelMatcher]) -> bool:
             if actual == m.value:
                 return False
         elif m.op == LabelMatchOp.RE:
-            if not re.fullmatch(m.value, actual):
+            if not _compile_label_regex(m.value).fullmatch(actual):
                 return False
     return True
