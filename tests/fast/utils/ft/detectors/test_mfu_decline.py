@@ -8,6 +8,7 @@ from tests.fast.utils.ft.conftest import (
 )
 
 from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector
+from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import ActionType
 
 _RANK_PLACEMENT = {0: "node-0", 1: "node-1"}
@@ -16,9 +17,23 @@ _RANK_PLACEMENT = {0: "node-0", 1: "node-1"}
 def _make_wandb_with_mfu(
     mfu_values: list[float],
     start_step: int = 1,
-) -> object:
+) -> MiniWandb:
     steps = {start_step + i: {"mfu": v} for i, v in enumerate(mfu_values)}
     return make_fake_mini_wandb(steps=steps)
+
+
+def _make_wandb_with_timed_mfu(
+    entries: list[tuple[float, datetime]],
+    run_id: str = "test-run",
+) -> MiniWandb:
+    """Create a MiniWandb where each MFU value has an explicit receive_time."""
+    wandb = MiniWandb(active_run_id=run_id)
+    for i, (value, timestamp) in enumerate(entries):
+        wandb.log_step(
+            run_id=run_id, rank=0, step=i + 1,
+            metrics={"mfu": value}, receive_time=timestamp,
+        )
+    return wandb
 
 
 class TestMfuDeclineDetector:
@@ -91,7 +106,13 @@ class TestMfuDeclineDetector:
         assert "monitoring" in decision.reason
 
     def test_decline_timeout_notify_human(self) -> None:
-        wandb = _make_wandb_with_mfu([0.3] * 10)
+        now = datetime.now(timezone.utc)
+        low_mfu_entries: list[tuple[float, datetime]] = [
+            (0.3, now - timedelta(minutes=40) + timedelta(minutes=i))
+            for i in range(41)
+        ]
+        wandb = _make_wandb_with_timed_mfu(low_mfu_entries)
+
         store = make_fake_metric_store()
         for i in range(8):
             inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
@@ -104,17 +125,37 @@ class TestMfuDeclineDetector:
             decline_timeout_minutes=30.0,
         )
 
-        ctx = make_detector_context(
+        decision = detector.evaluate(make_detector_context(
             metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        )
-        detector.evaluate(ctx)
-
-        past_start = datetime.now(timezone.utc) - timedelta(minutes=35)
-        detector._decline_start_time = past_start
-
-        decision = detector.evaluate(ctx)
+        ))
 
         assert decision.action == ActionType.NOTIFY_HUMAN
+
+    def test_decline_timeout_not_yet_reached(self) -> None:
+        now = datetime.now(timezone.utc)
+        low_mfu_entries: list[tuple[float, datetime]] = [
+            (0.3, now - timedelta(minutes=10) + timedelta(minutes=i))
+            for i in range(11)
+        ]
+        wandb = _make_wandb_with_timed_mfu(low_mfu_entries)
+
+        store = make_fake_metric_store()
+        for i in range(8):
+            inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
+
+        detector = MfuDeclineDetector(
+            mfu_baseline=0.5,
+            mfu_threshold_ratio=0.8,
+            consecutive_steps=10,
+            decline_timeout_minutes=30.0,
+        )
+
+        decision = detector.evaluate(make_detector_context(
+            metric_store=store, mini_wandb=wandb, rank_placement={0: "node-0"},
+        ))
+
+        assert decision.action == ActionType.NONE
+        assert "monitoring" in decision.reason
 
     def test_dynamic_baseline(self) -> None:
         high_mfu = [0.5] * 50
@@ -124,7 +165,7 @@ class TestMfuDeclineDetector:
         store = make_fake_metric_store()
 
         detector = MfuDeclineDetector(
-            mfu_baseline=0.0,  # dynamic baseline
+            mfu_baseline=0.0,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
         )
@@ -136,24 +177,17 @@ class TestMfuDeclineDetector:
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
 
-    def test_on_new_run_resets_dynamic_baseline_and_timer(self) -> None:
-        """on_new_run() must clear both _dynamic_baseline and _decline_start_time
-        so stale state from a previous run doesn't cause false positives."""
-        detector = MfuDeclineDetector(
-            mfu_baseline=0.0,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-        )
+    def test_mfu_recovery_resets_decline_window(self) -> None:
+        """If MFU recovers mid-window, the decline timer restarts from the
+        last healthy reading, so a brief dip doesn't trigger NOTIFY_HUMAN."""
+        now = datetime.now(timezone.utc)
+        entries: list[tuple[float, datetime]] = [
+            *[(0.3, now - timedelta(minutes=35) + timedelta(minutes=i)) for i in range(20)],
+            (0.48, now - timedelta(minutes=15)),
+            *[(0.3, now - timedelta(minutes=14) + timedelta(minutes=i)) for i in range(15)],
+        ]
+        wandb = _make_wandb_with_timed_mfu(entries)
 
-        detector._dynamic_baseline = 0.5
-        detector._decline_start_time = datetime.now(timezone.utc)
-
-        detector.on_new_run("new-run-id")
-
-        assert detector._dynamic_baseline is None
-        assert detector._decline_start_time is None
-
-    def test_mfu_recovers_resets_timer(self) -> None:
         store = make_fake_metric_store()
         for i in range(8):
             inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
@@ -162,16 +196,12 @@ class TestMfuDeclineDetector:
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
+            decline_timeout_minutes=30.0,
         )
 
-        wandb_low = _make_wandb_with_mfu([0.3] * 10)
-        detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb_low, rank_placement={0: "node-0"},
+        decision = detector.evaluate(make_detector_context(
+            metric_store=store, mini_wandb=wandb, rank_placement={0: "node-0"},
         ))
-        assert detector._decline_start_time is not None
 
-        wandb_high = _make_wandb_with_mfu([0.45] * 10)
-        detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb_high, rank_placement={0: "node-0"},
-        ))
-        assert detector._decline_start_time is None
+        assert decision.action == ActionType.NONE
+        assert "monitoring" in decision.reason

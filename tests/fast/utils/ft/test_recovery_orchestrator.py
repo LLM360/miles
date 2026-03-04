@@ -12,6 +12,7 @@ from miles.utils.ft.controller.recovery_orchestrator import (
     RecoveryContext,
     RecoveryOrchestrator,
 )
+from miles.utils.ft.metric_names import CONTROLLER_RECOVERY_PHASE
 from miles.utils.ft.models import (
     ActionType,
     Decision,
@@ -202,7 +203,7 @@ class TestReattempting:
         orch._context.phase = RecoveryPhase.REATTEMPTING
 
         asyncio.run(orch.step())
-        assert orch._reattempt_submitted
+        assert orch._context.reattempt_submitted
         assert training_job._stopped
         assert training_job._submitted
 
@@ -226,7 +227,7 @@ class TestReattempting:
         orch._context.phase = RecoveryPhase.REATTEMPTING
 
         asyncio.run(orch.step())  # submit
-        orch._reattempt_submit_time = datetime.now(timezone.utc) - timedelta(seconds=301)
+        orch._context.reattempt_submit_time = datetime.now(timezone.utc) - timedelta(seconds=301)
         asyncio.run(orch.step())  # poll -> PENDING timeout
         assert orch.phase == RecoveryPhase.NOTIFY
 
@@ -241,7 +242,7 @@ class TestReattempting:
         training_job.stop_training = failing_stop
 
         asyncio.run(orch.step())
-        assert orch._reattempt_submitted
+        assert orch._context.reattempt_submitted
         assert training_job._submitted
 
 
@@ -341,7 +342,7 @@ class TestDiagnosing:
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.EVICT_AND_RESTART
         assert diag.call_count == 1
-        assert orch._bad_node_ids == ["node-2"]
+        assert orch._context.bad_node_ids == ["node-2"]
 
     def test_diagnostic_all_passed_goes_to_notify(self) -> None:
         orch, _, _, _, diag = _make_orchestrator()
@@ -363,7 +364,7 @@ class TestEvictAndRestart:
             status_sequence=[JobStatus.RUNNING],
         )
         orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
-        orch._bad_node_ids = ["node-0"]
+        orch._context.bad_node_ids = ["node-0"]
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.DONE
@@ -375,7 +376,7 @@ class TestEvictAndRestart:
             notifier=FakeNotifier(),
         )
         orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
-        orch._bad_node_ids = ["node-0"]
+        orch._context.bad_node_ids = ["node-0"]
 
         async def failing_mark(node_id: str, reason: str = "") -> None:
             raise RuntimeError("K8s API unreachable")
@@ -389,7 +390,7 @@ class TestEvictAndRestart:
             notifier=FakeNotifier(),
         )
         orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
-        orch._bad_node_ids = ["node-0"]
+        orch._context.bad_node_ids = ["node-0"]
 
         async def failing_submit() -> str:
             raise RuntimeError("submit failed")
@@ -500,7 +501,7 @@ class TestEvictStopTrainingFailure:
             status_sequence=[JobStatus.RUNNING],
         )
         orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
-        orch._bad_node_ids = ["node-0"]
+        orch._context.bad_node_ids = ["node-0"]
 
         async def failing_stop(timeout_seconds: int = 300) -> None:
             raise RuntimeError("stop failed")
@@ -517,7 +518,7 @@ class TestEvictMultipleBadNodes:
             status_sequence=[JobStatus.RUNNING],
         )
         orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
-        orch._bad_node_ids = ["node-0", "node-1", "node-2"]
+        orch._context.bad_node_ids = ["node-0", "node-1", "node-2"]
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.DONE
@@ -554,5 +555,5 @@ class TestExporterIntegration:
 
         asyncio.run(orch.step())
 
-        phase_value = get_sample_value(registry, "ft_controller_recovery_phase")
+        phase_value = get_sample_value(registry, CONTROLLER_RECOVERY_PHASE)
         assert phase_value == RECOVERY_PHASE_TO_INT[RecoveryPhase.REATTEMPTING]

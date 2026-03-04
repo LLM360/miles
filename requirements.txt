@@ -16,4 +16,5 @@ sglang-router>=0.2.3
 tensorboard
 transformers
 kubernetes_asyncio
+polars
 wandb
