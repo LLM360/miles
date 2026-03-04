@@ -161,7 +161,6 @@ class FtController:
             )
 
         job_status = await self._training_job.get_training_status()
-        self._update_training_job_status_exporter(job_status)
 
         ctx = DetectorContext(
             metric_store=self._metric_store,
@@ -177,7 +176,7 @@ class FtController:
             decision.action.value, decision.reason,
         )
 
-        self._update_exporter_metrics()
+        self._update_exporter_metrics(job_status)
         await self._execute_decision(decision)
 
     # -------------------------------------------------------------------
@@ -196,15 +195,12 @@ class FtController:
     # Internal: exporter metric updates
     # -------------------------------------------------------------------
 
-    def _update_training_job_status_exporter(self, status: JobStatus) -> None:
-        if self._controller_exporter is not None:
-            status_value = _JOB_STATUS_TO_NUMERIC.get(status, 0)
-            self._controller_exporter.update_training_job_status(status_value)
-
-    def _update_exporter_metrics(self) -> None:
+    def _update_exporter_metrics(self, job_status: JobStatus) -> None:
         if self._controller_exporter is None:
             return
 
+        status_value = _JOB_STATUS_TO_NUMERIC.get(job_status, 0)
+        self._controller_exporter.update_training_job_status(status_value)
         self._controller_exporter.update_tick_count()
         self._controller_exporter.update_mode(0)
 
@@ -256,25 +252,16 @@ class FtController:
         if decision.action == ActionType.NONE:
             return
 
-        if decision.action == ActionType.MARK_BAD_AND_RESTART:
-            logger.warning(
-                "decision_mark_bad_and_restart bad_node_ids=%s reason=%s",
-                decision.bad_node_ids, decision.reason,
-            )
-            return
+        logger.warning(
+            "executing_decision action=%s trigger=%s reason=%s bad_node_ids=%s",
+            decision.action.value, decision.trigger.value,
+            decision.reason, decision.bad_node_ids,
+        )
 
-        if decision.action == ActionType.ENTER_RECOVERY:
-            logger.warning(
-                "decision_enter_recovery trigger=%s reason=%s",
-                decision.trigger, decision.reason,
-            )
+        if decision.action in (ActionType.MARK_BAD_AND_RESTART, ActionType.ENTER_RECOVERY):
             return
 
         if decision.action == ActionType.NOTIFY_HUMAN:
-            logger.warning(
-                "decision_notify_human reason=%s",
-                decision.reason,
-            )
             if self._notifier is not None:
                 try:
                     await self._notifier.send(

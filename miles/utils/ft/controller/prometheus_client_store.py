@@ -10,10 +10,6 @@ import polars as pl
 
 logger = logging.getLogger(__name__)
 
-_RANGE_FUNCTIONS = frozenset({
-    "changes", "count_over_time", "avg_over_time", "min_over_time", "max_over_time",
-})
-
 
 class PrometheusClient:
     """MetricStoreProtocol implementation backed by a real Prometheus HTTP API.
