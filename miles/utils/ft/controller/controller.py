@@ -1,6 +1,5 @@
 import asyncio
-
-import structlog
+import logging
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
@@ -13,7 +12,7 @@ from miles.utils.ft.platform.protocols import (
     TrainingJobProtocol,
 )
 
-log = structlog.get_logger(__name__)
+log = logging.getLogger(__name__)
 
 _JOB_STATUS_TO_NUMERIC: dict[JobStatus, int] = {
     JobStatus.RUNNING: 1,
@@ -55,7 +54,7 @@ class FtController:
     # -------------------------------------------------------------------
 
     async def run(self) -> None:
-        log.info("controller_start", tick_interval=self._tick_interval)
+        log.info("controller_start tick_interval=%s", self._tick_interval)
         while not self._shutting_down:
             await self._tick()
             if not self._shutting_down:
@@ -79,9 +78,8 @@ class FtController:
     ) -> None:
         if self._active_run_id is not None and run_id != self._active_run_id:
             log.debug(
-                "log_step_discarded",
-                run_id=run_id,
-                active_run_id=self._active_run_id,
+                "log_step_discarded run_id=%s active_run_id=%s",
+                run_id, self._active_run_id,
             )
             return
 
@@ -102,9 +100,8 @@ class FtController:
     ) -> None:
         if run_id != self._active_run_id:
             log.info(
-                "new_run_registered",
-                run_id=run_id,
-                previous_run_id=self._active_run_id,
+                "new_run_registered run_id=%s previous_run_id=%s",
+                run_id, self._active_run_id,
             )
             self._active_run_id = run_id
             self._mini_wandb.set_active_run_id(run_id)
@@ -114,11 +111,8 @@ class FtController:
 
         self._rank_placement[rank] = node_id
         log.info(
-            "rank_registered",
-            run_id=run_id,
-            rank=rank,
-            world_size=world_size,
-            node_id=node_id,
+            "rank_registered run_id=%s rank=%d world_size=%d node_id=%s",
+            run_id, rank, world_size, node_id,
         )
 
         if isinstance(self._metric_store, MiniPrometheus):
@@ -145,11 +139,9 @@ class FtController:
         decision = self._evaluate_detectors()
 
         log.info(
-            "loop_tick",
-            tick=self._tick_count,
-            active_run_id=self._active_run_id,
-            decision_action=decision.action.value,
-            decision_reason=decision.reason,
+            "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
+            self._tick_count, self._active_run_id,
+            decision.action.value, decision.reason,
         )
 
         await self._execute_decision(decision)
@@ -196,24 +188,22 @@ class FtController:
 
         if decision.action == ActionType.MARK_BAD_AND_RESTART:
             log.warning(
-                "decision_mark_bad_and_restart",
-                bad_node_ids=decision.bad_node_ids,
-                reason=decision.reason,
+                "decision_mark_bad_and_restart bad_node_ids=%s reason=%s",
+                decision.bad_node_ids, decision.reason,
             )
             return
 
         if decision.action == ActionType.ENTER_RECOVERY:
             log.warning(
-                "decision_enter_recovery",
-                trigger=decision.trigger,
-                reason=decision.reason,
+                "decision_enter_recovery trigger=%s reason=%s",
+                decision.trigger, decision.reason,
             )
             return
 
         if decision.action == ActionType.NOTIFY_HUMAN:
             log.warning(
-                "decision_notify_human",
-                reason=decision.reason,
+                "decision_notify_human reason=%s",
+                decision.reason,
             )
             return
 
