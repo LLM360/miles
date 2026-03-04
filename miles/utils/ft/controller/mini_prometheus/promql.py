@@ -219,7 +219,7 @@ def parse_promql(query: str) -> PromQLExpr:
 # ---------------------------------------------------------------------------
 
 
-def _compare_col(col: pl.Expr, op: CompareOp, threshold: float) -> pl.Expr:
+def compare_col(col: pl.Expr, op: CompareOp, threshold: float) -> pl.Expr:
     if op == CompareOp.EQ:
         return col == threshold
     if op == CompareOp.NEQ:
@@ -245,7 +245,7 @@ def _compile_label_regex(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern)
 
 
-def _match_labels(labels: dict[str, str], matchers: list[LabelMatcher]) -> bool:
+def match_labels(labels: dict[str, str], matchers: list[LabelMatcher]) -> bool:
     for m in matchers:
         actual = labels.get(m.label, "")
         if m.op == LabelMatchOp.EQ:

@@ -5,10 +5,9 @@ import logging
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Iterator
 
 import polars as pl
-
-from typing import Iterator
 
 from miles.utils.ft.controller.mini_prometheus.promql import (
     CompareExpr,
@@ -17,8 +16,8 @@ from miles.utils.ft.controller.mini_prometheus.promql import (
     PromQLExpr,
     RangeFunction,
     RangeFunctionCompare,
-    _compare_col,
-    _match_labels,
+    compare_col,
+    match_labels,
     parse_promql,
 )
 from miles.utils.ft.controller.mini_prometheus.scraper import parse_prometheus_text
@@ -158,7 +157,7 @@ class MiniPrometheus:
                 continue
 
             labels = self._label_maps[key]
-            if not _match_labels(labels, selector.matchers):
+            if not match_labels(labels, selector.matchers):
                 continue
 
             yield labels, samples
@@ -169,7 +168,7 @@ class MiniPrometheus:
     ) -> pl.DataFrame:
         if df.is_empty():
             return df
-        return df.filter(_compare_col(pl.col("value"), op, threshold))
+        return df.filter(compare_col(pl.col("value"), op, threshold))
 
     # -------------------------------------------------------------------
     # Internal: instant evaluation

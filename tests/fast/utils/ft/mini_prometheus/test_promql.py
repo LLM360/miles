@@ -10,7 +10,7 @@ from miles.utils.ft.controller.mini_prometheus.promql import (
     MetricSelector,
     RangeFunction,
     RangeFunctionCompare,
-    _match_labels,
+    match_labels,
     parse_promql,
 )
 
@@ -155,42 +155,42 @@ class TestMatchLabels:
     def test_eq_match(self) -> None:
         labels = {"gpu": "0", "node_id": "node-0"}
         matchers = [LabelMatcher(label="gpu", op=LabelMatchOp.EQ, value="0")]
-        assert _match_labels(labels, matchers) is True
+        assert match_labels(labels, matchers) is True
 
     def test_eq_mismatch(self) -> None:
         labels = {"gpu": "1"}
         matchers = [LabelMatcher(label="gpu", op=LabelMatchOp.EQ, value="0")]
-        assert _match_labels(labels, matchers) is False
+        assert match_labels(labels, matchers) is False
 
     def test_neq(self) -> None:
         labels = {"gpu": "1"}
         matchers = [LabelMatcher(label="gpu", op=LabelMatchOp.NEQ, value="0")]
-        assert _match_labels(labels, matchers) is True
+        assert match_labels(labels, matchers) is True
 
     def test_neq_blocks_match(self) -> None:
         labels = {"gpu": "0"}
         matchers = [LabelMatcher(label="gpu", op=LabelMatchOp.NEQ, value="0")]
-        assert _match_labels(labels, matchers) is False
+        assert match_labels(labels, matchers) is False
 
     def test_regex_match(self) -> None:
         labels = {"node_id": "node-42"}
         matchers = [LabelMatcher(label="node_id", op=LabelMatchOp.RE, value="node-.*")]
-        assert _match_labels(labels, matchers) is True
+        assert match_labels(labels, matchers) is True
 
     def test_regex_no_match(self) -> None:
         labels = {"node_id": "worker-1"}
         matchers = [LabelMatcher(label="node_id", op=LabelMatchOp.RE, value="node-.*")]
-        assert _match_labels(labels, matchers) is False
+        assert match_labels(labels, matchers) is False
 
     def test_missing_label_returns_empty_string(self) -> None:
         labels = {"gpu": "0"}
         matchers = [LabelMatcher(label="missing_key", op=LabelMatchOp.EQ, value="")]
-        assert _match_labels(labels, matchers) is True
+        assert match_labels(labels, matchers) is True
 
     def test_missing_label_neq(self) -> None:
         labels = {"gpu": "0"}
         matchers = [LabelMatcher(label="missing_key", op=LabelMatchOp.EQ, value="something")]
-        assert _match_labels(labels, matchers) is False
+        assert match_labels(labels, matchers) is False
 
     def test_multiple_matchers_all_must_pass(self) -> None:
         labels = {"gpu": "0", "node_id": "node-1"}
@@ -198,7 +198,7 @@ class TestMatchLabels:
             LabelMatcher(label="gpu", op=LabelMatchOp.EQ, value="0"),
             LabelMatcher(label="node_id", op=LabelMatchOp.EQ, value="node-1"),
         ]
-        assert _match_labels(labels, matchers) is True
+        assert match_labels(labels, matchers) is True
 
     def test_multiple_matchers_one_fails(self) -> None:
         labels = {"gpu": "0", "node_id": "node-1"}
@@ -206,8 +206,8 @@ class TestMatchLabels:
             LabelMatcher(label="gpu", op=LabelMatchOp.EQ, value="0"),
             LabelMatcher(label="node_id", op=LabelMatchOp.EQ, value="node-2"),
         ]
-        assert _match_labels(labels, matchers) is False
+        assert match_labels(labels, matchers) is False
 
     def test_empty_matchers_matches_all(self) -> None:
         labels = {"gpu": "0"}
-        assert _match_labels(labels, []) is True
+        assert match_labels(labels, []) is True
