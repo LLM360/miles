@@ -203,41 +203,6 @@ def make_test_controller(
 
 
 # ---------------------------------------------------------------------------
-# PrometheusClient test helpers (prom-export milestone)
-# ---------------------------------------------------------------------------
-
-
-class FakePrometheusServer:
-    """Minimal in-memory Prometheus API mock for testing PrometheusClient.
-
-    Stores pre-configured responses keyed by query string. Used to simulate
-    a real Prometheus API without starting an HTTP server.
-    """
-
-    def __init__(self) -> None:
-        self._instant_responses: dict[str, dict] = {}
-        self._range_responses: dict[str, dict] = {}
-
-    def set_instant_response(self, query: str, response_json: dict) -> None:
-        self._instant_responses[query] = response_json
-
-    def set_range_response(self, query: str, response_json: dict) -> None:
-        self._range_responses[query] = response_json
-
-    def get_instant_response(self, query: str) -> dict:
-        return self._instant_responses.get(query, {
-            "status": "success",
-            "data": {"resultType": "vector", "result": []},
-        })
-
-    def get_range_response(self, query: str) -> dict:
-        return self._range_responses.get(query, {
-            "status": "success",
-            "data": {"resultType": "matrix", "result": []},
-        })
-
-
-# ---------------------------------------------------------------------------
 # Agent test helpers (agent-skeleton milestone)
 # ---------------------------------------------------------------------------
 
