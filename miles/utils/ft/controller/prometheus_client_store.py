@@ -8,6 +8,8 @@ from typing import Any
 import httpx
 import polars as pl
 
+from miles.utils.ft.controller.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE
+
 logger = logging.getLogger(__name__)
 
 
@@ -91,7 +93,7 @@ class PrometheusClient:
     def _instant_query_raw(self, promql: str) -> pl.DataFrame:
         data = self._fetch_json("/api/v1/query", params={"query": promql})
         if data is None:
-            return _empty_instant_dataframe()
+            return EMPTY_INSTANT
         return _parse_instant_response(data)
 
     def _range_query_raw(self, promql: str, window: timedelta) -> pl.DataFrame:
@@ -103,7 +105,7 @@ class PrometheusClient:
             params={"query": promql, "start": start, "end": now, "step": 15},
         )
         if data is None:
-            return _empty_range_dataframe()
+            return EMPTY_RANGE
         return _parse_range_response(data)
 
     def _fetch_json(self, path: str, params: dict[str, object]) -> dict[str, Any] | None:
@@ -144,24 +146,11 @@ def _format_duration(td: timedelta) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _empty_instant_dataframe() -> pl.DataFrame:
-    return pl.DataFrame(
-        {"__name__": pl.Series([], dtype=pl.Utf8), "value": pl.Series([], dtype=pl.Float64)}
-    )
-
-
-def _empty_range_dataframe() -> pl.DataFrame:
-    return pl.DataFrame({
-        "__name__": pl.Series([], dtype=pl.Utf8),
-        "timestamp": pl.Series([], dtype=pl.Float64),
-        "value": pl.Series([], dtype=pl.Float64),
-    })
-
 
 def _parse_instant_response(data: dict[str, Any]) -> pl.DataFrame:
     extracted = _extract_results(data)
     if extracted is None:
-        return _empty_instant_dataframe()
+        return EMPTY_INSTANT
 
     result, result_type = extracted
     if result_type == "vector":
@@ -170,18 +159,18 @@ def _parse_instant_response(data: dict[str, Any]) -> pl.DataFrame:
         return _parse_scalar(result)
 
     logger.warning("prometheus_unsupported_result_type type=%s", result_type)
-    return _empty_instant_dataframe()
+    return EMPTY_INSTANT
 
 
 def _parse_range_response(data: dict[str, Any]) -> pl.DataFrame:
     extracted = _extract_results(data)
     if extracted is None:
-        return _empty_range_dataframe()
+        return EMPTY_RANGE
 
     result, result_type = extracted
     if result_type != "matrix":
         logger.warning("prometheus_unsupported_range_result_type type=%s", result_type)
-        return _empty_range_dataframe()
+        return EMPTY_RANGE
 
     return _parse_matrix(result)
 
@@ -216,19 +205,19 @@ def _parse_vector(result: list[dict[str, Any]]) -> pl.DataFrame:
         records.append(record)
 
     if not records:
-        return _empty_instant_dataframe()
+        return EMPTY_INSTANT
 
     return pl.DataFrame(records)
 
 
 def _parse_scalar(result: list[Any]) -> pl.DataFrame:
     if len(result) != 2:
-        return _empty_instant_dataframe()
+        return EMPTY_INSTANT
 
     try:
         return pl.DataFrame({"__name__": [""], "value": [float(result[1])]})
     except (TypeError, ValueError):
-        return _empty_instant_dataframe()
+        return EMPTY_INSTANT
 
 
 def _parse_matrix(result: list[dict[str, Any]]) -> pl.DataFrame:
@@ -250,7 +239,7 @@ def _parse_matrix(result: list[dict[str, Any]]) -> pl.DataFrame:
             records.append(record)
 
     if not records:
-        return _empty_range_dataframe()
+        return EMPTY_RANGE
 
     return pl.DataFrame(records)
 

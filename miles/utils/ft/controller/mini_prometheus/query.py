@@ -70,7 +70,7 @@ def query_range(
                 rows.append(row)
 
     if not rows:
-        return _EMPTY_RANGE
+        return EMPTY_RANGE
     return pl.DataFrame(rows)
 
 
@@ -121,7 +121,7 @@ def _instant_query(
         rows.append(row)
 
     if not rows:
-        return _EMPTY_INSTANT
+        return EMPTY_INSTANT
     return pl.DataFrame(rows)
 
 
