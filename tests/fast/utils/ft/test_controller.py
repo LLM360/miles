@@ -195,6 +195,28 @@ class TestRegisterRank:
         assert "rank-1" not in harness.metric_store._scrape_targets
         assert "rank-2" in harness.metric_store._scrape_targets
 
+    @pytest.mark.asyncio
+    async def test_partial_registration_tick_still_runs(self) -> None:
+        """world_size=4 but only 3 ranks register; tick runs normally.
+
+        Controller currently does not track expected world_size,
+        so partial registration is silently accepted. A future
+        detector (heartbeat freshness) should catch this.
+        """
+        harness = make_test_controller()
+
+        for rank in range(3):
+            await harness.controller.register_rank(
+                run_id="run-1", rank=rank, world_size=4,
+                node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
+            )
+
+        assert len(harness.controller._rank_placement) == 3
+        assert 3 not in harness.controller._rank_placement
+
+        await harness.controller._tick()
+        assert harness.controller._tick_count == 1
+
 
 class TestShutdown:
     @pytest.mark.asyncio
