@@ -3,8 +3,8 @@ import asyncio
 import httpx
 import pytest
 
-from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.agents.collectors.stub import StubCollector
+from miles.utils.ft.agents._support.collectors.base import BaseCollector
+from miles.utils.ft.agents._support.collectors.stub import StubCollector
 from miles.utils.ft.agents.node_agent import FtNodeAgent
 from miles.utils.ft.models import CollectorOutput, MetricSample, UnknownDiagnosticError
 from tests.fast.utils.ft.conftest import (
@@ -487,3 +487,69 @@ class TestFtNodeAgentDiagnostics:
             await agent.stop()
 
 
+class TestFtNodeAgentSetRemoveDiagnostic:
+    @pytest.mark.anyio
+    async def test_set_diagnostic_makes_type_available(self) -> None:
+        agent = FtNodeAgent(node_id="test-set-diag")
+        try:
+            new_diag = StubDiagnostic(passed=True, details="dynamically added", diagnostic_type="dynamic")
+            agent.set_diagnostic(new_diag)
+
+            result = await agent.run_diagnostic("dynamic")
+            assert result.passed is True
+            assert result.details == "dynamically added"
+        finally:
+            await agent.stop()
+
+    @pytest.mark.anyio
+    async def test_set_diagnostic_replaces_existing(self) -> None:
+        original = StubDiagnostic(passed=True, details="original")
+        agent = FtNodeAgent(node_id="test-replace-diag", diagnostics=[original])
+        try:
+            replacement = StubDiagnostic(passed=False, details="replaced")
+            agent.set_diagnostic(replacement)
+
+            result = await agent.run_diagnostic("stub")
+            assert result.passed is False
+            assert result.details == "replaced"
+        finally:
+            await agent.stop()
+
+    @pytest.mark.anyio
+    async def test_remove_diagnostic_makes_type_unavailable(self) -> None:
+        diag = StubDiagnostic(passed=True)
+        agent = FtNodeAgent(node_id="test-remove-diag", diagnostics=[diag])
+        try:
+            agent.remove_diagnostic("stub")
+
+            with pytest.raises(UnknownDiagnosticError):
+                await agent.run_diagnostic("stub")
+        finally:
+            await agent.stop()
+
+    @pytest.mark.anyio
+    async def test_remove_nonexistent_is_noop(self) -> None:
+        agent = FtNodeAgent(node_id="test-remove-noop")
+        try:
+            agent.remove_diagnostic("nonexistent")
+        finally:
+            await agent.stop()
+
+    @pytest.mark.anyio
+    async def test_diagnostic_exception_returns_failed(self) -> None:
+        """Diagnostic that raises (not timeout) should return passed=False."""
+
+        class _ExplodingDiagnostic(StubDiagnostic):
+            async def run(self, node_id: str, timeout_seconds: int = 120) -> None:
+                raise RuntimeError("diagnostic exploded")
+
+        agent = FtNodeAgent(
+            node_id="test-diag-explode",
+            diagnostics=[_ExplodingDiagnostic(passed=True)],
+        )
+        try:
+            result = await agent.run_diagnostic("stub")
+            assert result.passed is False
+            assert "exception" in result.details
+        finally:
+            await agent.stop()
