@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from miles.utils.ft.controller.recovery_helpers import retry_async, retry_succeeded
+from miles.utils.ft.controller.recovery_orchestrator.helpers import retry_async, retry_succeeded
 
 
 class TestRetryAsyncEdgePaths:

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 
 
 class TestMiniWandbLogAndQuery:

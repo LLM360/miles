@@ -8,9 +8,9 @@ from typing import Any
 import httpx
 import polars as pl
 
-from miles.utils.ft.controller.metric_store_mixin import RangeAggregationMixin
-from miles.utils.ft.controller.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE
-from miles.utils.ft.controller.prometheus_response_parser import (
+from miles.utils.ft.controller.metrics.aggregation_mixin import RangeAggregationMixin
+from miles.utils.ft.controller.metrics.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE
+from miles.utils.ft.controller.metrics.prometheus_api.response_parser import (
     parse_instant_response,
     parse_range_response,
 )

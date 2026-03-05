@@ -4,7 +4,7 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.models import Decision, TrainingMetricStoreProtocol
 from miles.utils.ft.platform.protocols import JobStatus
 

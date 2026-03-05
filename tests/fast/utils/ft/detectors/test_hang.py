@@ -12,7 +12,7 @@ from miles.utils.ft.metric_names import (
     TRAINING_PHASE,
 )
 from miles.utils.ft.controller.detectors.hang import HangDetector
-from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.models import ActionType, MetricSample
 from miles.utils.ft.platform.protocols import JobStatus
 

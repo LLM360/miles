@@ -4,8 +4,8 @@ import logging
 import math
 from datetime import datetime, timezone
 
-from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery_helpers import (
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.recovery_orchestrator.helpers import (
     retry_async,
     retry_succeeded,
     safe_notify,

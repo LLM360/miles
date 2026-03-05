@@ -8,7 +8,7 @@ from tests.fast.utils.ft.conftest import (
 )
 
 from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector
-from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.models import ActionType
 
 _RANK_PLACEMENT = {0: "node-0", 1: "node-1"}

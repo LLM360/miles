@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import polars as pl
 import pytest
 
-from miles.utils.ft.controller.mini_prometheus.storage import (
+from miles.utils.ft.controller.metrics.mini_prometheus.storage import (
     MiniPrometheus,
     MiniPrometheusConfig,
 )

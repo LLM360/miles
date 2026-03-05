@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
-from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery_helpers import (
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.recovery_orchestrator.helpers import (
     retry_async,
     retry_succeeded,
     safe_notify,

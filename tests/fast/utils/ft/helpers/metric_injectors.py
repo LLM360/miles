@@ -12,10 +12,10 @@ from miles.utils.ft.metric_names import (
     TRAINING_JOB_STATUS,
     XID_CODE_RECENT,
 )
-from miles.utils.ft.controller.controller_exporter import ControllerExporter
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import DetectorContext
-from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.models import MetricSample
 from miles.utils.ft.platform.protocols import JobStatus
 

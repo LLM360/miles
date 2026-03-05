@@ -7,7 +7,7 @@ from tests.fast.utils.ft.conftest import (
 
 from miles.utils.ft.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
-from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.models import ActionType, MetricSample
 
 

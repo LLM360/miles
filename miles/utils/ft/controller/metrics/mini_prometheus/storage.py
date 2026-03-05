@@ -6,15 +6,15 @@ from datetime import datetime, timedelta, timezone
 
 import polars as pl
 
-from miles.utils.ft.controller.metric_store_mixin import RangeAggregationMixin
-from miles.utils.ft.controller.mini_prometheus.query import (
+from miles.utils.ft.controller.metrics.aggregation_mixin import RangeAggregationMixin
+from miles.utils.ft.controller.metrics.mini_prometheus.query import (
     TimeSeriesSample,
     SeriesKey,
     query_latest as _query_latest,
     query_range as _query_range,
     range_aggregate as _range_aggregate,
 )
-from miles.utils.ft.controller.mini_prometheus.scrape_loop import ScrapeLoop
+from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
 from miles.utils.ft.models import MetricSample
 
 

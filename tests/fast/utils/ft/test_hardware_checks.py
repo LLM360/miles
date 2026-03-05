@@ -3,7 +3,7 @@ import logging
 
 import pytest
 
-from miles.utils.ft.controller.hardware_checks import check_critical_xid
+from miles.utils.ft.controller.detectors.hardware_checks import check_critical_xid
 from miles.utils.ft.metric_names import XID_CODE_RECENT
 from miles.utils.ft.models import MetricSample
 from tests.fast.utils.ft.conftest import make_fake_metric_store

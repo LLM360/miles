@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
-from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_orchestrator.alert_checker import AlertChecker
 from miles.utils.ft.controller.recovery_orchestrator.context import RecoveryContext
 from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (

@@ -10,7 +10,7 @@ import logging
 
 import polars as pl
 
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.metric_names import (
     GPU_AVAILABLE,
     NODE_FILESYSTEM_AVAIL_BYTES,

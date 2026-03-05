@@ -12,8 +12,8 @@ from unittest.mock import patch
 import httpx
 import pytest
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.controller.prometheus_client_store import PrometheusClient
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import FakeNodeManager, FakeTrainingJob, get_sample_value, make_test_exporter
 

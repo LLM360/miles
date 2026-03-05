@@ -5,7 +5,7 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any, TypeVar
 
-from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.platform.protocols import NotificationProtocol, TrainingJobProtocol
 
 logger = logging.getLogger(__name__)

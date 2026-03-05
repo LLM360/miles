@@ -6,7 +6,7 @@ from miles.utils.ft.metric_names import (
     TRAINING_PHASE,
 )
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 

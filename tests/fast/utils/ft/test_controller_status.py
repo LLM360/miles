@@ -10,7 +10,7 @@ from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.platform.protocols import JobStatus
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
-from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from tests.fast.utils.ft.conftest import (
     FakeNodeManager,
     FakeTrainingJob,

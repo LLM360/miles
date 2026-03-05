@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
-from miles.utils.ft.controller.mini_wandb import MiniWandb as MiniWandbCls
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb as MiniWandbCls
 from miles.utils.ft.controller.recovery_orchestrator import (
     RecoveryContext,
     RecoveryOrchestrator,

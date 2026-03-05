@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from miles.utils.ft.controller.hardware_checks import check_all_hardware_faults
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.detectors.hardware_checks import check_all_hardware_faults
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.models import unique_node_ids
 
 

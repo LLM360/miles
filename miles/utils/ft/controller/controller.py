@@ -4,19 +4,19 @@ import asyncio
 import logging
 from typing import Any
 
-from miles.utils.ft.controller.controller_action_handlers import (
+from miles.utils.ft.controller.actions import (
     handle_enter_recovery,
     handle_mark_bad_and_restart,
     handle_notify_human,
 )
-from miles.utils.ft.controller.controller_exporter import ControllerExporter
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
-from miles.utils.ft.controller.mini_prometheus.protocol import (
+from miles.utils.ft.controller.metrics.protocol import (
     MetricStoreProtocol,
     ScrapeTargetManagerProtocol,
 )
-from miles.utils.ft.controller.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models import ActionType, Decision, NodeAgentProtocol
 from miles.utils.ft.platform.protocols import (

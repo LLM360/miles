@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import ConfigDict
 
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.controller_exporter import ControllerExporter
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors import build_detector_chain
-from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.controller.prometheus_client_store import PrometheusClient
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.models import FtBaseModel
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 

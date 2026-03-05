@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from miles.utils.ft.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.models import ActionType, Decision, TrainingMetricStoreProtocol
 
 _DEFAULT_MFU_THRESHOLD_RATIO = 0.8

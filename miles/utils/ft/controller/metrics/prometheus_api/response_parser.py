@@ -5,7 +5,7 @@ from typing import Any
 
 import polars as pl
 
-from miles.utils.ft.controller.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE
+from miles.utils.ft.controller.metrics.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE
 
 logger = logging.getLogger(__name__)
 

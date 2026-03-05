@@ -10,7 +10,7 @@ import httpx
 import polars as pl
 import pytest
 
-from miles.utils.ft.controller.prometheus_client_store import (
+from miles.utils.ft.controller.metrics.prometheus_api.store import (
     PrometheusClient,
     _format_duration,
 )
