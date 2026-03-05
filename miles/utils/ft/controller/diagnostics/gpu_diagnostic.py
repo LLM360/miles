@@ -3,7 +3,6 @@
 Launches ``gpu_check_script`` as a subprocess so that pynvml init/shutdown
 and torch computation never block the NodeAgent event loop.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -21,13 +20,10 @@ class GpuDiagnostic(BaseDiagnostic):
     diagnostic_type = "gpu"
 
     async def run(
-        self,
-        node_id: str,
-        timeout_seconds: int = 120,
+        self, node_id: str, timeout_seconds: int = 120,
     ) -> DiagnosticResult:
         proc_result = await self._run_check_subprocess(
-            node_id=node_id,
-            timeout_seconds=timeout_seconds,
+            node_id=node_id, timeout_seconds=timeout_seconds,
         )
         if isinstance(proc_result, DiagnosticResult):
             return proc_result
@@ -38,19 +34,15 @@ class GpuDiagnostic(BaseDiagnostic):
             stderr_text = stderr_bytes.decode(errors="replace").strip()
             logger.warning(
                 "gpu_check_process_failed node_id=%s returncode=%d stderr=%s",
-                node_id,
-                returncode,
-                stderr_text[:500],
+                node_id, returncode, stderr_text[:500],
             )
             return DiagnosticResult.fail_result(
-                diagnostic_type=self.diagnostic_type,
-                node_id=node_id,
+                diagnostic_type=self.diagnostic_type, node_id=node_id,
                 details=f"gpu check process failed: {stderr_text[:500]}",
             )
 
         gpu_results = self._parse_gpu_results(
-            stdout_bytes=stdout_bytes,
-            node_id=node_id,
+            stdout_bytes=stdout_bytes, node_id=node_id,
         )
         if isinstance(gpu_results, DiagnosticResult):
             return gpu_results
@@ -58,14 +50,11 @@ class GpuDiagnostic(BaseDiagnostic):
         return self._collect_failures(gpu_results=gpu_results, node_id=node_id)
 
     async def _run_check_subprocess(
-        self,
-        node_id: str,
-        timeout_seconds: int,
+        self, node_id: str, timeout_seconds: int,
     ) -> tuple[bytes, bytes, int] | DiagnosticResult:
         try:
             process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-m",
+                sys.executable, "-m",
                 "miles.utils.ft.controller.diagnostics.gpu_check_script",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -78,8 +67,7 @@ class GpuDiagnostic(BaseDiagnostic):
         except asyncio.TimeoutError:
             logger.warning(
                 "gpu_check_timeout node_id=%s timeout=%d",
-                node_id,
-                timeout_seconds,
+                node_id, timeout_seconds,
             )
             try:
                 process.kill()
@@ -87,15 +75,13 @@ class GpuDiagnostic(BaseDiagnostic):
             except Exception:
                 logger.warning("gpu_check_kill_failed node_id=%s", node_id, exc_info=True)
             return DiagnosticResult.fail_result(
-                diagnostic_type=self.diagnostic_type,
-                node_id=node_id,
+                diagnostic_type=self.diagnostic_type, node_id=node_id,
                 details="gpu check timed out",
             )
         except Exception:
             logger.warning("gpu_check_launch_failed node_id=%s", node_id, exc_info=True)
             return DiagnosticResult.fail_result(
-                diagnostic_type=self.diagnostic_type,
-                node_id=node_id,
+                diagnostic_type=self.diagnostic_type, node_id=node_id,
                 details="gpu check process failed to launch",
             )
 
@@ -103,9 +89,7 @@ class GpuDiagnostic(BaseDiagnostic):
         return stdout_bytes, stderr_bytes, process.returncode
 
     def _parse_gpu_results(
-        self,
-        stdout_bytes: bytes,
-        node_id: str,
+        self, stdout_bytes: bytes, node_id: str,
     ) -> list[dict[str, object]] | DiagnosticResult:
         stdout_text = stdout_bytes.decode(errors="replace")
         try:
@@ -113,20 +97,23 @@ class GpuDiagnostic(BaseDiagnostic):
         except json.JSONDecodeError:
             logger.warning(
                 "gpu_check_invalid_json node_id=%s output=%s",
-                node_id,
-                stdout_text[:200],
+                node_id, stdout_text[:200],
             )
             return DiagnosticResult.fail_result(
-                diagnostic_type=self.diagnostic_type,
-                node_id=node_id,
+                diagnostic_type=self.diagnostic_type, node_id=node_id,
                 details="invalid output from gpu check",
             )
 
     def _collect_failures(
-        self,
-        gpu_results: list[dict[str, object]],
-        node_id: str,
+        self, gpu_results: list[dict[str, object]], node_id: str,
     ) -> DiagnosticResult:
+        if not gpu_results:
+            logger.warning("gpu_check_empty_results node_id=%s", node_id)
+            return DiagnosticResult.fail_result(
+                diagnostic_type=self.diagnostic_type, node_id=node_id,
+                details="gpu check returned no results",
+            )
+
         failed_gpus: list[str] = []
         for gpu_result in gpu_results:
             if not gpu_result.get("passed", False):
@@ -138,17 +125,14 @@ class GpuDiagnostic(BaseDiagnostic):
             all_details = "; ".join(failed_gpus)
             logger.info(
                 "gpu_check_failures node_id=%s failures=%s",
-                node_id,
-                all_details,
+                node_id, all_details,
             )
             return DiagnosticResult.fail_result(
-                diagnostic_type=self.diagnostic_type,
-                node_id=node_id,
+                diagnostic_type=self.diagnostic_type, node_id=node_id,
                 details=all_details,
             )
 
         return DiagnosticResult.pass_result(
-            diagnostic_type=self.diagnostic_type,
-            node_id=node_id,
+            diagnostic_type=self.diagnostic_type, node_id=node_id,
             details="all GPU checks passed",
         )
