@@ -62,6 +62,62 @@ class TestRunCleanupNotifierAclose:
         assert stop_called
 
 
+class TestRunLoopSurviveTickFailure:
+    """Verify that run() continues ticking after _tick_inner raises."""
+
+    @pytest.mark.anyio
+    async def test_run_continues_after_tick_inner_exception(self) -> None:
+        harness = make_test_controller(tick_interval=0.01)
+
+        original_tick_inner = harness.controller._tick_inner
+        call_count = 0
+
+        async def _exploding_tick_inner() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                raise RuntimeError("transient failure")
+            await original_tick_inner()
+
+        harness.controller._tick_inner = _exploding_tick_inner  # type: ignore[assignment]
+
+        async def _shutdown_after_ticks() -> None:
+            while harness.controller._tick_count < 4:
+                await asyncio.sleep(0.01)
+            await harness.controller.shutdown()
+
+        task = asyncio.create_task(_shutdown_after_ticks())
+        await harness.controller.run()
+        await task
+
+        assert harness.controller._tick_count >= 4
+        assert call_count >= 4
+
+    @pytest.mark.anyio
+    async def test_metric_store_task_stopped_on_shutdown(self) -> None:
+        harness = make_test_controller(tick_interval=0.01)
+
+        stop_called = False
+        original_stop = harness.metric_store.stop
+
+        async def tracking_stop() -> None:
+            nonlocal stop_called
+            stop_called = True
+            await original_stop()
+
+        harness.metric_store.stop = tracking_stop  # type: ignore[assignment]
+
+        async def _shutdown_soon() -> None:
+            await asyncio.sleep(0.03)
+            await harness.controller.shutdown()
+
+        task = asyncio.create_task(_shutdown_soon())
+        await harness.controller.run()
+        await task
+
+        assert stop_called
+
+
 class TestExecuteDecisionUnknownAction:
     """Verify _execute_decision raises ValueError for unknown action types."""
 
@@ -69,10 +125,8 @@ class TestExecuteDecisionUnknownAction:
     async def test_unknown_action_type_raises(self) -> None:
         harness = make_test_controller()
 
-        bogus_decision = Decision(
-            action="totally_unknown_action",  # type: ignore[arg-type]
-            reason="should not happen",
-        )
+        bogus_decision = Decision(action=ActionType.NONE, reason="should not happen")
+        object.__setattr__(bogus_decision, "action", "totally_unknown_action")
 
         with pytest.raises(ValueError, match="Unknown action type"):
             await harness.controller._execute_decision(bogus_decision)
