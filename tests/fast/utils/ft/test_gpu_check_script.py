@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from dataclasses import asdict
 from io import StringIO
-from unittest.mock import patch
+from typing import Any, Generator
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -17,6 +19,35 @@ from miles.utils.ft.controller.diagnostics.gpu_check_script import (
     main,
 )
 from tests.fast.utils.ft.conftest import make_mock_pynvml
+
+_MOCK_MATMUL_REF = (None, None, None)
+_GPU_SCRIPT = "miles.utils.ft.controller.diagnostics.gpu_check_script"
+
+
+@contextmanager
+def _pynvml_and_matmul(
+    mock_pynvml: MagicMock,
+    *,
+    matmul_pass: bool = True,
+) -> Generator[None, None, None]:
+    with (
+        patch.dict("sys.modules", {"pynvml": mock_pynvml}),
+        patch(f"{_GPU_SCRIPT}._check_matmul", return_value=matmul_pass),
+    ):
+        yield
+
+
+def _run_main(mock_pynvml: MagicMock, *, matmul_pass: bool = True) -> list[dict[str, Any]]:
+    stdout_capture = StringIO()
+
+    with (
+        _pynvml_and_matmul(mock_pynvml, matmul_pass=matmul_pass),
+        patch(f"{_GPU_SCRIPT}._generate_matmul_reference", return_value=_MOCK_MATMUL_REF),
+        patch("sys.stdout", stdout_capture),
+    ):
+        main()
+
+    return json.loads(stdout_capture.getvalue())
 
 
 # ---------------------------------------------------------------------------
@@ -81,19 +112,11 @@ class TestCheckNvml:
 # _check_single_gpu tests
 # ---------------------------------------------------------------------------
 
-_MOCK_MATMUL_REF = (None, None, None)
-
 
 class TestCheckSingleGpu:
     def test_all_pass(self) -> None:
         mock_pynvml = make_mock_pynvml(device_count=1)
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=True,
-            ),
-        ):
+        with _pynvml_and_matmul(mock_pynvml):
             result = _check_single_gpu(
                 gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
             )
@@ -104,13 +127,7 @@ class TestCheckSingleGpu:
 
     def test_ecc_failure(self) -> None:
         mock_pynvml = make_mock_pynvml(ecc_uncorrectable=3)
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=True,
-            ),
-        ):
+        with _pynvml_and_matmul(mock_pynvml):
             result = _check_single_gpu(
                 gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
             )
@@ -120,13 +137,7 @@ class TestCheckSingleGpu:
 
     def test_matmul_mismatch(self) -> None:
         mock_pynvml = make_mock_pynvml(device_count=1)
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=False,
-            ),
-        ):
+        with _pynvml_and_matmul(mock_pynvml, matmul_pass=False):
             result = _check_single_gpu(
                 gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
             )
@@ -140,13 +151,7 @@ class TestCheckSingleGpu:
             ecc_uncorrectable=1,
             remap_info=(0, 0, 0, 1),
         )
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=False,
-            ),
-        ):
+        with _pynvml_and_matmul(mock_pynvml, matmul_pass=False):
             result = _check_single_gpu(
                 gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
             )
@@ -158,13 +163,7 @@ class TestCheckSingleGpu:
 
     def test_retired_pages_failure(self) -> None:
         mock_pynvml = make_mock_pynvml(retired_pages=["p1"])
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=True,
-            ),
-        ):
+        with _pynvml_and_matmul(mock_pynvml):
             result = _check_single_gpu(
                 gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
             )
@@ -174,13 +173,7 @@ class TestCheckSingleGpu:
 
     def test_power_state_abnormal_failure(self) -> None:
         mock_pynvml = make_mock_pynvml(power_state=8)
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=True,
-            ),
-        ):
+        with _pynvml_and_matmul(mock_pynvml):
             result = _check_single_gpu(
                 gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
             )
@@ -195,24 +188,8 @@ class TestCheckSingleGpu:
 
 class TestMain:
     def test_main_healthy_output(self) -> None:
-        mock_pynvml = make_mock_pynvml(device_count=2)
-        stdout_capture = StringIO()
+        output = _run_main(make_mock_pynvml(device_count=2))
 
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=True,
-            ),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._generate_matmul_reference",
-                return_value=_MOCK_MATMUL_REF,
-            ),
-            patch("sys.stdout", stdout_capture),
-        ):
-            main()
-
-        output = json.loads(stdout_capture.getvalue())
         assert len(output) == 2
         assert output[0]["gpu_index"] == 0
         assert output[0]["passed"] is True
@@ -220,24 +197,8 @@ class TestMain:
         assert output[1]["passed"] is True
 
     def test_main_mixed_results(self) -> None:
-        mock_pynvml = make_mock_pynvml(device_count=2, ecc_uncorrectable=5)
-        stdout_capture = StringIO()
+        output = _run_main(make_mock_pynvml(device_count=2, ecc_uncorrectable=5))
 
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=True,
-            ),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._generate_matmul_reference",
-                return_value=_MOCK_MATMUL_REF,
-            ),
-            patch("sys.stdout", stdout_capture),
-        ):
-            main()
-
-        output = json.loads(stdout_capture.getvalue())
         assert len(output) == 2
         assert output[0]["passed"] is False
         assert output[0]["ecc_errors_uncorrectable"] == 5
@@ -248,23 +209,9 @@ class TestMain:
             RuntimeError("GPU 0 error"),
             "handle-1",
         ]
-        stdout_capture = StringIO()
 
-        with (
-            patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._check_matmul",
-                return_value=True,
-            ),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._generate_matmul_reference",
-                return_value=_MOCK_MATMUL_REF,
-            ),
-            patch("sys.stdout", stdout_capture),
-        ):
-            main()
+        output = _run_main(mock_pynvml)
 
-        output = json.loads(stdout_capture.getvalue())
         assert len(output) == 2
         assert output[0]["passed"] is False
         assert "GPU 0 error" in output[0]["details"]
@@ -277,10 +224,7 @@ class TestMain:
 
         with (
             patch.dict("sys.modules", {"pynvml": mock_pynvml}),
-            patch(
-                "miles.utils.ft.controller.diagnostics.gpu_check_script._generate_matmul_reference",
-                return_value=_MOCK_MATMUL_REF,
-            ),
+            patch(f"{_GPU_SCRIPT}._generate_matmul_reference", return_value=_MOCK_MATMUL_REF),
             patch("sys.stdout", stdout_capture),
         ):
             main()
