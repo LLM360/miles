@@ -7,7 +7,6 @@ from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_orchestrator.helpers import (
     retry_async,
-    retry_succeeded,
     safe_notify,
     stop_clear_submit,
 )
@@ -42,7 +41,7 @@ async def handle_mark_bad_and_restart(
             ),
             description=f"mark_node_bad({node_id})",
         )
-        if not retry_succeeded(result):
+        if not result.ok:
             failed_nodes.append(node_id)
 
     if failed_nodes:

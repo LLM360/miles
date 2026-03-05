@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Coroutine
-from typing import Any, TypeVar
+from dataclasses import dataclass
+from typing import Any, Generic, TypeVar
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.platform.protocols import NotificationProtocol, TrainingJobProtocol
@@ -15,40 +16,41 @@ DEFAULT_MAX_RETRIES: int = 3
 _T = TypeVar("_T")
 
 
-class _Sentinel:
-    """Internal sentinel indicating retry_async exhausted all attempts."""
+@dataclass(frozen=True)
+class RetryResult(Generic[_T]):
+    """Result of :func:`retry_async` — explicitly typed success/failure."""
 
-
-_EXHAUSTED = _Sentinel()
+    ok: bool
+    value: _T | None = None
+    error: str | None = None
 
 
 async def retry_async(
     func: Callable[[], Coroutine[Any, Any, _T]],
     description: str,
     max_retries: int = DEFAULT_MAX_RETRIES,
-) -> _T | _Sentinel:
+) -> RetryResult[_T]:
     """Retry an async callable up to *max_retries* times.
 
-    Returns the callable's return value on success, or a sentinel object
-    (falsy check via ``isinstance``) if all attempts are exhausted.
-    Use :func:`retry_succeeded` to check the outcome.
+    Returns a :class:`RetryResult` with ``ok=True`` and the return value on
+    success, or ``ok=False`` with an error description if all attempts fail.
     """
+    last_error: str = ""
+
     for attempt in range(max_retries):
         try:
-            return await func()
-        except Exception:
+            value = await func()
+            return RetryResult(ok=True, value=value)
+        except Exception as exc:
+            last_error = str(exc)
             logger.warning(
                 "retry_failed description=%s attempt=%d/%d",
                 description, attempt + 1, max_retries,
                 exc_info=True,
             )
+
     logger.error("retry_exhausted description=%s", description)
-    return _EXHAUSTED
-
-
-def retry_succeeded(result: object) -> bool:
-    """Return True if the retry_async call succeeded (did not exhaust retries)."""
-    return not isinstance(result, _Sentinel)
+    return RetryResult(ok=False, error=f"exhausted {max_retries} retries: {last_error}")
 
 
 async def stop_clear_submit(
@@ -67,7 +69,7 @@ async def stop_clear_submit(
         training_job.submit_training,
         description="submit_training",
     )
-    return retry_succeeded(result)
+    return result.ok
 
 
 async def safe_notify(

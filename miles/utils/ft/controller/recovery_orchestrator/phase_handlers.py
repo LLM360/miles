@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_orchestrator.helpers import (
     retry_async,
-    retry_succeeded,
     safe_notify,
     stop_clear_submit,
 )
@@ -201,7 +200,7 @@ async def step_evict_and_restart(
         )
         for node_id in ctx.bad_node_ids
     ))
-    if not all(retry_succeeded(r) for r in results):
+    if not all(r.ok for r in results):
         return RecoveryPhase.NOTIFY
 
     success = await stop_clear_submit(training_job, mini_wandb)

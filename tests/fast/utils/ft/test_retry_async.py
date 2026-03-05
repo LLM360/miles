@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from miles.utils.ft.controller.recovery_orchestrator.helpers import retry_async, retry_succeeded
+from miles.utils.ft.controller.recovery_orchestrator.helpers import RetryResult, retry_async
 
 
 class TestRetryAsyncEdgePaths:
@@ -16,21 +16,29 @@ class TestRetryAsyncEdgePaths:
                 raise RuntimeError("transient error")
 
         result = asyncio.run(retry_async(func=flaky_fn, description="test_retry"))
-        assert retry_succeeded(result)
+
+        assert isinstance(result, RetryResult)
+        assert result.ok is True
         assert call_count == 2
 
-    def test_all_retries_fail_returns_sentinel(self) -> None:
+    def test_all_retries_fail_returns_failure(self) -> None:
         async def always_fail() -> None:
             raise RuntimeError("permanent error")
 
         result = asyncio.run(retry_async(
             func=always_fail, description="test_fail", max_retries=2,
         ))
-        assert not retry_succeeded(result)
+
+        assert isinstance(result, RetryResult)
+        assert result.ok is False
+        assert result.error is not None
+        assert "permanent error" in result.error
 
     def test_preserves_return_value(self) -> None:
         async def returns_value() -> str:
             return "run-42"
 
         result = asyncio.run(retry_async(func=returns_value, description="test_return"))
-        assert result == "run-42"
+
+        assert result.ok is True
+        assert result.value == "run-42"
