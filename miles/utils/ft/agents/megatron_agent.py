@@ -53,7 +53,7 @@ class FtMegatronAgent(ControllerHandleMixin):
 
         self._iteration_child = iteration_gauge.labels(**self._labels)
         self._phase_child = phase_gauge.labels(**self._labels)
-        self._last_iteration: int = 0
+        self._last_iteration: int = -1
         self._iteration_child.set(0)
         self._phase_child.set(mn.PHASE_TO_NUMERIC["idle"])
 
@@ -85,20 +85,31 @@ class FtMegatronAgent(ControllerHandleMixin):
     def get_exporter_address(self) -> str:
         return self._exporter.get_address()
 
-    def step(
+    def set_phase(
         self,
-        iteration: int | None = None,
-        phase: Literal["idle", "training", "checkpoint_saving"] = "training",
+        phase: Literal["idle", "training", "checkpoint_saving"],
     ) -> None:
         try:
-            if iteration is not None:
-                self._last_iteration = iteration
+            self._phase_child.set(mn.PHASE_TO_NUMERIC[phase])
+        except Exception:
+            logger.warning(
+                "FtMegatronAgent.set_phase(%r) failed",
+                phase,
+                exc_info=True,
+            )
+
+    def step(self, iteration: int) -> None:
+        assert iteration > self._last_iteration, (
+            f"iteration must be strictly increasing: got {iteration}, "
+            f"last was {self._last_iteration}"
+        )
+        try:
+            self._last_iteration = iteration
             self._iteration_child.set(self._last_iteration)
-            self._phase_child.set(mn.PHASE_TO_NUMERIC.get(phase, 0.0))
         except Exception:
             logger.warning(
                 "FtMegatronAgent.step() failed at iteration=%s",
-                iteration if iteration is not None else self._last_iteration,
+                iteration,
                 exc_info=True,
             )
 

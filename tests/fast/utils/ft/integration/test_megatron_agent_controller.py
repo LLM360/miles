@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
-from tests.fast.utils.ft.helpers import make_test_controller
+from tests.fast.utils.ft.conftest import make_test_controller
 
 
 def _make_agent(rank: int = 0, world_size: int = 4) -> FtMegatronAgent:
@@ -20,7 +20,7 @@ def _make_agent(rank: int = 0, world_size: int = 4) -> FtMegatronAgent:
 
 
 class TestStepToLogStepFlow:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_step_metrics_arrive_in_mini_wandb(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-1"
@@ -40,7 +40,7 @@ class TestStepToLogStepFlow:
 
 
 class TestRegisterRankPlacement:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_register_rank_records_placement(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-2"
@@ -54,11 +54,11 @@ class TestRegisterRankPlacement:
             node_id="node-1", exporter_address="http://node-1:9090",
         )
 
-        assert harness.controller._rank_registry.rank_placement == {0: "node-0", 1: "node-1"}
+        assert harness.controller._rank_placement == {0: "node-0", 1: "node-1"}
 
 
 class TestScrapeTargetRegistration:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_register_rank_adds_scrape_target(self) -> None:
         harness = make_test_controller()
         agent = _make_agent(rank=0, world_size=4)
@@ -77,7 +77,7 @@ class TestScrapeTargetRegistration:
 
 
 class TestHeartbeatScrape:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_scrape_reads_heartbeat_gauges(self) -> None:
         harness = make_test_controller()
         agent = _make_agent(rank=0, world_size=4)
@@ -90,7 +90,8 @@ class TestHeartbeatScrape:
                 node_id="node-0", exporter_address=exporter_address,
             )
 
-            agent.step(iteration=42, phase="training")
+            agent.set_phase("training")
+            agent.step(iteration=42)
 
             await harness.metric_store.scrape_once()
 
@@ -103,7 +104,7 @@ class TestHeartbeatScrape:
 
 
 class TestRunIdClear:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_new_run_id_clears_mini_wandb(self) -> None:
         harness = make_test_controller()
         run_id_1 = "integ-megatron-run-1"
@@ -128,7 +129,7 @@ class TestRunIdClear:
 
 
 class TestMultiRankConcurrentStep:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_multi_rank_independent_metrics(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-multirank"
@@ -161,22 +162,24 @@ class TestControllerUnreachable:
 
 
 class TestPhaseSwitch:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_phase_switch_visible_in_exporter(self) -> None:
         agent = _make_agent(rank=0, world_size=4)
         try:
-            agent.step(iteration=1, phase="training")
+            agent.set_phase("training")
+            agent.step(iteration=1)
             address = agent.get_exporter_address()
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{address}/metrics")
             assert "1.0" in response.text
 
-            agent.step(iteration=1, phase="checkpoint_saving")
+            agent.set_phase("checkpoint_saving")
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{address}/metrics")
             assert "2.0" in response.text
 
-            agent.step(iteration=2, phase="training")
+            agent.set_phase("training")
+            agent.step(iteration=2)
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{address}/metrics")
             text = response.text

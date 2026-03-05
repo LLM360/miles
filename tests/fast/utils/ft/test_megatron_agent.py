@@ -36,7 +36,7 @@ def agent() -> Iterator[FtMegatronAgent]:
 
 
 class TestFtMegatronAgentExporter:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_exporter_returns_prometheus_format(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -47,7 +47,7 @@ class TestFtMegatronAgentExporter:
         assert response.status_code == 200
         assert "text/plain" in response.headers.get("content-type", "")
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_exporter_address_has_port(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -56,7 +56,7 @@ class TestFtMegatronAgentExporter:
         port = int(address.split(":")[-1])
         assert port > 0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_initial_gauge_values(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -71,7 +71,7 @@ class TestFtMegatronAgentExporter:
 
 
 class TestFtMegatronAgentStep:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_step_updates_iteration_gauge(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -85,19 +85,6 @@ class TestFtMegatronAgentStep:
         assert "miles_ft_training_iteration" in text
         assert "42.0" in text
 
-    @pytest.mark.asyncio()
-    async def test_step_updates_phase_gauge(
-        self, agent: FtMegatronAgent
-    ) -> None:
-        agent.step(iteration=1, phase="checkpoint_saving")
-
-        address = agent.get_exporter_address()
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{address}/metrics")
-
-        text = response.text
-        assert "2.0" in text
-
     def test_step_does_not_interact_with_controller(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -105,27 +92,71 @@ class TestFtMegatronAgentStep:
         agent.step(iteration=10)
         agent._controller_handle.log_step.remote.assert_not_called()
 
-    @pytest.mark.asyncio()
-    async def test_step_without_iteration_keeps_last_value(
+    def test_step_rejects_non_increasing_iteration(
         self, agent: FtMegatronAgent
     ) -> None:
         agent.step(iteration=5)
-        agent.step()
+        with pytest.raises(AssertionError, match="strictly increasing"):
+            agent.step(iteration=5)
+
+    def test_step_rejects_decreasing_iteration(
+        self, agent: FtMegatronAgent
+    ) -> None:
+        agent.step(iteration=5)
+        with pytest.raises(AssertionError, match="strictly increasing"):
+            agent.step(iteration=3)
+
+    @pytest.mark.anyio
+    async def test_step_iteration_monotonic_across_phases(
+        self, agent: FtMegatronAgent
+    ) -> None:
+        """Simulate a full rollout cycle with split set_phase/step API."""
+        address = agent.get_exporter_address()
+        labels = {"rank": "0"}
+
+        agent.set_phase("training")
+        for step_id in range(4):
+            agent.step(iteration=step_id)
+
+        agent.set_phase("idle")
+        agent.set_phase("checkpoint_saving")
+        agent.set_phase("idle")
+
+        agent.set_phase("training")
+        for step_id in range(4, 8):
+            agent.step(iteration=step_id)
+
+        agent.set_phase("idle")
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{address}/metrics")
+        iteration = _parse_gauge(resp.text, "miles_ft_training_iteration", labels)
+        phase = _parse_gauge(resp.text, "miles_ft_training_phase", labels)
+        assert iteration == 7.0
+        assert phase == 0.0
+
+
+class TestFtMegatronAgentSetPhase:
+    @pytest.mark.anyio
+    async def test_set_phase_updates_phase_gauge(
+        self, agent: FtMegatronAgent
+    ) -> None:
+        agent.set_phase("checkpoint_saving")
 
         address = agent.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
 
         labels = {"rank": "0"}
-        iteration = _parse_gauge(response.text, "miles_ft_training_iteration", labels)
-        assert iteration == 5.0
+        phase = _parse_gauge(response.text, "miles_ft_training_phase", labels)
+        assert phase == 2.0
 
-    @pytest.mark.asyncio()
-    async def test_step_idle_phase_preserves_iteration(
+    @pytest.mark.anyio
+    async def test_set_phase_idle_preserves_iteration(
         self, agent: FtMegatronAgent
     ) -> None:
         agent.step(iteration=10)
-        agent.step(phase="idle")
+        agent.set_phase("idle")
 
         address = agent.get_exporter_address()
         async with httpx.AsyncClient() as client:
@@ -136,54 +167,6 @@ class TestFtMegatronAgentStep:
         phase = _parse_gauge(response.text, "miles_ft_training_phase", labels)
         assert iteration == 10.0
         assert phase == 0.0
-
-    @pytest.mark.asyncio()
-    async def test_step_iteration_monotonic_across_phases(
-        self, agent: FtMegatronAgent
-    ) -> None:
-        """Simulate a full rollout cycle and verify the gauge stays monotonic."""
-        address = agent.get_exporter_address()
-        labels = {"rank": "0"}
-        observed_iterations: list[float] = []
-
-        async def record() -> None:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(f"{address}/metrics")
-            observed_iterations.append(
-                _parse_gauge(resp.text, "miles_ft_training_iteration", labels)
-            )
-
-        agent.step()
-        await record()
-
-        for step_id in range(4):
-            agent.step(iteration=step_id)
-            await record()
-
-        agent.step(phase="idle")
-        await record()
-
-        agent.step(phase="checkpoint_saving")
-        await record()
-
-        agent.step(phase="idle")
-        await record()
-
-        agent.step()
-        await record()
-
-        for step_id in range(4, 8):
-            agent.step(iteration=step_id)
-            await record()
-
-        agent.step(phase="idle")
-        await record()
-
-        for i in range(1, len(observed_iterations)):
-            assert observed_iterations[i] >= observed_iterations[i - 1], (
-                f"Iteration gauge decreased at index {i}: "
-                f"{observed_iterations[i - 1]} -> {observed_iterations[i]}"
-            )
 
 
 class TestFtMegatronAgentRegisterRank:
