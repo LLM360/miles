@@ -14,7 +14,7 @@ class TestLarkWebhookNotifier:
         yield instance
         await instance.aclose()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_send_posts_correct_json(self, notifier: LarkWebhookNotifier) -> None:
         mock_response = httpx.Response(status_code=200, request=httpx.Request("POST", "https://example.com"))
         with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=mock_response) as mock_post:
@@ -29,7 +29,7 @@ class TestLarkWebhookNotifier:
             assert payload["card"]["header"]["title"]["content"] == "[critical] Fault Alert"
             assert payload["card"]["elements"] == [{"tag": "markdown", "content": "GPU lost on node-3"}]
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     @pytest.mark.parametrize("severity", ["critical", "warning", "info"])
     async def test_send_includes_severity_in_header(
         self, notifier: LarkWebhookNotifier, severity: str,
@@ -41,7 +41,7 @@ class TestLarkWebhookNotifier:
             payload = mock_post.call_args[1]["json"]
             assert payload["card"]["header"]["title"]["content"].startswith(f"[{severity}]")
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_send_http_error_raises_after_retries(
         self, notifier: LarkWebhookNotifier, caplog: pytest.LogCaptureFixture,
     ) -> None:
@@ -53,7 +53,7 @@ class TestLarkWebhookNotifier:
 
             assert "lark_webhook_send_failed" in caplog.text
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_send_connect_error_raises_after_retries(
         self, notifier: LarkWebhookNotifier, caplog: pytest.LogCaptureFixture,
     ) -> None:
@@ -67,7 +67,7 @@ class TestLarkWebhookNotifier:
 
             assert "lark_webhook_send_failed" in caplog.text
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_retry_succeeds_on_second_attempt(
         self, notifier: LarkWebhookNotifier,
     ) -> None:
@@ -83,7 +83,7 @@ class TestLarkWebhookNotifier:
 
         assert mock_post.call_count == 2
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_retry_exhausts_all_attempts(
         self, notifier: LarkWebhookNotifier, caplog: pytest.LogCaptureFixture,
     ) -> None:
@@ -102,7 +102,7 @@ class TestLarkWebhookNotifier:
         assert mock_post.call_count == 3
         assert "lark_webhook_send_failed_all_retries" in caplog.text
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_retry_uses_exponential_backoff(
         self, notifier: LarkWebhookNotifier,
     ) -> None:

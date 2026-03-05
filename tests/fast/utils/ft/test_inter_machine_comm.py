@@ -32,7 +32,7 @@ SAMPLE_NCCL_OUTPUT_LOW_BW = """\
 
 
 class TestInterMachineCommDiagnostic:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_pass_when_bandwidth_above_threshold(self) -> None:
         diag = InterMachineCommDiagnostic(
             expected_bandwidth_gbps=40.0,
@@ -54,7 +54,7 @@ class TestInterMachineCommDiagnostic:
         assert result.diagnostic_type == "inter_machine"
         assert "45.50" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_fail_when_bandwidth_below_threshold(self) -> None:
         diag = InterMachineCommDiagnostic(
             expected_bandwidth_gbps=40.0,
@@ -73,7 +73,7 @@ class TestInterMachineCommDiagnostic:
         assert result.passed is False
         assert "10.00" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_fail_when_binary_not_found(self) -> None:
         diag = InterMachineCommDiagnostic(master_addr="10.0.0.1")
 
@@ -86,7 +86,7 @@ class TestInterMachineCommDiagnostic:
         assert result.passed is False
         assert "failed to execute" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_fail_when_subprocess_returns_nonzero(self) -> None:
         diag = InterMachineCommDiagnostic(master_addr="10.0.0.1")
         mock_proc = AsyncMock()
@@ -99,7 +99,7 @@ class TestInterMachineCommDiagnostic:
         assert result.passed is False
         assert "exit code 1" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_fail_when_output_unparseable(self) -> None:
         diag = InterMachineCommDiagnostic(master_addr="10.0.0.1")
         mock_proc = AsyncMock()
@@ -112,7 +112,7 @@ class TestInterMachineCommDiagnostic:
         assert result.passed is False
         assert "failed to parse" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_timeout_handling(self) -> None:
         diag = InterMachineCommDiagnostic(master_addr="10.0.0.1")
         mock_proc = AsyncMock()
@@ -128,7 +128,7 @@ class TestInterMachineCommDiagnostic:
         mock_proc.kill.assert_called_once()
         mock_proc.wait.assert_awaited_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_environment_variables_set(self) -> None:
         diag = InterMachineCommDiagnostic(
             master_addr="10.0.0.1",
@@ -154,7 +154,7 @@ class TestInterMachineCommDiagnostic:
         assert captured_env["MASTER_ADDR"] == "10.0.0.1"
         assert captured_env["MASTER_PORT"] == "29501"
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_custom_threshold(self) -> None:
         diag = InterMachineCommDiagnostic(
             expected_bandwidth_gbps=5.0,
@@ -173,7 +173,7 @@ class TestInterMachineCommDiagnostic:
         assert result.passed is True
         assert "10.00" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_node_id_in_result(self) -> None:
         diag = InterMachineCommDiagnostic(master_addr="10.0.0.1")
         mock_proc = AsyncMock()

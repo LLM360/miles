@@ -40,7 +40,7 @@ async def _register_n_nodes(
 
 
 class TestControllerMemoryLeak:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_controller_main_loop_no_memory_leak(self) -> None:
         harness = make_test_controller(
             detectors=build_detector_chain(),

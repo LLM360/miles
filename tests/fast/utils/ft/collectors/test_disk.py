@@ -8,7 +8,7 @@ from miles.utils.ft.agents.collectors.disk import DiskCollector
 
 
 class TestDiskCollector:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_disk_available_bytes(self, tmp_path: Path) -> None:
         collector = DiskCollector(disk_mounts=[tmp_path])
 

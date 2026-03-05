@@ -10,7 +10,7 @@ from tests.fast.utils.ft.conftest import TestCollector
 
 
 class TestNodeAgentMiniPrometheusIntegration:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_scrape_and_query_latest(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -42,7 +42,7 @@ class TestNodeAgentMiniPrometheusIntegration:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_updated_values_visible_after_rescrape(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -93,7 +93,7 @@ class TestNodeAgentMiniPrometheusIntegration:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_multiple_metrics_all_queryable(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -139,7 +139,7 @@ class TestNodeAgentMiniPrometheusIntegration:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_label_filter_query(self) -> None:
         test_collector = TestCollector(
             metrics=[

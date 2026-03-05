@@ -34,7 +34,7 @@ def _make_mock_process(
 
 
 class TestStackTraceDiagnosticEmptyPids:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_empty_pids_returns_failed(self) -> None:
         diag = StackTraceDiagnostic(pids=[])
         result = await diag.run(node_id="node-0")
@@ -42,7 +42,7 @@ class TestStackTraceDiagnosticEmptyPids:
         assert result.passed is False
         assert "no PIDs provided" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_none_pids_returns_failed(self) -> None:
         diag = StackTraceDiagnostic(pids=None)
         result = await diag.run(node_id="node-0")
@@ -52,7 +52,7 @@ class TestStackTraceDiagnosticEmptyPids:
 
 
 class TestStackTraceDiagnosticSinglePid:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_single_pid_success(self) -> None:
         mock_proc = _make_mock_process(stdout=b"stack trace here")
 
@@ -64,7 +64,7 @@ class TestStackTraceDiagnosticSinglePid:
         assert "PID 1234" in result.details
         assert "stack trace here" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_single_pid_pyspy_failure(self) -> None:
         mock_proc = _make_mock_process(
             stdout=b"", stderr=b"process not found", returncode=1,
@@ -79,7 +79,7 @@ class TestStackTraceDiagnosticSinglePid:
 
 
 class TestStackTraceDiagnosticMultiplePids:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_partial_failure_still_passes(self) -> None:
         good_proc = _make_mock_process(stdout=b"good trace")
         bad_proc = _make_mock_process(
@@ -102,7 +102,7 @@ class TestStackTraceDiagnosticMultiplePids:
         assert "PID 200" in result.details
         assert "FAILED" in result.details
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_all_pids_fail_returns_not_passed(self) -> None:
         bad_proc = _make_mock_process(
             stdout=b"", stderr=b"error", returncode=1,
@@ -114,7 +114,7 @@ class TestStackTraceDiagnosticMultiplePids:
 
         assert result.passed is False
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_timeout_treated_as_failure(self) -> None:
         mock_proc = AsyncMock()
         mock_proc.communicate = AsyncMock(

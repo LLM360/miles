@@ -27,7 +27,7 @@ def _create_sysfs(tmp_path: Path) -> Path:
 
 
 class TestNodeAgentAllCollectorsIntegration:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_all_collectors_expose_metrics(self, tmp_path: Path) -> None:
         mock_nvml = make_mock_pynvml(device_count=2)
         sysfs = _create_sysfs(tmp_path)
@@ -80,7 +80,7 @@ class TestNodeAgentAllCollectorsIntegration:
             finally:
                 await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_failing_collector_does_not_block_others(self, tmp_path: Path) -> None:
         sysfs = _create_sysfs(tmp_path)
 
@@ -111,7 +111,7 @@ class TestNodeAgentAllCollectorsIntegration:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_per_collector_interval_with_hw_collectors(self, tmp_path: Path) -> None:
         sysfs = _create_sysfs(tmp_path)
 

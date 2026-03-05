@@ -11,7 +11,7 @@ from tests.fast.utils.ft.conftest import FakeKmsgReader
 
 
 class TestKmsgCollectorXid:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_xid_48_detected(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/dev/null"))
         collector._reader = FakeKmsgReader([
@@ -24,7 +24,7 @@ class TestKmsgCollectorXid:
         assert xid_samples[0].labels == {"xid": "48"}
         assert xid_samples[0].value == 1.0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_multiple_xid_codes(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/dev/null"))
         collector._reader = FakeKmsgReader([
@@ -38,7 +38,7 @@ class TestKmsgCollectorXid:
         xid_codes = {m.labels["xid"] for m in xid_samples}
         assert xid_codes == {"31", "48"}
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_xid_window_expiry(self) -> None:
         collector = KmsgCollector(
             kmsg_path=Path("/dev/null"),
@@ -58,7 +58,7 @@ class TestKmsgCollectorXid:
         assert count_sample[0].value == 0.0
         assert count_sample[0].metric_type == "counter"
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_xid_count_total(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/dev/null"))
         collector._reader = FakeKmsgReader([
@@ -74,7 +74,7 @@ class TestKmsgCollectorXid:
 
 
 class TestKmsgCollectorKernelEvents:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_kernel_panic_detected(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/dev/null"))
         collector._reader = FakeKmsgReader([
@@ -85,7 +85,7 @@ class TestKmsgCollectorKernelEvents:
         kernel = [m for m in result.metrics if m.name == "miles_ft_kernel_event_count"]
         assert kernel[0].value == 1.0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_mce_detected(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/dev/null"))
         collector._reader = FakeKmsgReader([
@@ -96,7 +96,7 @@ class TestKmsgCollectorKernelEvents:
         kernel = [m for m in result.metrics if m.name == "miles_ft_kernel_event_count"]
         assert kernel[0].value == 1.0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_no_kernel_events(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/dev/null"))
         collector._reader = FakeKmsgReader([
@@ -109,7 +109,7 @@ class TestKmsgCollectorKernelEvents:
 
 
 class TestKmsgCollectorDmesgFallback:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_fallback_when_kmsg_unavailable(self) -> None:
         collector = KmsgCollector(kmsg_path=Path("/nonexistent/kmsg"))
         assert collector._reader is None
@@ -128,7 +128,7 @@ class TestKmsgCollectorDmesgFallback:
 
 
 class TestDmesgTimeWindowBug:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_dmesg_failure_does_not_advance_time_window(self) -> None:
         """If dmesg subprocess fails, _last_dmesg_time must NOT advance,
         so the same time window is retried on the next collection cycle.
@@ -152,7 +152,7 @@ class TestDmesgTimeWindowBug:
 
         assert reader._last_dmesg_time == time_after_success
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_dmesg_nonzero_returncode_does_not_advance(self) -> None:
         """A non-zero returncode from dmesg should also preserve the time window."""
         collector = KmsgCollector(kmsg_path=Path("/nonexistent/kmsg"))

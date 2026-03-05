@@ -36,7 +36,7 @@ class _CountingCollector(BaseCollector):
 
 
 class TestFtNodeAgentExporter:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_exporter_returns_prometheus_format(self) -> None:
         agent = FtNodeAgent(node_id="test-node-0")
         try:
@@ -49,7 +49,7 @@ class TestFtNodeAgentExporter:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_exporter_address_has_port(self) -> None:
         agent = FtNodeAgent(node_id="test-node-0")
         try:
@@ -60,7 +60,7 @@ class TestFtNodeAgentExporter:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_stub_collector_no_custom_metrics(self) -> None:
         agent = FtNodeAgent(
             node_id="test-node-stub",
@@ -78,7 +78,7 @@ class TestFtNodeAgentExporter:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_update_exporter_creates_gauges(self) -> None:
         agent = FtNodeAgent(node_id="test-node-gauge")
         try:
@@ -108,7 +108,7 @@ class TestFtNodeAgentExporter:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_update_exporter_unlabeled_metric(self) -> None:
         agent = FtNodeAgent(node_id="test-node-unlabeled")
         try:
@@ -126,7 +126,7 @@ class TestFtNodeAgentExporter:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_update_exporter_overwrites_value(self) -> None:
         agent = FtNodeAgent(node_id="test-node-overwrite")
         try:
@@ -155,7 +155,7 @@ class TestFtNodeAgentExporter:
 
 
 class TestFtNodeAgentCollectionLoop:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_collection_loop_updates_exporter(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -184,7 +184,7 @@ class TestFtNodeAgentCollectionLoop:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_stop_cancels_tasks(self) -> None:
         test_collector = TestCollector(
             metrics=[MetricSample(name="dummy", labels={}, value=1.0)],
@@ -200,7 +200,7 @@ class TestFtNodeAgentCollectionLoop:
         await agent.stop()
         assert len(agent._collector_tasks) == 0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_failing_collector_does_not_crash_loop(self) -> None:
         good_collector = TestCollector(
             metrics=[MetricSample(name="good_metric", labels={}, value=42.0)],
@@ -225,7 +225,7 @@ class TestFtNodeAgentCollectionLoop:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_all_collectors_failing_keeps_tasks_alive(self) -> None:
         failing1 = _FailingCollector()
         failing1.collect_interval = 0.05
@@ -251,7 +251,7 @@ class TestFtNodeAgentCollectionLoop:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_multiple_metrics_exported(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -285,7 +285,7 @@ class TestFtNodeAgentCollectionLoop:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_per_collector_independent_intervals(self) -> None:
         fast_collector = _CountingCollector(collect_interval=0.05)
         slow_collector = _CountingCollector(collect_interval=0.5)
@@ -302,7 +302,7 @@ class TestFtNodeAgentCollectionLoop:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_collect_interval_seconds_overrides_all(self) -> None:
         fast_collector = _CountingCollector(collect_interval=0.01)
         slow_collector = _CountingCollector(collect_interval=0.01)
@@ -319,7 +319,7 @@ class TestFtNodeAgentCollectionLoop:
 
 
 class TestFtNodeAgentLifecycle:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_start_twice_is_idempotent(self) -> None:
         test_collector = TestCollector(
             metrics=[MetricSample(name="dummy", labels={}, value=1.0)],
@@ -338,12 +338,12 @@ class TestFtNodeAgentLifecycle:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_stop_without_start(self) -> None:
         agent = FtNodeAgent(node_id="test-node-no-start")
         await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_stop_twice_is_safe(self) -> None:
         agent = FtNodeAgent(
             node_id="test-node-double-stop",
@@ -353,7 +353,7 @@ class TestFtNodeAgentLifecycle:
         await agent.stop()
         await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_start_with_empty_collectors(self) -> None:
         agent = FtNodeAgent(node_id="test-node-empty-collectors", collectors=[])
         try:
@@ -362,7 +362,7 @@ class TestFtNodeAgentLifecycle:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_stop_calls_close_on_all_collectors(self) -> None:
         collector1 = _CountingCollector(collect_interval=0.05)
         collector2 = _CountingCollector(collect_interval=0.05)
@@ -377,7 +377,7 @@ class TestFtNodeAgentLifecycle:
         assert collector1.closed
         assert collector2.closed
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_close_failure_does_not_block_other_collectors(self) -> None:
         class _FailingCloseCollector(BaseCollector):
             def __init__(self) -> None:
@@ -403,7 +403,7 @@ class TestFtNodeAgentLifecycle:
 
 
 class TestFtNodeAgentDiagnostics:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_known_type_dispatches_correctly(self) -> None:
         diag = StubDiagnostic(passed=True, details="all good")
         agent = FtNodeAgent(
@@ -420,7 +420,7 @@ class TestFtNodeAgentDiagnostics:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_unknown_type_returns_failed(self) -> None:
         agent = FtNodeAgent(node_id="test-diag-unknown")
         try:
@@ -432,7 +432,7 @@ class TestFtNodeAgentDiagnostics:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_failing_diagnostic_returns_failure(self) -> None:
         diag = StubDiagnostic(passed=False, details="gpu broken", diagnostic_type="failing")
         agent = FtNodeAgent(
@@ -447,7 +447,7 @@ class TestFtNodeAgentDiagnostics:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_timeout_returns_failed(self) -> None:
         diag = SlowDiagnostic(sleep_seconds=300.0)
         agent = FtNodeAgent(
@@ -462,7 +462,7 @@ class TestFtNodeAgentDiagnostics:
         finally:
             await agent.stop()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_multiple_diagnostics_registered(self) -> None:
         stub = StubDiagnostic(passed=True)
         failing = StubDiagnostic(passed=False, details="diagnostic failed", diagnostic_type="failing")

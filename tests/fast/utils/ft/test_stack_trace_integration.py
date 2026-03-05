@@ -24,7 +24,7 @@ from tests.fast.utils.ft.conftest import (
 class TestHangWithStackTraceSuspect:
     """Full pipeline: hang trigger → stack trace identifies suspect → pipeline runs on suspect only."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_hang_suspects_from_trace_only_run_gpu_diagnostic(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True},
@@ -60,7 +60,7 @@ class TestHangWithStackTraceSuspect:
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
             assert decision.bad_node_ids == ["node-2"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_hang_all_traces_same_runs_pipeline_on_all(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True},
@@ -99,7 +99,7 @@ class TestHangWithStackTraceSuspect:
 class TestCrashSkipsStackTrace:
     """Non-hang triggers should skip the stack trace pre-step entirely."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_crash_trigger_no_stack_trace(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True},
@@ -130,7 +130,7 @@ class TestCrashSkipsStackTrace:
 class TestHangWithCollectionFailure:
     """When stack trace collection fails for a node, that node becomes suspect."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_failed_collection_node_is_suspect(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True},

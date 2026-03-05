@@ -14,7 +14,7 @@ from miles.utils.ft.platform.protocols import JobStatus
 
 
 class TestControllerWithRealDetectors:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_tick_with_healthy_state(self) -> None:
         chain = build_detector_chain()
         harness = make_test_controller(
@@ -28,7 +28,7 @@ class TestControllerWithRealDetectors:
 
         assert harness.controller._tick_count == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_tick_gpu_lost_triggers_mark_bad(self) -> None:
         chain = build_detector_chain()
         harness = make_test_controller(
@@ -44,7 +44,7 @@ class TestControllerWithRealDetectors:
         # Decision is executed (currently just logged), but tick completes
         assert harness.controller._tick_count == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_tick_training_crash_triggers_recovery(self) -> None:
         chain = build_detector_chain()
         harness = make_test_controller(
@@ -56,7 +56,7 @@ class TestControllerWithRealDetectors:
 
         assert harness.controller._tick_count == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_detector_chain_no_detectors_passes(self) -> None:
         harness = make_test_controller(detectors=[])
 

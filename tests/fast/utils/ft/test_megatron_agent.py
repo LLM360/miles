@@ -36,7 +36,7 @@ def agent() -> Iterator[FtMegatronAgent]:
 
 
 class TestFtMegatronAgentExporter:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_exporter_returns_prometheus_format(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -47,7 +47,7 @@ class TestFtMegatronAgentExporter:
         assert response.status_code == 200
         assert "text/plain" in response.headers.get("content-type", "")
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_exporter_address_has_port(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -56,7 +56,7 @@ class TestFtMegatronAgentExporter:
         port = int(address.split(":")[-1])
         assert port > 0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_initial_gauge_values(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -71,7 +71,7 @@ class TestFtMegatronAgentExporter:
 
 
 class TestFtMegatronAgentStep:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_step_updates_iteration_gauge(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -85,7 +85,7 @@ class TestFtMegatronAgentStep:
         assert "miles_ft_training_iteration" in text
         assert "42.0" in text
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_step_updates_phase_gauge(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -105,7 +105,7 @@ class TestFtMegatronAgentStep:
         agent.step(iteration=10)
         agent._controller_handle.log_step.remote.assert_not_called()
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_step_without_iteration_keeps_last_value(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -120,7 +120,7 @@ class TestFtMegatronAgentStep:
         iteration = _parse_gauge(response.text, "miles_ft_training_iteration", labels)
         assert iteration == 5.0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_step_idle_phase_preserves_iteration(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -137,7 +137,7 @@ class TestFtMegatronAgentStep:
         assert iteration == 10.0
         assert phase == 0.0
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_step_iteration_monotonic_across_phases(
         self, agent: FtMegatronAgent
     ) -> None:

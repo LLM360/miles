@@ -113,7 +113,7 @@ class TestFtControllerActorProxy:
         actor._ctrl = harness.controller
         return actor, harness
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_register_rank_updates_placement(self) -> None:
         actor, harness = self._make_actor_with_harness()
 
@@ -124,7 +124,7 @@ class TestFtControllerActorProxy:
 
         assert harness.controller._rank_placement == {0: "node-0"}
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_log_step_writes_to_mini_wandb(self) -> None:
         actor, harness = self._make_actor_with_harness()
 
@@ -138,7 +138,7 @@ class TestFtControllerActorProxy:
 
         assert harness.mini_wandb.latest(metric_name="loss", rank=0) == 0.5
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_shutdown_sets_flag(self) -> None:
         actor, harness = self._make_actor_with_harness()
 
