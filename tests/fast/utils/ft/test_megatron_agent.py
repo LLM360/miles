@@ -5,6 +5,7 @@ exposed via a Prometheus HTTP exporter, and rank registration with FtController.
 Training metrics are forwarded separately by FtTrackingAgent via tracking_utils.
 """
 
+import time
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
@@ -358,12 +359,12 @@ class TestFtMegatronAgentFaultTolerance:
         agent = FtMegatronAgent(rank=0, world_size=4)
         try:
             agent._controller_handle = MagicMock()
-            agent._controller_lookup_failed = True
+            agent._last_lookup_failure_time = time.monotonic()
 
             agent._reset_controller_handle()
 
             assert agent._controller_handle is None
-            assert agent._controller_lookup_failed is False
+            assert agent._last_lookup_failure_time is None
         finally:
             agent.shutdown()
 
@@ -381,15 +382,28 @@ class TestFtMegatronAgentFaultTolerance:
         finally:
             agent.shutdown()
 
-    def test_get_controller_handle_negative_cache(self) -> None:
+    def test_get_controller_handle_negative_cache_within_cooldown(self) -> None:
         agent = FtMegatronAgent(rank=0, world_size=4)
         try:
-            agent._controller_lookup_failed = True
+            agent._last_lookup_failure_time = time.monotonic()
 
             with patch("ray.get_actor") as mock_get_actor:
                 result = agent._get_controller_handle()
 
                 assert result is None
                 mock_get_actor.assert_not_called()
+        finally:
+            agent.shutdown()
+
+    def test_get_controller_handle_retries_after_cooldown(self) -> None:
+        agent = FtMegatronAgent(rank=0, world_size=4)
+        try:
+            agent._last_lookup_failure_time = time.monotonic() - 60.0
+            mock_handle = MagicMock()
+
+            with patch("ray.get_actor", return_value=mock_handle):
+                result = agent._get_controller_handle()
+
+                assert result is mock_handle
         finally:
             agent.shutdown()
