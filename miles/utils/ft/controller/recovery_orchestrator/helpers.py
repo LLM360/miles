@@ -1,6 +1,7 @@
 """Shared recovery primitives used by both FtController and RecoveryOrchestrator."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from miles.utils.ft.platform.protocols import JobStatus, NotificationProtocol, T
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_RETRIES: int = 3
+_MAX_BACKOFF_SECONDS: float = 30.0
 
 _T = TypeVar("_T")
 
@@ -29,8 +31,9 @@ async def retry_async(
     func: Callable[[], Coroutine[Any, Any, _T]],
     description: str,
     max_retries: int = DEFAULT_MAX_RETRIES,
+    sleep_fn: Callable[[float], Coroutine[Any, Any, None]] = asyncio.sleep,
 ) -> RetryResult[_T]:
-    """Retry an async callable up to *max_retries* times.
+    """Retry an async callable up to *max_retries* times with exponential backoff.
 
     Returns a :class:`RetryResult` with ``ok=True`` and the return value on
     success, or ``ok=False`` with an error description if all attempts fail.
@@ -48,6 +51,9 @@ async def retry_async(
                 description, attempt + 1, max_retries,
                 exc_info=True,
             )
+            if attempt < max_retries - 1:
+                delay = min(2 ** attempt, _MAX_BACKOFF_SECONDS)
+                await sleep_fn(delay)
 
     logger.error("retry_exhausted description=%s", description)
     return RetryResult(ok=False, error=f"exhausted {max_retries} retries: {last_error}")
