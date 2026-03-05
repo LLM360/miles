@@ -370,6 +370,16 @@ class TestEvictAndRestart:
         assert node_mgr.is_node_bad("node-0")
         assert training_job._submitted
 
+    def test_evict_passes_excluded_node_ids_to_submit(self) -> None:
+        orch, _, training_job, _, _ = _make_orchestrator(
+            status_sequence=[JobStatus.RUNNING],
+        )
+        orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
+        orch._context.bad_node_ids = ["node-a", "node-b"]
+
+        asyncio.run(orch.step())
+        assert training_job._last_excluded_node_ids == ["node-a", "node-b"]
+
     def test_mark_node_bad_fails_goes_to_notify(self) -> None:
         orch, node_mgr, _, notifier, _ = _make_orchestrator(
             notifier=FakeNotifier(),

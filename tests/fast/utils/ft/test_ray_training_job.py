@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from miles.utils.ft.platform.protocols import JobStatus
-from miles.utils.ft.platform.ray_training_job import RayTrainingJob, _parse_ray_status
+from miles.utils.ft.platform.ray_training_job import RayTrainingJob, _parse_ray_status, resolve_to_ray_node_ids
 
 
 def _make_job(
@@ -25,6 +25,7 @@ def _make_job(
 
 
 class TestSubmitTraining:
+    @pytest.mark.anyio
     async def test_calls_submit_job_and_returns_run_id(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "ray-job-abc"
@@ -38,6 +39,7 @@ class TestSubmitTraining:
         assert call_kwargs["entrypoint"] == "python train.py"
         assert call_kwargs["runtime_env"]["env_vars"]["FT_TRAINING_RUN_ID"] == run_id
 
+    @pytest.mark.anyio
     async def test_multiple_submits_produce_different_run_ids(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.side_effect = ["job-1", "job-2"]
@@ -48,6 +50,35 @@ class TestSubmitTraining:
         assert run_id_1 != run_id_2
         assert mock_client.submit_job.call_count == 2
 
+    @pytest.mark.anyio
+    async def test_excluded_node_ids_appended_to_entrypoint(self) -> None:
+        job, mock_client = _make_job()
+        mock_client.submit_job.return_value = "ray-job-exc"
+
+        fake_nodes = [
+            {"Alive": True, "NodeID": "aaa111", "NodeName": "gpu-worker-01", "NodeManagerAddress": "10.0.0.1"},
+            {"Alive": True, "NodeID": "bbb222", "NodeName": "gpu-worker-02", "NodeManagerAddress": "10.0.0.2"},
+        ]
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = fake_nodes
+            await job.submit_training(excluded_node_ids=["gpu-worker-01", "gpu-worker-02"])
+
+        call_kwargs = mock_client.submit_job.call_args.kwargs
+        assert "--excluded-node-ids" in call_kwargs["entrypoint"]
+        assert "aaa111" in call_kwargs["entrypoint"]
+        assert "bbb222" in call_kwargs["entrypoint"]
+
+    @pytest.mark.anyio
+    async def test_excluded_node_ids_none_does_not_modify_entrypoint(self) -> None:
+        job, mock_client = _make_job()
+        mock_client.submit_job.return_value = "ray-job-no-exc"
+
+        await job.submit_training(excluded_node_ids=None)
+
+        call_kwargs = mock_client.submit_job.call_args.kwargs
+        assert call_kwargs["entrypoint"] == "python train.py"
+
+    @pytest.mark.anyio
     async def test_does_not_mutate_original_runtime_env(self) -> None:
         original_env: dict[str, Any] = {"working_dir": "/data", "env_vars": {"MY_VAR": "1"}}
         original_env_copy = {
@@ -63,6 +94,7 @@ class TestSubmitTraining:
 
 
 class TestStopTraining:
+    @pytest.mark.anyio
     async def test_stop_polls_until_stopped(self) -> None:
         job, mock_client = _make_job(poll_interval_seconds=0)
         mock_client.submit_job.return_value = "job-1"
@@ -79,6 +111,7 @@ class TestStopTraining:
         mock_client.stop_job.assert_called_once_with("job-1")
         assert mock_client.get_job_status.call_count == 3
 
+    @pytest.mark.anyio
     async def test_stop_raises_timeout_error(self) -> None:
         job, mock_client = _make_job(poll_interval_seconds=0)
         mock_client.submit_job.return_value = "job-1"
@@ -99,6 +132,7 @@ class TestStopTraining:
             with pytest.raises(TimeoutError, match="did not stop within"):
                 await job.stop_training(timeout_seconds=5)
 
+    @pytest.mark.anyio
     async def test_stop_completes_when_job_fails(self) -> None:
         job, mock_client = _make_job(poll_interval_seconds=0)
         mock_client.submit_job.return_value = "job-1"
@@ -111,6 +145,7 @@ class TestStopTraining:
         mock_client.stop_job.assert_called_once_with("job-1")
         assert mock_client.get_job_status.call_count == 2
 
+    @pytest.mark.anyio
     async def test_stop_completes_when_job_succeeds(self) -> None:
         job, mock_client = _make_job(poll_interval_seconds=0)
         mock_client.submit_job.return_value = "job-1"
@@ -122,6 +157,7 @@ class TestStopTraining:
 
         mock_client.stop_job.assert_called_once_with("job-1")
 
+    @pytest.mark.anyio
     async def test_stop_with_no_active_job_is_noop(self) -> None:
         job, mock_client = _make_job()
 
@@ -131,57 +167,36 @@ class TestStopTraining:
 
 
 class TestGetTrainingStatus:
-    async def test_running_status(self) -> None:
+    @pytest.mark.anyio
+    @pytest.mark.parametrize(
+        ("raw_status", "expected"),
+        [
+            ("RUNNING", JobStatus.RUNNING),
+            ("FAILED", JobStatus.FAILED),
+            ("SUCCEEDED", JobStatus.STOPPED),
+            ("PENDING", JobStatus.PENDING),
+            ("UNKNOWN_STATE", JobStatus.FAILED),
+        ],
+    )
+    async def test_status_mapping(
+        self, raw_status: str, expected: JobStatus,
+    ) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "job-1"
         await job.submit_training()
 
-        mock_client.get_job_status.return_value = "RUNNING"
+        mock_client.get_job_status.return_value = raw_status
         status = await job.get_training_status()
-        assert status == JobStatus.RUNNING
+        assert status == expected
 
-    async def test_failed_status(self) -> None:
-        job, mock_client = _make_job()
-        mock_client.submit_job.return_value = "job-1"
-        await job.submit_training()
-
-        mock_client.get_job_status.return_value = "FAILED"
-        status = await job.get_training_status()
-        assert status == JobStatus.FAILED
-
-    async def test_succeeded_maps_to_stopped(self) -> None:
-        job, mock_client = _make_job()
-        mock_client.submit_job.return_value = "job-1"
-        await job.submit_training()
-
-        mock_client.get_job_status.return_value = "SUCCEEDED"
-        status = await job.get_training_status()
-        assert status == JobStatus.STOPPED
-
+    @pytest.mark.anyio
     async def test_no_job_returns_stopped(self) -> None:
         job, _mock_client = _make_job()
 
         status = await job.get_training_status()
         assert status == JobStatus.STOPPED
 
-    async def test_pending_status(self) -> None:
-        job, mock_client = _make_job()
-        mock_client.submit_job.return_value = "job-1"
-        await job.submit_training()
-
-        mock_client.get_job_status.return_value = "PENDING"
-        status = await job.get_training_status()
-        assert status == JobStatus.PENDING
-
-    async def test_unknown_status_maps_to_failed(self) -> None:
-        job, mock_client = _make_job()
-        mock_client.submit_job.return_value = "job-1"
-        await job.submit_training()
-
-        mock_client.get_job_status.return_value = "UNKNOWN_STATE"
-        status = await job.get_training_status()
-        assert status == JobStatus.FAILED
-
+    @pytest.mark.anyio
     async def test_raises_on_client_failure(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "job-1"
@@ -191,6 +206,50 @@ class TestGetTrainingStatus:
 
         with pytest.raises(ConnectionError, match="Ray unreachable"):
             await job.get_training_status()
+
+
+class TestResolveToRayNodeIds:
+    _FAKE_NODES = [
+        {"Alive": True, "NodeID": "aaa111", "NodeName": "gpu-worker-01", "NodeManagerAddress": "10.0.0.1"},
+        {"Alive": True, "NodeID": "bbb222", "NodeName": "gpu-worker-02", "NodeManagerAddress": "10.0.0.2"},
+        {"Alive": False, "NodeID": "ccc333", "NodeName": "dead-node", "NodeManagerAddress": "10.0.0.3"},
+    ]
+
+    def test_resolves_k8s_node_names(self) -> None:
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = self._FAKE_NODES
+            result = resolve_to_ray_node_ids(["gpu-worker-01", "gpu-worker-02"])
+        assert result == ["aaa111", "bbb222"]
+
+    def test_resolves_ip_addresses(self) -> None:
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = self._FAKE_NODES
+            result = resolve_to_ray_node_ids(["10.0.0.1"])
+        assert result == ["aaa111"]
+
+    def test_passes_through_ray_node_ids(self) -> None:
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = self._FAKE_NODES
+            result = resolve_to_ray_node_ids(["bbb222"])
+        assert result == ["bbb222"]
+
+    def test_skips_dead_nodes(self) -> None:
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = self._FAKE_NODES
+            result = resolve_to_ray_node_ids(["dead-node"])
+        assert result == []
+
+    def test_skips_unknown_identifiers(self) -> None:
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = self._FAKE_NODES
+            result = resolve_to_ray_node_ids(["nonexistent"])
+        assert result == []
+
+    def test_empty_input(self) -> None:
+        with patch("miles.utils.ft.platform.ray_training_job.ray") as mock_ray:
+            mock_ray.nodes.return_value = self._FAKE_NODES
+            result = resolve_to_ray_node_ids([])
+        assert result == []
 
 
 class TestParseRayStatus:
@@ -207,5 +266,4 @@ class TestParseRayStatus:
         class FakeEnum:
             def __str__(self) -> str:
                 return "JobSubmissionStatus.SUCCEEDED"
-
         assert _parse_ray_status(FakeEnum()) == "SUCCEEDED"

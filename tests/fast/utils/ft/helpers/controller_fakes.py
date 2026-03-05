@@ -64,6 +64,7 @@ class FakeTrainingJob:
         self._call_count: int = 0
         self._stopped: bool = False
         self._submitted: bool = False
+        self._last_excluded_node_ids: list[str] | None = None
         self._run_id: str = "fake-initial"
 
     async def get_training_status(self) -> JobStatus:
@@ -77,6 +78,7 @@ class FakeTrainingJob:
 
     async def submit_training(self, excluded_node_ids: list[str] | None = None) -> str:
         self._submitted = True
+        self._last_excluded_node_ids = excluded_node_ids
         self._call_count = 0
         self._run_id = f"fake-{id(self)}"
         return self._run_id
