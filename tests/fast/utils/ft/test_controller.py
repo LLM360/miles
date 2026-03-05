@@ -818,3 +818,10 @@ class TestDefaultDiagnosticSchedulerWiring:
         assert isinstance(scheduler, DiagnosticScheduler)
         assert scheduler._rank_pids_provider.__func__ is FtController._get_rank_pids_for_node
         assert scheduler._rank_pids_provider.__self__ is controller
+
+
+class TestDefaultDiagnosticPipeline:
+    def test_default_scheduler_has_gpu_pipeline(self) -> None:
+        harness = make_test_controller()
+        scheduler = harness.controller._diagnostic_scheduler
+        assert "gpu" in scheduler._pipeline

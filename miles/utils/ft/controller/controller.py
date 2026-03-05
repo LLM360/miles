@@ -60,8 +60,10 @@ class FtController:
         self._agents: dict[str, Any] = {}
 
         self._diagnostic_scheduler: DiagnosticSchedulerProtocol = (
-            diagnostic_scheduler or DiagnosticScheduler(
+            diagnostic_scheduler
+            or DiagnosticScheduler(
                 agents=self._agents,
+                pipeline=["gpu"],
                 rank_pids_provider=self._get_rank_pids_for_node,
             )
         )
