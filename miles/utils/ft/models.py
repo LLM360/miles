@@ -112,6 +112,8 @@ class RecoveryPhase(str, Enum):
     DONE = "done"
 
 
+FT_CONTROLLER_ACTOR_NAME: str = "ft_controller"
+
 RECOVERY_PHASE_TO_INT: dict[RecoveryPhase, int] = {
     RecoveryPhase.CHECK_ALERTS: 1,
     RecoveryPhase.REATTEMPTING: 2,

@@ -126,7 +126,7 @@ class _FtControllerActorCls:
     """Thin wrapper around FtController for use as a Ray Actor.
 
     Created as a Detached Named Async Actor so that FtMegatronAgent
-    can find it via ``ray.get_actor("ft_controller")``.
+    can find it via ``ray.get_actor(FT_CONTROLLER_ACTOR_NAME)``.
     FtController remains a plain Python class for testability.
     """
 

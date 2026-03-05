@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from miles.utils.ft.models import FT_CONTROLLER_ACTOR_NAME
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +28,7 @@ class ControllerHandleMixin:
         try:
             import ray
 
-            self._controller_handle = ray.get_actor("ft_controller")
+            self._controller_handle = ray.get_actor(FT_CONTROLLER_ACTOR_NAME)
         except Exception:
             self._controller_lookup_failed = True
             logger.warning("Failed to get ft_controller actor handle", exc_info=True)

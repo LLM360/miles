@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from miles.utils.ft.models import FT_CONTROLLER_ACTOR_NAME
 from miles.utils.ft.platform.controller_actor import FtControllerActor, build_ft_controller
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def main(
 
     if as_ray_actor:
         actor = FtControllerActor.options(
-            name="ft_controller",
+            name=FT_CONTROLLER_ACTOR_NAME,
             lifetime="detached",
         ).remote(**config_kwargs)
         actor.run.remote()
