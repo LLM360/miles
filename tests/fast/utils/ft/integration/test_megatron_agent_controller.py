@@ -11,7 +11,7 @@ not by FtMegatronAgent.step().
 import httpx
 import pytest
 
-from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
+from miles.utils.ft.agents.core.megatron_agent import FtMegatronAgent
 from tests.fast.utils.ft.conftest import make_test_controller
 
 

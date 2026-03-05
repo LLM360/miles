@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 
-from miles.utils.ft.agents.controller_handle import ControllerHandleMixin
+from miles.utils.ft.agents.utils.controller_handle import ControllerHandleMixin
 
 logger = logging.getLogger(__name__)
 

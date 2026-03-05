@@ -4,14 +4,19 @@ import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from tests.fast.utils.ft.helpers import FakeKmsgReader, create_sysfs_interface, make_mock_pynvml
+import pytest
 
 from miles.utils.ft.agents.collectors.disk import DiskCollector
 from miles.utils.ft.agents.collectors.gpu import GpuCollector
 from miles.utils.ft.agents.collectors.kmsg import KmsgCollector
 from miles.utils.ft.agents.collectors.network import NetworkCollector
-from miles.utils.ft.agents.node_agent import FtNodeAgent
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.agents.core.node_agent import FtNodeAgent
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from tests.fast.utils.ft.conftest import (
+    FakeKmsgReader,
+    create_sysfs_interface,
+    make_mock_pynvml,
+)
 
 
 def _create_sysfs(tmp_path: Path) -> Path:
@@ -22,6 +27,7 @@ def _create_sysfs(tmp_path: Path) -> Path:
 
 
 class TestNodeAgentAllCollectorsIntegration:
+    @pytest.mark.anyio
     async def test_all_collectors_expose_metrics(self, tmp_path: Path) -> None:
         mock_nvml = make_mock_pynvml(device_count=2)
         sysfs = _create_sysfs(tmp_path)
@@ -32,11 +38,9 @@ class TestNodeAgentAllCollectorsIntegration:
 
             kmsg_collector = KmsgCollector(kmsg_path=Path("/dev/null"))
             kmsg_collector.collect_interval = 0.05
-            kmsg_collector._reader = FakeKmsgReader(
-                [
-                    "NVRM: Xid (PCI:0000:3b:00): 48, pid=1234",
-                ]
-            )
+            kmsg_collector._reader = FakeKmsgReader([
+                "NVRM: Xid (PCI:0000:3b:00): 48, pid=1234",
+            ])
 
             disk_collector = DiskCollector(disk_mounts=[tmp_path])
             disk_collector.collect_interval = 0.05
@@ -76,6 +80,7 @@ class TestNodeAgentAllCollectorsIntegration:
             finally:
                 await agent.stop()
 
+    @pytest.mark.anyio
     async def test_failing_collector_does_not_block_others(self, tmp_path: Path) -> None:
         sysfs = _create_sysfs(tmp_path)
 
@@ -106,6 +111,7 @@ class TestNodeAgentAllCollectorsIntegration:
         finally:
             await agent.stop()
 
+    @pytest.mark.anyio
     async def test_per_collector_interval_with_hw_collectors(self, tmp_path: Path) -> None:
         sysfs = _create_sysfs(tmp_path)
 

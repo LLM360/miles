@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
+from miles.utils.ft.agents.core.megatron_agent import FtMegatronAgent
 
 
 def _parse_gauge(text: str, metric_name: str, labels: dict[str, str]) -> float:
@@ -172,7 +172,7 @@ class TestFtMegatronAgentSetPhase:
 
 
 class TestFtMegatronAgentRegisterRank:
-    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_calls_controller(
         self, mock_get_handle: MagicMock
     ) -> None:
@@ -193,7 +193,7 @@ class TestFtMegatronAgentRegisterRank:
             finally:
                 agent.shutdown()
 
-    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_retries_on_failure(
         self, mock_get_handle: MagicMock
     ) -> None:
@@ -221,7 +221,7 @@ class TestFtMegatronAgentRegisterRank:
             finally:
                 agent.shutdown()
 
-    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_all_attempts_fail_no_exception(
         self, mock_get_handle: MagicMock
     ) -> None:
@@ -246,7 +246,7 @@ class TestFtMegatronAgentRegisterRank:
         finally:
             agent.shutdown()
 
-    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_skipped_when_controller_unavailable(
         self, mock_get_handle: MagicMock
     ) -> None:
@@ -259,7 +259,7 @@ class TestFtMegatronAgentRegisterRank:
             finally:
                 agent.shutdown()
 
-    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_asserts_node_id_and_exporter_address(
         self, mock_get_handle: MagicMock
     ) -> None:
@@ -278,7 +278,7 @@ class TestFtMegatronAgentRegisterRank:
             finally:
                 agent.shutdown()
 
-    @patch("miles.utils.ft.agents.megatron_agent.FtMegatronAgent._get_controller_handle")
+    @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_includes_pid(
         self, mock_get_handle: MagicMock
     ) -> None:

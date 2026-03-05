@@ -3,9 +3,9 @@ import asyncio
 import httpx
 import pytest
 
-from miles.utils.ft.agents._support.collectors.base import BaseCollector
-from miles.utils.ft.agents._support.collectors.stub import StubCollector
-from miles.utils.ft.agents.node_agent import FtNodeAgent
+from miles.utils.ft.agents.collectors.base import BaseCollector
+from miles.utils.ft.agents.collectors.stub import StubCollector
+from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.models import CollectorOutput, MetricSample, UnknownDiagnosticError
 from tests.fast.utils.ft.conftest import (
     SlowDiagnostic,

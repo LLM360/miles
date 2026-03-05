@@ -4,7 +4,7 @@ import asyncio
 import logging
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.agents.prometheus_exporter import PrometheusExporter
+from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.models import DiagnosticResult, UnknownDiagnosticError
 

@@ -9,8 +9,8 @@ from typing import Literal
 from prometheus_client import Gauge
 
 import miles.utils.ft.metric_names as mn
-from miles.utils.ft.agents.controller_handle import ControllerHandleMixin
-from miles.utils.ft.agents.prometheus_exporter import PrometheusExporter
+from miles.utils.ft.agents.utils.controller_handle import ControllerHandleMixin
+from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 
 logger = logging.getLogger(__name__)
 

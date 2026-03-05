@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from miles.utils.ft.agents.node_agent import FtNodeAgent
+from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import (
     PairResult,

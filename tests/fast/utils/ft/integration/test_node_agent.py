@@ -1,14 +1,16 @@
 import asyncio
 from datetime import timedelta
 
-from tests.fast.utils.ft.helpers import TestCollector
+import pytest
 
-from miles.utils.ft.agents.node_agent import FtNodeAgent
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.agents.core.node_agent import FtNodeAgent
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.models import MetricSample
+from tests.fast.utils.ft.conftest import TestCollector
 
 
 class TestNodeAgentMiniPrometheusIntegration:
+    @pytest.mark.anyio
     async def test_scrape_and_query_latest(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -40,6 +42,7 @@ class TestNodeAgentMiniPrometheusIntegration:
         finally:
             await agent.stop()
 
+    @pytest.mark.anyio
     async def test_updated_values_visible_after_rescrape(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -67,15 +70,13 @@ class TestNodeAgentMiniPrometheusIntegration:
             df1 = prom.query_latest("gpu_temperature_celsius")
             assert 60.0 in df1["value"].to_list()
 
-            test_collector.set_metrics(
-                [
-                    MetricSample(
-                        name="gpu_temperature_celsius",
-                        labels={"gpu": "0"},
-                        value=85.0,
-                    ),
-                ]
-            )
+            test_collector.set_metrics([
+                MetricSample(
+                    name="gpu_temperature_celsius",
+                    labels={"gpu": "0"},
+                    value=85.0,
+                ),
+            ])
             await asyncio.sleep(0.3)
             await prom.scrape_once()
 
@@ -92,6 +93,7 @@ class TestNodeAgentMiniPrometheusIntegration:
         finally:
             await agent.stop()
 
+    @pytest.mark.anyio
     async def test_multiple_metrics_all_queryable(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -137,6 +139,7 @@ class TestNodeAgentMiniPrometheusIntegration:
         finally:
             await agent.stop()
 
+    @pytest.mark.anyio
     async def test_label_filter_query(self) -> None:
         test_collector = TestCollector(
             metrics=[

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from miles.utils.ft.agents.controller_handle import ControllerHandleMixin
+from miles.utils.ft.agents.utils.controller_handle import ControllerHandleMixin
 
 
 class _StubAgent(ControllerHandleMixin):
