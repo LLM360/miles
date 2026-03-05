@@ -23,6 +23,21 @@ _WARMUP_TICKS = 10
 _TEST_TICKS = 500
 _MAX_RSS_GROWTH_BYTES = 50 * 1024 * 1024  # 50 MB
 
+_NODE_IDS = ["node-0", "node-1", "node-2", "node-3"]
+
+
+async def _register_n_nodes(
+    controller: object,
+    run_id: str,
+    node_ids: list[str] = _NODE_IDS,
+) -> None:
+    world_size = len(node_ids)
+    for rank, node_id in enumerate(node_ids):
+        await controller.register_rank(
+            run_id=run_id, rank=rank, world_size=world_size,
+            node_id=node_id, exporter_address=f"http://{node_id}:9090",
+        )
+
 
 class TestControllerMemoryLeak:
     @pytest.mark.asyncio
@@ -33,25 +48,9 @@ class TestControllerMemoryLeak:
         controller = harness.controller
 
         run_id = "leak-test-run"
-        await controller.register_rank(
-            run_id=run_id, rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://node-0:9090",
-        )
-        await controller.register_rank(
-            run_id=run_id, rank=1, world_size=4,
-            node_id="node-1", exporter_address="http://node-1:9090",
-        )
-        await controller.register_rank(
-            run_id=run_id, rank=2, world_size=4,
-            node_id="node-2", exporter_address="http://node-2:9090",
-        )
-        await controller.register_rank(
-            run_id=run_id, rank=3, world_size=4,
-            node_id="node-3", exporter_address="http://node-3:9090",
-        )
+        await _register_n_nodes(controller, run_id=run_id)
 
-        # Inject healthy node metrics
-        for node_id in ["node-0", "node-1", "node-2", "node-3"]:
+        for node_id in _NODE_IDS:
             inject_healthy_node(harness.metric_store, node_id=node_id)
 
         # Warm-up: establish steady state
@@ -97,7 +96,7 @@ class TestControllerMemoryLeak:
             },
         )
 
-        for node_id in ["node-0", "node-1", "node-2", "node-3"]:
+        for node_id in _NODE_IDS:
             inject_healthy_node(
                 harness.metric_store,
                 node_id=node_id,
