@@ -20,15 +20,11 @@ class TrainingMetricStoreProtocol(Protocol):
     def latest(self, metric_name: str) -> float | None: ...
 
     def query_last_n_steps(
-        self,
-        metric_name: str,
-        last_n: int,
+        self, metric_name: str, last_n: int,
     ) -> list[StepValue]: ...
 
     def query_time_window(
-        self,
-        metric_name: str,
-        window: timedelta,
+        self, metric_name: str, window: timedelta,
     ) -> list[TimedStepValue]: ...
 
 
@@ -108,21 +104,13 @@ class DiagnosticResult(FtBaseModel):
 
     @classmethod
     def pass_result(
-        cls,
-        *,
-        diagnostic_type: str,
-        node_id: str,
-        details: str,
+        cls, *, diagnostic_type: str, node_id: str, details: str,
     ) -> "DiagnosticResult":
         return cls(diagnostic_type=diagnostic_type, node_id=node_id, passed=True, details=details)
 
     @classmethod
     def fail_result(
-        cls,
-        *,
-        diagnostic_type: str,
-        node_id: str,
-        details: str,
+        cls, *, diagnostic_type: str, node_id: str, details: str,
     ) -> "DiagnosticResult":
         return cls(diagnostic_type=diagnostic_type, node_id=node_id, passed=False, details=details)
 
@@ -133,9 +121,7 @@ class UnknownDiagnosticError(Exception):
 
 class NodeAgentProtocol(Protocol):
     async def run_diagnostic(
-        self,
-        diagnostic_type: str,
-        timeout_seconds: int = 120,
+        self, diagnostic_type: str, timeout_seconds: int = 120,
     ) -> DiagnosticResult: ...
 
 
@@ -149,7 +135,13 @@ class RecoveryPhase(str, Enum):
     DONE = "done"
 
 
-FT_CONTROLLER_ACTOR_NAME: str = "ft_controller"
+FT_CONTROLLER_ACTOR_NAME: str = "ft_controller"  # deprecated: use ft_controller_actor_name()
+
+
+def ft_controller_actor_name(ft_id: str) -> str:
+    if not ft_id:
+        return "ft_controller"
+    return f"ft_controller_{ft_id}"
 
 RECOVERY_PHASE_TO_INT: dict[RecoveryPhase, int] = {
     RecoveryPhase.CHECK_ALERTS: 1,

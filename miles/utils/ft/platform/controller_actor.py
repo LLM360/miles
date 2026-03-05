@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import ray
 
-from miles.utils.ft.platform.controller_factory import FtControllerConfig, build_ft_controller
+from miles.utils.ft.platform.controller_factory import (
+    FtControllerConfig,
+    build_ft_controller,
+)
 
 
 class _FtControllerActorCls:
     """Thin wrapper around FtController for use as a Ray Actor.
 
     Created as a Detached Named Async Actor so that FtMegatronAgent
-    can find it via ``ray.get_actor(FT_CONTROLLER_ACTOR_NAME)``.
+    can find it via ``ray.get_actor(ft_controller_actor_name(ft_id))``.
     FtController remains a plain Python class for testability.
     """
 

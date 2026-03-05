@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
-from miles.utils.ft.models import FT_CONTROLLER_ACTOR_NAME
+from miles.utils.ft.models import ft_controller_actor_name
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ class ControllerHandleMixin:
     to avoid spamming logs, then the next call will attempt lookup again.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, ft_id: str = "") -> None:
+        self._ft_id = ft_id or os.environ.get("FT_ID", "")
         self._controller_handle: Any | None = None
         self._last_lookup_failure_time: float | None = None
 
@@ -37,7 +39,8 @@ class ControllerHandleMixin:
         try:
             import ray
 
-            self._controller_handle = ray.get_actor(FT_CONTROLLER_ACTOR_NAME)
+            actor_name = ft_controller_actor_name(self._ft_id)
+            self._controller_handle = ray.get_actor(actor_name)
             self._last_lookup_failure_time = None
         except Exception:
             self._last_lookup_failure_time = time.monotonic()
