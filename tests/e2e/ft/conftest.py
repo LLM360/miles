@@ -316,3 +316,43 @@ async def wait_for_recovery_phase(
         f"Did not reach recovery phase '{phase}' within {timeout}s, "
         f"last status: {controller.get_status()}"
     )
+
+
+async def wait_for_mode_transition(
+    controller: FtController,
+    target_mode: str,
+    timeout: float = 300.0,
+    poll_interval: float = 5.0,
+) -> dict[str, Any]:
+    """Wait for mode to leave *target_mode*, then return to it.
+
+    Avoids the race where polling for a mode that is already active
+    returns immediately before the fault has been detected.
+    """
+    deadline = time.monotonic() + timeout
+
+    while time.monotonic() < deadline:
+        status = controller.get_status()
+        if status["mode"] != target_mode:
+            logger.info(
+                "wait_for_mode_transition mode left '%s' → '%s'",
+                target_mode, status["mode"],
+            )
+            break
+        await asyncio.sleep(poll_interval)
+    else:
+        raise TimeoutError(
+            f"Mode never left '{target_mode}' within {timeout}s, "
+            f"last status: {controller.get_status()}"
+        )
+
+    while time.monotonic() < deadline:
+        status = controller.get_status()
+        if status["mode"] == target_mode:
+            return status
+        await asyncio.sleep(poll_interval)
+
+    raise TimeoutError(
+        f"Mode did not return to '{target_mode}' within {timeout}s, "
+        f"last status: {controller.get_status()}"
+    )

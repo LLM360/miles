@@ -18,6 +18,7 @@ import ray
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
     FtSystem,
+    wait_for_mode_transition,
     wait_for_recovery_complete,
     wait_for_recovery_phase,
     wait_for_training_stable,
@@ -50,10 +51,11 @@ async def test_repeated_crash_enters_diagnosing(
     assert len(procs) > 0
     ray.get(injector.kill_process.remote(pid=procs[0]["pid"], sig=9))
 
-    # Wait for Controller to enter MONITORING (reattempt succeeded, now watching)
-    await wait_for_recovery_phase(
+    # Wait for Controller to leave monitoring (recovery) then return to monitoring.
+    # Using wait_for_mode_transition avoids matching the pre-injection state.
+    await wait_for_mode_transition(
         controller=controller,
-        phase="monitoring",
+        target_mode="monitoring",
         timeout=180.0,
     )
 
