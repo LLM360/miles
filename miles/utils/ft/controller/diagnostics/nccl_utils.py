@@ -11,9 +11,20 @@ logger = logging.getLogger(__name__)
 _AVG_BUS_BW_PATTERN = re.compile(r"#\s*Avg bus bandwidth\s*:\s*([\d.]+)")
 _BUSBW_COLUMN_INDEX = 7
 
+# nccl-tests CLI defaults: sweep from 1 MB to 1 GB, doubling each step
+_NCCL_TEST_MIN_BYTES = "1M"
+_NCCL_TEST_MAX_BYTES = "1G"
+_NCCL_TEST_SIZE_FACTOR = "2"
+
 
 def build_nccl_test_cmd(binary: str, num_gpus: int) -> list[str]:
-    return [binary, "-b", "1M", "-e", "1G", "-f", "2", "-g", str(num_gpus)]
+    return [
+        binary,
+        "-b", _NCCL_TEST_MIN_BYTES,
+        "-e", _NCCL_TEST_MAX_BYTES,
+        "-f", _NCCL_TEST_SIZE_FACTOR,
+        "-g", str(num_gpus),
+    ]
 
 
 def parse_avg_bus_bandwidth(output: str) -> float | None:
