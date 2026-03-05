@@ -6,7 +6,6 @@ Submodules:
 - metric_injectors: metric store/wandb factories, inject_* helpers
 - agent_fakes: collector fakes, HW-collector mocks, stack trace helpers
 """
-
 from tests.fast.utils.ft.helpers.agent_fakes import (
     SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
     SAMPLE_PYSPY_OUTPUT_NORMAL,
@@ -22,6 +21,7 @@ from tests.fast.utils.ft.helpers.controller_fakes import (
     AlwaysMarkBadDetector,
     AlwaysNoneDetector,
     ControllerTestHarness,
+    CrashingDetector,
     FakeNodeManager,
     FakeNotifier,
     FakeTrainingJob,
@@ -63,6 +63,7 @@ __all__ = [
     "AlwaysMarkBadDetector",
     "AlwaysNoneDetector",
     "ControllerTestHarness",
+    "CrashingDetector",
     "FakeDiagnosticScheduler",
     "FakeKmsgReader",
     "FakeNodeAgent",

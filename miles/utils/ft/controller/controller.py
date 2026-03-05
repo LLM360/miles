@@ -157,7 +157,12 @@ class FtController:
 
     async def _tick(self) -> None:
         self._tick_count += 1
+        try:
+            await self._tick_inner()
+        except Exception:
+            logger.error("tick_failed tick=%d", self._tick_count, exc_info=True)
 
+    async def _tick_inner(self) -> None:
         if (
             self._rank_registry.expected_world_size is not None
             and len(self._rank_registry.rank_placement) < self._rank_registry.expected_world_size
@@ -208,7 +213,15 @@ class FtController:
 
     def _evaluate_detectors(self, ctx: DetectorContext) -> Decision:
         for detector in self._detectors:
-            decision = detector.evaluate(ctx)
+            try:
+                decision = detector.evaluate(ctx)
+            except Exception:
+                logger.error(
+                    "detector_evaluate_failed detector=%s",
+                    type(detector).__name__,
+                    exc_info=True,
+                )
+                continue
             if decision.action != ActionType.NONE:
                 return decision
 

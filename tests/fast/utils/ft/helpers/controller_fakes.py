@@ -117,6 +117,17 @@ def AlwaysMarkBadDetector() -> FixedDecisionDetector:
     return FixedDecisionDetector(decision=_ALWAYS_MARK_BAD_DECISION)
 
 
+class CrashingDetector(BaseFaultDetector):
+    """Detector that raises an exception on evaluate(). For testing fault isolation."""
+
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    def evaluate(self, ctx: DetectorContext) -> Decision:
+        self.call_count += 1
+        raise RuntimeError("detector internal error")
+
+
 # ---------------------------------------------------------------------------
 # Controller test harness
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ from miles.utils.ft.models import ActionType, Decision, TriggerType
 from tests.fast.utils.ft.conftest import (
     AlwaysMarkBadDetector,
     AlwaysNoneDetector,
+    CrashingDetector,
     FixedDecisionDetector,
     make_detector_context,
     make_test_controller,
@@ -58,6 +59,41 @@ class TestDetectorChain:
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert bad_detector.call_count == 1
         assert trailing_detector.call_count == 0
+
+
+class TestDetectorExceptionIsolation:
+    def test_crashing_detector_does_not_block_others(self) -> None:
+        crashing = CrashingDetector()
+        good = AlwaysMarkBadDetector()
+        harness = make_test_controller(detectors=[crashing, good])
+
+        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        decision = harness.controller._evaluate_detectors(ctx)
+
+        assert crashing.call_count == 1
+        assert good.call_count == 1
+        assert decision.action == ActionType.MARK_BAD_AND_RESTART
+
+    def test_all_detectors_crash_returns_none(self) -> None:
+        d1 = CrashingDetector()
+        d2 = CrashingDetector()
+        harness = make_test_controller(detectors=[d1, d2])
+
+        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        decision = harness.controller._evaluate_detectors(ctx)
+
+        assert d1.call_count == 1
+        assert d2.call_count == 1
+        assert decision.action == ActionType.NONE
+
+    @pytest.mark.anyio
+    async def test_tick_survives_exception_in_tick_inner(self) -> None:
+        harness = make_test_controller()
+        harness.training_job.get_training_status = _raise_runtime_error  # type: ignore[assignment]
+
+        await harness.controller._tick()
+        await harness.controller._tick()
+        assert harness.controller._tick_count == 2
 
 
 class TestExecuteDecision:
