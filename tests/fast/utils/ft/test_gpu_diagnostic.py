@@ -1,5 +1,4 @@
 """Unit tests for GpuDiagnostic — subprocess-based GPU health check."""
-
 from __future__ import annotations
 
 import asyncio
@@ -7,6 +6,7 @@ import json
 from dataclasses import asdict
 from unittest.mock import AsyncMock, patch
 
+import pytest
 
 from miles.utils.ft.controller.diagnostics.gpu_check_script import GpuCheckResult
 from miles.utils.ft.controller.diagnostics.gpu_diagnostic import GpuDiagnostic
@@ -23,18 +23,16 @@ def _make_gpu_result(
     matmul_passed: bool = True,
     details: str = "all checks passed",
 ) -> dict[str, object]:
-    return asdict(
-        GpuCheckResult(
-            gpu_index=gpu_index,
-            passed=passed,
-            ecc_errors_uncorrectable=ecc_errors_uncorrectable,
-            retired_pages_count=retired_pages_count,
-            power_state_abnormal=power_state_abnormal,
-            row_remap_failure=row_remap_failure,
-            matmul_passed=matmul_passed,
-            details=details,
-        )
-    )
+    return asdict(GpuCheckResult(
+        gpu_index=gpu_index,
+        passed=passed,
+        ecc_errors_uncorrectable=ecc_errors_uncorrectable,
+        retired_pages_count=retired_pages_count,
+        power_state_abnormal=power_state_abnormal,
+        row_remap_failure=row_remap_failure,
+        matmul_passed=matmul_passed,
+        details=details,
+    ))
 
 
 def _mock_subprocess(
@@ -54,6 +52,7 @@ def _mock_subprocess(
 
 
 class TestGpuDiagnosticAllPass:
+    @pytest.mark.anyio
     async def test_all_gpus_pass(self) -> None:
         results = [
             _make_gpu_result(gpu_index=0),
@@ -72,6 +71,7 @@ class TestGpuDiagnosticAllPass:
 
 
 class TestGpuDiagnosticEccFailure:
+    @pytest.mark.anyio
     async def test_ecc_uncorrectable(self) -> None:
         results = [
             _make_gpu_result(
@@ -94,6 +94,7 @@ class TestGpuDiagnosticEccFailure:
 
 
 class TestGpuDiagnosticMatmulFailure:
+    @pytest.mark.anyio
     async def test_matmul_mismatch(self) -> None:
         results = [
             _make_gpu_result(
@@ -114,6 +115,7 @@ class TestGpuDiagnosticMatmulFailure:
 
 
 class TestGpuDiagnosticRetiredPages:
+    @pytest.mark.anyio
     async def test_retired_pages_detected(self) -> None:
         results = [
             _make_gpu_result(
@@ -134,6 +136,7 @@ class TestGpuDiagnosticRetiredPages:
 
 
 class TestGpuDiagnosticPowerState:
+    @pytest.mark.anyio
     async def test_abnormal_power_state(self) -> None:
         results = [
             _make_gpu_result(
@@ -154,6 +157,7 @@ class TestGpuDiagnosticPowerState:
 
 
 class TestGpuDiagnosticRowRemapFailure:
+    @pytest.mark.anyio
     async def test_row_remap_failure(self) -> None:
         results = [
             _make_gpu_result(
@@ -174,6 +178,7 @@ class TestGpuDiagnosticRowRemapFailure:
 
 
 class TestGpuDiagnosticTimeout:
+    @pytest.mark.anyio
     async def test_subprocess_timeout(self) -> None:
         process = AsyncMock()
         process.communicate.side_effect = asyncio.TimeoutError()
@@ -189,6 +194,7 @@ class TestGpuDiagnosticTimeout:
         process.kill.assert_called_once()
         process.wait.assert_called_once()
 
+    @pytest.mark.anyio
     async def test_timeout_kill_failure_still_returns_result(self) -> None:
         process = AsyncMock()
         process.communicate.side_effect = asyncio.TimeoutError()
@@ -204,18 +210,20 @@ class TestGpuDiagnosticTimeout:
 
 
 class TestGpuDiagnosticEmptyResults:
-    async def test_empty_gpu_list_passes(self) -> None:
+    @pytest.mark.anyio
+    async def test_empty_gpu_list_fails(self) -> None:
         process = _mock_subprocess(stdout="[]")
 
         with patch("asyncio.create_subprocess_exec", return_value=process):
             diag = GpuDiagnostic()
             result = await diag.run(node_id="node-0")
 
-        assert result.passed is True
-        assert "all GPU checks passed" in result.details
+        assert result.passed is False
+        assert "no results" in result.details
 
 
 class TestGpuDiagnosticProcessCrash:
+    @pytest.mark.anyio
     async def test_nonzero_exit_code(self) -> None:
         process = _mock_subprocess(
             stdout="",
@@ -233,6 +241,7 @@ class TestGpuDiagnosticProcessCrash:
 
 
 class TestGpuDiagnosticInvalidJson:
+    @pytest.mark.anyio
     async def test_invalid_json_output(self) -> None:
         process = _mock_subprocess(stdout="not json at all")
 
@@ -245,6 +254,7 @@ class TestGpuDiagnosticInvalidJson:
 
 
 class TestGpuDiagnosticMultiGpuPartialFail:
+    @pytest.mark.anyio
     async def test_some_pass_some_fail(self) -> None:
         results = [
             _make_gpu_result(gpu_index=0),
@@ -276,6 +286,7 @@ class TestGpuDiagnosticMultiGpuPartialFail:
 
 
 class TestGpuDiagnosticLaunchFailure:
+    @pytest.mark.anyio
     async def test_subprocess_launch_error(self) -> None:
         with patch(
             "asyncio.create_subprocess_exec",
