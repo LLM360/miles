@@ -27,8 +27,11 @@ class MiniWandb:
         self._max_steps = max_steps
         self._max_age = max_age
         self._data: deque[_StepRecord] = deque()
+        self._last_step_by_rank: dict[int | None, int] = {}
 
     def set_active_run_id(self, run_id: str) -> None:
+        if run_id != self._active_run_id:
+            self._last_step_by_rank.clear()
         self._active_run_id = run_id
 
     def log_step(
@@ -46,6 +49,18 @@ class MiniWandb:
                 self._active_run_id,
             )
             return
+
+        last_step = self._last_step_by_rank.get(rank, -1)
+        if step <= last_step:
+            logger.debug(
+                "Discarding log_step: step=%d <= last_step=%d (rank=%s)",
+                step,
+                last_step,
+                rank,
+            )
+            return
+
+        self._last_step_by_rank[rank] = step
 
         record = _StepRecord(
             step=step,
@@ -112,6 +127,7 @@ class MiniWandb:
 
     def clear(self) -> None:
         self._data.clear()
+        self._last_step_by_rank.clear()
 
     def _evict(self) -> None:
         while len(self._data) > self._max_steps:

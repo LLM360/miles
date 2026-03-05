@@ -199,3 +199,57 @@ class TestMiniWandbRankDimension:
         assert wandb.latest(metric_name="loss") == 2.0
         result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
         assert len(result) == 2
+
+
+class TestMiniWandbStepMonotonicity:
+    def test_out_of_order_step_discarded(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(run_id="run-1", step=5, metrics={"loss": 1.0})
+        wandb.log_step(run_id="run-1", step=3, metrics={"loss": 999.0})
+        wandb.log_step(run_id="run-1", step=10, metrics={"loss": 0.5})
+
+        result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
+        assert len(result) == 2
+        assert result[0] == (5, 1.0)
+        assert result[1] == (10, 0.5)
+
+    def test_duplicate_step_discarded(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(run_id="run-1", step=1, metrics={"loss": 2.0})
+        wandb.log_step(run_id="run-1", step=1, metrics={"loss": 3.0})
+
+        result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
+        assert len(result) == 1
+        assert result[0] == (1, 2.0)
+
+    def test_clear_resets_last_step(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(run_id="run-1", step=10, metrics={"loss": 1.0})
+        wandb.clear()
+        wandb.log_step(run_id="run-1", step=1, metrics={"loss": 2.0})
+
+        result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
+        assert len(result) == 1
+        assert result[0] == (1, 2.0)
+
+    def test_set_active_run_id_resets_last_step(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(run_id="run-1", step=10, metrics={"loss": 1.0})
+
+        wandb.set_active_run_id("run-2")
+        wandb.log_step(run_id="run-2", step=1, metrics={"loss": 2.0})
+
+        result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
+        assert len(result) == 2
+        assert result[1] == (1, 2.0)
+
+    def test_set_same_run_id_does_not_reset(self) -> None:
+        wandb = MiniWandb(active_run_id="run-1")
+        wandb.log_step(run_id="run-1", step=10, metrics={"loss": 1.0})
+
+        wandb.set_active_run_id("run-1")
+        wandb.log_step(run_id="run-1", step=5, metrics={"loss": 999.0})
+
+        result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
+        assert len(result) == 1
+        assert result[0] == (10, 1.0)
