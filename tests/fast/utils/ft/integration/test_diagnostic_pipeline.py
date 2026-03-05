@@ -6,20 +6,16 @@ pre-existing instant_query gap in MiniPrometheus.
 """
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import pytest
 
-from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
-    InterMachineCommDiagnostic,
-)
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
-from miles.utils.ft.models import DiagnosticResult, RecoveryPhase
+from miles.utils.ft.models import RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     ControllerTestHarness,
     make_fake_agents,
     make_test_controller,
+    mock_inter_machine_run,
 )
 
 
@@ -158,25 +154,6 @@ class TestDiagnosticPipelineEmptyPipeline:
 class TestDiagnosticPipelineInterMachine:
     """Inter-machine step catches bad node through cross-comparison."""
 
-    @staticmethod
-    def _make_inter_machine_mock(
-        node_pass_map: dict[str, bool],
-    ) -> patch:
-        async def _fake_run(
-            self: InterMachineCommDiagnostic,
-            node_id: str,
-            timeout_seconds: int = 180,
-        ) -> DiagnosticResult:
-            passed = node_pass_map.get(node_id, True)
-            return DiagnosticResult(
-                diagnostic_type="inter_machine",
-                node_id=node_id,
-                passed=passed,
-                details="pass" if passed else "fail",
-            )
-
-        return patch.object(InterMachineCommDiagnostic, "run", _fake_run)
-
     @pytest.mark.asyncio
     async def test_inter_machine_catches_bad_node(self) -> None:
         # 3 nodes, gpu+intra pass for all, inter-machine isolates node-1
@@ -204,7 +181,7 @@ class TestDiagnosticPipelineInterMachine:
         orch = harness.controller._recovery_orchestrator
         assert orch is not None
 
-        with self._make_inter_machine_mock(
+        with mock_inter_machine_run(
             {"node-0": True, "node-1": False, "node-2": True},
         ):
             await harness.controller._tick()
@@ -247,7 +224,7 @@ class TestDiagnosticPipelineInterMachine:
         orch = harness.controller._recovery_orchestrator
         assert orch is not None
 
-        with self._make_inter_machine_mock(
+        with mock_inter_machine_run(
             {"node-0": True, "node-1": True, "node-2": True},
         ):
             await harness.controller._tick()

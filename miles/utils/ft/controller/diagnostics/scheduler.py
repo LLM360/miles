@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, NamedTuple
 
 from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
     InterMachineCommDiagnostic,
@@ -12,6 +12,12 @@ from miles.utils.ft.models import ActionType, Decision, DiagnosticResult
 logger = logging.getLogger(__name__)
 
 _INTER_MACHINE_BASE_PORT = 29500
+
+
+class PairResult(NamedTuple):
+    master_id: str
+    worker_id: str
+    passed: bool
 
 
 class DiagnosticScheduler:
@@ -196,8 +202,8 @@ class DiagnosticScheduler:
         master_addr: str,
         port: int,
         timeout_seconds: int,
-    ) -> tuple[str, str, bool]:
-        """Run one pair test. Returns (master_id, worker_id, passed).
+    ) -> PairResult:
+        """Run one pair test.
 
         Creates a single diagnostic instance per pair and calls run()
         directly for each side (no agent injection needed).
@@ -224,12 +230,12 @@ class DiagnosticScheduler:
             "inter_machine_pair_result master=%s worker=%s passed=%s",
             master_id, worker_id, passed,
         )
-        return master_id, worker_id, passed
+        return PairResult(master_id=master_id, worker_id=worker_id, passed=passed)
 
     @staticmethod
     def _cross_compare(
         node_ids: list[str],
-        pair_results: list[tuple[str, str, bool]],
+        pair_results: list[PairResult],
     ) -> list[str]:
         """Cross-compare pair results to isolate bad nodes.
 
@@ -242,10 +248,10 @@ class DiagnosticScheduler:
         5. Otherwise → return nodes with the highest failure count.
         """
         failure_count: dict[str, int] = {nid: 0 for nid in node_ids}
-        for master_id, worker_id, passed in pair_results:
-            if not passed:
-                failure_count[master_id] += 1
-                failure_count[worker_id] += 1
+        for result in pair_results:
+            if not result.passed:
+                failure_count[result.master_id] += 1
+                failure_count[result.worker_id] += 1
 
         counts = list(failure_count.values())
         max_count = max(counts)

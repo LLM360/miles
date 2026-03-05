@@ -2,47 +2,28 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from unittest.mock import patch
 
 import pytest
 
+from miles.utils.ft.agents.node_agent import FtNodeAgent
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
     InterMachineCommDiagnostic,
 )
-from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.controller.diagnostics.scheduler import (
+    DiagnosticScheduler,
+    PairResult,
+)
 from miles.utils.ft.models import ActionType, DiagnosticResult
 from tests.fast.utils.ft.conftest import (
     FailingDiagnostic,
     FakeNodeAgent,
     StubDiagnostic,
     make_fake_agents,
+    mock_inter_machine_run,
 )
-
-
-def _mock_inter_machine_run(
-    node_pass_map: dict[str, bool],
-) -> contextlib.AbstractContextManager[None]:
-    """Patch InterMachineCommDiagnostic.run to return results per node_id.
-
-    ``node_pass_map`` maps node_id → True (pass) or False (fail).
-    """
-    async def _fake_run(
-        self: InterMachineCommDiagnostic,
-        node_id: str,
-        timeout_seconds: int = 180,
-    ) -> DiagnosticResult:
-        passed = node_pass_map.get(node_id, True)
-        return DiagnosticResult(
-            diagnostic_type="inter_machine",
-            node_id=node_id,
-            passed=passed,
-            details="pass" if passed else "fail",
-        )
-
-    return patch.object(InterMachineCommDiagnostic, "run", _fake_run)
 
 
 # ---------------------------------------------------------------------------
@@ -248,8 +229,6 @@ class TestNodeAgentDynamicDiagnostics:
 
     @pytest.mark.asyncio
     async def test_set_diagnostic_overrides_existing(self) -> None:
-        from miles.utils.ft.agents.node_agent import FtNodeAgent
-
         original = StubDiagnostic(passed=True, details="original")
         agent = FtNodeAgent(node_id="node-0", diagnostics=[original])
 
@@ -269,8 +248,6 @@ class TestNodeAgentDynamicDiagnostics:
 
     @pytest.mark.asyncio
     async def test_remove_diagnostic(self) -> None:
-        from miles.utils.ft.agents.node_agent import FtNodeAgent
-
         stub = StubDiagnostic(passed=True)
         agent = FtNodeAgent(node_id="node-0", diagnostics=[stub])
 
@@ -288,8 +265,6 @@ class TestNodeAgentDynamicDiagnostics:
 
     @pytest.mark.asyncio
     async def test_remove_nonexistent_is_noop(self) -> None:
-        from miles.utils.ft.agents.node_agent import FtNodeAgent
-
         agent = FtNodeAgent(node_id="node-0")
         try:
             agent.remove_diagnostic("nonexistent")
@@ -309,7 +284,7 @@ class TestDiagnosticSchedulerInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
 
-        with _mock_inter_machine_run({"node-0": True, "node-1": True, "node-2": True}):
+        with mock_inter_machine_run({"node-0": True, "node-1": True, "node-2": True}):
             decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
@@ -326,7 +301,7 @@ class TestDiagnosticSchedulerInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
 
-        with _mock_inter_machine_run({"node-0": False, "node-1": True, "node-2": True}):
+        with mock_inter_machine_run({"node-0": False, "node-1": True, "node-2": True}):
             decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
@@ -341,7 +316,7 @@ class TestDiagnosticSchedulerInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
 
-        with _mock_inter_machine_run({"node-0": False, "node-1": False, "node-2": False}):
+        with mock_inter_machine_run({"node-0": False, "node-1": False, "node-2": False}):
             decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
@@ -353,7 +328,7 @@ class TestDiagnosticSchedulerInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
 
-        with _mock_inter_machine_run({"node-0": False, "node-1": False}):
+        with mock_inter_machine_run({"node-0": False, "node-1": False}):
             decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         # 2 nodes, both fail → all nodes equal failure count → can't localize
@@ -366,7 +341,7 @@ class TestDiagnosticSchedulerInterMachine:
             agents=agents, pipeline=["inter_machine"],
         )
 
-        with _mock_inter_machine_run({"node-0": True}):
+        with mock_inter_machine_run({"node-0": True}):
             decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
@@ -429,13 +404,71 @@ class TestDiagnosticSchedulerInterMachine:
         assert "node-1" in decision.bad_node_ids
 
 
+class TestCrossCompare:
+    """Direct unit tests for DiagnosticScheduler._cross_compare."""
+
+    def test_all_pass(self) -> None:
+        result = DiagnosticScheduler._cross_compare(
+            node_ids=["A", "B", "C"],
+            pair_results=[
+                PairResult(master_id="A", worker_id="B", passed=True),
+                PairResult(master_id="B", worker_id="C", passed=True),
+                PairResult(master_id="C", worker_id="A", passed=True),
+            ],
+        )
+        assert result == []
+
+    def test_single_bad_node(self) -> None:
+        # A is bad → pairs (A,B) and (C,A) fail
+        result = DiagnosticScheduler._cross_compare(
+            node_ids=["A", "B", "C"],
+            pair_results=[
+                PairResult(master_id="A", worker_id="B", passed=False),
+                PairResult(master_id="B", worker_id="C", passed=True),
+                PairResult(master_id="C", worker_id="A", passed=False),
+            ],
+        )
+        assert result == ["A"]
+
+    def test_all_equal_failure_count_cannot_localize(self) -> None:
+        result = DiagnosticScheduler._cross_compare(
+            node_ids=["A", "B", "C"],
+            pair_results=[
+                PairResult(master_id="A", worker_id="B", passed=False),
+                PairResult(master_id="B", worker_id="C", passed=False),
+                PairResult(master_id="C", worker_id="A", passed=False),
+            ],
+        )
+        assert result == []
+
+    def test_multiple_bad_nodes_with_highest_count(self) -> None:
+        # 4 nodes: A, B, C, D. Both A and B are bad.
+        # Pairs: (A,B) fail, (B,C) fail, (C,D) pass, (D,A) fail
+        # Counts: A=2, B=2, C=1, D=1 → A and B are bad
+        result = DiagnosticScheduler._cross_compare(
+            node_ids=["A", "B", "C", "D"],
+            pair_results=[
+                PairResult(master_id="A", worker_id="B", passed=False),
+                PairResult(master_id="B", worker_id="C", passed=False),
+                PairResult(master_id="C", worker_id="D", passed=True),
+                PairResult(master_id="D", worker_id="A", passed=False),
+            ],
+        )
+        assert result == ["A", "B"]
+
+    def test_empty_pair_results(self) -> None:
+        result = DiagnosticScheduler._cross_compare(
+            node_ids=["A", "B"],
+            pair_results=[],
+        )
+        assert result == []
+
+
 class TestDiagnosticSchedulerLiveAgents:
     """Test scheduler with real FtNodeAgent instances (not FakeNodeAgent)."""
 
     @pytest.mark.asyncio
     async def test_scheduler_with_real_node_agents(self) -> None:
-        from miles.utils.ft.agents.node_agent import FtNodeAgent
-
         stub = StubDiagnostic(passed=True, details="all good")
         agent0 = FtNodeAgent(node_id="node-0", diagnostics=[stub])
         agent1 = FtNodeAgent(node_id="node-1", diagnostics=[stub])
@@ -454,8 +487,6 @@ class TestDiagnosticSchedulerLiveAgents:
 
     @pytest.mark.asyncio
     async def test_scheduler_with_mismatched_diagnostic_type(self) -> None:
-        from miles.utils.ft.agents.node_agent import FtNodeAgent
-
         good = StubDiagnostic(passed=True)
         bad = FailingDiagnostic(details="gpu broken")
         agent0 = FtNodeAgent(node_id="node-0", diagnostics=[good])

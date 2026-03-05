@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import NamedTuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from prometheus_client import CollectorRegistry
 
@@ -22,6 +23,9 @@ from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
+    InterMachineCommDiagnostic,
+)
 from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.mini_wandb import MiniWandb
@@ -502,6 +506,34 @@ class FakeNodeAgent:
     async def cleanup_training_processes(self, training_job_id: str) -> None:
         self.cleanup_called = True
         self.cleanup_job_id = training_job_id
+
+
+# ---------------------------------------------------------------------------
+# Inter-machine diagnostic mock helper (diag-inter milestone)
+# ---------------------------------------------------------------------------
+
+
+def mock_inter_machine_run(
+    node_pass_map: dict[str, bool],
+) -> contextlib.AbstractContextManager[None]:
+    """Patch InterMachineCommDiagnostic.run to return results per node_id.
+
+    ``node_pass_map`` maps node_id → True (pass) or False (fail).
+    """
+    async def _fake_run(
+        self: InterMachineCommDiagnostic,
+        node_id: str,
+        timeout_seconds: int = 180,
+    ) -> DiagnosticResult:
+        passed = node_pass_map.get(node_id, True)
+        return DiagnosticResult(
+            diagnostic_type="inter_machine",
+            node_id=node_id,
+            passed=passed,
+            details="pass" if passed else "fail",
+        )
+
+    return patch.object(InterMachineCommDiagnostic, "run", _fake_run)
 
 
 # ---------------------------------------------------------------------------
