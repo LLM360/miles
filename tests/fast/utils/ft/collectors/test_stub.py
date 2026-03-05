@@ -12,8 +12,6 @@ class TestStubCollector:
 
     def test_is_base_collector_subclass(self) -> None:
         assert issubclass(StubCollector, BaseCollector)
-
-    @pytest.mark.asyncio()
     async def test_collect_returns_empty_metrics(self, stub: StubCollector) -> None:
         result = await stub.collect()
         assert result == CollectorOutput(metrics=[])

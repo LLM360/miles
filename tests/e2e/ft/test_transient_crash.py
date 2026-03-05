@@ -25,9 +25,6 @@ pytestmark = [
     pytest.mark.e2e,
     pytest.mark.timeout(600),
 ]
-
-
-@pytest.mark.asyncio
 async def test_transient_crash_auto_recovery(
     ft_system: FtSystem,
     fault_injector: FaultInjectorFactory,

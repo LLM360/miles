@@ -6,7 +6,6 @@ pre-existing instant_query gap in MiniPrometheus.
 """
 from __future__ import annotations
 
-import pytest
 
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.models import RecoveryPhase
@@ -42,8 +41,6 @@ def _enter_recovery_and_skip_to_diagnosing(
 
 class TestDiagnosticPipelineWithBadNode:
     """Diagnostics find bad node → EVICT_AND_RESTART."""
-
-    @pytest.mark.asyncio
     async def test_diagnose_evict_bad_node(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True},
@@ -86,8 +83,6 @@ class TestDiagnosticPipelineWithBadNode:
 
 class TestDiagnosticPipelineAllPass:
     """All diagnostics pass → NOTIFY_HUMAN."""
-
-    @pytest.mark.asyncio
     async def test_all_pass_leads_to_notify(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True},
@@ -131,8 +126,6 @@ class TestDiagnosticPipelineAllPass:
 
 class TestDiagnosticPipelineEmptyPipeline:
     """Empty pipeline (no diagnostics) → NOTIFY (backward compat with stub)."""
-
-    @pytest.mark.asyncio
     async def test_empty_pipeline_notifies(self) -> None:
         scheduler = DiagnosticScheduler(agents={}, pipeline=[])
 
@@ -153,8 +146,6 @@ class TestDiagnosticPipelineEmptyPipeline:
 
 class TestDiagnosticPipelineInterMachine:
     """Inter-machine step catches bad node through cross-comparison."""
-
-    @pytest.mark.asyncio
     async def test_inter_machine_catches_bad_node(self) -> None:
         # 3 nodes, gpu+intra pass for all, inter-machine isolates node-1
         # node-1 fails → pairs (node-0,node-1) and (node-1,node-2) fail
@@ -199,8 +190,6 @@ class TestDiagnosticPipelineInterMachine:
         assert harness.node_manager.is_node_bad("node-1")
         assert not harness.node_manager.is_node_bad("node-0")
         assert not harness.node_manager.is_node_bad("node-2")
-
-    @pytest.mark.asyncio
     async def test_full_pipeline_all_pass(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True, "intra_machine": True},
@@ -248,8 +237,6 @@ class TestDiagnosticPipelineInterMachine:
 
 class TestDiagnosticPipelineMultiStep:
     """Multi-step pipeline catches bad node at second step."""
-
-    @pytest.mark.asyncio
     async def test_multi_step_second_step_catches(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True, "intra": True},

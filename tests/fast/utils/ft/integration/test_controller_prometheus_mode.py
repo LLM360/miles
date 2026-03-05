@@ -10,7 +10,6 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
-import pytest
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.controller.controller import FtController
@@ -40,7 +39,6 @@ def _make_http_response(json_data: dict[str, Any]) -> httpx.Response:
 
 
 class TestControllerPrometheusMode:
-    @pytest.mark.asyncio
     async def test_tick_with_prometheus_client_updates_exporter(self) -> None:
         registry, exporter = make_test_exporter()
         prom_client = PrometheusClient(url="http://fake:9090")
@@ -58,8 +56,6 @@ class TestControllerPrometheusMode:
 
         assert get_sample_value(registry, mn.TRAINING_JOB_STATUS) == 1.0
         assert get_sample_value(registry, mn.CONTROLLER_TICK_COUNT + "_total") == 1.0
-
-    @pytest.mark.asyncio
     async def test_no_scrape_target_manager_in_prometheus_mode(self) -> None:
         """In prometheus mode, register_rank should not fail even without scrape_target_manager."""
         _, exporter = make_test_exporter()
@@ -79,8 +75,6 @@ class TestControllerPrometheusMode:
         )
 
         assert controller._rank_registry.rank_placement == {0: "node-0"}
-
-    @pytest.mark.asyncio
     async def test_training_metrics_propagated_to_exporter(self) -> None:
         registry, exporter = make_test_exporter()
         mini_wandb = MiniWandb()

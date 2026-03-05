@@ -31,9 +31,6 @@ pytestmark = [
     pytest.mark.e2e,
     pytest.mark.timeout(600),
 ]
-
-
-@pytest.mark.asyncio
 async def test_disk_full_eviction(
     ft_system: FtSystem,
     fault_injector: FaultInjectorFactory,

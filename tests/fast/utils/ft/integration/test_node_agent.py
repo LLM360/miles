@@ -1,7 +1,6 @@
 import asyncio
 from datetime import timedelta
 
-import pytest
 
 from miles.utils.ft.agents.node_agent import FtNodeAgent
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
@@ -10,7 +9,6 @@ from tests.fast.utils.ft.helpers import TestCollector
 
 
 class TestNodeAgentMiniPrometheusIntegration:
-    @pytest.mark.asyncio()
     async def test_scrape_and_query_latest(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -41,8 +39,6 @@ class TestNodeAgentMiniPrometheusIntegration:
             assert 72.5 in values
         finally:
             await agent.stop()
-
-    @pytest.mark.asyncio()
     async def test_updated_values_visible_after_rescrape(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -92,8 +88,6 @@ class TestNodeAgentMiniPrometheusIntegration:
             assert 85.0 in range_values
         finally:
             await agent.stop()
-
-    @pytest.mark.asyncio()
     async def test_multiple_metrics_all_queryable(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -138,8 +132,6 @@ class TestNodeAgentMiniPrometheusIntegration:
             assert 250.0 in df_power["value"].to_list()
         finally:
             await agent.stop()
-
-    @pytest.mark.asyncio()
     async def test_label_filter_query(self) -> None:
         test_collector = TestCollector(
             metrics=[

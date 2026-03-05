@@ -24,7 +24,6 @@ def _make_manager_with_mock_api() -> tuple[K8sNodeManager, AsyncMock]:
 
 
 class TestMarkNodeBad:
-    @pytest.mark.anyio
     async def test_patches_node_with_correct_labels(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
 
@@ -36,8 +35,6 @@ class TestMarkNodeBad:
         body = call_kwargs.kwargs["body"]
         assert body["metadata"]["labels"][LABEL_KEY] == "true"
         assert body["metadata"]["labels"][REASON_LABEL_KEY] == "gpu_ecc_error"
-
-    @pytest.mark.anyio
     async def test_raises_on_api_failure(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
         mock_core_v1.patch_node.side_effect = Exception("K8s API unreachable")
@@ -47,7 +44,6 @@ class TestMarkNodeBad:
 
 
 class TestUnmarkNodeBad:
-    @pytest.mark.anyio
     async def test_patches_node_with_none_labels(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
 
@@ -59,8 +55,6 @@ class TestUnmarkNodeBad:
         body = call_kwargs.kwargs["body"]
         assert body["metadata"]["labels"][LABEL_KEY] is None
         assert body["metadata"]["labels"][REASON_LABEL_KEY] is None
-
-    @pytest.mark.anyio
     async def test_raises_on_api_failure(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
         mock_core_v1.patch_node.side_effect = Exception("K8s API unreachable")
@@ -70,7 +64,6 @@ class TestUnmarkNodeBad:
 
 
 class TestGetBadNodes:
-    @pytest.mark.anyio
     async def test_returns_node_names_with_label(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
 
@@ -86,8 +79,6 @@ class TestGetBadNodes:
         mock_core_v1.list_node.assert_awaited_once_with(
             label_selector=f"{LABEL_KEY}=true",
         )
-
-    @pytest.mark.anyio
     async def test_returns_empty_list_when_no_bad_nodes(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
         mock_core_v1.list_node.return_value = SimpleNamespace(items=[])
@@ -95,8 +86,6 @@ class TestGetBadNodes:
         result = await manager.get_bad_nodes()
 
         assert result == []
-
-    @pytest.mark.anyio
     async def test_returns_multiple_bad_nodes(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
 
@@ -110,8 +99,6 @@ class TestGetBadNodes:
 
         assert len(result) == 5
         assert result == [f"node-{i}" for i in range(5)]
-
-    @pytest.mark.anyio
     async def test_raises_on_api_failure(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
         mock_core_v1.list_node.side_effect = Exception("K8s API unreachable")

@@ -1,4 +1,3 @@
-import pytest
 
 from miles.utils.ft.platform.protocols import (
     JobStatus,
@@ -51,8 +50,6 @@ class TestNodeManagerProtocol:
                 pass
 
         assert not isinstance(_MissingGetBadNodes(), NodeManagerProtocol)
-
-    @pytest.mark.asyncio
     async def test_methods_callable_with_expected_signatures(self) -> None:
         class _Impl:
             def __init__(self) -> None:
@@ -97,8 +94,6 @@ class TestTrainingJobProtocol:
                 return JobStatus.RUNNING
 
         assert not isinstance(_MissingSubmit(), TrainingJobProtocol)
-
-    @pytest.mark.asyncio
     async def test_methods_callable_with_expected_signatures(self) -> None:
         class _Impl:
             def __init__(self) -> None:
@@ -139,8 +134,6 @@ class TestNotificationProtocol:
                 pass
 
         assert not isinstance(_MissingSend(), NotificationProtocol)
-
-    @pytest.mark.asyncio
     async def test_methods_callable_with_expected_signatures(self) -> None:
         class _Impl:
             def __init__(self) -> None:

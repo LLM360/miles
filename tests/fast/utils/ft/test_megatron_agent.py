@@ -36,7 +36,6 @@ def agent() -> Iterator[FtMegatronAgent]:
 
 
 class TestFtMegatronAgentExporter:
-    @pytest.mark.anyio
     async def test_exporter_returns_prometheus_format(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -46,8 +45,6 @@ class TestFtMegatronAgentExporter:
 
         assert response.status_code == 200
         assert "text/plain" in response.headers.get("content-type", "")
-
-    @pytest.mark.anyio
     async def test_exporter_address_has_port(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -55,8 +52,6 @@ class TestFtMegatronAgentExporter:
         assert address.startswith("http://localhost:")
         port = int(address.split(":")[-1])
         assert port > 0
-
-    @pytest.mark.anyio
     async def test_initial_gauge_values(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -71,7 +66,6 @@ class TestFtMegatronAgentExporter:
 
 
 class TestFtMegatronAgentStep:
-    @pytest.mark.anyio
     async def test_step_updates_iteration_gauge(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -105,8 +99,6 @@ class TestFtMegatronAgentStep:
         agent.step(iteration=5)
         with pytest.raises(AssertionError, match="strictly increasing"):
             agent.step(iteration=3)
-
-    @pytest.mark.anyio
     async def test_step_iteration_monotonic_across_phases(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -137,7 +129,6 @@ class TestFtMegatronAgentStep:
 
 
 class TestFtMegatronAgentSetPhase:
-    @pytest.mark.anyio
     async def test_set_phase_updates_phase_gauge(
         self, agent: FtMegatronAgent
     ) -> None:
@@ -150,8 +141,6 @@ class TestFtMegatronAgentSetPhase:
         labels = {"rank": "0"}
         phase = _parse_gauge(response.text, "miles_ft_training_phase", labels)
         assert phase == 2.0
-
-    @pytest.mark.anyio
     async def test_set_phase_idle_preserves_iteration(
         self, agent: FtMegatronAgent
     ) -> None:

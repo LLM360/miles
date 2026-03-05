@@ -9,7 +9,6 @@ not by FtMegatronAgent.step().
 """
 
 import httpx
-import pytest
 
 from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
 from tests.fast.utils.ft.conftest import make_test_controller
@@ -20,7 +19,6 @@ def _make_agent(rank: int = 0, world_size: int = 4) -> FtMegatronAgent:
 
 
 class TestStepToLogStepFlow:
-    @pytest.mark.anyio
     async def test_step_metrics_arrive_in_mini_wandb(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-1"
@@ -40,7 +38,6 @@ class TestStepToLogStepFlow:
 
 
 class TestRegisterRankPlacement:
-    @pytest.mark.anyio
     async def test_register_rank_records_placement(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-2"
@@ -58,7 +55,6 @@ class TestRegisterRankPlacement:
 
 
 class TestScrapeTargetRegistration:
-    @pytest.mark.anyio
     async def test_register_rank_adds_scrape_target(self) -> None:
         harness = make_test_controller()
         agent = _make_agent(rank=0, world_size=4)
@@ -77,7 +73,6 @@ class TestScrapeTargetRegistration:
 
 
 class TestHeartbeatScrape:
-    @pytest.mark.anyio
     async def test_scrape_reads_heartbeat_gauges(self) -> None:
         harness = make_test_controller()
         agent = _make_agent(rank=0, world_size=4)
@@ -104,7 +99,6 @@ class TestHeartbeatScrape:
 
 
 class TestRunIdClear:
-    @pytest.mark.anyio
     async def test_new_run_id_clears_mini_wandb(self) -> None:
         harness = make_test_controller()
         run_id_1 = "integ-megatron-run-1"
@@ -129,7 +123,6 @@ class TestRunIdClear:
 
 
 class TestMultiRankConcurrentStep:
-    @pytest.mark.anyio
     async def test_multi_rank_independent_metrics(self) -> None:
         harness = make_test_controller()
         run_id = "integ-megatron-multirank"
@@ -159,7 +152,6 @@ class TestControllerUnreachable:
 
 
 class TestPhaseSwitch:
-    @pytest.mark.anyio
     async def test_phase_switch_visible_in_exporter(self) -> None:
         agent = _make_agent(rank=0, world_size=4)
         try:

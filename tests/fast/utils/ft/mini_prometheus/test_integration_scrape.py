@@ -49,9 +49,6 @@ def _start_exporter(port: int) -> Thread:
     time.sleep(0.5)
 
     return thread
-
-
-@pytest.mark.asyncio
 class TestMiniPrometheusScrapeReal:
     async def test_scrape_single_exporter(self) -> None:
         port = _find_free_port()

@@ -2,13 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from miles.utils.ft.agents.collectors.disk import DiskCollector
 
 
 class TestDiskCollector:
-    @pytest.mark.asyncio()
     async def test_disk_available_bytes(self, tmp_path: Path) -> None:
         collector = DiskCollector(disk_mounts=[tmp_path])
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 from miles.utils.ft.models import ActionType, Decision, TriggerType
 from tests.fast.utils.ft.conftest import (
@@ -17,13 +16,10 @@ async def _raise_runtime_error(*_args: object, **_kwargs: object) -> None:
 
 
 class TestTickEmptyDetectorChain:
-    @pytest.mark.anyio
     async def test_tick_succeeds_with_no_detectors(self) -> None:
         harness = make_test_controller()
         await harness.controller._tick()
         assert harness.controller._tick_count == 1
-
-    @pytest.mark.anyio
     async def test_tick_returns_none_decision(self) -> None:
         harness = make_test_controller()
         await harness.controller._tick()
@@ -61,20 +57,15 @@ class TestDetectorChain:
 
 
 class TestExecuteDecision:
-    @pytest.mark.anyio
     async def test_none_decision_is_noop(self) -> None:
         harness = make_test_controller()
         await harness.controller._tick()
-
-    @pytest.mark.anyio
     async def test_mark_bad_and_restart_does_not_raise(self) -> None:
         harness = make_test_controller(
             detectors=[AlwaysMarkBadDetector()],
         )
         await harness.controller._tick()
         assert harness.controller._tick_count == 1
-
-    @pytest.mark.anyio
     async def test_enter_recovery_does_not_raise(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -84,8 +75,6 @@ class TestExecuteDecision:
         harness = make_test_controller(detectors=[detector])
         await harness.controller._tick()
         assert harness.controller._tick_count == 1
-
-    @pytest.mark.anyio
     async def test_notify_human_sends_notification(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
@@ -101,8 +90,6 @@ class TestExecuteDecision:
         assert title == "Fault Alert"
         assert content == "test notify"
         assert severity == "critical"
-
-    @pytest.mark.anyio
     async def test_notify_human_without_notifier(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
@@ -111,24 +98,18 @@ class TestExecuteDecision:
         harness = make_test_controller(detectors=[detector], notifier=None)
         await harness.controller._tick()
         assert harness.controller._tick_count == 1
-
-    @pytest.mark.anyio
     async def test_none_decision_does_not_notify(self) -> None:
         harness = make_test_controller(detectors=[AlwaysNoneDetector()])
         await harness.controller._tick()
 
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 0
-
-    @pytest.mark.anyio
     async def test_mark_bad_does_not_notify(self) -> None:
         harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
         await harness.controller._tick()
 
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 0
-
-    @pytest.mark.anyio
     async def test_enter_recovery_does_not_notify(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -140,8 +121,6 @@ class TestExecuteDecision:
 
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 0
-
-    @pytest.mark.anyio
     async def test_notify_human_notifier_exception_does_not_crash(self) -> None:
         harness = make_test_controller(
             detectors=[FixedDecisionDetector(decision=Decision(
@@ -153,8 +132,6 @@ class TestExecuteDecision:
         harness.notifier.send = _raise_runtime_error
         await harness.controller._tick()
         assert harness.controller._tick_count == 1
-
-    @pytest.mark.anyio
     async def test_notify_human_sends_on_every_tick(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
@@ -170,22 +147,17 @@ class TestExecuteDecision:
 
 
 class TestMarkBadAndRestartReal:
-    @pytest.mark.anyio
     async def test_marks_bad_nodes(self) -> None:
         harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
         await harness.controller._tick()
 
         assert harness.node_manager.is_node_bad("node-1")
-
-    @pytest.mark.anyio
     async def test_stops_and_submits_training(self) -> None:
         harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
         await harness.controller._tick()
 
         assert harness.training_job._stopped
         assert harness.training_job._submitted
-
-    @pytest.mark.anyio
     async def test_clears_mini_wandb_before_submit(self) -> None:
         harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
         harness.mini_wandb.log_step(

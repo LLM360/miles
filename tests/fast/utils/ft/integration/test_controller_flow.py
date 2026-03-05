@@ -1,13 +1,11 @@
 """Integration tests for FtController: end-to-end data flows."""
 
-import pytest
 
 from miles.utils.ft.models import ActionType
 from tests.fast.utils.ft.conftest import AlwaysMarkBadDetector, make_test_controller
 
 
 class TestEmptyDetectorChainMultipleTicks:
-    @pytest.mark.anyio
     async def test_three_ticks_succeed(self) -> None:
         harness = make_test_controller()
 
@@ -18,7 +16,6 @@ class TestEmptyDetectorChainMultipleTicks:
 
 
 class TestRegisterRankLogStepQuery:
-    @pytest.mark.anyio
     async def test_end_to_end_data_flow(self) -> None:
         harness = make_test_controller()
         run_id = "integ-run-1"
@@ -47,7 +44,6 @@ class TestRegisterRankLogStepQuery:
 
 
 class TestRunIdIsolation:
-    @pytest.mark.anyio
     async def test_new_run_id_clears_old_data(self) -> None:
         harness = make_test_controller()
 
@@ -69,8 +65,6 @@ class TestRunIdIsolation:
         assert harness.mini_wandb.latest(metric_name="loss") is None
         assert harness.controller._active_run_id == "run-2"
         assert harness.controller._rank_placement == {0: "node-0"}
-
-    @pytest.mark.anyio
     async def test_stale_log_step_after_run_switch_is_discarded(self) -> None:
         harness = make_test_controller()
 
@@ -97,7 +91,6 @@ class TestRunIdIsolation:
 
 
 class TestCustomDetectorInTick:
-    @pytest.mark.anyio
     async def test_detector_invoked_during_tick(self) -> None:
         detector = AlwaysMarkBadDetector()
         harness = make_test_controller(detectors=[detector])

@@ -9,7 +9,6 @@ from __future__ import annotations
 import gc
 
 import psutil
-import pytest
 
 from miles.utils.ft.controller.detectors import build_detector_chain
 from miles.utils.ft.models import MetricSample
@@ -40,7 +39,6 @@ async def _register_n_nodes(
 
 
 class TestControllerMemoryLeak:
-    @pytest.mark.anyio
     async def test_controller_main_loop_no_memory_leak(self) -> None:
         harness = make_test_controller(
             detectors=build_detector_chain(),

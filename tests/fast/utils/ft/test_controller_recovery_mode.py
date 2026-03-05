@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
@@ -14,7 +13,6 @@ from tests.fast.utils.ft.helpers import (
 
 
 class TestEnterRecovery:
-    @pytest.mark.asyncio
     async def test_creates_recovery_orchestrator(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -27,8 +25,6 @@ class TestEnterRecovery:
         await harness.controller._tick()
 
         assert harness.controller._recovery_orchestrator is not None
-
-    @pytest.mark.asyncio
     async def test_recovery_mode_skips_detectors(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -42,8 +38,6 @@ class TestEnterRecovery:
 
         await harness.controller._tick()
         assert detector.call_count == initial_count
-
-    @pytest.mark.asyncio
     async def test_recovery_complete_returns_to_monitoring(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -62,8 +56,6 @@ class TestEnterRecovery:
 
         await harness.controller._tick()
         assert harness.controller._recovery_orchestrator is None
-
-    @pytest.mark.asyncio
     async def test_exporter_mode_reflects_recovery(self) -> None:
         registry, exporter = make_test_exporter()
         detector = FixedDecisionDetector(decision=Decision(

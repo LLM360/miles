@@ -4,7 +4,6 @@ import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from miles.utils.ft.agents.collectors.disk import DiskCollector
 from miles.utils.ft.agents.collectors.gpu import GpuCollector
@@ -27,7 +26,6 @@ def _create_sysfs(tmp_path: Path) -> Path:
 
 
 class TestNodeAgentAllCollectorsIntegration:
-    @pytest.mark.asyncio()
     async def test_all_collectors_expose_metrics(self, tmp_path: Path) -> None:
         mock_nvml = make_mock_pynvml(device_count=2)
         sysfs = _create_sysfs(tmp_path)
@@ -79,8 +77,6 @@ class TestNodeAgentAllCollectorsIntegration:
                 assert len(nic_df) == 2  # ib0 + ib1
             finally:
                 await agent.stop()
-
-    @pytest.mark.asyncio()
     async def test_failing_collector_does_not_block_others(self, tmp_path: Path) -> None:
         sysfs = _create_sysfs(tmp_path)
 
@@ -110,8 +106,6 @@ class TestNodeAgentAllCollectorsIntegration:
             assert not nic_df.is_empty()
         finally:
             await agent.stop()
-
-    @pytest.mark.asyncio()
     async def test_per_collector_interval_with_hw_collectors(self, tmp_path: Path) -> None:
         sysfs = _create_sysfs(tmp_path)
 

@@ -5,7 +5,6 @@ complete decision → recovery → monitoring lifecycle.
 """
 from __future__ import annotations
 
-import pytest
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
@@ -26,7 +25,6 @@ from tests.fast.utils.ft.conftest import (
 
 
 class TestGpuLostDirectEviction:
-    @pytest.mark.anyio
     async def test_gpu_lost_marks_bad_and_restarts(self) -> None:
         detector = FixedDecisionDetector(decision=Decision(
             action=ActionType.MARK_BAD_AND_RESTART,
@@ -52,7 +50,6 @@ class TestGpuLostDirectEviction:
 
 
 class TestCrashReattemptSuccess:
-    @pytest.mark.anyio
     async def test_crash_reattempt_success(self) -> None:
         enter_recovery = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -90,7 +87,6 @@ class TestCrashReattemptSuccess:
 
 
 class TestCrashReattemptFailDiagnoseNotify:
-    @pytest.mark.anyio
     async def test_crash_diagnose_notify(self) -> None:
         enter_recovery = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -127,7 +123,6 @@ class TestCrashReattemptFailDiagnoseNotify:
 
 
 class TestGlobalTimeout:
-    @pytest.mark.anyio
     async def test_global_timeout_triggers_notify(self) -> None:
         enter_recovery = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -163,7 +158,6 @@ class TestGlobalTimeout:
 
 
 class TestRecoveryCompleteBackToMonitoring:
-    @pytest.mark.anyio
     async def test_back_to_monitoring_after_recovery(self) -> None:
         enter_recovery = FixedDecisionDetector(decision=Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -207,7 +201,6 @@ class TestRecoveryCompleteBackToMonitoring:
 
 
 class TestExporterModeGauge:
-    @pytest.mark.anyio
     async def test_mode_gauge_during_recovery(self) -> None:
         registry, exporter = make_test_exporter()
         enter_recovery = FixedDecisionDetector(decision=Decision(
