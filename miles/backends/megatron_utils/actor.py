@@ -104,11 +104,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         self.parallel_state = create_megatron_parallel_state(model=self.model)
 
-        self._ft_agent = FtMegatronAgent.maybe_create(
-            rank=dist.get_rank(),
-            world_size=dist.get_world_size(),
-            enabled="train" in self.args.ft_components,
-        )
+        self._ft_agent = FtMegatronAgent.maybe_create(self.args)
 
         if role == "critic":
             if self.args.offload_train:
@@ -345,8 +341,8 @@ class MegatronTrainRayActor(TrainRayActor):
         return getattr(self.args, f"use_rollout_{m.name}_replay")
 
     def train_actor(self, rollout_id: int, rollout_data: RolloutBatch) -> None:
-        if self._ft_agent is not None:
-            self._ft_agent.set_phase("training")
+        if (x := self._ft_agent) is not None:
+            x.set_phase("training")
 
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, self.parallel_state, rollout_data)
@@ -450,8 +446,8 @@ class MegatronTrainRayActor(TrainRayActor):
 
         log_perf_data(rollout_id, self.args, self.parallel_state)
 
-        if self._ft_agent is not None:
-            self._ft_agent.set_phase("idle")
+        if (x := self._ft_agent) is not None:
+            x.set_phase("idle")
 
     @timer
     def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
@@ -467,13 +463,13 @@ class MegatronTrainRayActor(TrainRayActor):
 
             maybe_finalize_async_save(blocking=True)
 
-        if self._ft_agent is not None:
-            self._ft_agent.set_phase("checkpoint_saving")
+        if (x := self._ft_agent) is not None:
+            x.set_phase("checkpoint_saving")
 
         save(rollout_id, self.model, self.optimizer, self.opt_param_scheduler)
 
-        if self._ft_agent is not None:
-            self._ft_agent.set_phase("idle")
+        if (x := self._ft_agent) is not None:
+            x.set_phase("idle")
 
         if force_sync and self.args.async_save:
             maybe_finalize_async_save(blocking=True)
