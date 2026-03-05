@@ -17,6 +17,11 @@ class HangDetector(BaseFaultDetector):
         training_timeout_minutes: int = 10,
         checkpoint_saving_timeout_minutes: int = 30,
     ) -> None:
+        if training_timeout_minutes < 1:
+            raise ValueError(f"training_timeout_minutes must be >= 1, got {training_timeout_minutes}")
+        if checkpoint_saving_timeout_minutes < 1:
+            raise ValueError(f"checkpoint_saving_timeout_minutes must be >= 1, got {checkpoint_saving_timeout_minutes}")
+
         self._training_timeout_minutes = training_timeout_minutes
         self._checkpoint_saving_timeout_minutes = checkpoint_saving_timeout_minutes
 
