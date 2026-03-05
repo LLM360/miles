@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.detectors import build_detector_chain
@@ -30,6 +30,7 @@ class FtControllerConfig(FtBaseModel):
     platform: Literal["stub", "k8s-ray"] = "stub"
     ray_address: str = "http://127.0.0.1:8265"
     entrypoint: str = ""
+    runtime_env: dict[str, Any] = Field(default_factory=dict)
     metric_store_backend: Literal["mini", "prometheus"] = "mini"
     prometheus_url: str = "http://prometheus:9090"
     controller_exporter_port: int = 9400
@@ -40,6 +41,7 @@ def _build_platform_components(
     platform: str,
     ray_address: str,
     entrypoint: str,
+    runtime_env: dict[str, Any] | None = None,
 ) -> tuple[StubNodeManager | K8sNodeManager, StubTrainingJob | RayTrainingJob]:
     if platform == "stub":
         return StubNodeManager(), StubTrainingJob()
@@ -53,6 +55,7 @@ def _build_platform_components(
         training_job = RayTrainingJob(
             client=JobSubmissionClient(address=ray_address),
             entrypoint=entrypoint,
+            runtime_env=runtime_env,
         )
         return node_manager, training_job
 
@@ -100,6 +103,7 @@ def build_ft_controller(
         platform=config.platform,
         ray_address=config.ray_address,
         entrypoint=config.entrypoint,
+        runtime_env=config.runtime_env,
     )
 
     controller_exporter = ControllerExporter(port=config.controller_exporter_port)
