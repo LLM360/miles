@@ -1,9 +1,12 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from miles.utils.ft.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol, TrainingMetricStoreProtocol
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_MFU_THRESHOLD_RATIO = 0.8
 _DEFAULT_CONSECUTIVE_STEPS = 10
@@ -21,6 +24,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         temperature_delta_threshold: float = _DEFAULT_TEMPERATURE_DELTA_THRESHOLD,
         decline_timeout_minutes: float = _DEFAULT_DECLINE_TIMEOUT_MINUTES,
         baseline_steps: int = _DEFAULT_BASELINE_STEPS,
+        mfu_absolute_minimum: float = 0.0,
     ) -> None:
         if mfu_threshold_ratio <= 0 or mfu_threshold_ratio > 1:
             raise ValueError(f"mfu_threshold_ratio must be in (0, 1], got {mfu_threshold_ratio}")
@@ -32,6 +36,8 @@ class MfuDeclineDetector(BaseFaultDetector):
             raise ValueError(f"decline_timeout_minutes must be > 0, got {decline_timeout_minutes}")
         if baseline_steps < 1:
             raise ValueError(f"baseline_steps must be >= 1, got {baseline_steps}")
+        if mfu_absolute_minimum < 0:
+            raise ValueError(f"mfu_absolute_minimum must be >= 0, got {mfu_absolute_minimum}")
 
         self._mfu_baseline = mfu_baseline
         self._mfu_threshold_ratio = mfu_threshold_ratio
@@ -39,18 +45,29 @@ class MfuDeclineDetector(BaseFaultDetector):
         self._temperature_delta_threshold = temperature_delta_threshold
         self._decline_timeout_minutes = decline_timeout_minutes
         self._baseline_steps = baseline_steps
+        self._mfu_absolute_minimum = mfu_absolute_minimum
+
+        self._baseline_locked: bool = False
+        self._locked_baseline: float | None = None
 
     def evaluate(self, ctx: DetectorContext) -> Decision:
         recent_mfu = ctx.mini_wandb.query_last_n_steps("mfu", last_n=self._consecutive_steps)
         if len(recent_mfu) < self._consecutive_steps:
             return Decision(action=ActionType.NONE, reason="insufficient MFU data")
 
+        mfu_values = [value for _, value in recent_mfu]
+        avg_mfu = sum(mfu_values) / len(mfu_values)
+
+        if self._mfu_absolute_minimum > 0 and avg_mfu < self._mfu_absolute_minimum:
+            return Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason=f"MFU {avg_mfu:.4f} below absolute minimum {self._mfu_absolute_minimum:.4f}",
+            )
+
         baseline = self._get_baseline(ctx.mini_wandb)
         if baseline <= 0:
             return Decision(action=ActionType.NONE, reason="no valid MFU baseline")
 
-        mfu_values = [value for _, value in recent_mfu]
-        avg_mfu = sum(mfu_values) / len(mfu_values)
         threshold = baseline * self._mfu_threshold_ratio
         mfu_stats = f"{avg_mfu:.4f} < {threshold:.4f}"
 
@@ -105,9 +122,17 @@ class MfuDeclineDetector(BaseFaultDetector):
 
         return (now - timed_mfu[0].timestamp).total_seconds() / 60
 
+    def reset_baseline(self) -> None:
+        """Clear the locked baseline so the next evaluate() recomputes it."""
+        self._baseline_locked = False
+        self._locked_baseline = None
+
     def _get_baseline(self, mini_wandb: TrainingMetricStoreProtocol) -> float:
         if self._mfu_baseline > 0:
             return self._mfu_baseline
+
+        if self._baseline_locked and self._locked_baseline is not None:
+            return self._locked_baseline
 
         total_needed = self._baseline_steps + self._consecutive_steps
         all_data = mini_wandb.query_last_n_steps("mfu", last_n=total_needed)
@@ -116,7 +141,13 @@ class MfuDeclineDetector(BaseFaultDetector):
         if not baseline_data:
             return 0.0
 
-        return sum(v for _, v in baseline_data) / len(baseline_data)
+        baseline = sum(v for _, v in baseline_data) / len(baseline_data)
+
+        self._locked_baseline = baseline
+        self._baseline_locked = True
+        logger.info("MFU baseline locked at %.4f from %d steps", baseline, len(baseline_data))
+
+        return baseline
 
     def _find_high_temperature_node(
         self,
