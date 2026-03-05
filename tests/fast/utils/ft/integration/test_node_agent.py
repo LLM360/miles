@@ -1,11 +1,11 @@
 import asyncio
 from datetime import timedelta
 
+from tests.fast.utils.ft.helpers import TestCollector
 
 from miles.utils.ft.agents.node_agent import FtNodeAgent
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.models import MetricSample
-from tests.fast.utils.ft.helpers import TestCollector
 
 
 class TestNodeAgentMiniPrometheusIntegration:
@@ -39,6 +39,7 @@ class TestNodeAgentMiniPrometheusIntegration:
             assert 72.5 in values
         finally:
             await agent.stop()
+
     async def test_updated_values_visible_after_rescrape(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -66,13 +67,15 @@ class TestNodeAgentMiniPrometheusIntegration:
             df1 = prom.query_latest("gpu_temperature_celsius")
             assert 60.0 in df1["value"].to_list()
 
-            test_collector.set_metrics([
-                MetricSample(
-                    name="gpu_temperature_celsius",
-                    labels={"gpu": "0"},
-                    value=85.0,
-                ),
-            ])
+            test_collector.set_metrics(
+                [
+                    MetricSample(
+                        name="gpu_temperature_celsius",
+                        labels={"gpu": "0"},
+                        value=85.0,
+                    ),
+                ]
+            )
             await asyncio.sleep(0.3)
             await prom.scrape_once()
 
@@ -88,6 +91,7 @@ class TestNodeAgentMiniPrometheusIntegration:
             assert 85.0 in range_values
         finally:
             await agent.stop()
+
     async def test_multiple_metrics_all_queryable(self) -> None:
         test_collector = TestCollector(
             metrics=[
@@ -132,6 +136,7 @@ class TestNodeAgentMiniPrometheusIntegration:
             assert 250.0 in df_power["value"].to_list()
         finally:
             await agent.stop()
+
     async def test_label_filter_query(self) -> None:
         test_collector = TestCollector(
             metrics=[

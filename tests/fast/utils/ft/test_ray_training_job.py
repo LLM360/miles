@@ -37,6 +37,7 @@ class TestSubmitTraining:
         call_kwargs = mock_client.submit_job.call_args.kwargs
         assert call_kwargs["entrypoint"] == "python train.py"
         assert call_kwargs["runtime_env"]["env_vars"]["FT_TRAINING_RUN_ID"] == run_id
+
     async def test_multiple_submits_produce_different_run_ids(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.side_effect = ["job-1", "job-2"]
@@ -46,6 +47,7 @@ class TestSubmitTraining:
 
         assert run_id_1 != run_id_2
         assert mock_client.submit_job.call_count == 2
+
     async def test_does_not_mutate_original_runtime_env(self) -> None:
         original_env: dict[str, Any] = {"working_dir": "/data", "env_vars": {"MY_VAR": "1"}}
         original_env_copy = {
@@ -76,6 +78,7 @@ class TestStopTraining:
 
         mock_client.stop_job.assert_called_once_with("job-1")
         assert mock_client.get_job_status.call_count == 3
+
     async def test_stop_raises_timeout_error(self) -> None:
         job, mock_client = _make_job(poll_interval_seconds=0)
         mock_client.submit_job.return_value = "job-1"
@@ -95,6 +98,7 @@ class TestStopTraining:
 
             with pytest.raises(TimeoutError, match="did not stop within"):
                 await job.stop_training(timeout_seconds=5)
+
     async def test_stop_completes_when_job_fails(self) -> None:
         job, mock_client = _make_job(poll_interval_seconds=0)
         mock_client.submit_job.return_value = "job-1"
@@ -106,6 +110,7 @@ class TestStopTraining:
 
         mock_client.stop_job.assert_called_once_with("job-1")
         assert mock_client.get_job_status.call_count == 2
+
     async def test_stop_completes_when_job_succeeds(self) -> None:
         job, mock_client = _make_job(poll_interval_seconds=0)
         mock_client.submit_job.return_value = "job-1"
@@ -116,6 +121,7 @@ class TestStopTraining:
         await job.stop_training(timeout_seconds=10)
 
         mock_client.stop_job.assert_called_once_with("job-1")
+
     async def test_stop_with_no_active_job_is_noop(self) -> None:
         job, mock_client = _make_job()
 
@@ -133,6 +139,7 @@ class TestGetTrainingStatus:
         mock_client.get_job_status.return_value = "RUNNING"
         status = await job.get_training_status()
         assert status == JobStatus.RUNNING
+
     async def test_failed_status(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "job-1"
@@ -141,6 +148,7 @@ class TestGetTrainingStatus:
         mock_client.get_job_status.return_value = "FAILED"
         status = await job.get_training_status()
         assert status == JobStatus.FAILED
+
     async def test_succeeded_maps_to_stopped(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "job-1"
@@ -149,11 +157,13 @@ class TestGetTrainingStatus:
         mock_client.get_job_status.return_value = "SUCCEEDED"
         status = await job.get_training_status()
         assert status == JobStatus.STOPPED
+
     async def test_no_job_returns_stopped(self) -> None:
         job, _mock_client = _make_job()
 
         status = await job.get_training_status()
         assert status == JobStatus.STOPPED
+
     async def test_pending_status(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "job-1"
@@ -162,6 +172,7 @@ class TestGetTrainingStatus:
         mock_client.get_job_status.return_value = "PENDING"
         status = await job.get_training_status()
         assert status == JobStatus.PENDING
+
     async def test_unknown_status_maps_to_failed(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "job-1"
@@ -170,6 +181,7 @@ class TestGetTrainingStatus:
         mock_client.get_job_status.return_value = "UNKNOWN_STATE"
         status = await job.get_training_status()
         assert status == JobStatus.FAILED
+
     async def test_raises_on_client_failure(self) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "job-1"
@@ -195,4 +207,5 @@ class TestParseRayStatus:
         class FakeEnum:
             def __str__(self) -> str:
                 return "JobSubmissionStatus.SUCCEEDED"
+
         assert _parse_ray_status(FakeEnum()) == "SUCCEEDED"

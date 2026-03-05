@@ -7,13 +7,8 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
-import polars as pl
-import pytest
 
-from miles.utils.ft.controller.metrics.prometheus_api.store import (
-    PrometheusClient,
-    _format_duration,
-)
+from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient, _format_duration
 
 
 def _make_response(json_data: dict[str, Any], status_code: int = 200) -> httpx.Response:

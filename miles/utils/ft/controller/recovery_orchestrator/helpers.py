@@ -1,4 +1,5 @@
 """Shared recovery primitives used by both FtController and RecoveryOrchestrator."""
+
 from __future__ import annotations
 
 import logging
@@ -45,7 +46,9 @@ async def retry_async(
             last_error = str(exc)
             logger.warning(
                 "retry_failed description=%s attempt=%d/%d",
-                description, attempt + 1, max_retries,
+                description,
+                attempt + 1,
+                max_retries,
                 exc_info=True,
             )
 

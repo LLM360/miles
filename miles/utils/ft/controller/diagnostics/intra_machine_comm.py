@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from miles.utils.ft.controller.diagnostics.nccl_utils import build_nccl_test_cmd, run_nccl_test
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.controller.diagnostics.nccl_utils import build_nccl_test_cmd, run_nccl_test
 from miles.utils.ft.models import DiagnosticResult
 
 
@@ -25,7 +25,9 @@ class IntraMachineCommDiagnostic(BaseDiagnostic):
         self._nccl_test_binary = nccl_test_binary
 
     async def run(
-        self, node_id: str, timeout_seconds: int = 120,
+        self,
+        node_id: str,
+        timeout_seconds: int = 120,
     ) -> DiagnosticResult:
         return await run_nccl_test(
             cmd=build_nccl_test_cmd(binary=self._nccl_test_binary, num_gpus=self._num_gpus),

@@ -40,7 +40,9 @@ class StubNotifier:
     async def send(self, title: str, content: str, severity: str) -> None:
         logger.info(
             "stub_send_notification title=%s severity=%s content=%s",
-            title, severity, content,
+            title,
+            severity,
+            content,
         )
 
     async def aclose(self) -> None:

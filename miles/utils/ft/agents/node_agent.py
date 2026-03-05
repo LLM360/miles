@@ -27,9 +27,7 @@ class FtNodeAgent:
             for collector in self._collectors:
                 collector.collect_interval = collect_interval_seconds
 
-        self._diagnostics: dict[str, BaseDiagnostic] = {
-            d.diagnostic_type: d for d in (diagnostics or [])
-        }
+        self._diagnostics: dict[str, BaseDiagnostic] = {d.diagnostic_type: d for d in (diagnostics or [])}
 
         self._exporter = PrometheusExporter()
         self._collector_tasks: list[asyncio.Task[None]] = []
@@ -86,7 +84,9 @@ class FtNodeAgent:
         self._diagnostics.pop(diagnostic_type, None)
 
     async def run_diagnostic(
-        self, diagnostic_type: str, timeout_seconds: int = 120,
+        self,
+        diagnostic_type: str,
+        timeout_seconds: int = 120,
     ) -> DiagnosticResult:
         diagnostic = self._diagnostics.get(diagnostic_type)
         if diagnostic is None:
@@ -98,14 +98,17 @@ class FtNodeAgent:
         try:
             return await asyncio.wait_for(
                 diagnostic.run(
-                    node_id=self._node_id, timeout_seconds=timeout_seconds,
+                    node_id=self._node_id,
+                    timeout_seconds=timeout_seconds,
                 ),
                 timeout=timeout_seconds + 5,
             )
         except asyncio.TimeoutError:
             logger.warning(
                 "diagnostic_timeout type=%s node_id=%s timeout=%d",
-                diagnostic_type, self._node_id, timeout_seconds,
+                diagnostic_type,
+                self._node_id,
+                timeout_seconds,
             )
             return DiagnosticResult(
                 diagnostic_type=diagnostic_type,
@@ -116,7 +119,8 @@ class FtNodeAgent:
         except Exception:
             logger.warning(
                 "diagnostic_error type=%s node_id=%s",
-                diagnostic_type, self._node_id,
+                diagnostic_type,
+                self._node_id,
                 exc_info=True,
             )
             return DiagnosticResult(

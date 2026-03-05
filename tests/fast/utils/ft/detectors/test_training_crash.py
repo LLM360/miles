@@ -14,7 +14,12 @@ class TestTrainingCrashDetector:
     def test_job_running(self) -> None:
         store = make_fake_metric_store()
         detector = TrainingCrashDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.RUNNING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -24,7 +29,9 @@ class TestTrainingCrashDetector:
         store = make_fake_metric_store()
         wandb = make_fake_mini_wandb(steps={1: {"loss": 2.5}})
         detector = TrainingCrashDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=wandb, rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED)
+        ctx = make_detector_context(
+            metric_store=store, mini_wandb=wandb, rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -35,7 +42,9 @@ class TestTrainingCrashDetector:
         store = make_fake_metric_store()
         wandb = make_fake_mini_wandb(steps={1: {"loss": float("nan")}})
         detector = TrainingCrashDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=wandb, rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED)
+        ctx = make_detector_context(
+            metric_store=store, mini_wandb=wandb, rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -46,7 +55,9 @@ class TestTrainingCrashDetector:
         store = make_fake_metric_store()
         wandb = make_fake_mini_wandb(steps={1: {"loss": float("inf")}})
         detector = TrainingCrashDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=wandb, rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED)
+        ctx = make_detector_context(
+            metric_store=store, mini_wandb=wandb, rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -56,7 +67,12 @@ class TestTrainingCrashDetector:
     def test_job_pending(self) -> None:
         store = make_fake_metric_store()
         detector = TrainingCrashDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.PENDING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.PENDING,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -65,7 +81,12 @@ class TestTrainingCrashDetector:
     def test_job_stopped(self) -> None:
         store = make_fake_metric_store()
         detector = TrainingCrashDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.STOPPED)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.STOPPED,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -75,7 +96,9 @@ class TestTrainingCrashDetector:
         store = make_fake_metric_store()
         wandb = make_fake_mini_wandb()
         detector = TrainingCrashDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=wandb, rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED)
+        ctx = make_detector_context(
+            metric_store=store, mini_wandb=wandb, rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -85,7 +108,12 @@ class TestTrainingCrashDetector:
     def test_empty_metric_store(self) -> None:
         store = make_fake_metric_store()
         detector = TrainingCrashDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.RUNNING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
+        )
 
         decision = detector.evaluate(ctx)
 

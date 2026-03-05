@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from miles.utils.external_utils.command_utils import (
-    ExecuteTrainConfig,
-    _submit_ft_controller_job,
-)
+from miles.utils.external_utils.command_utils import ExecuteTrainConfig, _submit_ft_controller_job
 
 
 class TestExecuteTrainConfig:
@@ -81,10 +78,13 @@ class TestExecuteTrainElasticIntegration:
             patch("miles.utils.external_utils.command_utils.exec_command", mock_exec),
             patch("miles.utils.external_utils.command_utils.check_has_nvlink", return_value=True),
             patch("miles.utils.external_utils.command_utils.time.sleep"),
-            patch("miles.utils.external_utils.command_utils.get_bool_env_var", side_effect=lambda name, default="false": {
-                "MILES_SCRIPT_EXTERNAL_RAY": True,
-                "MILES_SCRIPT_ENABLE_RAY_SUBMIT": True,
-            }.get(name, default == "true")),
+            patch(
+                "miles.utils.external_utils.command_utils.get_bool_env_var",
+                side_effect=lambda name, default="false": {
+                    "MILES_SCRIPT_EXTERNAL_RAY": True,
+                    "MILES_SCRIPT_ENABLE_RAY_SUBMIT": True,
+                }.get(name, default == "true"),
+            ),
         ):
             from miles.utils.external_utils.command_utils import execute_train
 

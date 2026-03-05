@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import ray
 
-from miles.utils.ft.platform.controller_factory import (
-    FtControllerConfig,
-    build_ft_controller,
-)
+from miles.utils.ft.platform.controller_factory import FtControllerConfig, build_ft_controller
 
 
 class _FtControllerActorCls:

@@ -4,6 +4,10 @@ from datetime import timedelta
 
 from prometheus_client import CollectorRegistry
 
+from miles.utils.ft.controller.controller_exporter import ControllerExporter
+from miles.utils.ft.controller.detectors.base import DetectorContext
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.metric_names import (
     DCGM_FI_DEV_GPU_TEMP,
     GPU_AVAILABLE,
@@ -12,10 +16,6 @@ from miles.utils.ft.metric_names import (
     TRAINING_JOB_STATUS,
     XID_CODE_RECENT,
 )
-from miles.utils.ft.controller.controller_exporter import ControllerExporter
-from miles.utils.ft.controller.detectors.base import DetectorContext
-from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import MetricSample
 from miles.utils.ft.platform.protocols import JobStatus
 
@@ -44,9 +44,11 @@ def make_fake_metric_store(
     metrics: list[MetricSample] | None = None,
     target_id: str = "node-0",
 ) -> MiniPrometheus:
-    store = MiniPrometheus(config=MiniPrometheusConfig(
-        retention=timedelta(minutes=60),
-    ))
+    store = MiniPrometheus(
+        config=MiniPrometheusConfig(
+            retention=timedelta(minutes=60),
+        )
+    )
     if metrics:
         store.ingest_samples(target_id=target_id, samples=metrics)
     return store
@@ -92,19 +94,29 @@ def make_detector_context(
 
 
 def inject_gpu_unavailable(
-    store: MiniPrometheus, node_id: str = "node-0", gpu: str = "0",
+    store: MiniPrometheus,
+    node_id: str = "node-0",
+    gpu: str = "0",
 ) -> None:
-    store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=GPU_AVAILABLE, labels={"gpu": gpu}, value=0.0),
-    ])
+    store.ingest_samples(
+        target_id=node_id,
+        samples=[
+            MetricSample(name=GPU_AVAILABLE, labels={"gpu": gpu}, value=0.0),
+        ],
+    )
 
 
 def inject_critical_xid(
-    store: MiniPrometheus, node_id: str = "node-0", xid_code: int = 48,
+    store: MiniPrometheus,
+    node_id: str = "node-0",
+    xid_code: int = 48,
 ) -> None:
-    store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=XID_CODE_RECENT, labels={"xid": str(xid_code)}, value=1.0),
-    ])
+    store.ingest_samples(
+        target_id=node_id,
+        samples=[
+            MetricSample(name=XID_CODE_RECENT, labels={"xid": str(xid_code)}, value=1.0),
+        ],
+    )
 
 
 def inject_disk_fault(
@@ -113,31 +125,47 @@ def inject_disk_fault(
     mountpoint: str = "/data",
     available_bytes: float = 0.0,
 ) -> None:
-    store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": mountpoint}, value=available_bytes),
-    ])
+    store.ingest_samples(
+        target_id=node_id,
+        samples=[
+            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": mountpoint}, value=available_bytes),
+        ],
+    )
 
 
 def inject_nic_down(
-    store: MiniPrometheus, node_id: str = "node-0", device: str = "ib0",
+    store: MiniPrometheus,
+    node_id: str = "node-0",
+    device: str = "ib0",
 ) -> None:
-    store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_NETWORK_UP, labels={"device": device}, value=0.0),
-    ])
+    store.ingest_samples(
+        target_id=node_id,
+        samples=[
+            MetricSample(name=NODE_NETWORK_UP, labels={"device": device}, value=0.0),
+        ],
+    )
 
 
 def inject_nic_up(
-    store: MiniPrometheus, node_id: str = "node-0", device: str = "ib0",
+    store: MiniPrometheus,
+    node_id: str = "node-0",
+    device: str = "ib0",
 ) -> None:
-    store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_NETWORK_UP, labels={"device": device}, value=1.0),
-    ])
+    store.ingest_samples(
+        target_id=node_id,
+        samples=[
+            MetricSample(name=NODE_NETWORK_UP, labels={"device": device}, value=1.0),
+        ],
+    )
 
 
 def inject_training_job_status(store: MiniPrometheus, status_value: int) -> None:
-    store.ingest_samples(target_id="controller", samples=[
-        MetricSample(name=TRAINING_JOB_STATUS, labels={}, value=float(status_value)),
-    ])
+    store.ingest_samples(
+        target_id="controller",
+        samples=[
+            MetricSample(name=TRAINING_JOB_STATUS, labels={}, value=float(status_value)),
+        ],
+    )
 
 
 def inject_gpu_temperature(
@@ -146,9 +174,12 @@ def inject_gpu_temperature(
     gpu: str = "0",
     celsius: float = 65.0,
 ) -> None:
-    store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=DCGM_FI_DEV_GPU_TEMP, labels={"gpu": gpu}, value=celsius),
-    ])
+    store.ingest_samples(
+        target_id=node_id,
+        samples=[
+            MetricSample(name=DCGM_FI_DEV_GPU_TEMP, labels={"gpu": gpu}, value=celsius),
+        ],
+    )
 
 
 def inject_healthy_node(
@@ -158,16 +189,25 @@ def inject_healthy_node(
     num_nics: int = 4,
 ) -> None:
     for i in range(num_gpus):
-        store.ingest_samples(target_id=node_id, samples=[
-            MetricSample(name=GPU_AVAILABLE, labels={"gpu": str(i)}, value=1.0),
-            MetricSample(name=DCGM_FI_DEV_GPU_TEMP, labels={"gpu": str(i)}, value=65.0),
-        ])
+        store.ingest_samples(
+            target_id=node_id,
+            samples=[
+                MetricSample(name=GPU_AVAILABLE, labels={"gpu": str(i)}, value=1.0),
+                MetricSample(name=DCGM_FI_DEV_GPU_TEMP, labels={"gpu": str(i)}, value=65.0),
+            ],
+        )
 
     for i in range(num_nics):
-        store.ingest_samples(target_id=node_id, samples=[
-            MetricSample(name=NODE_NETWORK_UP, labels={"device": f"ib{i}"}, value=1.0),
-        ])
+        store.ingest_samples(
+            target_id=node_id,
+            samples=[
+                MetricSample(name=NODE_NETWORK_UP, labels={"device": f"ib{i}"}, value=1.0),
+            ],
+        )
 
-    store.ingest_samples(target_id=node_id, samples=[
-        MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/data"}, value=500e9),
-    ])
+    store.ingest_samples(
+        target_id=node_id,
+        samples=[
+            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/data"}, value=500e9),
+        ],
+    )

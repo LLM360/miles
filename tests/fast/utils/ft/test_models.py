@@ -6,7 +6,6 @@ from miles.utils.ft.models import (
     CollectorOutput,
     Decision,
     DiagnosticResult,
-    FtBaseModel,
     MetricSample,
     NodeFault,
     TriggerType,

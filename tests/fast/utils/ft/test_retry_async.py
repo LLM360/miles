@@ -25,9 +25,13 @@ class TestRetryAsyncEdgePaths:
         async def always_fail() -> None:
             raise RuntimeError("permanent error")
 
-        result = asyncio.run(retry_async(
-            func=always_fail, description="test_fail", max_retries=2,
-        ))
+        result = asyncio.run(
+            retry_async(
+                func=always_fail,
+                description="test_fail",
+                max_retries=2,
+            )
+        )
 
         assert isinstance(result, RetryResult)
         assert result.ok is False

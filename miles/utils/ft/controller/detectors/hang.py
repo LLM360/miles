@@ -1,12 +1,8 @@
 from datetime import timedelta
 
-from miles.utils.ft.metric_names import (
-    PHASE_CHECKPOINT_SAVING,
-    TRAINING_ITERATION,
-    TRAINING_PHASE,
-)
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
+from miles.utils.ft.metric_names import PHASE_CHECKPOINT_SAVING, TRAINING_ITERATION, TRAINING_PHASE
 from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 
@@ -20,7 +16,9 @@ class HangDetector(BaseFaultDetector):
         if training_timeout_minutes < 1:
             raise ValueError(f"training_timeout_minutes must be >= 1, got {training_timeout_minutes}")
         if checkpoint_saving_timeout_minutes < 1:
-            raise ValueError(f"checkpoint_saving_timeout_minutes must be >= 1, got {checkpoint_saving_timeout_minutes}")
+            raise ValueError(
+                f"checkpoint_saving_timeout_minutes must be >= 1, got {checkpoint_saving_timeout_minutes}"
+            )
 
         self._training_timeout_minutes = training_timeout_minutes
         self._checkpoint_saving_timeout_minutes = checkpoint_saving_timeout_minutes
@@ -31,9 +29,7 @@ class HangDetector(BaseFaultDetector):
 
         is_checkpoint_saving = self._is_checkpoint_saving(ctx.metric_store)
         timeout_minutes = (
-            self._checkpoint_saving_timeout_minutes
-            if is_checkpoint_saving
-            else self._training_timeout_minutes
+            self._checkpoint_saving_timeout_minutes if is_checkpoint_saving else self._training_timeout_minutes
         )
 
         iteration_changes = self._get_iteration_changes(ctx.metric_store, window_minutes=timeout_minutes)
@@ -62,7 +58,9 @@ class HangDetector(BaseFaultDetector):
         return False
 
     def _get_iteration_changes(
-        self, metric_store: MetricStoreProtocol, window_minutes: int,
+        self,
+        metric_store: MetricStoreProtocol,
+        window_minutes: int,
     ) -> float | None:
         df = metric_store.changes(
             TRAINING_ITERATION,

@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
+from miles.utils.ft.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.models import ActionType, Decision, TrainingMetricStoreProtocol
 
 _DEFAULT_MFU_THRESHOLD_RATIO = 0.8
@@ -79,7 +79,9 @@ class MfuDeclineDetector(BaseFaultDetector):
         )
 
     def _compute_decline_duration_minutes(
-        self, ctx: DetectorContext, threshold: float,
+        self,
+        ctx: DetectorContext,
+        threshold: float,
     ) -> float:
         """Derive how long MFU has been below *threshold* from time-series data.
 
@@ -88,7 +90,8 @@ class MfuDeclineDetector(BaseFaultDetector):
         """
         lookup_window = timedelta(minutes=self._decline_timeout_minutes * 2)
         timed_mfu = ctx.mini_wandb.query_time_window(
-            "mfu", window=lookup_window,
+            "mfu",
+            window=lookup_window,
         )
         if not timed_mfu:
             return 0.0
@@ -112,7 +115,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         total_needed = self._baseline_steps + self._consecutive_steps
         all_data = mini_wandb.query_last_n_steps("mfu", last_n=total_needed)
 
-        baseline_data = all_data[:-self._consecutive_steps] if len(all_data) > self._consecutive_steps else []
+        baseline_data = all_data[: -self._consecutive_steps] if len(all_data) > self._consecutive_steps else []
         if not baseline_data:
             return 0.0
 
@@ -141,10 +144,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         if not node_temps:
             return None
 
-        node_avg_temps: dict[str, float] = {
-            node_id: sum(temps) / len(temps)
-            for node_id, temps in node_temps.items()
-        }
+        node_avg_temps: dict[str, float] = {node_id: sum(temps) / len(temps) for node_id, temps in node_temps.items()}
 
         overall_avg = sum(node_avg_temps.values()) / len(node_avg_temps)
 

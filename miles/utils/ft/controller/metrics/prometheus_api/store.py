@@ -43,13 +43,17 @@ class PrometheusClient(RangeAggregationMixin):
     # -------------------------------------------------------------------
 
     def query_latest(
-        self, metric_name: str, label_filters: dict[str, str] | None = None,
+        self,
+        metric_name: str,
+        label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         promql = _build_selector(metric_name, label_filters)
         return self._instant_query_raw(promql)
 
     def query_range(
-        self, metric_name: str, window: timedelta,
+        self,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         promql = _build_selector(metric_name, label_filters)
@@ -116,10 +120,7 @@ def _escape_promql_label_value(value: str) -> str:
 def _build_selector(metric_name: str, label_filters: dict[str, str] | None) -> str:
     if not label_filters:
         return metric_name
-    labels_str = ", ".join(
-        f'{k}="{_escape_promql_label_value(v)}"'
-        for k, v in sorted(label_filters.items())
-    )
+    labels_str = ", ".join(f'{k}="{_escape_promql_label_value(v)}"' for k, v in sorted(label_filters.items()))
     return f"{metric_name}{{{labels_str}}}"
 
 

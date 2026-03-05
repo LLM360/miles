@@ -7,12 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import miles.utils.ft.metric_names as mn
-from miles.utils.ft.agents.collectors.kernel_log_reader import (
-    DmesgSubprocessReader,
-    KernelLogReader,
-    KmsgFileReader,
-)
 from miles.utils.ft.agents.collectors.base import BaseCollector
+from miles.utils.ft.agents.collectors.kernel_log_reader import DmesgSubprocessReader, KernelLogReader, KmsgFileReader
 from miles.utils.ft.models import MetricSample
 
 logger = logging.getLogger(__name__)
@@ -84,26 +80,31 @@ class KmsgCollector(BaseCollector):
             )
             for code in sorted({code for _, code in self._xid_events})
         ]
-        samples.append(MetricSample(
-            name=mn.XID_COUNT_TOTAL,
-            labels={},
-            value=float(new_xid_count),
-            metric_type="counter",
-        ))
+        samples.append(
+            MetricSample(
+                name=mn.XID_COUNT_TOTAL,
+                labels={},
+                value=float(new_xid_count),
+                metric_type="counter",
+            )
+        )
         return samples
 
     def _count_kernel_events(self, lines: list[str]) -> list[MetricSample]:
         count = sum(
-            1 for line in lines
+            1
+            for line in lines
             for line_lower in (line.lower(),)
             if any(kw in line_lower for kw in _KERNEL_EVENT_KEYWORDS)
         )
-        return [MetricSample(
-            name=mn.KERNEL_EVENT_COUNT,
-            labels={},
-            value=float(count),
-            metric_type="counter",
-        )]
+        return [
+            MetricSample(
+                name=mn.KERNEL_EVENT_COUNT,
+                labels={},
+                value=float(count),
+                metric_type="counter",
+            )
+        ]
 
 
 def _create_reader(kmsg_path: Path) -> KernelLogReader:

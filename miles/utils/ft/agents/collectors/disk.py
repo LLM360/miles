@@ -18,8 +18,7 @@ class DiskCollector(BaseCollector):
         self._disk_mounts = disk_mounts or []
         if not self._disk_mounts:
             logger.warning(
-                "DiskCollector initialized with no disk_mounts — "
-                "filesystem metrics will not be collected"
+                "DiskCollector initialized with no disk_mounts — " "filesystem metrics will not be collected"
             )
 
     def _collect_sync(self) -> list[MetricSample]:
@@ -34,11 +33,13 @@ class DiskCollector(BaseCollector):
             try:
                 stat = os.statvfs(mount)
                 available_bytes = stat.f_bavail * stat.f_frsize
-                samples.append(MetricSample(
-                    name=mn.NODE_FILESYSTEM_AVAIL_BYTES,
-                    labels={"mountpoint": str(mount)},
-                    value=float(available_bytes),
-                ))
+                samples.append(
+                    MetricSample(
+                        name=mn.NODE_FILESYSTEM_AVAIL_BYTES,
+                        labels={"mountpoint": str(mount)},
+                        value=float(available_bytes),
+                    )
+                )
             except Exception:
                 logger.warning("Failed to statvfs %s", mount, exc_info=True)
         return samples
@@ -56,13 +57,17 @@ class DiskCollector(BaseCollector):
                 fields = text.split()
                 if len(fields) >= 10:
                     io_time_ms = int(fields[9])
-                    samples.append(MetricSample(
-                        name=mn.NODE_DISK_IO_TIME_SECONDS_TOTAL,
-                        labels={"device": device_dir.name},
-                        value=io_time_ms / 1000.0,
-                    ))
+                    samples.append(
+                        MetricSample(
+                            name=mn.NODE_DISK_IO_TIME_SECONDS_TOTAL,
+                            labels={"device": device_dir.name},
+                            value=io_time_ms / 1000.0,
+                        )
+                    )
             except Exception:
                 logger.warning(
-                    "Failed to read disk stat for %s", device_dir.name, exc_info=True,
+                    "Failed to read disk stat for %s",
+                    device_dir.name,
+                    exc_info=True,
                 )
         return samples

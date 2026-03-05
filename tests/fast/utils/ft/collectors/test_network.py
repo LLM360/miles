@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.fast.utils.ft.helpers import create_sysfs_interface
 
 from miles.utils.ft.agents.collectors.network import NetworkCollector
-from tests.fast.utils.ft.helpers import create_sysfs_interface
 
 
 class TestNetworkCollector:
@@ -17,6 +17,7 @@ class TestNetworkCollector:
         assert len(nic_up) == 1
         assert nic_up[0].labels == {"device": "ib0"}
         assert nic_up[0].value == 1.0
+
     async def test_nic_down(self, tmp_path: Path) -> None:
         create_sysfs_interface(tmp_path, "eth0", operstate="down")
         collector = NetworkCollector(sysfs_net_path=tmp_path)
@@ -25,10 +26,12 @@ class TestNetworkCollector:
         nic_up = [m for m in result.metrics if m.name == "miles_ft_node_network_up"]
         assert len(nic_up) == 1
         assert nic_up[0].value == 0.0
+
     async def test_missing_sysfs_dir(self, tmp_path: Path) -> None:
         collector = NetworkCollector(sysfs_net_path=tmp_path / "nonexistent")
         result = await collector.collect()
         assert result.metrics == []
+
     async def test_missing_operstate_file(self, tmp_path: Path) -> None:
         iface_dir = tmp_path / "ib0"
         iface_dir.mkdir()
@@ -37,6 +40,7 @@ class TestNetworkCollector:
         result = await collector.collect()
         nic_up = [m for m in result.metrics if m.name == "miles_ft_node_network_up"]
         assert len(nic_up) == 0
+
     async def test_interface_filtering_excludes_lo_docker_veth(self, tmp_path: Path) -> None:
         create_sysfs_interface(tmp_path, "lo", operstate="up")
         create_sysfs_interface(tmp_path, "docker0", operstate="up")
@@ -51,6 +55,7 @@ class TestNetworkCollector:
         assert "lo" not in interfaces
         assert "docker0" not in interfaces
         assert "veth1234" not in interfaces
+
     async def test_multiple_interfaces(self, tmp_path: Path) -> None:
         create_sysfs_interface(tmp_path, "ib0", operstate="up", rx_errors=10)
         create_sysfs_interface(tmp_path, "ib1", operstate="up", tx_errors=5)
@@ -60,27 +65,30 @@ class TestNetworkCollector:
         result = await collector.collect()
 
         ib0_rx = [
-            m for m in result.metrics
+            m
+            for m in result.metrics
             if m.name == "miles_ft_node_network_receive_errs_total" and m.labels.get("device") == "ib0"
         ]
         assert len(ib0_rx) == 1
         assert ib0_rx[0].value == 10.0
 
         ib1_tx = [
-            m for m in result.metrics
+            m
+            for m in result.metrics
             if m.name == "miles_ft_node_network_transmit_errs_total" and m.labels.get("device") == "ib1"
         ]
         assert len(ib1_tx) == 1
         assert ib1_tx[0].value == 5.0
 
         eth0_up = [
-            m for m in result.metrics
-            if m.name == "miles_ft_node_network_up" and m.labels.get("device") == "eth0"
+            m for m in result.metrics if m.name == "miles_ft_node_network_up" and m.labels.get("device") == "eth0"
         ]
         assert eth0_up[0].value == 0.0
+
     async def test_statistics_values(self, tmp_path: Path) -> None:
         create_sysfs_interface(
-            tmp_path, "ib0",
+            tmp_path,
+            "ib0",
             operstate="up",
             rx_errors=42,
             tx_errors=7,
@@ -95,6 +103,7 @@ class TestNetworkCollector:
         assert metrics_by_name["miles_ft_node_network_transmit_errs_total"] == 7.0
         assert metrics_by_name["miles_ft_node_network_receive_drop_total"] == 3.0
         assert metrics_by_name["miles_ft_node_network_transmit_drop_total"] == 1.0
+
     async def test_custom_include_patterns(self, tmp_path: Path) -> None:
         create_sysfs_interface(tmp_path, "bond0", operstate="up")
         create_sysfs_interface(tmp_path, "ib0", operstate="up")

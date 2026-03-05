@@ -4,19 +4,15 @@ Runs 500 ticks with realistic data injection and asserts RSS growth < 50MB.
 Validates that MiniPrometheus ring buffer, MiniWandb, and detector chain
 don't accumulate memory over time.
 """
+
 from __future__ import annotations
 
 import gc
 
 import psutil
+from tests.fast.utils.ft.conftest import ControllerTestHarness, inject_healthy_node, make_test_controller
 
 from miles.utils.ft.controller.detectors import build_detector_chain
-from miles.utils.ft.models import MetricSample
-from tests.fast.utils.ft.conftest import (
-    ControllerTestHarness,
-    inject_healthy_node,
-    make_test_controller,
-)
 
 _WARMUP_TICKS = 10
 _TEST_TICKS = 500
@@ -33,8 +29,11 @@ async def _register_n_nodes(
     world_size = len(node_ids)
     for rank, node_id in enumerate(node_ids):
         await controller.register_rank(
-            run_id=run_id, rank=rank, world_size=world_size,
-            node_id=node_id, exporter_address=f"http://{node_id}:9090",
+            run_id=run_id,
+            rank=rank,
+            world_size=world_size,
+            node_id=node_id,
+            exporter_address=f"http://{node_id}:9090",
         )
 
 

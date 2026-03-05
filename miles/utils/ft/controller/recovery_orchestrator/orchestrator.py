@@ -4,8 +4,8 @@ import logging
 from datetime import datetime, timezone
 
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
-from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.recovery_orchestrator.alert_checker import AlertChecker
 from miles.utils.ft.controller.recovery_orchestrator.context import RecoveryContext
 from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (
@@ -99,7 +99,10 @@ class RecoveryOrchestrator:
             return await step_diagnosing(ctx, self._diagnostic_scheduler)
         if phase == RecoveryPhase.EVICT_AND_RESTART:
             return await step_evict_and_restart(
-                ctx, self._node_manager, self._training_job, self._mini_wandb,
+                ctx,
+                self._node_manager,
+                self._training_job,
+                self._mini_wandb,
             )
         if phase == RecoveryPhase.NOTIFY:
             return await step_notify(ctx, self._notifier)
@@ -110,13 +113,13 @@ class RecoveryOrchestrator:
         if self._context.phase in (RecoveryPhase.NOTIFY, RecoveryPhase.DONE):
             return False
 
-        elapsed = (
-            datetime.now(timezone.utc) - self._context.recovery_start_time
-        ).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self._context.recovery_start_time).total_seconds()
         if elapsed > self._context.global_timeout_seconds:
             logger.warning(
                 "recovery_global_timeout elapsed=%.0f phase=%s trigger=%s",
-                elapsed, self._context.phase.value, self._context.trigger,
+                elapsed,
+                self._context.phase.value,
+                self._context.trigger,
             )
             self._transition(RecoveryPhase.NOTIFY)
             return True

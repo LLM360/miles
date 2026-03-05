@@ -2,20 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
-from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
-from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
-    InterMachineCommDiagnostic,
-)
-from miles.utils.ft.models import (
-    ActionType,
-    Decision,
-    DiagnosticResult,
-)
-
+from miles.utils.ft.controller.diagnostics.inter_machine_comm import InterMachineCommDiagnostic
+from miles.utils.ft.models import ActionType, Decision, DiagnosticResult
 
 # ---------------------------------------------------------------------------
 # Diagnostic test helpers
@@ -38,7 +30,9 @@ class StubDiagnostic(BaseDiagnostic):
         self.diagnostic_type = diagnostic_type
 
     async def run(
-        self, node_id: str, timeout_seconds: int = 120,
+        self,
+        node_id: str,
+        timeout_seconds: int = 120,
     ) -> DiagnosticResult:
         return DiagnosticResult(
             diagnostic_type=self.diagnostic_type,
@@ -57,7 +51,9 @@ class SlowDiagnostic(BaseDiagnostic):
         self._sleep_seconds = sleep_seconds
 
     async def run(
-        self, node_id: str, timeout_seconds: int = 120,
+        self,
+        node_id: str,
+        timeout_seconds: int = 120,
     ) -> DiagnosticResult:
         await asyncio.sleep(self._sleep_seconds)
         return DiagnosticResult(
@@ -111,7 +107,9 @@ class FakeNodeAgent:
         self._node_id = node_id
 
     async def run_diagnostic(
-        self, diagnostic_type: str, timeout_seconds: int = 120,
+        self,
+        diagnostic_type: str,
+        timeout_seconds: int = 120,
     ) -> DiagnosticResult:
         result = self._diagnostic_results.get(diagnostic_type)
         if result is None:
@@ -158,6 +156,7 @@ def mock_inter_machine_run(
 
     ``node_pass_map`` maps node_id → True (pass) or False (fail).
     """
+
     async def _fake_run(
         self: InterMachineCommDiagnostic,
         node_id: str,
@@ -184,9 +183,7 @@ def mock_stack_trace_diagnostic(
     side_effects: list[DiagnosticResult | Exception],
 ) -> Generator[AsyncMock, None, None]:
     """Patch StackTraceDiagnostic and wire an AsyncMock with the given side_effects."""
-    with patch(
-        "miles.utils.ft.controller.diagnostics.scheduler.StackTraceDiagnostic"
-    ) as mock_diag_cls:
+    with patch("miles.utils.ft.controller.diagnostics.scheduler.StackTraceDiagnostic") as mock_diag_cls:
         mock_instance = AsyncMock()
         mock_instance.run = AsyncMock(side_effect=side_effects)
         mock_diag_cls.return_value = mock_instance

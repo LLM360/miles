@@ -8,6 +8,7 @@ Validates hang detection when iteration stops progressing:
 
 This is the slowest E2E test due to the hang detection timeout (~5-10 min).
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,13 +16,7 @@ import time
 
 import pytest
 import ray
-
-from tests.e2e.ft.conftest import (
-    FaultInjectorFactory,
-    FtSystem,
-    wait_for_recovery_complete,
-    wait_for_training_stable,
-)
+from tests.e2e.ft.conftest import FaultInjectorFactory, FtSystem, wait_for_recovery_complete, wait_for_training_stable
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +24,8 @@ pytestmark = [
     pytest.mark.e2e,
     pytest.mark.timeout(900),
 ]
+
+
 async def test_hang_detection_and_recovery(
     ft_system: FtSystem,
     fault_injector: FaultInjectorFactory,

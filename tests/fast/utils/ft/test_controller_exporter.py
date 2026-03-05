@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from prometheus_client import CollectorRegistry
+from tests.fast.utils.ft.helpers import get_sample_value, make_test_exporter
 
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.models import RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
-from tests.fast.utils.ft.helpers import get_sample_value, make_test_exporter
 
 
 class TestControllerExporterGauges:
@@ -78,6 +78,7 @@ class TestControllerExporterLifecycle:
         _, exporter = make_test_exporter()
 
         import socket
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("", 0))
         port = sock.getsockname()[1]

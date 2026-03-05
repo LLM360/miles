@@ -12,6 +12,7 @@ Validates MfuDeclineDetector when GPU compute is contended:
 See 9-testing.md §5.5: GPU stress may not always cause temperature rise,
 so both MARK_BAD and NOTIFY outcomes are acceptable.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,13 +21,7 @@ import time
 
 import pytest
 import ray
-
-from tests.e2e.ft.conftest import (
-    FaultInjectorFactory,
-    FtSystem,
-    wait_for_recovery_complete,
-    wait_for_training_stable,
-)
+from tests.e2e.ft.conftest import FaultInjectorFactory, FtSystem, wait_for_recovery_complete, wait_for_training_stable
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +29,8 @@ pytestmark = [
     pytest.mark.e2e,
     pytest.mark.timeout(900),
 ]
+
+
 async def test_mfu_decline_detection(
     ft_system: FtSystem,
     fault_injector: FaultInjectorFactory,
@@ -70,9 +67,7 @@ async def test_mfu_decline_detection(
                 break
             await asyncio.sleep(poll_interval)
 
-        assert detected, (
-            f"MfuDeclineDetector did not trigger within {timeout}s"
-        )
+        assert detected, f"MfuDeclineDetector did not trigger within {timeout}s"
 
         # Both outcomes are acceptable
         final_status = await wait_for_recovery_complete(
@@ -82,9 +77,7 @@ async def test_mfu_decline_detection(
         assert final_status["mode"] == "monitoring"
 
         bad_nodes = await ft_system.node_manager.get_bad_nodes()
-        evicted = target_node in bad_nodes or any(
-            target_node in str(n) for n in bad_nodes
-        )
+        evicted = target_node in bad_nodes or any(target_node in str(n) for n in bad_nodes)
 
         if evicted:
             logger.info("mfu_decline_evicted node=%s (temperature correlated)", target_node)

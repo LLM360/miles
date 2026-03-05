@@ -42,10 +42,13 @@ class LarkWebhookNotifier:
             except httpx.HTTPError as exc:
                 last_error = exc
                 if attempt < _MAX_RETRIES - 1:
-                    backoff = _INITIAL_BACKOFF_SECONDS * (2 ** attempt)
+                    backoff = _INITIAL_BACKOFF_SECONDS * (2**attempt)
                     logger.warning(
                         "lark_webhook_send_failed attempt=%d/%d url=%s, retrying in %.1fs",
-                        attempt + 1, _MAX_RETRIES, self._webhook_url, backoff,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        self._webhook_url,
+                        backoff,
                         exc_info=True,
                     )
                     await asyncio.sleep(backoff)

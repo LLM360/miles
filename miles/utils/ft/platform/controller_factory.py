@@ -47,9 +47,10 @@ def _build_platform_components(
         return StubNodeManager(), StubTrainingJob()
 
     if platform == "k8s-ray":
+        from ray.job_submission import JobSubmissionClient
+
         from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
         from miles.utils.ft.platform.ray_training_job import RayTrainingJob
-        from ray.job_submission import JobSubmissionClient
 
         node_manager = K8sNodeManager()
         training_job = RayTrainingJob(
@@ -93,8 +94,7 @@ def build_ft_controller(
     """
     if config is not None and kwargs:
         raise ValueError(
-            "Cannot provide both 'config' and keyword arguments to build_ft_controller; "
-            "use one or the other"
+            "Cannot provide both 'config' and keyword arguments to build_ft_controller; " "use one or the other"
         )
     if config is None:
         config = FtControllerConfig(**kwargs)  # type: ignore[arg-type]
@@ -136,7 +136,9 @@ def build_ft_controller(
 
     logger.info(
         "build_ft_controller platform=%s backend=%s exporter_port=%d",
-        config.platform, config.metric_store_backend, config.controller_exporter_port,
+        config.platform,
+        config.metric_store_backend,
+        config.controller_exporter_port,
     )
 
     return FtController(

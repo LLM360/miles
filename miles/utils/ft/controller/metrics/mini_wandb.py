@@ -78,11 +78,13 @@ class MiniWandb:
         result: list[TimedStepValue] = []
         for record in self._data:
             if record.receive_time >= cutoff and metric_name in record.metrics:
-                result.append(TimedStepValue(
-                    step=record.step,
-                    timestamp=record.receive_time,
-                    value=record.metrics[metric_name],
-                ))
+                result.append(
+                    TimedStepValue(
+                        step=record.step,
+                        timestamp=record.receive_time,
+                        value=record.metrics[metric_name],
+                    )
+                )
 
         return result
 

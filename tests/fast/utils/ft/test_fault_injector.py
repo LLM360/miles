@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import os
 import signal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import psutil
-import pytest
 
-from miles.utils.ft.e2e.fault_injector import (
-    FaultInjectorActor,
-    _TRAINING_CMDLINE_PATTERNS,
-)
+from miles.utils.ft.e2e.fault_injector import _TRAINING_CMDLINE_PATTERNS, FaultInjectorActor
 
 
 def _get_inner_class() -> type:
@@ -29,7 +24,10 @@ def _make_actor() -> FaultInjectorActor:
 
 class TestFindTrainingProcesses:
     def _make_proc_info(
-        self, pid: int, cmdline: list[str], name: str = "python",
+        self,
+        pid: int,
+        cmdline: list[str],
+        name: str = "python",
     ) -> MagicMock:
         proc = MagicMock()
         proc.info = {"pid": pid, "cmdline": cmdline, "name": name}

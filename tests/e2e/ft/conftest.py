@@ -6,6 +6,7 @@ Required environment variables:
 
 Required cluster: >= 4 GPU nodes.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,9 +27,8 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_registry import RankRegistry
-from miles.utils.ft.e2e.fault_injector import FaultInjectorActor, deploy_fault_injector
+from miles.utils.ft.e2e.fault_injector import deploy_fault_injector
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
-from miles.utils.ft.platform.protocols import JobStatus
 from miles.utils.ft.platform.ray_training_job import RayTrainingJob
 
 logger = logging.getLogger(__name__)
@@ -58,9 +58,7 @@ def ray_cluster(ray_address: str) -> Generator[None, None, None]:
     nodes = ray.nodes()
     alive_nodes = [n for n in nodes if n.get("Alive")]
     if len(alive_nodes) < _MIN_CLUSTER_NODES:
-        pytest.skip(
-            f"Need >= {_MIN_CLUSTER_NODES} alive nodes, got {len(alive_nodes)}"
-        )
+        pytest.skip(f"Need >= {_MIN_CLUSTER_NODES} alive nodes, got {len(alive_nodes)}")
 
     logger.info("ray_cluster_connected nodes=%d", len(alive_nodes))
     yield
@@ -96,7 +94,8 @@ class FtSystem:
 
 @pytest.fixture(scope="session")
 async def ft_system(
-    ray_cluster: None, ray_address: str,
+    ray_cluster: None,
+    ray_address: str,
 ) -> AsyncGenerator[FtSystem, None]:
     """Start FT Controller with mini metric store."""
     entrypoint = os.environ.get("FT_E2E_TRAINING_ENTRYPOINT", "").strip()
@@ -182,10 +181,7 @@ def fault_injector(ray_cluster: None) -> Generator[FaultInjectorFactory, None, N
 def target_node(ray_cluster: None) -> str:
     """Pick the first alive non-head node from the cluster."""
     nodes = ray.nodes()
-    alive_nodes = [
-        n for n in nodes
-        if n.get("Alive") and n.get("Resources", {}).get("GPU", 0) > 0
-    ]
+    alive_nodes = [n for n in nodes if n.get("Alive") and n.get("Resources", {}).get("GPU", 0) > 0]
     if not alive_nodes:
         pytest.skip("No alive GPU nodes found")
     return alive_nodes[0]["NodeID"]
@@ -225,10 +221,7 @@ async def wait_for_recovery_complete(
         if status["mode"] == "monitoring":
             return status
         await asyncio.sleep(poll_interval)
-    raise TimeoutError(
-        f"Recovery did not complete within {timeout}s, "
-        f"last status: {controller.get_status()}"
-    )
+    raise TimeoutError(f"Recovery did not complete within {timeout}s, " f"last status: {controller.get_status()}")
 
 
 async def wait_for_training_stable(
@@ -248,8 +241,7 @@ async def wait_for_training_stable(
         await asyncio.sleep(poll_interval)
     current = get_iteration_count(mini_wandb=mini_wandb)
     raise TimeoutError(
-        f"Training did not stabilize: need {n_iterations} iterations, "
-        f"got {current - baseline} in {timeout}s"
+        f"Training did not stabilize: need {n_iterations} iterations, " f"got {current - baseline} in {timeout}s"
     )
 
 
@@ -275,6 +267,5 @@ async def wait_for_recovery_phase(
             return status
         await asyncio.sleep(poll_interval)
     raise TimeoutError(
-        f"Did not reach recovery phase '{phase}' within {timeout}s, "
-        f"last status: {controller.get_status()}"
+        f"Did not reach recovery phase '{phase}' within {timeout}s, " f"last status: {controller.get_status()}"
     )

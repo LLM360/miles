@@ -1,24 +1,18 @@
 """Unit tests for gpu_check_script — pynvml + matmul checks."""
+
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict
 from io import StringIO
-from typing import Any, Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from miles.utils.ft.controller.diagnostics.gpu_check_script import (
-    GpuCheckResult,
-    NvmlCheckResult,
-    _check_nvml,
-    _check_single_gpu,
-    _generate_matmul_reference,
-    main,
-)
 from tests.fast.utils.ft.helpers import make_mock_pynvml
+
+from miles.utils.ft.controller.diagnostics.gpu_check_script import GpuCheckResult, _check_nvml, _check_single_gpu, main
 
 _MOCK_MATMUL_REF = (None, None, None)
 _GPU_SCRIPT = "miles.utils.ft.controller.diagnostics.gpu_check_script"
@@ -53,6 +47,7 @@ def _run_main(mock_pynvml: MagicMock, *, matmul_pass: bool = True) -> list[dict[
 # ---------------------------------------------------------------------------
 # _check_nvml tests
 # ---------------------------------------------------------------------------
+
 
 class TestCheckNvml:
     def test_healthy_gpu(self) -> None:
@@ -118,7 +113,9 @@ class TestCheckSingleGpu:
         mock_pynvml = make_mock_pynvml(device_count=1)
         with _pynvml_and_matmul(mock_pynvml):
             result = _check_single_gpu(
-                gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
+                gpu_index=0,
+                handle="handle-0",
+                matmul_ref=_MOCK_MATMUL_REF,
             )
 
         assert result.passed is True
@@ -129,7 +126,9 @@ class TestCheckSingleGpu:
         mock_pynvml = make_mock_pynvml(ecc_uncorrectable=3)
         with _pynvml_and_matmul(mock_pynvml):
             result = _check_single_gpu(
-                gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
+                gpu_index=0,
+                handle="handle-0",
+                matmul_ref=_MOCK_MATMUL_REF,
             )
 
         assert result.passed is False
@@ -139,7 +138,9 @@ class TestCheckSingleGpu:
         mock_pynvml = make_mock_pynvml(device_count=1)
         with _pynvml_and_matmul(mock_pynvml, matmul_pass=False):
             result = _check_single_gpu(
-                gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
+                gpu_index=0,
+                handle="handle-0",
+                matmul_ref=_MOCK_MATMUL_REF,
             )
 
         assert result.passed is False
@@ -153,7 +154,9 @@ class TestCheckSingleGpu:
         )
         with _pynvml_and_matmul(mock_pynvml, matmul_pass=False):
             result = _check_single_gpu(
-                gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
+                gpu_index=0,
+                handle="handle-0",
+                matmul_ref=_MOCK_MATMUL_REF,
             )
 
         assert result.passed is False
@@ -165,7 +168,9 @@ class TestCheckSingleGpu:
         mock_pynvml = make_mock_pynvml(retired_pages=["p1"])
         with _pynvml_and_matmul(mock_pynvml):
             result = _check_single_gpu(
-                gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
+                gpu_index=0,
+                handle="handle-0",
+                matmul_ref=_MOCK_MATMUL_REF,
             )
 
         assert result.passed is False
@@ -175,7 +180,9 @@ class TestCheckSingleGpu:
         mock_pynvml = make_mock_pynvml(power_state=8)
         with _pynvml_and_matmul(mock_pynvml):
             result = _check_single_gpu(
-                gpu_index=0, handle="handle-0", matmul_ref=_MOCK_MATMUL_REF,
+                gpu_index=0,
+                handle="handle-0",
+                matmul_ref=_MOCK_MATMUL_REF,
             )
 
         assert result.passed is False
@@ -185,6 +192,7 @@ class TestCheckSingleGpu:
 # ---------------------------------------------------------------------------
 # main() tests
 # ---------------------------------------------------------------------------
+
 
 class TestMain:
     def test_main_healthy_output(self) -> None:
@@ -237,6 +245,7 @@ class TestMain:
 # ---------------------------------------------------------------------------
 # GpuCheckResult dataclass tests
 # ---------------------------------------------------------------------------
+
 
 class TestGpuCheckResult:
     def test_serialization(self) -> None:

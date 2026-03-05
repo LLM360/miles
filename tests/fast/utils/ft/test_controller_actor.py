@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.fast.utils.ft.conftest import make_test_controller
 
 from miles.utils.ft.controller.detectors import build_detector_chain
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.platform.controller_actor import _FtControllerActorCls
 from miles.utils.ft.platform.controller_factory import build_ft_controller
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
-from tests.fast.utils.ft.conftest import make_test_controller
-
-from unittest.mock import MagicMock
 
 
 class TestBuildFtController:
@@ -38,7 +36,9 @@ class TestBuildFtController:
 
     def test_custom_tick_interval(self) -> None:
         ctrl = build_ft_controller(
-            platform="stub", tick_interval=5.0, start_exporter=False,
+            platform="stub",
+            tick_interval=5.0,
+            start_exporter=False,
         )
         assert ctrl._tick_interval == 5.0
 
@@ -112,27 +112,38 @@ class TestFtControllerActorProxy:
         actor = _FtControllerActorCls.__new__(_FtControllerActorCls)
         actor._ctrl = harness.controller
         return actor, harness
+
     async def test_register_rank_updates_placement(self) -> None:
         actor, harness = self._make_actor_with_harness()
 
         await actor.register_rank(
-            run_id="test-run", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9100",
+            run_id="test-run",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9100",
         )
 
         assert harness.controller._rank_registry.rank_placement == {0: "node-0"}
+
     async def test_log_step_writes_to_mini_wandb(self) -> None:
         actor, harness = self._make_actor_with_harness()
 
         await actor.register_rank(
-            run_id="test-run", rank=0, world_size=1,
-            node_id="node-0", exporter_address="http://node-0:9100",
+            run_id="test-run",
+            rank=0,
+            world_size=1,
+            node_id="node-0",
+            exporter_address="http://node-0:9100",
         )
         await actor.log_step(
-            run_id="test-run", step=1, metrics={"loss": 0.5},
+            run_id="test-run",
+            step=1,
+            metrics={"loss": 0.5},
         )
 
         assert harness.mini_wandb.latest(metric_name="loss") == 0.5
+
     async def test_shutdown_sets_flag(self) -> None:
         actor, harness = self._make_actor_with_harness()
 

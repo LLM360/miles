@@ -2,6 +2,7 @@
 
 Subclasses must implement _dispatch_range_function().
 """
+
 from __future__ import annotations
 
 from abc import abstractmethod
@@ -13,36 +14,49 @@ import polars as pl
 class RangeAggregationMixin:
     @abstractmethod
     def _dispatch_range_function(
-        self, func_name: str, metric_name: str, window: timedelta,
+        self,
+        func_name: str,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None,
     ) -> pl.DataFrame: ...
 
     def changes(
-        self, metric_name: str, window: timedelta,
+        self,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return self._dispatch_range_function("changes", metric_name, window, label_filters)
 
     def count_over_time(
-        self, metric_name: str, window: timedelta,
+        self,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return self._dispatch_range_function("count_over_time", metric_name, window, label_filters)
 
     def avg_over_time(
-        self, metric_name: str, window: timedelta,
+        self,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return self._dispatch_range_function("avg_over_time", metric_name, window, label_filters)
 
     def min_over_time(
-        self, metric_name: str, window: timedelta,
+        self,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return self._dispatch_range_function("min_over_time", metric_name, window, label_filters)
 
     def max_over_time(
-        self, metric_name: str, window: timedelta,
+        self,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return self._dispatch_range_function("max_over_time", metric_name, window, label_filters)

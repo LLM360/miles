@@ -3,18 +3,17 @@ from datetime import datetime, timedelta, timezone
 import polars as pl
 import pytest
 
-from miles.utils.ft.controller.metrics.mini_prometheus.storage import (
-    MiniPrometheus,
-    MiniPrometheusConfig,
-)
+from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.models import MetricSample
 
 
 class TestMiniPrometheusQueryLatest:
     def _make_store(self) -> MiniPrometheus:
-        return MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        return MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
 
     def test_simple_metric_query(self) -> None:
         store = self._make_store()
@@ -116,9 +115,11 @@ class TestMiniPrometheusQueryLatest:
 
 class TestMiniPrometheusRangeFunctions:
     def _make_store_with_samples(self) -> MiniPrometheus:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         for i in range(5):
@@ -143,17 +144,23 @@ class TestMiniPrometheusRangeFunctions:
         assert df["value"][0] <= 3.0
 
     def test_changes_no_change(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         for i in range(3):
             store.ingest_samples(
                 target_id="node-0",
-                samples=[MetricSample(
-                    name="miles_ft_training_iteration", labels={"rank": "0"}, value=100.0,
-                )],
+                samples=[
+                    MetricSample(
+                        name="miles_ft_training_iteration",
+                        labels={"rank": "0"},
+                        value=100.0,
+                    )
+                ],
                 timestamp=now - timedelta(minutes=2 - i),
             )
 
@@ -162,18 +169,24 @@ class TestMiniPrometheusRangeFunctions:
         assert df["value"][0] == 0.0
 
     def test_changes_with_actual_changes(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         values = [100.0, 101.0, 102.0, 102.0, 103.0]
         for i, val in enumerate(values):
             store.ingest_samples(
                 target_id="node-0",
-                samples=[MetricSample(
-                    name="miles_ft_training_iteration", labels={"rank": "0"}, value=val,
-                )],
+                samples=[
+                    MetricSample(
+                        name="miles_ft_training_iteration",
+                        labels={"rank": "0"},
+                        value=val,
+                    )
+                ],
                 timestamp=now - timedelta(minutes=4 - i),
             )
 
@@ -188,9 +201,11 @@ class TestMiniPrometheusRangeFunctions:
         assert filtered["value"][0] >= 2.0
 
     def test_min_over_time(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         for i, val in enumerate([75.0, 80.0, 70.0, 85.0]):
@@ -204,9 +219,11 @@ class TestMiniPrometheusRangeFunctions:
         assert df["value"][0] == 70.0
 
     def test_avg_over_time(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         for i, val in enumerate([10.0, 20.0, 30.0]):
@@ -220,9 +237,11 @@ class TestMiniPrometheusRangeFunctions:
         assert df["value"][0] == pytest.approx(20.0)
 
     def test_max_over_time(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         for i, val in enumerate([75.0, 80.0, 70.0, 85.0]):
@@ -236,9 +255,11 @@ class TestMiniPrometheusRangeFunctions:
         assert df["value"][0] == 85.0
 
     def test_label_filter_with_polars_compare(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         store.ingest_samples(
             target_id="node-0",
             samples=[
@@ -256,9 +277,11 @@ class TestMiniPrometheusRangeFunctions:
 
 class TestMiniPrometheusQueryRange:
     def test_query_range_returns_time_series(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
         t1 = now - timedelta(minutes=10)
         t2 = now - timedelta(minutes=5)
@@ -286,9 +309,11 @@ class TestMiniPrometheusQueryRange:
         assert values == [70.0, 75.0, 80.0]
 
     def test_query_range_with_polars_filter(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         for i, val in enumerate([70.0, 75.0, 80.0, 85.0]):
@@ -305,9 +330,11 @@ class TestMiniPrometheusQueryRange:
         assert values == [75.0, 80.0, 85.0]
 
     def test_empty_range_query(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
 
         df = store.query_range("nonexistent", window=timedelta(minutes=10))
         assert df.is_empty()
@@ -317,9 +344,11 @@ class TestMiniPrometheusQueryRange:
 
 class TestMiniPrometheusRetention:
     def test_expired_data_evicted(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=5),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=5),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         store.ingest_samples(
@@ -338,9 +367,11 @@ class TestMiniPrometheusRetention:
         assert df["value"][0] == 80.0
 
     def test_eviction_cleans_internal_indexes(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=5),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=5),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         store.ingest_samples(
@@ -377,11 +408,13 @@ class TestMiniPrometheusIngestSamples:
         store = MiniPrometheus()
         store.ingest_samples(
             target_id="rank-0",
-            samples=[MetricSample(
-                name="training_iter",
-                labels={"rank": "0", "node_id": "real-node-hostname"},
-                value=100.0,
-            )],
+            samples=[
+                MetricSample(
+                    name="training_iter",
+                    labels={"rank": "0", "node_id": "real-node-hostname"},
+                    value=100.0,
+                )
+            ],
         )
 
         df = store.query_latest("training_iter")
@@ -439,9 +472,11 @@ class TestMiniPrometheusScrapeTargets:
 
 class TestMiniPrometheusRangeFunctionEdgeCases:
     def test_single_sample_count_over_time(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         store.ingest_samples(
@@ -455,9 +490,11 @@ class TestMiniPrometheusRangeFunctionEdgeCases:
         assert df["value"][0] == 1.0
 
     def test_single_sample_changes_returns_zero(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         store.ingest_samples(
@@ -471,9 +508,11 @@ class TestMiniPrometheusRangeFunctionEdgeCases:
         assert df["value"][0] == 0.0
 
     def test_changes_with_polars_filter(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         for i in range(3):
@@ -489,9 +528,11 @@ class TestMiniPrometheusRangeFunctionEdgeCases:
         assert filtered["value"][0] == 0.0
 
     def test_count_over_time_with_polars_filter(self) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         now = datetime.now(timezone.utc)
 
         store.ingest_samples(

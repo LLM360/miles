@@ -1,14 +1,8 @@
 """Integration tests: Controller tick with real detector chains."""
 
-
-from tests.fast.utils.ft.helpers import (
-    inject_gpu_unavailable,
-    inject_healthy_node,
-    make_test_controller,
-)
+from tests.fast.utils.ft.helpers import inject_gpu_unavailable, inject_healthy_node, make_test_controller
 
 from miles.utils.ft.controller.detectors import build_detector_chain
-from miles.utils.ft.models import ActionType
 from miles.utils.ft.platform.protocols import JobStatus
 
 
@@ -25,6 +19,7 @@ class TestControllerWithRealDetectors:
         await harness.controller._tick()
 
         assert harness.controller._tick_count == 1
+
     async def test_tick_gpu_lost_triggers_mark_bad(self) -> None:
         chain = build_detector_chain()
         harness = make_test_controller(
@@ -39,6 +34,7 @@ class TestControllerWithRealDetectors:
 
         # Decision is executed (currently just logged), but tick completes
         assert harness.controller._tick_count == 1
+
     async def test_tick_training_crash_triggers_recovery(self) -> None:
         chain = build_detector_chain()
         harness = make_test_controller(
@@ -49,6 +45,7 @@ class TestControllerWithRealDetectors:
         await harness.controller._tick()
 
         assert harness.controller._tick_count == 1
+
     async def test_detector_chain_no_detectors_passes(self) -> None:
         harness = make_test_controller(detectors=[])
 

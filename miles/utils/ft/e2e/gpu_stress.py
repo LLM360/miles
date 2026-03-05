@@ -3,6 +3,7 @@
 Saturates all visible GPUs with continuous matmul operations.
 Runs until killed or --duration timeout is reached.
 """
+
 from __future__ import annotations
 
 import time

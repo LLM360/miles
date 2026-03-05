@@ -1,5 +1,4 @@
 from tests.fast.utils.ft.helpers import (
-    EMPTY_RANK_PLACEMENT,
     inject_critical_xid,
     inject_disk_fault,
     inject_gpu_unavailable,
@@ -8,7 +7,6 @@ from tests.fast.utils.ft.helpers import (
     inject_nic_up,
     make_detector_context,
     make_fake_metric_store,
-    make_fake_mini_wandb,
 )
 
 from miles.utils.ft.controller.detectors.hardware import HighConfidenceHardwareDetector

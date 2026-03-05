@@ -21,11 +21,14 @@ class StackTraceDiagnostic(BaseDiagnostic):
         self._pids = pids or []
 
     async def run(
-        self, node_id: str, timeout_seconds: int = 30,
+        self,
+        node_id: str,
+        timeout_seconds: int = 30,
     ) -> DiagnosticResult:
         if not self._pids:
             return DiagnosticResult.fail_result(
-                diagnostic_type=self.diagnostic_type, node_id=node_id,
+                diagnostic_type=self.diagnostic_type,
+                node_id=node_id,
                 details="no PIDs provided",
             )
 
@@ -36,7 +39,8 @@ class StackTraceDiagnostic(BaseDiagnostic):
             except Exception:
                 logger.warning(
                     "stack_trace_dump_failed pid=%d node=%s",
-                    pid, node_id,
+                    pid,
+                    node_id,
                     exc_info=True,
                 )
                 return f"=== PID {pid} ===\nFAILED: could not collect stack trace", False
@@ -60,13 +64,17 @@ class StackTraceDiagnostic(BaseDiagnostic):
 
     async def _dump_pid(self, pid: int, timeout_seconds: int) -> str:
         proc = await asyncio.create_subprocess_exec(
-            "py-spy", "dump", "--pid", str(pid),
+            "py-spy",
+            "dump",
+            "--pid",
+            str(pid),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         try:
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout_seconds,
+                proc.communicate(),
+                timeout=timeout_seconds,
             )
         except asyncio.TimeoutError:
             proc.kill()

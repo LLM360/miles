@@ -73,28 +73,35 @@ async def run_nccl_test(
     except OSError:
         logger.warning(
             "%s_exec_failed node=%s binary=%s",
-            log_prefix, node_id, cmd[0],
+            log_prefix,
+            node_id,
+            cmd[0],
             exc_info=True,
         )
         return DiagnosticResult.fail_result(
-            diagnostic_type=diagnostic_type, node_id=node_id,
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
             details=f"failed to execute {cmd[0]}",
         )
 
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            process.communicate(), timeout=timeout_seconds,
+            process.communicate(),
+            timeout=timeout_seconds,
         )
     except asyncio.TimeoutError:
         process.kill()
         await process.wait()
         logger.warning(
             "%s_timeout node=%s timeout=%s",
-            log_prefix, node_id, timeout_seconds,
+            log_prefix,
+            node_id,
+            timeout_seconds,
             exc_info=True,
         )
         return DiagnosticResult.fail_result(
-            diagnostic_type=diagnostic_type, node_id=node_id,
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
             details=f"timed out after {timeout_seconds}s",
         )
 
@@ -125,10 +132,14 @@ def _interpret_nccl_output(
     if returncode != 0:
         logger.warning(
             "%s_nonzero_exit node=%s rc=%s stderr=%s",
-            log_prefix, node_id, returncode, stderr[:500],
+            log_prefix,
+            node_id,
+            returncode,
+            stderr[:500],
         )
         return DiagnosticResult.fail_result(
-            diagnostic_type=diagnostic_type, node_id=node_id,
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
             details=f"exit code {returncode}: {stderr[:500]}",
         )
 
@@ -136,10 +147,13 @@ def _interpret_nccl_output(
     if bandwidth is None:
         logger.warning(
             "%s_parse_failure node=%s output_len=%d",
-            log_prefix, node_id, len(stdout),
+            log_prefix,
+            node_id,
+            len(stdout),
         )
         return DiagnosticResult.fail_result(
-            diagnostic_type=diagnostic_type, node_id=node_id,
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
             details="failed to parse bandwidth from output",
         )
 
@@ -151,7 +165,11 @@ def _interpret_nccl_output(
 
     logger.info(
         "%s_result node=%s bandwidth=%.2f threshold=%.2f passed=%s",
-        log_prefix, node_id, bandwidth, expected_bandwidth_gbps, passed,
+        log_prefix,
+        node_id,
+        bandwidth,
+        expected_bandwidth_gbps,
+        passed,
     )
     return DiagnosticResult(
         diagnostic_type=diagnostic_type,

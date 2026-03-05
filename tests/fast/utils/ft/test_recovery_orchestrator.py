@@ -3,20 +3,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
-from miles.utils.ft.controller.mini_wandb import MiniWandb as MiniWandbCls
-from miles.utils.ft.controller.recovery_orchestrator import (
-    RecoveryContext,
-    RecoveryOrchestrator,
-)
-from miles.utils.ft.metric_names import CONTROLLER_RECOVERY_PHASE
-from miles.utils.ft.models import (
-    ActionType,
-    Decision,
-    RECOVERY_PHASE_TO_INT,
-    RecoveryPhase,
-)
-from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     FakeDiagnosticScheduler,
     FakeNodeManager,
@@ -33,6 +19,12 @@ from tests.fast.utils.ft.conftest import (
     make_test_exporter,
 )
 
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.mini_wandb import MiniWandb as MiniWandbCls
+from miles.utils.ft.controller.recovery_orchestrator import RecoveryContext, RecoveryOrchestrator
+from miles.utils.ft.metric_names import CONTROLLER_RECOVERY_PHASE
+from miles.utils.ft.models import RECOVERY_PHASE_TO_INT, ActionType, Decision, RecoveryPhase
+from miles.utils.ft.platform.protocols import JobStatus
 
 # -------------------------------------------------------------------
 # Helpers
@@ -238,6 +230,7 @@ class TestReattempting:
 
         async def failing_stop(timeout_seconds: int = 300) -> None:
             raise RuntimeError("stop failed")
+
         training_job.stop_training = failing_stop
 
         asyncio.run(orch.step())
@@ -262,7 +255,8 @@ class TestMonitoring:
 
         for i in range(1, 4):
             mini_wandb.log_step(
-                run_id="test-run", step=i,
+                run_id="test-run",
+                step=i,
                 metrics={"iteration": float(i)},
             )
 
@@ -291,7 +285,8 @@ class TestMonitoring:
 
         for i in range(1, 6):
             mini_wandb.log_step(
-                run_id="test-run", step=i,
+                run_id="test-run",
+                step=i,
                 metrics={"iteration": float(i)},
             )
 
@@ -379,6 +374,7 @@ class TestEvictAndRestart:
 
         async def failing_mark(node_id: str, reason: str = "") -> None:
             raise RuntimeError("K8s API unreachable")
+
         node_mgr.mark_node_bad = failing_mark
 
         asyncio.run(orch.step())
@@ -393,6 +389,7 @@ class TestEvictAndRestart:
 
         async def failing_submit() -> str:
             raise RuntimeError("submit failed")
+
         training_job.submit_training = failing_submit
 
         asyncio.run(orch.step())
@@ -473,6 +470,7 @@ class TestReattemptingSubmitFailure:
 
         async def failing_submit() -> str:
             raise RuntimeError("submit failed")
+
         training_job.submit_training = failing_submit
 
         asyncio.run(orch.step())
@@ -485,6 +483,7 @@ class TestNotifyWithBrokenNotifier:
 
         async def broken_send(title: str, content: str, severity: str) -> None:
             raise RuntimeError("notification service unreachable")
+
         notifier.send = broken_send
 
         orch, _, _, _, _ = _make_orchestrator(notifier=notifier)
@@ -504,6 +503,7 @@ class TestEvictStopTrainingFailure:
 
         async def failing_stop(timeout_seconds: int = 300) -> None:
             raise RuntimeError("stop failed")
+
         training_job.stop_training = failing_stop
 
         asyncio.run(orch.step())

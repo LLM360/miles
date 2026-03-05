@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-
-import miles.utils.ft.metric_names as mn
-from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
-from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.helpers import (
     FixedDecisionDetector,
     get_sample_value,
@@ -11,26 +7,35 @@ from tests.fast.utils.ft.helpers import (
     make_test_exporter,
 )
 
+import miles.utils.ft.metric_names as mn
+from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
+from miles.utils.ft.platform.protocols import JobStatus
+
 
 class TestEnterRecovery:
     async def test_creates_recovery_orchestrator(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test recovery",
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="crash",
+                reason="test recovery",
+            )
+        )
         harness = make_test_controller(detectors=[detector])
         assert harness.controller._recovery_orchestrator is None
 
         await harness.controller._tick()
 
         assert harness.controller._recovery_orchestrator is not None
+
     async def test_recovery_mode_skips_detectors(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test recovery",
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="crash",
+                reason="test recovery",
+            )
+        )
         harness = make_test_controller(detectors=[detector])
 
         await harness.controller._tick()
@@ -38,12 +43,15 @@ class TestEnterRecovery:
 
         await harness.controller._tick()
         assert detector.call_count == initial_count
+
     async def test_recovery_complete_returns_to_monitoring(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test recovery",
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="crash",
+                reason="test recovery",
+            )
+        )
         harness = make_test_controller(
             detectors=[detector],
             status_sequence=[JobStatus.RUNNING],
@@ -56,13 +64,16 @@ class TestEnterRecovery:
 
         await harness.controller._tick()
         assert harness.controller._recovery_orchestrator is None
+
     async def test_exporter_mode_reflects_recovery(self) -> None:
         registry, exporter = make_test_exporter()
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test recovery",
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="crash",
+                reason="test recovery",
+            )
+        )
         harness = make_test_controller(
             detectors=[detector],
             controller_exporter=exporter,

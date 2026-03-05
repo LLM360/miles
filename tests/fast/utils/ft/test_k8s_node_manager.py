@@ -5,12 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from miles.utils.ft.platform.k8s_node_manager import (
-    LABEL_KEY,
-    K8sNodeManager,
-    REASON_LABEL_KEY,
-    query_bad_nodes,
-)
+from miles.utils.ft.platform.k8s_node_manager import LABEL_KEY, REASON_LABEL_KEY, K8sNodeManager, query_bad_nodes
 
 
 def _make_manager_with_mock_api() -> tuple[K8sNodeManager, AsyncMock]:
@@ -35,6 +30,7 @@ class TestMarkNodeBad:
         body = call_kwargs.kwargs["body"]
         assert body["metadata"]["labels"][LABEL_KEY] == "true"
         assert body["metadata"]["labels"][REASON_LABEL_KEY] == "gpu_ecc_error"
+
     async def test_raises_on_api_failure(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
         mock_core_v1.patch_node.side_effect = Exception("K8s API unreachable")
@@ -55,6 +51,7 @@ class TestUnmarkNodeBad:
         body = call_kwargs.kwargs["body"]
         assert body["metadata"]["labels"][LABEL_KEY] is None
         assert body["metadata"]["labels"][REASON_LABEL_KEY] is None
+
     async def test_raises_on_api_failure(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
         mock_core_v1.patch_node.side_effect = Exception("K8s API unreachable")
@@ -69,9 +66,7 @@ class TestGetBadNodes:
 
         mock_node_1 = SimpleNamespace(metadata=SimpleNamespace(name="node-a"))
         mock_node_2 = SimpleNamespace(metadata=SimpleNamespace(name="node-b"))
-        mock_core_v1.list_node.return_value = SimpleNamespace(
-            items=[mock_node_1, mock_node_2]
-        )
+        mock_core_v1.list_node.return_value = SimpleNamespace(items=[mock_node_1, mock_node_2])
 
         result = await manager.get_bad_nodes()
 
@@ -79,6 +74,7 @@ class TestGetBadNodes:
         mock_core_v1.list_node.assert_awaited_once_with(
             label_selector=f"{LABEL_KEY}=true",
         )
+
     async def test_returns_empty_list_when_no_bad_nodes(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
         mock_core_v1.list_node.return_value = SimpleNamespace(items=[])
@@ -86,19 +82,18 @@ class TestGetBadNodes:
         result = await manager.get_bad_nodes()
 
         assert result == []
+
     async def test_returns_multiple_bad_nodes(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
 
-        nodes = [
-            SimpleNamespace(metadata=SimpleNamespace(name=f"node-{i}"))
-            for i in range(5)
-        ]
+        nodes = [SimpleNamespace(metadata=SimpleNamespace(name=f"node-{i}")) for i in range(5)]
         mock_core_v1.list_node.return_value = SimpleNamespace(items=nodes)
 
         result = await manager.get_bad_nodes()
 
         assert len(result) == 5
         assert result == [f"node-{i}" for i in range(5)]
+
     async def test_raises_on_api_failure(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
         mock_core_v1.list_node.side_effect = Exception("K8s API unreachable")
@@ -109,12 +104,12 @@ class TestGetBadNodes:
 
 class TestQueryBadNodesSyncHelper:
     def test_returns_node_list_on_success(self) -> None:
-        with patch(
-            "miles.utils.ft.platform.k8s_node_manager.K8sNodeManager"
-        ) as mock_cls:
+        with patch("miles.utils.ft.platform.k8s_node_manager.K8sNodeManager") as mock_cls:
             instance = mock_cls.return_value
+
             async def fake_get_bad_nodes() -> list[str]:
                 return ["node-a", "node-b"]
+
             instance.get_bad_nodes = fake_get_bad_nodes
             instance.aclose = AsyncMock()
 
@@ -123,12 +118,12 @@ class TestQueryBadNodesSyncHelper:
         assert result == ["node-a", "node-b"]
 
     def test_returns_none_on_exception(self) -> None:
-        with patch(
-            "miles.utils.ft.platform.k8s_node_manager.K8sNodeManager"
-        ) as mock_cls:
+        with patch("miles.utils.ft.platform.k8s_node_manager.K8sNodeManager") as mock_cls:
             instance = mock_cls.return_value
+
             async def failing_get_bad_nodes() -> list[str]:
                 raise ConnectionError("K8s unreachable")
+
             instance.get_bad_nodes = failing_get_bad_nodes
             instance.aclose = AsyncMock()
 

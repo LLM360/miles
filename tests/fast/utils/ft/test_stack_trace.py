@@ -1,20 +1,17 @@
 """Tests for StackTraceDiagnostic and StackTraceAggregator."""
+
 from __future__ import annotations
 
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-
-from miles.utils.ft.controller.diagnostics.stack_trace import (
-    StackTraceAggregator,
-    StackTraceDiagnostic,
-)
 from tests.fast.utils.ft.helpers import (
     SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
     SAMPLE_PYSPY_OUTPUT_NORMAL,
     SAMPLE_PYSPY_OUTPUT_STUCK,
 )
 
+from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator, StackTraceDiagnostic
 
 # ---------------------------------------------------------------------------
 # StackTraceDiagnostic tests
@@ -39,6 +36,7 @@ class TestStackTraceDiagnosticEmptyPids:
 
         assert result.passed is False
         assert "no PIDs provided" in result.details
+
     async def test_none_pids_returns_failed(self) -> None:
         diag = StackTraceDiagnostic(pids=None)
         result = await diag.run(node_id="node-0")
@@ -58,9 +56,12 @@ class TestStackTraceDiagnosticSinglePid:
         assert result.passed is True
         assert "PID 1234" in result.details
         assert "stack trace here" in result.details
+
     async def test_single_pid_pyspy_failure(self) -> None:
         mock_proc = _make_mock_process(
-            stdout=b"", stderr=b"process not found", returncode=1,
+            stdout=b"",
+            stderr=b"process not found",
+            returncode=1,
         )
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
@@ -75,7 +76,9 @@ class TestStackTraceDiagnosticMultiplePids:
     async def test_partial_failure_still_passes(self) -> None:
         good_proc = _make_mock_process(stdout=b"good trace")
         bad_proc = _make_mock_process(
-            stdout=b"", stderr=b"error", returncode=1,
+            stdout=b"",
+            stderr=b"error",
+            returncode=1,
         )
 
         call_count = 0
@@ -93,9 +96,12 @@ class TestStackTraceDiagnosticMultiplePids:
         assert "PID 100" in result.details
         assert "PID 200" in result.details
         assert "FAILED" in result.details
+
     async def test_all_pids_fail_returns_not_passed(self) -> None:
         bad_proc = _make_mock_process(
-            stdout=b"", stderr=b"error", returncode=1,
+            stdout=b"",
+            stderr=b"error",
+            returncode=1,
         )
 
         with patch("asyncio.create_subprocess_exec", return_value=bad_proc):
@@ -103,6 +109,7 @@ class TestStackTraceDiagnosticMultiplePids:
             result = await diag.run(node_id="node-0")
 
         assert result.passed is False
+
     async def test_timeout_treated_as_failure(self) -> None:
         mock_proc = AsyncMock()
         mock_proc.communicate = AsyncMock(

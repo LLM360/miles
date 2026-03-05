@@ -67,6 +67,7 @@ class TestBuildNotifier:
 
     def test_no_webhook_non_stub_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         import logging
+
         with patch.dict("os.environ", {}, clear=True):
             with caplog.at_level(logging.WARNING):
                 notifier = _build_notifier(platform="k8s-ray")
@@ -95,10 +96,18 @@ class TestLauncherSubmitAndRun:
             patch("miles.utils.ft.controller.metrics.exporter.ControllerExporter.start"),
         ):
             mock_build.return_value = MagicMock()
-            result = runner.invoke(app, [
-                "--platform", "stub",
-                "--", "python3", "train.py", "--lr", "0.001",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "--platform",
+                    "stub",
+                    "--",
+                    "python3",
+                    "train.py",
+                    "--lr",
+                    "0.001",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         config = mock_build.call_args.kwargs["config"]
@@ -114,11 +123,18 @@ class TestLauncherSubmitAndRun:
             patch("miles.utils.ft.controller.metrics.exporter.ControllerExporter.start"),
         ):
             mock_build.return_value = MagicMock()
-            result = runner.invoke(app, [
-                "--platform", "stub",
-                "--runtime-env-json", '{"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}',
-                "--", "python3", "train.py",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "--platform",
+                    "stub",
+                    "--runtime-env-json",
+                    '{"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}',
+                    "--",
+                    "python3",
+                    "train.py",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         config = mock_build.call_args.kwargs["config"]
@@ -133,11 +149,13 @@ class TestLauncherWiring:
         def fake_controller_init(self: object, **kwargs: object) -> None:
             captured_kwargs.update(kwargs)
 
-        with patch("miles.utils.ft.launcher.FtController.__init__", fake_controller_init), \
-             patch("miles.utils.ft.launcher.FtController.submit_initial_training"), \
-             patch("miles.utils.ft.launcher.FtController.run"), \
-             patch("miles.utils.ft.controller.metrics.exporter.ControllerExporter.start"), \
-             patch("miles.utils.ft.launcher.asyncio.run"):
+        with (
+            patch("miles.utils.ft.launcher.FtController.__init__", fake_controller_init),
+            patch("miles.utils.ft.launcher.FtController.submit_initial_training"),
+            patch("miles.utils.ft.launcher.FtController.run"),
+            patch("miles.utils.ft.controller.metrics.exporter.ControllerExporter.start"),
+            patch("miles.utils.ft.launcher.asyncio.run"),
+        ):
             result = runner.invoke(app, ["--platform", "stub"])
 
         assert result.exit_code == 0, result.output

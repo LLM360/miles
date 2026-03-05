@@ -24,12 +24,7 @@ class TestParsePrometheusText:
         assert samples[0].value == 82.5
 
     def test_multiple_metrics(self) -> None:
-        text = (
-            "# TYPE metric_a gauge\n"
-            "metric_a 1.0\n"
-            "# TYPE metric_b gauge\n"
-            "metric_b 2.0\n"
-        )
+        text = "# TYPE metric_a gauge\n" "metric_a 1.0\n" "# TYPE metric_b gauge\n" "metric_b 2.0\n"
         samples = parse_prometheus_text(text)
         assert len(samples) == 2
 

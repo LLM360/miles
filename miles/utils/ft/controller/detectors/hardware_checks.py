@@ -4,6 +4,7 @@ Used by both HighConfidenceHardwareDetector (detector chain) and
 AlertChecker (recovery orchestrator) to avoid duplicating the same
 metric queries and threshold constants.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,12 +12,7 @@ import logging
 import polars as pl
 
 from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
-from miles.utils.ft.metric_names import (
-    GPU_AVAILABLE,
-    NODE_FILESYSTEM_AVAIL_BYTES,
-    NODE_NETWORK_UP,
-    XID_CODE_RECENT,
-)
+from miles.utils.ft.metric_names import GPU_AVAILABLE, NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP, XID_CODE_RECENT
 from miles.utils.ft.models import NodeFault
 
 logger = logging.getLogger(__name__)

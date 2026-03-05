@@ -2,16 +2,13 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from miles.utils.ft.agents.tracking_agent import FtTrackingAgent
 
 
 class TestFtTrackingAgentLog:
     @patch("miles.utils.ft.agents.tracking_agent.FtTrackingAgent._get_controller_handle")
-    def test_log_pushes_metrics_to_controller(
-        self, mock_get_handle: MagicMock
-    ) -> None:
+    def test_log_pushes_metrics_to_controller(self, mock_get_handle: MagicMock) -> None:
         mock_controller = MagicMock()
         mock_get_handle.return_value = mock_controller
 
@@ -25,9 +22,7 @@ class TestFtTrackingAgentLog:
         )
 
     @patch("miles.utils.ft.agents.tracking_agent.FtTrackingAgent._get_controller_handle")
-    def test_log_multiple_calls_accumulate(
-        self, mock_get_handle: MagicMock
-    ) -> None:
+    def test_log_multiple_calls_accumulate(self, mock_get_handle: MagicMock) -> None:
         mock_controller = MagicMock()
         mock_get_handle.return_value = mock_controller
 
@@ -56,9 +51,7 @@ class TestFtTrackingAgentLog:
             assert agent._run_id == "explicit-run"
 
     @patch("miles.utils.ft.agents.tracking_agent.FtTrackingAgent._get_controller_handle")
-    def test_log_exception_does_not_propagate(
-        self, mock_get_handle: MagicMock
-    ) -> None:
+    def test_log_exception_does_not_propagate(self, mock_get_handle: MagicMock) -> None:
         mock_controller = MagicMock()
         mock_controller.log_step.remote.side_effect = RuntimeError("boom")
         mock_get_handle.return_value = mock_controller
@@ -79,9 +72,7 @@ class TestTrackingUtilsIntegration:
     """Test FtTrackingAgent integration with tracking_utils.log()."""
 
     @patch("miles.utils.ft.agents.tracking_agent.FtTrackingAgent._get_controller_handle")
-    def test_tracking_utils_log_forwards_to_ft_agent(
-        self, mock_get_handle: MagicMock
-    ) -> None:
+    def test_tracking_utils_log_forwards_to_ft_agent(self, mock_get_handle: MagicMock) -> None:
         from miles.utils import tracking_utils
 
         mock_controller = MagicMock()

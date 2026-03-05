@@ -4,15 +4,14 @@ Pairs nodes in a round-robin ring, runs all_gather_perf on each
 pair simultaneously, then cross-compares failure counts to isolate
 the bad node(s).
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 from typing import NamedTuple
 
-from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
-    InterMachineCommDiagnostic,
-)
+from miles.utils.ft.controller.diagnostics.inter_machine_comm import InterMachineCommDiagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -46,23 +45,22 @@ class InterMachineOrchestrator:
             logger.info("inter_machine_skip — fewer than 2 nodes")
             return []
 
-        pairs = [
-            (sorted_ids[i], sorted_ids[(i + 1) % len(sorted_ids)])
-            for i in range(len(sorted_ids))
-        ]
+        pairs = [(sorted_ids[i], sorted_ids[(i + 1) % len(sorted_ids)]) for i in range(len(sorted_ids))]
         logger.info("inter_machine_step_start pairs=%s", pairs)
 
         tasks = []
         for pair_index, (master_id, worker_id) in enumerate(pairs):
             port = self._base_port + pair_index
             master_addr = self._resolve_address(master_id)
-            tasks.append(self._run_single_pair(
-                master_id=master_id,
-                worker_id=worker_id,
-                master_addr=master_addr,
-                port=port,
-                timeout_seconds=timeout_seconds,
-            ))
+            tasks.append(
+                self._run_single_pair(
+                    master_id=master_id,
+                    worker_id=worker_id,
+                    master_addr=master_addr,
+                    port=port,
+                    timeout_seconds=timeout_seconds,
+                )
+            )
 
         results = await asyncio.gather(*tasks)
 
@@ -77,7 +75,8 @@ class InterMachineOrchestrator:
         timeout_seconds: int,
     ) -> PairResult:
         diag = InterMachineCommDiagnostic(
-            master_addr=master_addr, master_port=port,
+            master_addr=master_addr,
+            master_port=port,
         )
 
         try:
@@ -89,14 +88,17 @@ class InterMachineOrchestrator:
         except Exception:
             logger.warning(
                 "inter_machine_pair_failed master=%s worker=%s",
-                master_id, worker_id,
+                master_id,
+                worker_id,
                 exc_info=True,
             )
             passed = False
 
         logger.info(
             "inter_machine_pair_result master=%s worker=%s passed=%s",
-            master_id, worker_id, passed,
+            master_id,
+            worker_id,
+            passed,
         )
         return PairResult(master_id=master_id, worker_id=worker_id, passed=passed)
 
@@ -135,6 +137,4 @@ def cross_compare(
         logger.warning("inter_machine_all_failed — cannot localize bad node")
         return []
 
-    return sorted(
-        nid for nid, count in failure_count.items() if count == max_count
-    )
+    return sorted(nid for nid, count in failure_count.items() if count == max_count)

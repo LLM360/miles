@@ -1,10 +1,4 @@
-
-from miles.utils.ft.platform.protocols import (
-    JobStatus,
-    NodeManagerProtocol,
-    NotificationProtocol,
-    TrainingJobProtocol,
-)
+from miles.utils.ft.platform.protocols import JobStatus, NodeManagerProtocol, NotificationProtocol, TrainingJobProtocol
 
 
 class TestJobStatus:
@@ -50,6 +44,7 @@ class TestNodeManagerProtocol:
                 pass
 
         assert not isinstance(_MissingGetBadNodes(), NodeManagerProtocol)
+
     async def test_methods_callable_with_expected_signatures(self) -> None:
         class _Impl:
             def __init__(self) -> None:
@@ -94,6 +89,7 @@ class TestTrainingJobProtocol:
                 return JobStatus.RUNNING
 
         assert not isinstance(_MissingSubmit(), TrainingJobProtocol)
+
     async def test_methods_callable_with_expected_signatures(self) -> None:
         class _Impl:
             def __init__(self) -> None:
@@ -134,6 +130,7 @@ class TestNotificationProtocol:
                 pass
 
         assert not isinstance(_MissingSend(), NotificationProtocol)
+
     async def test_methods_callable_with_expected_signatures(self) -> None:
         class _Impl:
             def __init__(self) -> None:

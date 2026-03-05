@@ -69,7 +69,9 @@ class RayTrainingJob:
         self._job_id = job_id
         logger.info(
             "submit_training job_id=%s run_id=%s elapsed_seconds=%.3f",
-            job_id, run_id, elapsed,
+            job_id,
+            run_id,
+            elapsed,
         )
         return run_id
 
@@ -85,19 +87,17 @@ class RayTrainingJob:
         deadline = start + timeout_seconds
         while True:
             if time.monotonic() >= deadline:
-                raise TimeoutError(
-                    f"Job {self._job_id} did not stop within {timeout_seconds}s"
-                )
+                raise TimeoutError(f"Job {self._job_id} did not stop within {timeout_seconds}s")
 
-            raw_status = await asyncio.to_thread(
-                self._client.get_job_status, self._job_id
-            )
+            raw_status = await asyncio.to_thread(self._client.get_job_status, self._job_id)
             status_str = _parse_ray_status(raw_status)
             if status_str in _TERMINAL_STATUSES:
                 elapsed = time.monotonic() - start
                 logger.info(
                     "stop_training_completed job_id=%s final_status=%s elapsed_seconds=%.3f",
-                    self._job_id, status_str, elapsed,
+                    self._job_id,
+                    status_str,
+                    elapsed,
                 )
                 return
 
@@ -108,9 +108,7 @@ class RayTrainingJob:
             return JobStatus.STOPPED
 
         start = time.monotonic()
-        raw_status = await asyncio.to_thread(
-            self._client.get_job_status, self._job_id
-        )
+        raw_status = await asyncio.to_thread(self._client.get_job_status, self._job_id)
         elapsed = time.monotonic() - start
 
         status_str = _parse_ray_status(raw_status)
@@ -121,6 +119,9 @@ class RayTrainingJob:
 
         logger.info(
             "get_training_status job_id=%s raw_status=%s job_status=%s elapsed_seconds=%.3f",
-            self._job_id, status_str, job_status.value, elapsed,
+            self._job_id,
+            status_str,
+            job_status.value,
+            elapsed,
         )
         return job_status

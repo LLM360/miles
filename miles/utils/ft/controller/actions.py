@@ -3,14 +3,10 @@ from __future__ import annotations
 import logging
 
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
-from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery_orchestrator.helpers import (
-    retry_async,
-    safe_notify,
-    stop_clear_submit,
-)
+from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
+from miles.utils.ft.controller.recovery_orchestrator.helpers import retry_async, safe_notify, stop_clear_submit
 from miles.utils.ft.models import Decision
 from miles.utils.ft.platform.protocols import (
     DiagnosticSchedulerProtocol,
@@ -31,13 +27,15 @@ async def handle_mark_bad_and_restart(
 ) -> None:
     logger.warning(
         "decision_mark_bad_and_restart bad_node_ids=%s reason=%s",
-        decision.bad_node_ids, decision.reason,
+        decision.bad_node_ids,
+        decision.reason,
     )
     failed_nodes: list[str] = []
     for node_id in decision.bad_node_ids:
         result = await retry_async(
             lambda nid=node_id: node_manager.mark_node_bad(
-                nid, reason=decision.reason,
+                nid,
+                reason=decision.reason,
             ),
             description=f"mark_node_bad({node_id})",
         )
@@ -48,7 +46,9 @@ async def handle_mark_bad_and_restart(
         msg = f"mark_node_bad failed for nodes: {failed_nodes}"
         logger.error("mark_bad_partial_failure %s", msg)
         await safe_notify(
-            notifier, title="Mark-Bad Failure", content=msg,
+            notifier,
+            title="Mark-Bad Failure",
+            content=msg,
         )
 
     restart_ok = await stop_clear_submit(training_job, mini_wandb)
@@ -56,7 +56,9 @@ async def handle_mark_bad_and_restart(
         msg = "stop_clear_submit failed after mark_bad_and_restart"
         logger.error(msg)
         await safe_notify(
-            notifier, title="Restart Failure", content=msg,
+            notifier,
+            title="Restart Failure",
+            content=msg,
         )
 
 
@@ -72,7 +74,8 @@ async def handle_enter_recovery(
 ) -> RecoveryOrchestrator:
     logger.warning(
         "decision_enter_recovery trigger=%s reason=%s",
-        decision.trigger, decision.reason,
+        decision.trigger,
+        decision.reason,
     )
     return RecoveryOrchestrator(
         trigger=decision.trigger,
@@ -95,5 +98,7 @@ async def handle_notify_human(
         decision.reason,
     )
     await safe_notify(
-        notifier, title="Fault Alert", content=decision.reason,
+        notifier,
+        title="Fault Alert",
+        content=decision.reason,
     )

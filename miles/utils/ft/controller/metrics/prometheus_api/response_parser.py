@@ -89,7 +89,7 @@ def _parse_matrix(result: list[dict[str, Any]]) -> pl.DataFrame:
 
     for item in result:
         metric: dict[str, str] = item.get("metric") or {}
-        for ts, value_str in (item.get("values") or []):
+        for ts, value_str in item.get("values") or []:
             try:
                 parsed_value = float(value_str)
                 parsed_ts = float(ts)

@@ -11,10 +11,7 @@ from tests.fast.utils.ft.helpers import (
 )
 
 from miles.utils.ft.controller.detectors import build_detector_chain
-from miles.utils.ft.metric_names import (
-    NODE_NETWORK_UP,
-    TRAINING_ITERATION,
-)
+from miles.utils.ft.metric_names import NODE_NETWORK_UP, TRAINING_ITERATION
 from miles.utils.ft.models import ActionType, MetricSample
 from miles.utils.ft.platform.protocols import JobStatus
 
@@ -41,8 +38,10 @@ class TestDetectorChainIntegration:
 
         wandb = make_fake_mini_wandb(steps={i: {"loss": 2.5, "mfu": 0.45} for i in range(1, 11)})
         ctx = make_detector_context(
-            metric_store=store, mini_wandb=wandb,
-            rank_placement=_RANK_PLACEMENT, job_status=JobStatus.RUNNING,
+            metric_store=store,
+            mini_wandb=wandb,
+            rank_placement=_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
         )
         chain = build_detector_chain()
 
@@ -57,8 +56,10 @@ class TestDetectorChainIntegration:
 
         wandb = make_fake_mini_wandb(steps={1: {"loss": 2.5}})
         ctx = make_detector_context(
-            metric_store=store, mini_wandb=wandb,
-            rank_placement=_RANK_PLACEMENT, job_status=JobStatus.FAILED,
+            metric_store=store,
+            mini_wandb=wandb,
+            rank_placement=_RANK_PLACEMENT,
+            job_status=JobStatus.FAILED,
         )
         chain = build_detector_chain()
 
@@ -100,8 +101,10 @@ class TestDetectorChainIntegration:
 
         wandb = make_fake_mini_wandb()
         ctx = make_detector_context(
-            metric_store=store, mini_wandb=wandb,
-            rank_placement=_RANK_PLACEMENT, job_status=JobStatus.RUNNING,
+            metric_store=store,
+            mini_wandb=wandb,
+            rank_placement=_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
         )
         chain = build_detector_chain()
 
@@ -119,8 +122,10 @@ class TestDetectorChainIntegration:
 
         wandb = make_fake_mini_wandb(steps={1: {"loss": float("nan")}})
         ctx = make_detector_context(
-            metric_store=store, mini_wandb=wandb,
-            rank_placement=_RANK_PLACEMENT, job_status=JobStatus.FAILED,
+            metric_store=store,
+            mini_wandb=wandb,
+            rank_placement=_RANK_PLACEMENT,
+            job_status=JobStatus.FAILED,
         )
         chain = build_detector_chain()
 

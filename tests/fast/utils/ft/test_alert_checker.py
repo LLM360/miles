@@ -1,12 +1,10 @@
 """Unit tests for AlertChecker."""
+
+from tests.fast.utils.ft.helpers import inject_critical_xid, inject_gpu_unavailable, make_fake_metric_store
+
 from miles.utils.ft.controller.recovery_orchestrator.alert_checker import AlertChecker
-from miles.utils.ft.metric_names import GPU_AVAILABLE, XID_CODE_RECENT
+from miles.utils.ft.metric_names import GPU_AVAILABLE
 from miles.utils.ft.models import MetricSample
-from tests.fast.utils.ft.helpers import (
-    inject_critical_xid,
-    inject_gpu_unavailable,
-    make_fake_metric_store,
-)
 
 
 class TestAlertCheckerEmpty:
@@ -20,9 +18,11 @@ class TestAlertCheckerEmpty:
         assert reasons == []
 
     def test_healthy_metrics_returns_empty(self) -> None:
-        store = make_fake_metric_store(metrics=[
-            MetricSample(name=GPU_AVAILABLE, labels={"gpu": "0"}, value=1.0),
-        ])
+        store = make_fake_metric_store(
+            metrics=[
+                MetricSample(name=GPU_AVAILABLE, labels={"gpu": "0"}, value=1.0),
+            ]
+        )
         checker = AlertChecker(metric_store=store)
 
         bad_node_ids, reasons = checker.check_alerts()

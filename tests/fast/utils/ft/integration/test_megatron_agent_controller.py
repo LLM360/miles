@@ -9,9 +9,9 @@ not by FtMegatronAgent.step().
 """
 
 import httpx
+from tests.fast.utils.ft.conftest import make_test_controller
 
 from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
-from tests.fast.utils.ft.conftest import make_test_controller
 
 
 def _make_agent(rank: int = 0, world_size: int = 4) -> FtMegatronAgent:
@@ -24,12 +24,16 @@ class TestStepToLogStepFlow:
         run_id = "integ-megatron-1"
 
         await harness.controller.register_rank(
-            run_id=run_id, rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://localhost:9999",
+            run_id=run_id,
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://localhost:9999",
         )
 
         await harness.controller.log_step(
-            run_id=run_id, step=5,
+            run_id=run_id,
+            step=5,
             metrics={"loss": 2.5, "grad_norm": 1.1},
         )
 
@@ -43,12 +47,18 @@ class TestRegisterRankPlacement:
         run_id = "integ-megatron-2"
 
         await harness.controller.register_rank(
-            run_id=run_id, rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id=run_id,
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
         )
         await harness.controller.register_rank(
-            run_id=run_id, rank=1, world_size=4,
-            node_id="node-1", exporter_address="http://node-1:9090",
+            run_id=run_id,
+            rank=1,
+            world_size=4,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
         )
 
         assert harness.controller._rank_placement == {0: "node-0", 1: "node-1"}
@@ -63,8 +73,11 @@ class TestScrapeTargetRegistration:
             exporter_address = agent.get_exporter_address()
 
             await harness.controller.register_rank(
-                run_id=run_id, rank=0, world_size=4,
-                node_id="node-0", exporter_address=exporter_address,
+                run_id=run_id,
+                rank=0,
+                world_size=4,
+                node_id="node-0",
+                exporter_address=exporter_address,
             )
 
             assert "rank-0" in harness.metric_store._scrape_targets
@@ -81,8 +94,11 @@ class TestHeartbeatScrape:
             exporter_address = agent.get_exporter_address()
 
             await harness.controller.register_rank(
-                run_id=run_id, rank=0, world_size=4,
-                node_id="node-0", exporter_address=exporter_address,
+                run_id=run_id,
+                rank=0,
+                world_size=4,
+                node_id="node-0",
+                exporter_address=exporter_address,
             )
 
             agent.set_phase("training")
@@ -105,18 +121,25 @@ class TestRunIdClear:
         run_id_2 = "integ-megatron-run-2"
 
         await harness.controller.register_rank(
-            run_id=run_id_1, rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://localhost:9999",
+            run_id=run_id_1,
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://localhost:9999",
         )
         await harness.controller.log_step(
-            run_id=run_id_1, step=10,
+            run_id=run_id_1,
+            step=10,
             metrics={"loss": 2.0},
         )
         assert harness.mini_wandb.latest(metric_name="loss") == 2.0
 
         await harness.controller.register_rank(
-            run_id=run_id_2, rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://localhost:9999",
+            run_id=run_id_2,
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://localhost:9999",
         )
 
         assert harness.mini_wandb.latest(metric_name="loss") is None
@@ -129,13 +152,17 @@ class TestMultiRankConcurrentStep:
 
         for rank in range(4):
             await harness.controller.register_rank(
-                run_id=run_id, rank=rank, world_size=4,
-                node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
+                run_id=run_id,
+                rank=rank,
+                world_size=4,
+                node_id=f"node-{rank}",
+                exporter_address=f"http://node-{rank}:9090",
             )
 
         for rank in range(4):
             await harness.controller.log_step(
-                run_id=run_id, step=1,
+                run_id=run_id,
+                step=1,
                 metrics={"loss": float(rank) + 1.0},
             )
 
@@ -172,6 +199,6 @@ class TestPhaseSwitch:
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{address}/metrics")
             text = response.text
-            assert 'miles_ft_training_phase{node_id=' in text
+            assert "miles_ft_training_phase{node_id=" in text
         finally:
             agent.shutdown()

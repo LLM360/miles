@@ -51,11 +51,13 @@ class FaultInjectorActor:
                 cmdline_str = " ".join(cmdline).lower()
 
                 if any(pattern in cmdline_str for pattern in _TRAINING_CMDLINE_PATTERNS):
-                    results.append({
-                        "pid": proc.info["pid"],
-                        "name": proc.info.get("name", ""),
-                        "cmdline": cmdline,
-                    })
+                    results.append(
+                        {
+                            "pid": proc.info["pid"],
+                            "name": proc.info.get("name", ""),
+                            "cmdline": cmdline,
+                        }
+                    )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return results

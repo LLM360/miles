@@ -7,6 +7,7 @@ Validates the escalation path:
   4. Controller detects repeated failure → enters DIAGNOSING
   5. With StubDiagnosticScheduler → all diagnostics pass → NOTIFY_HUMAN
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,6 +27,8 @@ pytestmark = [
     pytest.mark.e2e,
     pytest.mark.timeout(600),
 ]
+
+
 async def test_repeated_crash_enters_diagnosing(
     ft_system: FtSystem,
     fault_injector: FaultInjectorFactory,

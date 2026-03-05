@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Iterator
 
 import polars as pl
 
 SeriesKey = tuple[str, frozenset[tuple[str, str]]]
 
-EMPTY_INSTANT = pl.DataFrame(
-    {"__name__": pl.Series([], dtype=pl.Utf8), "value": pl.Series([], dtype=pl.Float64)}
+EMPTY_INSTANT = pl.DataFrame({"__name__": pl.Series([], dtype=pl.Utf8), "value": pl.Series([], dtype=pl.Float64)})
+EMPTY_RANGE = pl.DataFrame(
+    {
+        "__name__": pl.Series([], dtype=pl.Utf8),
+        "timestamp": pl.Series([], dtype=pl.Float64),
+        "value": pl.Series([], dtype=pl.Float64),
+    }
 )
-EMPTY_RANGE = pl.DataFrame({
-    "__name__": pl.Series([], dtype=pl.Utf8),
-    "timestamp": pl.Series([], dtype=pl.Float64),
-    "value": pl.Series([], dtype=pl.Float64),
-})
 
 
 @dataclass
@@ -39,7 +38,11 @@ def query_latest(
     label_filters: dict[str, str] | None = None,
 ) -> pl.DataFrame:
     return _instant_query(
-        series, label_maps, name_index, metric_name, label_filters,
+        series,
+        label_maps,
+        name_index,
+        metric_name,
+        label_filters,
         value_fn=lambda samples: samples[-1].value,
     )
 
@@ -154,7 +157,11 @@ def range_aggregate(
         return _compute_aggregate(func_name, window_samples)
 
     return _instant_query(
-        series, label_maps, name_index, metric_name, label_filters,
+        series,
+        label_maps,
+        name_index,
+        metric_name,
+        label_filters,
         value_fn=_extract,
     )
 
@@ -166,11 +173,7 @@ def _compute_aggregate(func_name: str, samples: list[TimeSeriesSample]) -> float
     if func_name == "changes":
         if len(samples) < 2:
             return 0.0
-        return float(sum(
-            1
-            for i in range(1, len(samples))
-            if samples[i].value != samples[i - 1].value
-        ))
+        return float(sum(1 for i in range(1, len(samples)) if samples[i].value != samples[i - 1].value))
 
     if func_name == "min_over_time":
         return min(s.value for s in samples)

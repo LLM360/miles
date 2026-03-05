@@ -4,10 +4,7 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from miles.utils.ft.agents.collectors.kernel_log_reader import (
-    DmesgSubprocessReader,
-    KmsgFileReader,
-)
+from miles.utils.ft.agents.collectors.kernel_log_reader import DmesgSubprocessReader, KmsgFileReader
 
 
 class TestKmsgFileReader:
@@ -90,6 +87,7 @@ class TestDmesgSubprocessReader:
         reader = DmesgSubprocessReader()
 
         import subprocess
+
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="dmesg", timeout=5)):
             lines = reader.read_new_lines()
 

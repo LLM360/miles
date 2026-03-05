@@ -11,6 +11,7 @@ The caller (GpuDiagnostic) launches this via asyncio.create_subprocess_exec
 so that pynvml init/shutdown and torch computation happen in an isolated
 process and never block the NodeAgent event loop (see 3-discussions.md #48).
 """
+
 from __future__ import annotations
 
 import json
@@ -58,7 +59,8 @@ def _check_nvml(handle: object) -> NvmlCheckResult:
     )
 
     retired_double_bit = pynvml.nvmlDeviceGetRetiredPages(
-        handle, pynvml.NVML_PAGE_RETIREMENT_CAUSE_DOUBLE_BIT_ECC_ERROR,
+        handle,
+        pynvml.NVML_PAGE_RETIREMENT_CAUSE_DOUBLE_BIT_ECC_ERROR,
     )
 
     power_state: int = pynvml.nvmlDeviceGetPowerState(handle)
@@ -122,9 +124,7 @@ def _check_single_gpu(
     nvml = _check_nvml(handle)
 
     if nvml.ecc_errors_uncorrectable > 0:
-        failures.append(
-            f"uncorrectable ECC errors: {nvml.ecc_errors_uncorrectable}"
-        )
+        failures.append(f"uncorrectable ECC errors: {nvml.ecc_errors_uncorrectable}")
     if nvml.retired_pages_count > 0:
         failures.append(f"retired pages: {nvml.retired_pages_count}")
     if nvml.power_state_abnormal:

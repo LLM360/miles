@@ -5,10 +5,7 @@ import sys
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from miles.ray.placement_group import (
-    _check_placement_has_excluded_nodes,
-    _get_excluded_node_ids,
-)
+from miles.ray.placement_group import _check_placement_has_excluded_nodes, _get_excluded_node_ids
 
 
 class TestCheckPlacementHasExcludedNodes:

@@ -1,4 +1,5 @@
 """Unit tests for GpuDiagnostic — subprocess-based GPU health check."""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,16 +23,18 @@ def _make_gpu_result(
     matmul_passed: bool = True,
     details: str = "all checks passed",
 ) -> dict[str, object]:
-    return asdict(GpuCheckResult(
-        gpu_index=gpu_index,
-        passed=passed,
-        ecc_errors_uncorrectable=ecc_errors_uncorrectable,
-        retired_pages_count=retired_pages_count,
-        power_state_abnormal=power_state_abnormal,
-        row_remap_failure=row_remap_failure,
-        matmul_passed=matmul_passed,
-        details=details,
-    ))
+    return asdict(
+        GpuCheckResult(
+            gpu_index=gpu_index,
+            passed=passed,
+            ecc_errors_uncorrectable=ecc_errors_uncorrectable,
+            retired_pages_count=retired_pages_count,
+            power_state_abnormal=power_state_abnormal,
+            row_remap_failure=row_remap_failure,
+            matmul_passed=matmul_passed,
+            details=details,
+        )
+    )
 
 
 def _mock_subprocess(
@@ -185,6 +188,7 @@ class TestGpuDiagnosticTimeout:
         assert "timed out" in result.details
         process.kill.assert_called_once()
         process.wait.assert_called_once()
+
     async def test_timeout_kill_failure_still_returns_result(self) -> None:
         process = AsyncMock()
         process.communicate.side_effect = asyncio.TimeoutError()

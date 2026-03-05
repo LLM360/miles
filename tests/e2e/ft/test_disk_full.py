@@ -7,6 +7,7 @@ Validates the highest-confidence hardware detection path (~32.5% per ByteRobust)
   4. Training restarts on remaining healthy nodes
   5. Cleanup: remove filled file
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,13 +15,7 @@ import time
 
 import pytest
 import ray
-
-from tests.e2e.ft.conftest import (
-    FaultInjectorFactory,
-    FtSystem,
-    wait_for_recovery_complete,
-    wait_for_training_stable,
-)
+from tests.e2e.ft.conftest import FaultInjectorFactory, FtSystem, wait_for_recovery_complete, wait_for_training_stable
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +26,8 @@ pytestmark = [
     pytest.mark.e2e,
     pytest.mark.timeout(600),
 ]
+
+
 async def test_disk_full_eviction(
     ft_system: FtSystem,
     fault_injector: FaultInjectorFactory,
@@ -49,10 +46,12 @@ async def test_disk_full_eviction(
 
     try:
         t_inject = time.monotonic()
-        ray.get(injector.fill_disk.remote(
-            path=_FILL_PATH,
-            size_bytes=_FILL_SIZE_BYTES,
-        ))
+        ray.get(
+            injector.fill_disk.remote(
+                path=_FILL_PATH,
+                size_bytes=_FILL_SIZE_BYTES,
+            )
+        )
         logger.info("disk_filled path=%s size=%d node=%s", _FILL_PATH, _FILL_SIZE_BYTES, target_node)
 
         # Wait for HighConfidenceHardwareDetector to trigger MARK_BAD_AND_RESTART

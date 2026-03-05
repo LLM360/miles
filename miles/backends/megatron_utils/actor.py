@@ -16,12 +16,12 @@ from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
 from miles.utils.context_utils import with_defer
 from miles.utils.distributed_utils import get_gloo_group, init_process_group
+from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
 from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.ray_utils import Box
 from miles.utils.reloadable_process_group import destroy_process_groups, monkey_patch_torch_dist, reload_process_groups
 from miles.utils.replay_base import all_replay_managers
 from miles.utils.timer import Timer, inverse_timer, timer
-from miles.utils.ft.agents.megatron_agent import FtMegatronAgent
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
 

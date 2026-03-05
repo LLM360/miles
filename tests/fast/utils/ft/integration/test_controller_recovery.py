@@ -3,21 +3,19 @@
 Each test drives the Controller through multiple ticks to verify
 complete decision → recovery → monitoring lifecycle.
 """
+
 from __future__ import annotations
 
-
-import miles.utils.ft.metric_names as mn
-from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
-from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
-    AlwaysNoneDetector,
     FixedDecisionDetector,
     get_sample_value,
-    inject_gpu_unavailable,
     make_test_controller,
     make_test_exporter,
 )
 
+import miles.utils.ft.metric_names as mn
+from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
+from miles.utils.ft.platform.protocols import JobStatus
 
 # -------------------------------------------------------------------
 # Scenario 1: GPU lost → direct eviction (MARK_BAD_AND_RESTART)
@@ -26,11 +24,13 @@ from tests.fast.utils.ft.conftest import (
 
 class TestGpuLostDirectEviction:
     async def test_gpu_lost_marks_bad_and_restarts(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.MARK_BAD_AND_RESTART,
-            bad_node_ids=["node-0"],
-            reason="GPU unavailable",
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.MARK_BAD_AND_RESTART,
+                bad_node_ids=["node-0"],
+                reason="GPU unavailable",
+            )
+        )
         harness = make_test_controller(
             detectors=[detector],
             status_sequence=[JobStatus.RUNNING],
@@ -51,11 +51,13 @@ class TestGpuLostDirectEviction:
 
 class TestCrashReattemptSuccess:
     async def test_crash_reattempt_success(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="training process exited",
-        ))
+        enter_recovery = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="crash",
+                reason="training process exited",
+            )
+        )
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.RUNNING],
@@ -73,7 +75,8 @@ class TestCrashReattemptSuccess:
 
         for i in range(1, 11):
             harness.mini_wandb.log_step(
-                run_id="test-run", step=i,
+                run_id="test-run",
+                step=i,
                 metrics={"iteration": float(i)},
             )
 
@@ -88,11 +91,13 @@ class TestCrashReattemptSuccess:
 
 class TestCrashReattemptFailDiagnoseNotify:
     async def test_crash_diagnose_notify(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="training process exited",
-        ))
+        enter_recovery = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="crash",
+                reason="training process exited",
+            )
+        )
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.FAILED],
@@ -124,11 +129,13 @@ class TestCrashReattemptFailDiagnoseNotify:
 
 class TestGlobalTimeout:
     async def test_global_timeout_triggers_notify(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="hang",
-            reason="hang detected",
-        ))
+        enter_recovery = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="hang",
+                reason="hang detected",
+            )
+        )
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.PENDING] * 100,
@@ -139,6 +146,7 @@ class TestGlobalTimeout:
         assert orch is not None
 
         from datetime import datetime, timedelta, timezone
+
         orch._context.recovery_start_time = datetime.now(timezone.utc) - timedelta(seconds=1801)
 
         await harness.controller._tick()
@@ -159,11 +167,13 @@ class TestGlobalTimeout:
 
 class TestRecoveryCompleteBackToMonitoring:
     async def test_back_to_monitoring_after_recovery(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="training process exited",
-        ))
+        enter_recovery = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="crash",
+                reason="training process exited",
+            )
+        )
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.RUNNING],
@@ -184,7 +194,8 @@ class TestRecoveryCompleteBackToMonitoring:
 
         for i in range(1, 11):
             harness.mini_wandb.log_step(
-                run_id="test-run", step=i,
+                run_id="test-run",
+                step=i,
                 metrics={"iteration": float(i)},
             )
         await harness.controller._tick()
@@ -203,11 +214,13 @@ class TestRecoveryCompleteBackToMonitoring:
 class TestExporterModeGauge:
     async def test_mode_gauge_during_recovery(self) -> None:
         registry, exporter = make_test_exporter()
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        enter_recovery = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                trigger="crash",
+                reason="test",
+            )
+        )
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.RUNNING],
@@ -232,7 +245,8 @@ class TestExporterModeGauge:
 
         for i in range(1, 11):
             harness.mini_wandb.log_step(
-                run_id="test-run", step=i,
+                run_id="test-run",
+                step=i,
                 metrics={"iteration": float(i)},
             )
 

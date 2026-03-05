@@ -46,17 +46,22 @@ def _start_exporter(port: int) -> Thread:
     thread.start()
 
     import time
+
     time.sleep(0.5)
 
     return thread
+
+
 class TestMiniPrometheusScrapeReal:
     async def test_scrape_single_exporter(self) -> None:
         port = _find_free_port()
         _start_exporter(port)
 
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         store.add_scrape_target(
             target_id="node-0",
             address=f"http://localhost:{port}",
@@ -79,9 +84,10 @@ class TestMiniPrometheusScrapeReal:
         temp = Gauge("test_temp", "test", ["gpu"], registry=registry)
         temp.labels(gpu="0").set(60.0)
 
-        from prometheus_client import start_http_server
-        from threading import Thread
         import time
+        from threading import Thread
+
+        from prometheus_client import start_http_server
 
         Thread(
             target=lambda: start_http_server(port=port, registry=registry),
@@ -89,9 +95,11 @@ class TestMiniPrometheusScrapeReal:
         ).start()
         time.sleep(0.5)
 
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         store.add_scrape_target(target_id="node-0", address=f"http://localhost:{port}")
 
         await store.scrape_once()
@@ -104,9 +112,11 @@ class TestMiniPrometheusScrapeReal:
         assert df2["value"][0] == 90.0
 
     async def test_scrape_unreachable_target_warns(self, caplog: pytest.LogCaptureFixture) -> None:
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         store.add_scrape_target(
             target_id="bad-node",
             address="http://localhost:19999",
@@ -118,11 +128,11 @@ class TestMiniPrometheusScrapeReal:
         assert any("Failed to scrape" in r.message for r in caplog.records)
 
     async def test_scrape_multiple_exporters(self) -> None:
-        from prometheus_client import Gauge
-        from prometheus_client.registry import CollectorRegistry
-        from prometheus_client import start_http_server
-        from threading import Thread
         import time
+        from threading import Thread
+
+        from prometheus_client import Gauge, start_http_server
+        from prometheus_client.registry import CollectorRegistry
 
         port1 = _find_free_port()
         reg1 = CollectorRegistry()
@@ -142,9 +152,11 @@ class TestMiniPrometheusScrapeReal:
 
         time.sleep(0.5)
 
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         store.add_scrape_target(target_id="node-0", address=f"http://localhost:{port1}")
         store.add_scrape_target(target_id="node-1", address=f"http://localhost:{port2}")
 
@@ -161,9 +173,11 @@ class TestMiniPrometheusScrapeReal:
         port = _find_free_port()
         _start_exporter(port)
 
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         store.add_scrape_target(
             target_id="node-0",
             address=f"http://localhost:{port}",
@@ -182,9 +196,11 @@ class TestMiniPrometheusScrapeReal:
         port = _find_free_port()
         _start_exporter(port)
 
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         store.add_scrape_target(
             target_id="node-0",
             address=f"http://localhost:{port}",
@@ -197,11 +213,11 @@ class TestMiniPrometheusScrapeReal:
         assert store._scrape_loop._client is None
 
     async def test_scrape_bad_target_doesnt_affect_good(self) -> None:
-        from prometheus_client import Gauge
-        from prometheus_client.registry import CollectorRegistry
-        from prometheus_client import start_http_server
-        from threading import Thread
         import time
+        from threading import Thread
+
+        from prometheus_client import Gauge, start_http_server
+        from prometheus_client.registry import CollectorRegistry
 
         port = _find_free_port()
         reg = CollectorRegistry()
@@ -212,9 +228,11 @@ class TestMiniPrometheusScrapeReal:
         ).start()
         time.sleep(0.5)
 
-        store = MiniPrometheus(config=MiniPrometheusConfig(
-            retention=timedelta(minutes=60),
-        ))
+        store = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                retention=timedelta(minutes=60),
+            )
+        )
         store.add_scrape_target(target_id="bad-node", address="http://localhost:19999")
         store.add_scrape_target(target_id="good-node", address=f"http://localhost:{port}")
 

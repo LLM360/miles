@@ -61,7 +61,10 @@ class GpuCollector(BaseCollector):
         return samples
 
     def _collect_temperature(
-        self, pynvml: ModuleType, handle: object, gpu_label: dict[str, str],
+        self,
+        pynvml: ModuleType,
+        handle: object,
+        gpu_label: dict[str, str],
     ) -> list[MetricSample]:
         def _query() -> list[MetricSample]:
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
@@ -70,7 +73,10 @@ class GpuCollector(BaseCollector):
         return _safe_nvml_collect(_query, metric_desc="temperature", gpu=gpu_label["gpu"])
 
     def _collect_row_remap(
-        self, pynvml: ModuleType, handle: object, gpu_label: dict[str, str],
+        self,
+        pynvml: ModuleType,
+        handle: object,
+        gpu_label: dict[str, str],
     ) -> list[MetricSample]:
         def _query() -> list[MetricSample]:
             _correctable, _uncorrectable, pending, failure = pynvml.nvmlDeviceGetRemappedRows(handle)
@@ -82,7 +88,10 @@ class GpuCollector(BaseCollector):
         return _safe_nvml_collect(_query, metric_desc="row remap", gpu=gpu_label["gpu"])
 
     def _collect_pcie_bandwidth(
-        self, pynvml: ModuleType, handle: object, gpu_label: dict[str, str],
+        self,
+        pynvml: ModuleType,
+        handle: object,
+        gpu_label: dict[str, str],
     ) -> list[MetricSample]:
         def _query() -> list[MetricSample]:
             throughput_kb_per_s = pynvml.nvmlDeviceGetPcieThroughput(handle, pynvml.NVML_PCIE_UTIL_TX_BYTES)
@@ -92,7 +101,10 @@ class GpuCollector(BaseCollector):
         return _safe_nvml_collect(_query, metric_desc="PCIe bandwidth", gpu=gpu_label["gpu"])
 
     def _collect_utilization(
-        self, pynvml: ModuleType, handle: object, gpu_label: dict[str, str],
+        self,
+        pynvml: ModuleType,
+        handle: object,
+        gpu_label: dict[str, str],
     ) -> list[MetricSample]:
         def _query() -> list[MetricSample]:
             rates = pynvml.nvmlDeviceGetUtilizationRates(handle)

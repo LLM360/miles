@@ -2,8 +2,8 @@ from datetime import timedelta
 
 import polars as pl
 
-from miles.utils.ft.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.models import Decision, NodeFault
 
 _DEFAULT_ALERT_WINDOW = timedelta(minutes=5)

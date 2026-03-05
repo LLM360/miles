@@ -7,24 +7,21 @@ The most common recovery path (~22.7% of failures per ByteRobust):
   4. Training restarts and stabilizes → MONITORING → DONE
   5. No nodes marked as bad (transient fault)
 """
+
 from __future__ import annotations
 
 import time
 
 import pytest
 import ray
-
-from tests.e2e.ft.conftest import (
-    FaultInjectorFactory,
-    FtSystem,
-    wait_for_recovery_complete,
-    wait_for_training_stable,
-)
+from tests.e2e.ft.conftest import FaultInjectorFactory, FtSystem, wait_for_recovery_complete, wait_for_training_stable
 
 pytestmark = [
     pytest.mark.e2e,
     pytest.mark.timeout(600),
 ]
+
+
 async def test_transient_crash_auto_recovery(
     ft_system: FtSystem,
     fault_injector: FaultInjectorFactory,
@@ -70,9 +67,9 @@ async def test_transient_crash_auto_recovery(
 
     # No nodes should be marked as bad (transient fault)
     final_status = controller.get_status()
-    assert final_status["bad_nodes"] == [], (
-        f"Expected no bad nodes for transient crash, got: {final_status['bad_nodes']}"
-    )
+    assert (
+        final_status["bad_nodes"] == []
+    ), f"Expected no bad nodes for transient crash, got: {final_status['bad_nodes']}"
 
     # Sanity check: recovery time should be reasonable (< 5 min)
     assert t_recover < 300.0, f"Recovery took too long: {t_recover:.1f}s"

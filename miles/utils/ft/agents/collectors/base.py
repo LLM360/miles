@@ -12,8 +12,7 @@ class BaseCollector(ABC):
         return CollectorOutput(metrics=metrics)
 
     @abstractmethod
-    def _collect_sync(self) -> list[MetricSample]:
-        ...
+    def _collect_sync(self) -> list[MetricSample]: ...
 
     async def close(self) -> None:
         pass

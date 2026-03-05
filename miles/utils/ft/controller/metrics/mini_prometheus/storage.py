@@ -7,13 +7,10 @@ from datetime import datetime, timedelta, timezone
 import polars as pl
 
 from miles.utils.ft.controller.metrics.aggregation_mixin import RangeAggregationMixin
-from miles.utils.ft.controller.metrics.mini_prometheus.query import (
-    TimeSeriesSample,
-    SeriesKey,
-    query_latest as _query_latest,
-    query_range as _query_range,
-    range_aggregate as _range_aggregate,
-)
+from miles.utils.ft.controller.metrics.mini_prometheus.query import SeriesKey, TimeSeriesSample
+from miles.utils.ft.controller.metrics.mini_prometheus.query import query_latest as _query_latest
+from miles.utils.ft.controller.metrics.mini_prometheus.query import query_range as _query_range
+from miles.utils.ft.controller.metrics.mini_prometheus.query import range_aggregate as _range_aggregate
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
 from miles.utils.ft.models import MetricSample
 
@@ -94,23 +91,35 @@ class MiniPrometheus(RangeAggregationMixin):
     # -------------------------------------------------------------------
 
     def query_latest(
-        self, metric_name: str, label_filters: dict[str, str] | None = None,
+        self,
+        metric_name: str,
+        label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return _query_latest(self._series, self._label_maps, self._name_index, metric_name, label_filters)
 
     def query_range(
-        self, metric_name: str, window: timedelta,
+        self,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return _query_range(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
 
     def _dispatch_range_function(
-        self, func_name: str, metric_name: str, window: timedelta,
+        self,
+        func_name: str,
+        metric_name: str,
+        window: timedelta,
         label_filters: dict[str, str] | None,
     ) -> pl.DataFrame:
         return _range_aggregate(
-            self._series, self._label_maps, self._name_index,
-            func_name, metric_name, window, label_filters,
+            self._series,
+            self._label_maps,
+            self._name_index,
+            func_name,
+            metric_name,
+            window,
+            label_filters,
         )
 
     # -------------------------------------------------------------------
@@ -120,10 +129,7 @@ class MiniPrometheus(RangeAggregationMixin):
     def _maybe_evict(self) -> None:
         now = datetime.now(timezone.utc)
         evict_interval = self._config.retention / 10
-        if (
-            self._last_eviction_time is not None
-            and now - self._last_eviction_time < evict_interval
-        ):
+        if self._last_eviction_time is not None and now - self._last_eviction_time < evict_interval:
             return
         self._last_eviction_time = now
         self._evict_expired()

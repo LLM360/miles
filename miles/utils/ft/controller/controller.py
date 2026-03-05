@@ -4,11 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
-from miles.utils.ft.controller.actions import (
-    handle_enter_recovery,
-    handle_mark_bad_and_restart,
-    handle_notify_human,
-)
+from miles.utils.ft.controller.actions import handle_enter_recovery, handle_mark_bad_and_restart, handle_notify_human
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
@@ -53,13 +49,10 @@ class FtController:
         self._tick_interval = tick_interval
         self._controller_exporter = controller_exporter
 
-        self._diagnostic_scheduler: DiagnosticSchedulerProtocol = (
-            diagnostic_scheduler
-            or DiagnosticScheduler(
-                agents=self._rank_registry.agents,
-                pipeline=["gpu"],
-                rank_pids_provider=self._rank_registry.get_rank_pids_for_node,
-            )
+        self._diagnostic_scheduler: DiagnosticSchedulerProtocol = diagnostic_scheduler or DiagnosticScheduler(
+            agents=self._rank_registry.agents,
+            pipeline=["gpu"],
+            rank_pids_provider=self._rank_registry.get_rank_pids_for_node,
         )
 
         self._shutting_down: bool = False
@@ -128,7 +121,9 @@ class FtController:
         metrics: dict[str, float],
     ) -> None:
         self._rank_registry.log_step(
-            run_id=run_id, step=step, metrics=metrics,
+            run_id=run_id,
+            step=step,
+            metrics=metrics,
         )
 
     async def register_rank(
@@ -189,8 +184,10 @@ class FtController:
 
         logger.info(
             "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
-            self._tick_count, self._rank_registry.active_run_id,
-            decision.action.value, decision.reason,
+            self._tick_count,
+            self._rank_registry.active_run_id,
+            decision.action.value,
+            decision.reason,
         )
 
         self._update_exporter_metrics(job_status)

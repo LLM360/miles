@@ -33,6 +33,4 @@ class FtTrackingAgent(ControllerHandleMixin):
                     metrics=metrics,
                 )
         except Exception:
-            logger.warning(
-                "FtTrackingAgent.log() failed at step=%d", step, exc_info=True
-            )
+            logger.warning("FtTrackingAgent.log() failed at step=%d", step, exc_info=True)

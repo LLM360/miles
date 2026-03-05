@@ -1,4 +1,5 @@
 """Tests for DiagnosticScheduler and BaseDiagnostic."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,22 +7,10 @@ import logging
 from unittest.mock import patch
 
 import pytest
-
-from miles.utils.ft.agents.node_agent import FtNodeAgent
-from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
-from miles.utils.ft.controller.diagnostics.inter_machine_comm import (
-    InterMachineCommDiagnostic,
-)
-from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import (
-    PairResult,
-    cross_compare,
-)
-from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
-from miles.utils.ft.models import ActionType, DiagnosticResult
 from tests.fast.utils.ft.helpers import (
-    FakeNodeAgent,
     SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
     SAMPLE_PYSPY_OUTPUT_STUCK,
+    FakeNodeAgent,
     StubDiagnostic,
     make_fake_agents,
     make_rank_pids_provider,
@@ -30,6 +19,12 @@ from tests.fast.utils.ft.helpers import (
     mock_stack_trace_diagnostic,
 )
 
+from miles.utils.ft.agents.node_agent import FtNodeAgent
+from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.controller.diagnostics.inter_machine_comm import InterMachineCommDiagnostic
+from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import PairResult, cross_compare
+from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.models import ActionType, DiagnosticResult
 
 # ---------------------------------------------------------------------------
 # BaseDiagnostic tests
@@ -40,7 +35,9 @@ class _ConcreteDiagnostic(BaseDiagnostic):
     diagnostic_type = "test_concrete"
 
     async def run(
-        self, node_id: str, timeout_seconds: int = 120,
+        self,
+        node_id: str,
+        timeout_seconds: int = 120,
     ) -> DiagnosticResult:
         return DiagnosticResult(
             diagnostic_type=self.diagnostic_type,
@@ -76,6 +73,7 @@ class TestDiagnosticSchedulerEmptyPipeline:
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
+
     async def test_no_pipeline_arg_returns_notify_human(self) -> None:
         scheduler = DiagnosticScheduler(agents={})
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="hang")
@@ -85,30 +83,38 @@ class TestDiagnosticSchedulerEmptyPipeline:
 
 class TestDiagnosticSchedulerSingleStep:
     async def test_all_pass_returns_notify_human(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-            "node-1": {"gpu": True},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+                "node-1": {"gpu": True},
+            }
+        )
         scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
+
     async def test_one_node_fails_returns_mark_bad(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-            "node-1": {"gpu": False},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+                "node-1": {"gpu": False},
+            }
+        )
         scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-1" in decision.bad_node_ids
         assert "node-0" not in decision.bad_node_ids
+
     async def test_all_nodes_fail_returns_mark_bad(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": False},
-            "node-1": {"gpu": False},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": False},
+                "node-1": {"gpu": False},
+            }
+        )
         scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
@@ -118,38 +124,49 @@ class TestDiagnosticSchedulerSingleStep:
 
 class TestDiagnosticSchedulerMultiStep:
     async def test_first_step_catches_bad_node(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": False, "intra": True},
-            "node-1": {"gpu": True, "intra": True},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": False, "intra": True},
+                "node-1": {"gpu": True, "intra": True},
+            }
+        )
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["gpu", "intra"],
+            agents=agents,
+            pipeline=["gpu", "intra"],
         )
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert decision.bad_node_ids == ["node-0"]
         assert "gpu" in decision.reason
+
     async def test_first_passes_second_catches(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True, "intra": True},
-            "node-1": {"gpu": True, "intra": False},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True, "intra": True},
+                "node-1": {"gpu": True, "intra": False},
+            }
+        )
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["gpu", "intra"],
+            agents=agents,
+            pipeline=["gpu", "intra"],
         )
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert decision.bad_node_ids == ["node-1"]
         assert "intra" in decision.reason
+
     async def test_all_steps_pass_returns_notify(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True, "intra": True},
-            "node-1": {"gpu": True, "intra": True},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True, "intra": True},
+                "node-1": {"gpu": True, "intra": True},
+            }
+        )
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["gpu", "intra"],
+            agents=agents,
+            pipeline=["gpu", "intra"],
         )
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
@@ -160,7 +177,9 @@ class TestDiagnosticSchedulerErrorHandling:
     async def test_agent_exception_treated_as_failure(self) -> None:
         class _RaisingAgent:
             async def run_diagnostic(
-                self, diagnostic_type: str, timeout_seconds: int = 120,
+                self,
+                diagnostic_type: str,
+                timeout_seconds: int = 120,
             ) -> DiagnosticResult:
                 raise RuntimeError("agent crashed")
 
@@ -174,6 +193,7 @@ class TestDiagnosticSchedulerErrorHandling:
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-1" in decision.bad_node_ids
+
     async def test_trigger_reason_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         agents: dict[str, FakeNodeAgent] = {}
         scheduler = DiagnosticScheduler(agents=agents, pipeline=[])
@@ -185,17 +205,21 @@ class TestDiagnosticSchedulerErrorHandling:
             )
 
         assert "hang" in caplog.text
+
     async def test_no_agents_returns_notify(self) -> None:
         scheduler = DiagnosticScheduler(agents={}, pipeline=["gpu"])
         decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
+
     async def test_suspect_node_ids_limits_scope(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": False},
-            "node-1": {"gpu": False},
-            "node-2": {"gpu": True},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": False},
+                "node-1": {"gpu": False},
+                "node-2": {"gpu": True},
+            }
+        )
         scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
         decision = await scheduler.run_diagnostic_pipeline(
             trigger_reason="crash",
@@ -210,6 +234,7 @@ class TestDiagnosticSchedulerErrorHandling:
 
 class TestNodeAgentDynamicDiagnostics:
     """Test FtNodeAgent.set_diagnostic / remove_diagnostic."""
+
     async def test_set_diagnostic_overrides_existing(self) -> None:
         original = StubDiagnostic(passed=True, details="original")
         agent = FtNodeAgent(node_id="node-0", diagnostics=[original])
@@ -227,6 +252,7 @@ class TestNodeAgentDynamicDiagnostics:
             assert result2.details == "override"
         finally:
             await agent.stop()
+
     async def test_remove_diagnostic(self) -> None:
         from miles.utils.ft.models import UnknownDiagnosticError
 
@@ -243,6 +269,7 @@ class TestNodeAgentDynamicDiagnostics:
                 await agent.run_diagnostic("stub")
         finally:
             await agent.stop()
+
     async def test_remove_nonexistent_is_noop(self) -> None:
         agent = FtNodeAgent(node_id="node-0")
         try:
@@ -253,27 +280,39 @@ class TestNodeAgentDynamicDiagnostics:
 
 class TestDiagnosticSchedulerInterMachine:
     """Tests for the inter-machine diagnostic step with cross-comparison."""
+
     async def test_inter_machine_all_pass(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {}, "node-1": {}, "node-2": {},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {},
+                "node-1": {},
+                "node-2": {},
+            }
+        )
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["inter_machine"],
+            agents=agents,
+            pipeline=["inter_machine"],
         )
 
         with mock_inter_machine_run({"node-0": True, "node-1": True, "node-2": True}):
             decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
+
     async def test_inter_machine_one_bad_node(self) -> None:
         # 3 nodes: A, B, C. Pairs: (A,B), (B,C), (C,A)
         # A is bad → pairs (A,B) and (C,A) fail, (B,C) passes
         # A has failure_count=2, B has 1, C has 1 → A is bad
-        agents = make_fake_agents({
-            "node-0": {}, "node-1": {}, "node-2": {},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {},
+                "node-1": {},
+                "node-2": {},
+            }
+        )
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["inter_machine"],
+            agents=agents,
+            pipeline=["inter_machine"],
         )
 
         with mock_inter_machine_run({"node-0": False, "node-1": True, "node-2": True}):
@@ -281,22 +320,30 @@ class TestDiagnosticSchedulerInterMachine:
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-0" in decision.bad_node_ids
+
     async def test_inter_machine_cannot_localize_all_fail(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {}, "node-1": {}, "node-2": {},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {},
+                "node-1": {},
+                "node-2": {},
+            }
+        )
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["inter_machine"],
+            agents=agents,
+            pipeline=["inter_machine"],
         )
 
         with mock_inter_machine_run({"node-0": False, "node-1": False, "node-2": False}):
             decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
+
     async def test_inter_machine_two_nodes_pair_fails(self) -> None:
         agents = make_fake_agents({"node-0": {}, "node-1": {}})
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["inter_machine"],
+            agents=agents,
+            pipeline=["inter_machine"],
         )
 
         with mock_inter_machine_run({"node-0": False, "node-1": False}):
@@ -304,10 +351,12 @@ class TestDiagnosticSchedulerInterMachine:
 
         # 2 nodes, both fail → all nodes equal failure count → can't localize
         assert decision.action == ActionType.NOTIFY_HUMAN
+
     async def test_inter_machine_single_node_skipped(self) -> None:
         agents = make_fake_agents({"node-0": {}})
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["inter_machine"],
+            agents=agents,
+            pipeline=["inter_machine"],
         )
 
         with mock_inter_machine_run({"node-0": True}):
@@ -323,25 +372,26 @@ class TestDiagnosticSchedulerInterMachine:
             ("node-2", "node-3"),
             ("node-3", "node-0"),
         ]
-        pairs = [
-            (node_ids[i], node_ids[(i + 1) % len(node_ids)])
-            for i in range(len(node_ids))
-        ]
+        pairs = [(node_ids[i], node_ids[(i + 1) % len(node_ids)]) for i in range(len(node_ids))]
         assert pairs == expected_pairs
 
     def test_inter_machine_port_assignment(self) -> None:
-        from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import (
-            _BASE_PORT,
-        )
+        from miles.utils.ft.controller.diagnostics.inter_machine_orchestrator import _BASE_PORT
 
         assert _BASE_PORT == 29500
+
     async def test_inter_machine_diagnostic_exception(self) -> None:
         # If diag.run() raises, the pair should fail
-        agents = make_fake_agents({
-            "node-0": {}, "node-1": {}, "node-2": {},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {},
+                "node-1": {},
+                "node-2": {},
+            }
+        )
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["inter_machine"],
+            agents=agents,
+            pipeline=["inter_machine"],
         )
 
         call_count = 0
@@ -429,6 +479,7 @@ class TestCrossCompare:
 
 class TestDiagnosticSchedulerLiveAgents:
     """Test scheduler with real FtNodeAgent instances (not FakeNodeAgent)."""
+
     async def test_scheduler_with_real_node_agents(self) -> None:
         stub = StubDiagnostic(passed=True, details="all good")
         agent0 = FtNodeAgent(node_id="node-0", diagnostics=[stub])
@@ -445,6 +496,7 @@ class TestDiagnosticSchedulerLiveAgents:
         finally:
             await agent0.stop()
             await agent1.stop()
+
     async def test_scheduler_with_mismatched_diagnostic_type(self) -> None:
         good = StubDiagnostic(passed=True)
         bad = StubDiagnostic(passed=False, details="gpu broken", diagnostic_type="failing")
@@ -453,7 +505,8 @@ class TestDiagnosticSchedulerLiveAgents:
 
         agents = {"node-0": agent0, "node-1": agent1}
         scheduler = DiagnosticScheduler(
-            agents=agents, pipeline=["stub"],
+            agents=agents,
+            pipeline=["stub"],
         )
 
         try:
@@ -476,19 +529,25 @@ class TestDiagnosticSchedulerLiveAgents:
 
 class TestStackTracePreStep:
     async def test_hang_trigger_runs_stack_trace(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-            "node-1": {"gpu": True},
-        })
-        pids_provider = make_rank_pids_provider({
-            "node-0": {0: 100},
-            "node-1": {1: 200},
-        })
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+                "node-1": {"gpu": True},
+            }
+        )
+        pids_provider = make_rank_pids_provider(
+            {
+                "node-0": {0: 100},
+                "node-1": {1: 200},
+            }
+        )
 
-        with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-        ]) as mock_diag_cls:
+        with mock_stack_trace_diagnostic(
+            [
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            ]
+        ) as mock_diag_cls:
             scheduler = DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],
@@ -500,19 +559,22 @@ class TestStackTracePreStep:
 
             assert mock_diag_cls.call_count == 2
             assert decision.action == ActionType.NOTIFY_HUMAN
-    async def test_crash_trigger_skips_stack_trace(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-            "node-1": {"gpu": True},
-        })
-        pids_provider = make_rank_pids_provider({
-            "node-0": {0: 100},
-            "node-1": {1: 200},
-        })
 
-        with patch(
-            "miles.utils.ft.controller.diagnostics.scheduler.StackTraceDiagnostic"
-        ) as mock_diag_cls:
+    async def test_crash_trigger_skips_stack_trace(self) -> None:
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+                "node-1": {"gpu": True},
+            }
+        )
+        pids_provider = make_rank_pids_provider(
+            {
+                "node-0": {0: 100},
+                "node-1": {1: 200},
+            }
+        )
+
+        with patch("miles.utils.ft.controller.diagnostics.scheduler.StackTraceDiagnostic") as mock_diag_cls:
             scheduler = DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],
@@ -524,14 +586,15 @@ class TestStackTracePreStep:
 
             mock_diag_cls.assert_not_called()
             assert decision.action == ActionType.NOTIFY_HUMAN
-    async def test_no_rank_pids_provider_skips_stack_trace(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-        })
 
-        with patch(
-            "miles.utils.ft.controller.diagnostics.scheduler.StackTraceDiagnostic"
-        ) as mock_diag_cls:
+    async def test_no_rank_pids_provider_skips_stack_trace(self) -> None:
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+            }
+        )
+
+        with patch("miles.utils.ft.controller.diagnostics.scheduler.StackTraceDiagnostic") as mock_diag_cls:
             scheduler = DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],
@@ -542,23 +605,30 @@ class TestStackTracePreStep:
 
             mock_diag_cls.assert_not_called()
             assert decision.action == ActionType.NOTIFY_HUMAN
-    async def test_stack_trace_suspect_limits_pipeline_scope(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": False},
-            "node-1": {"gpu": False},
-            "node-2": {"gpu": False},
-        })
-        pids_provider = make_rank_pids_provider({
-            "node-0": {0: 100},
-            "node-1": {1: 200},
-            "node-2": {2: 300},
-        })
 
-        with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
-        ]):
+    async def test_stack_trace_suspect_limits_pipeline_scope(self) -> None:
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": False},
+                "node-1": {"gpu": False},
+                "node-2": {"gpu": False},
+            }
+        )
+        pids_provider = make_rank_pids_provider(
+            {
+                "node-0": {0: 100},
+                "node-1": {1: 200},
+                "node-2": {2: 300},
+            }
+        )
+
+        with mock_stack_trace_diagnostic(
+            [
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
+            ]
+        ):
             scheduler = DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],
@@ -570,20 +640,27 @@ class TestStackTracePreStep:
 
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
             assert decision.bad_node_ids == ["node-2"]
-    async def test_stack_trace_no_suspect_runs_on_all(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-            "node-1": {"gpu": True},
-        })
-        pids_provider = make_rank_pids_provider({
-            "node-0": {0: 100},
-            "node-1": {1: 200},
-        })
 
-        with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-        ]):
+    async def test_stack_trace_no_suspect_runs_on_all(self) -> None:
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+                "node-1": {"gpu": True},
+            }
+        )
+        pids_provider = make_rank_pids_provider(
+            {
+                "node-0": {0: 100},
+                "node-1": {1: 200},
+            }
+        )
+
+        with mock_stack_trace_diagnostic(
+            [
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            ]
+        ):
             scheduler = DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],
@@ -594,20 +671,27 @@ class TestStackTracePreStep:
             )
 
             assert decision.action == ActionType.NOTIFY_HUMAN
-    async def test_collection_failure_makes_node_suspect(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-            "node-1": {"gpu": False},
-        })
-        pids_provider = make_rank_pids_provider({
-            "node-0": {0: 100},
-            "node-1": {1: 200},
-        })
 
-        with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=False, details="failed to collect"),
-        ]):
+    async def test_collection_failure_makes_node_suspect(self) -> None:
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+                "node-1": {"gpu": False},
+            }
+        )
+        pids_provider = make_rank_pids_provider(
+            {
+                "node-0": {0: 100},
+                "node-1": {1: 200},
+            }
+        )
+
+        with mock_stack_trace_diagnostic(
+            [
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-1", passed=False, details="failed to collect"),
+            ]
+        ):
             scheduler = DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],
@@ -619,23 +703,30 @@ class TestStackTracePreStep:
 
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
             assert "node-1" in decision.bad_node_ids
-    async def test_stack_trace_exception_makes_node_suspect(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-            "node-1": {"gpu": False},
-            "node-2": {"gpu": True},
-        })
-        pids_provider = make_rank_pids_provider({
-            "node-0": {0: 100},
-            "node-1": {1: 200},
-            "node-2": {2: 300},
-        })
 
-        with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            RuntimeError("py-spy crashed"),
-            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-        ]):
+    async def test_stack_trace_exception_makes_node_suspect(self) -> None:
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+                "node-1": {"gpu": False},
+                "node-2": {"gpu": True},
+            }
+        )
+        pids_provider = make_rank_pids_provider(
+            {
+                "node-0": {0: 100},
+                "node-1": {1: 200},
+                "node-2": {2: 300},
+            }
+        )
+
+        with mock_stack_trace_diagnostic(
+            [
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                RuntimeError("py-spy crashed"),
+                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            ]
+        ):
             scheduler = DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],
@@ -648,23 +739,30 @@ class TestStackTracePreStep:
             assert decision.action == ActionType.MARK_BAD_AND_RESTART
             assert "node-1" in decision.bad_node_ids
             assert "node-0" not in decision.bad_node_ids
-    async def test_hang_merges_trace_suspects_with_existing(self) -> None:
-        agents = make_fake_agents({
-            "node-0": {"gpu": True},
-            "node-1": {"gpu": False},
-            "node-2": {"gpu": False},
-        })
-        pids_provider = make_rank_pids_provider({
-            "node-0": {0: 100},
-            "node-1": {1: 200},
-            "node-2": {2: 300},
-        })
 
-        with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
-        ]):
+    async def test_hang_merges_trace_suspects_with_existing(self) -> None:
+        agents = make_fake_agents(
+            {
+                "node-0": {"gpu": True},
+                "node-1": {"gpu": False},
+                "node-2": {"gpu": False},
+            }
+        )
+        pids_provider = make_rank_pids_provider(
+            {
+                "node-0": {0: 100},
+                "node-1": {1: 200},
+                "node-2": {2: 300},
+            }
+        )
+
+        with mock_stack_trace_diagnostic(
+            [
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
+            ]
+        ):
             scheduler = DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],

@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from tests.fast.utils.ft.helpers import (
     EMPTY_RANK_PLACEMENT,
     make_detector_context,
@@ -9,12 +8,9 @@ from tests.fast.utils.ft.helpers import (
     make_fake_mini_wandb,
 )
 
-from miles.utils.ft.metric_names import (
-    TRAINING_ITERATION,
-    TRAINING_PHASE,
-)
 from miles.utils.ft.controller.detectors.hang import HangDetector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
+from miles.utils.ft.metric_names import TRAINING_ITERATION, TRAINING_PHASE
 from miles.utils.ft.models import ActionType, MetricSample
 from miles.utils.ft.platform.protocols import JobStatus
 
@@ -50,7 +46,12 @@ class TestHangDetector:
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_iteration(store, value=110.0, timestamp=now - timedelta(minutes=1))
         detector = HangDetector(training_timeout_minutes=10)
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.RUNNING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -62,7 +63,12 @@ class TestHangDetector:
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=1))
         detector = HangDetector(training_timeout_minutes=10)
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.RUNNING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -81,7 +87,12 @@ class TestHangDetector:
             training_timeout_minutes=10,
             checkpoint_saving_timeout_minutes=30,
         )
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.RUNNING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -100,7 +111,12 @@ class TestHangDetector:
             training_timeout_minutes=10,
             checkpoint_saving_timeout_minutes=30,
         )
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.RUNNING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -117,7 +133,12 @@ class TestHangDetector:
             training_timeout_minutes=10,
             checkpoint_saving_timeout_minutes=30,
         )
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.RUNNING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -128,7 +149,12 @@ class TestHangDetector:
     def test_job_not_running(self) -> None:
         store = make_fake_metric_store()
         detector = HangDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.FAILED)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.FAILED,
+        )
 
         decision = detector.evaluate(ctx)
 
@@ -137,7 +163,12 @@ class TestHangDetector:
     def test_no_iteration_data(self) -> None:
         store = make_fake_metric_store()
         detector = HangDetector()
-        ctx = make_detector_context(metric_store=store, mini_wandb=make_fake_mini_wandb(), rank_placement=EMPTY_RANK_PLACEMENT, job_status=JobStatus.RUNNING)
+        ctx = make_detector_context(
+            metric_store=store,
+            mini_wandb=make_fake_mini_wandb(),
+            rank_placement=EMPTY_RANK_PLACEMENT,
+            job_status=JobStatus.RUNNING,
+        )
 
         decision = detector.evaluate(ctx)
 

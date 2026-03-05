@@ -32,8 +32,10 @@ def _make_wandb_with_timed_mfu(
     wandb = MiniWandb(active_run_id=run_id)
     for i, (value, timestamp) in enumerate(entries):
         wandb.log_step(
-            run_id=run_id, step=i + 1,
-            metrics={"mfu": value}, receive_time=timestamp,
+            run_id=run_id,
+            step=i + 1,
+            metrics={"mfu": value},
+            receive_time=timestamp,
         )
     return wandb
 
@@ -47,9 +49,12 @@ class TestMfuDeclineDetector:
             consecutive_steps=10,
         )
 
-        decision = detector.evaluate(make_detector_context(
-            mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.NONE
 
@@ -60,9 +65,12 @@ class TestMfuDeclineDetector:
             consecutive_steps=10,
         )
 
-        decision = detector.evaluate(make_detector_context(
-            mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.NONE
 
@@ -80,9 +88,13 @@ class TestMfuDeclineDetector:
             temperature_delta_threshold=20.0,
         )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-1" in decision.bad_node_ids
@@ -100,9 +112,13 @@ class TestMfuDeclineDetector:
             consecutive_steps=10,
         )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
@@ -110,8 +126,7 @@ class TestMfuDeclineDetector:
     def test_decline_timeout_notify_human(self) -> None:
         now = datetime.now(timezone.utc)
         low_mfu_entries: list[tuple[float, datetime]] = [
-            (0.3, now - timedelta(minutes=40) + timedelta(minutes=i))
-            for i in range(41)
+            (0.3, now - timedelta(minutes=40) + timedelta(minutes=i)) for i in range(41)
         ]
         wandb = _make_wandb_with_timed_mfu(low_mfu_entries)
 
@@ -127,17 +142,20 @@ class TestMfuDeclineDetector:
             decline_timeout_minutes=30.0,
         )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.NOTIFY_HUMAN
 
     def test_decline_timeout_not_yet_reached(self) -> None:
         now = datetime.now(timezone.utc)
         low_mfu_entries: list[tuple[float, datetime]] = [
-            (0.3, now - timedelta(minutes=10) + timedelta(minutes=i))
-            for i in range(11)
+            (0.3, now - timedelta(minutes=10) + timedelta(minutes=i)) for i in range(11)
         ]
         wandb = _make_wandb_with_timed_mfu(low_mfu_entries)
 
@@ -152,9 +170,13 @@ class TestMfuDeclineDetector:
             decline_timeout_minutes=30.0,
         )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement={0: "node-0"},
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement={0: "node-0"},
+            )
+        )
 
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
@@ -172,9 +194,12 @@ class TestMfuDeclineDetector:
             consecutive_steps=10,
         )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+            )
+        )
 
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
@@ -201,9 +226,13 @@ class TestMfuDeclineDetector:
             decline_timeout_minutes=30.0,
         )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement={0: "node-0"},
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement={0: "node-0"},
+            )
+        )
 
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
