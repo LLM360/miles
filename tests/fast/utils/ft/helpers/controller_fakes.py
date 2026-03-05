@@ -147,12 +147,15 @@ def make_test_controller(
     for recovery-specific tests.
     """
     real_notifier: FakeNotifier | None = FakeNotifier() if notifier is FakeNotifier else notifier
+
     node_manager = FakeNodeManager()
     training_job = FakeTrainingJob(status_sequence=status_sequence)
     metric_store = MiniPrometheus(config=MiniPrometheusConfig())
     mini_wandb = MiniWandb()
+
     if controller_exporter is None:
         controller_exporter = ControllerExporter(registry=CollectorRegistry())
+
     controller = FtController(
         node_manager=node_manager,
         training_job=training_job,
@@ -165,6 +168,7 @@ def make_test_controller(
         scrape_target_manager=metric_store,
         diagnostic_scheduler=diagnostic_scheduler,
     )
+
     return ControllerTestHarness(
         controller=controller,
         node_manager=node_manager,
