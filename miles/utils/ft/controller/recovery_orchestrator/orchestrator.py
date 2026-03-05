@@ -70,6 +70,10 @@ class RecoveryOrchestrator:
     def bad_node_ids(self) -> list[str]:
         return self._context.bad_node_ids
 
+    @property
+    def phase_history(self) -> list[RecoveryPhase]:
+        return self._context.phase_history
+
     def is_done(self) -> bool:
         return self._context.phase == RecoveryPhase.DONE
 
@@ -126,6 +130,7 @@ class RecoveryOrchestrator:
         if new_phase == RecoveryPhase.NOTIFY:
             self._context.phase_before_notify = old
         self._context.phase = new_phase
+        self._context.phase_history.append(new_phase)
         logger.info("recovery_transition %s -> %s", old.value, new_phase.value)
         self._update_exporter()
 

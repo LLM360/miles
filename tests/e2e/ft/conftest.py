@@ -363,3 +363,22 @@ async def wait_for_mode_transition(
         f"Mode did not return to '{target_mode}' within {timeout}s, "
         f"last status: {controller.get_status()}"
     )
+
+
+def assert_phase_path_contains(
+    status: ControllerStatus,
+    required: list[RecoveryPhase],
+) -> None:
+    """Assert that phase_history contains the required phases in order (subsequence match)."""
+    history = status.phase_history
+    assert history is not None, "phase_history is None — was recovery never entered?"
+
+    idx = 0
+    for phase in history:
+        if idx < len(required) and phase == required[idx]:
+            idx += 1
+
+    assert idx == len(required), (
+        f"Expected phase path to contain {[p.value for p in required]} in order, "
+        f"but got history {[p.value for p in history]}"
+    )

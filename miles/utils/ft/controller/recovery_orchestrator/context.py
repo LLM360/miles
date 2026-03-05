@@ -17,6 +17,7 @@ class RecoveryContext:
     )
     phase_before_notify: RecoveryPhase | None = None
     bad_node_ids: list[str] = field(default_factory=list)
+    phase_history: list[RecoveryPhase] = field(default_factory=lambda: [RecoveryPhase.CHECK_ALERTS])
 
     # Reattempt state
     reattempt_submitted: bool = False
