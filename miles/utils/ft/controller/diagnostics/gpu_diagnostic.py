@@ -22,6 +22,36 @@ class GpuDiagnostic(BaseDiagnostic):
     async def run(
         self, node_id: str, timeout_seconds: int = 120,
     ) -> DiagnosticResult:
+        proc_result = await self._run_check_subprocess(
+            node_id=node_id, timeout_seconds=timeout_seconds,
+        )
+        if isinstance(proc_result, DiagnosticResult):
+            return proc_result
+
+        stdout_bytes, stderr_bytes, returncode = proc_result
+
+        if returncode != 0:
+            stderr_text = stderr_bytes.decode(errors="replace").strip()
+            logger.warning(
+                "gpu_check_process_failed node_id=%s returncode=%d stderr=%s",
+                node_id, returncode, stderr_text[:500],
+            )
+            return DiagnosticResult.fail_result(
+                diagnostic_type=self.diagnostic_type, node_id=node_id,
+                details=f"gpu check process failed: {stderr_text[:500]}",
+            )
+
+        gpu_results = self._parse_gpu_results(
+            stdout_bytes=stdout_bytes, node_id=node_id,
+        )
+        if isinstance(gpu_results, DiagnosticResult):
+            return gpu_results
+
+        return self._collect_failures(gpu_results=gpu_results, node_id=node_id)
+
+    async def _run_check_subprocess(
+        self, node_id: str, timeout_seconds: int,
+    ) -> tuple[bytes, bytes, int] | DiagnosticResult:
         try:
             process = await asyncio.create_subprocess_exec(
                 sys.executable, "-m",
@@ -55,20 +85,15 @@ class GpuDiagnostic(BaseDiagnostic):
                 details="gpu check process failed to launch",
             )
 
-        if process.returncode != 0:
-            stderr_text = stderr_bytes.decode(errors="replace").strip()
-            logger.warning(
-                "gpu_check_process_failed node_id=%s returncode=%d stderr=%s",
-                node_id, process.returncode, stderr_text[:500],
-            )
-            return DiagnosticResult.fail_result(
-                diagnostic_type=self.diagnostic_type, node_id=node_id,
-                details=f"gpu check process failed: {stderr_text[:500]}",
-            )
+        assert process.returncode is not None
+        return stdout_bytes, stderr_bytes, process.returncode
 
+    def _parse_gpu_results(
+        self, stdout_bytes: bytes, node_id: str,
+    ) -> list[dict[str, object]] | DiagnosticResult:
         stdout_text = stdout_bytes.decode(errors="replace")
         try:
-            gpu_results = json.loads(stdout_text)
+            return json.loads(stdout_text)
         except json.JSONDecodeError:
             logger.warning(
                 "gpu_check_invalid_json node_id=%s output=%s",
@@ -79,6 +104,9 @@ class GpuDiagnostic(BaseDiagnostic):
                 details="invalid output from gpu check",
             )
 
+    def _collect_failures(
+        self, gpu_results: list[dict[str, object]], node_id: str,
+    ) -> DiagnosticResult:
         failed_gpus: list[str] = []
         for gpu_result in gpu_results:
             if not gpu_result.get("passed", False):
