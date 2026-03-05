@@ -6,6 +6,8 @@ metric queries and threshold constants.
 """
 from __future__ import annotations
 
+import logging
+
 import polars as pl
 
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
@@ -16,6 +18,8 @@ from miles.utils.ft.metric_names import (
     XID_CODE_RECENT,
 )
 from miles.utils.ft.models import NodeFault
+
+logger = logging.getLogger(__name__)
 
 CRITICAL_XID_CODES: frozenset[int] = frozenset({48, 62, 64, 79})
 DISK_AVAILABLE_THRESHOLD_BYTES: float = 1e9  # 1 GB
@@ -46,9 +50,15 @@ def check_critical_xid(
 
     faults: list[NodeFault] = []
     for row in df.iter_rows(named=True):
-        xid_code = int(row.get("xid", -1))
+        try:
+            xid_code = int(row.get("xid", -1))
+            node_id = row.get("node_id")
+        except (ValueError, TypeError):
+            logger.warning("check_critical_xid: unparseable row %s", row, exc_info=True)
+            continue
+        if node_id is None:
+            continue
         if xid_code in critical_xid_codes:
-            node_id = row["node_id"]
             faults.append(NodeFault(node_id=node_id, reason=f"critical XID {xid_code} on {node_id}"))
     return faults
 
