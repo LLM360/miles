@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from miles.utils.ft.agents.collectors.kernel_log_reader import DmesgSubprocessReader, KmsgFileReader
+import pytest
+
+from miles.utils.ft.agents.collectors.kernel_log_reader import (
+    DmesgSubprocessReader,
+    KmsgFileReader,
+)
 
 
 class TestKmsgFileReader:
@@ -87,7 +93,6 @@ class TestDmesgSubprocessReader:
         reader = DmesgSubprocessReader()
 
         import subprocess
-
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="dmesg", timeout=5)):
             lines = reader.read_new_lines()
 
@@ -103,6 +108,22 @@ class TestDmesgSubprocessReader:
             lines = reader.read_new_lines()
 
         assert lines == []
+
+    def test_nonzero_returncode_logs_warning_with_stderr(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        reader = DmesgSubprocessReader()
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "dmesg: read kernel buffer failed: Operation not permitted"
+
+        with caplog.at_level(logging.WARNING), patch("subprocess.run", return_value=mock_result):
+            lines = reader.read_new_lines()
+
+        assert lines == []
+        assert "non-zero returncode=1" in caplog.text
+        assert "Operation not permitted" in caplog.text
 
     def test_close_is_noop(self) -> None:
         reader = DmesgSubprocessReader()
