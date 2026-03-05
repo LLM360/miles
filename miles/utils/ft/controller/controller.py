@@ -92,6 +92,11 @@ class FtController:
             await self._stop_scrape_loop(scrape_task)
             if self._controller_exporter is not None:
                 self._controller_exporter.stop()
+            if self._notifier is not None and hasattr(self._notifier, "aclose"):
+                try:
+                    await self._notifier.aclose()
+                except Exception:
+                    logger.warning("notifier_aclose_failed", exc_info=True)
         logger.info("controller_stopped")
 
     async def shutdown(self) -> None:
