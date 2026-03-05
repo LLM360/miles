@@ -4,6 +4,11 @@ import asyncio
 import logging
 from typing import Any
 
+from miles.utils.ft.controller.controller_action_handlers import (
+    handle_enter_recovery,
+    handle_mark_bad_and_restart,
+    handle_notify_human,
+)
 from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
@@ -12,12 +17,6 @@ from miles.utils.ft.controller.mini_prometheus.protocol import (
     ScrapeTargetManagerProtocol,
 )
 from miles.utils.ft.controller.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery_helpers import (
-    retry_async,
-    retry_succeeded,
-    safe_notify,
-    stop_clear_submit,
-)
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models import ActionType, Decision, NodeAgentProtocol
 from miles.utils.ft.platform.protocols import (
@@ -316,69 +315,29 @@ class FtController:
         if decision.action == ActionType.NONE:
             return
 
-        handler = self._ACTION_HANDLERS.get(decision.action)
-        if handler is None:
+        if decision.action == ActionType.MARK_BAD_AND_RESTART:
+            await handle_mark_bad_and_restart(
+                decision=decision,
+                node_manager=self._node_manager,
+                training_job=self._training_job,
+                mini_wandb=self._mini_wandb,
+                notifier=self._notifier,
+            )
+        elif decision.action == ActionType.ENTER_RECOVERY:
+            self._recovery_orchestrator = await handle_enter_recovery(
+                decision=decision,
+                node_manager=self._node_manager,
+                training_job=self._training_job,
+                metric_store=self._metric_store,
+                mini_wandb=self._mini_wandb,
+                notifier=self._notifier,
+                diagnostic_scheduler=self._diagnostic_scheduler,
+                controller_exporter=self._controller_exporter,
+            )
+        elif decision.action == ActionType.NOTIFY_HUMAN:
+            await handle_notify_human(
+                decision=decision,
+                notifier=self._notifier,
+            )
+        else:
             raise ValueError(f"Unknown action type: {decision.action}")
-        await handler(self, decision)
-
-    async def _handle_mark_bad_and_restart(self, decision: Decision) -> None:
-        logger.warning(
-            "decision_mark_bad_and_restart bad_node_ids=%s reason=%s",
-            decision.bad_node_ids, decision.reason,
-        )
-        failed_nodes: list[str] = []
-        for node_id in decision.bad_node_ids:
-            result = await retry_async(
-                lambda nid=node_id: self._node_manager.mark_node_bad(
-                    nid, reason=decision.reason,
-                ),
-                description=f"mark_node_bad({node_id})",
-            )
-            if not retry_succeeded(result):
-                failed_nodes.append(node_id)
-
-        if failed_nodes:
-            msg = f"mark_node_bad failed for nodes: {failed_nodes}"
-            logger.error("mark_bad_partial_failure %s", msg)
-            await safe_notify(
-                self._notifier, title="Mark-Bad Failure", content=msg,
-            )
-
-        restart_ok = await stop_clear_submit(self._training_job, self._mini_wandb)
-        if not restart_ok:
-            msg = "stop_clear_submit failed after mark_bad_and_restart"
-            logger.error(msg)
-            await safe_notify(
-                self._notifier, title="Restart Failure", content=msg,
-            )
-
-    async def _handle_enter_recovery(self, decision: Decision) -> None:
-        logger.warning(
-            "decision_enter_recovery trigger=%s reason=%s",
-            decision.trigger, decision.reason,
-        )
-        self._recovery_orchestrator = RecoveryOrchestrator(
-            trigger=decision.trigger,
-            node_manager=self._node_manager,
-            training_job=self._training_job,
-            metric_store=self._metric_store,
-            mini_wandb=self._mini_wandb,
-            notifier=self._notifier,
-            diagnostic_scheduler=self._diagnostic_scheduler,
-            controller_exporter=self._controller_exporter,
-        )
-
-    async def _handle_notify_human(self, decision: Decision) -> None:
-        logger.warning(
-            "decision_notify_human reason=%s",
-            decision.reason,
-        )
-        await safe_notify(
-            self._notifier, title="Fault Alert", content=decision.reason,
-        )
-
-    _ACTION_HANDLERS: dict[ActionType, Any] = {
-        ActionType.MARK_BAD_AND_RESTART: _handle_mark_bad_and_restart,
-        ActionType.ENTER_RECOVERY: _handle_enter_recovery,
-        ActionType.NOTIFY_HUMAN: _handle_notify_human,
-    }
