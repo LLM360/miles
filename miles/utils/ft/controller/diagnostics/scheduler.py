@@ -236,6 +236,7 @@ class DiagnosticScheduler:
             return await agent.run_diagnostic(
                 diagnostic_type, timeout_seconds=timeout_seconds,
             )
+
         except UnknownDiagnosticError:
             logger.error(
                 "diagnostic_type_not_registered node=%s type=%s — "
@@ -247,6 +248,7 @@ class DiagnosticScheduler:
                 diagnostic_type=diagnostic_type, node_id=node_id,
                 details=f"config error: diagnostic type '{diagnostic_type}' not registered on node (treated as pass)",
             )
+
         except Exception:
             logger.warning(
                 "diagnostic_agent_call_failed node=%s type=%s",
