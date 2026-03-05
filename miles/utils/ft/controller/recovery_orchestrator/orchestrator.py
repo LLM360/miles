@@ -98,11 +98,14 @@ class RecoveryOrchestrator:
         if self._context.phase in (RecoveryPhase.REATTEMPTING, RecoveryPhase.MONITORING):
             self._transition(RecoveryPhase.EVICT_AND_RESTART)
 
+        self._update_exporter()
+
     async def step(self) -> None:
         if self.is_done():
             return
 
         if self._check_global_timeout():
+            self._update_exporter()
             return
 
         next_phase = await self._dispatch_phase()
@@ -153,7 +156,6 @@ class RecoveryOrchestrator:
         self._context.phase = new_phase
         self._context.phase_history.append(new_phase)
         logger.info("recovery_transition %s -> %s", old.value, new_phase.value)
-        self._update_exporter()
 
     def _update_exporter(self) -> None:
         if self._controller_exporter is None:
