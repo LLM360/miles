@@ -231,9 +231,9 @@ class DiagnosticScheduler:
                 node_id, diagnostic_type,
                 exc_info=True,
             )
-            return DiagnosticResult.pass_result(
+            return DiagnosticResult.fail_result(
                 diagnostic_type=diagnostic_type, node_id=node_id,
-                details=f"skipped: diagnostic type '{diagnostic_type}' not registered on node",
+                details=f"config error: diagnostic type '{diagnostic_type}' not registered on node",
             )
         except Exception:
             logger.warning(
