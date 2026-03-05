@@ -10,6 +10,11 @@ from . import wandb_utils
 _ft_tracking_agent: FtTrackingAgent | None = None
 
 
+def set_ft_tracking_agent(agent: FtTrackingAgent | None) -> None:
+    global _ft_tracking_agent
+    _ft_tracking_agent = agent
+
+
 def init_tracking(args, primary: bool = True, **kwargs) -> None:
     global _ft_tracking_agent
 
