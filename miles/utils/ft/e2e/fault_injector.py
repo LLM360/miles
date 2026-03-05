@@ -51,13 +51,11 @@ class FaultInjectorActor:
                 cmdline_str = " ".join(cmdline).lower()
 
                 if any(pattern in cmdline_str for pattern in _TRAINING_CMDLINE_PATTERNS):
-                    results.append(
-                        {
-                            "pid": proc.info["pid"],
-                            "name": proc.info.get("name", ""),
-                            "cmdline": cmdline,
-                        }
-                    )
+                    results.append({
+                        "pid": proc.info["pid"],
+                        "name": proc.info.get("name", ""),
+                        "cmdline": cmdline,
+                    })
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return results
@@ -92,16 +90,23 @@ class FaultInjectorActor:
 
     def fill_disk(self, path: str, size_bytes: int) -> None:
         logger.info("fill_disk path=%s size_bytes=%d", path, size_bytes)
+        self._filled_paths.append(path)
+
         chunk_size = 64 * 1024 * 1024
         chunk = b"\0" * chunk_size
 
-        with open(path, "wb") as f:
-            remaining = size_bytes
-            while remaining > 0:
-                write_size = min(chunk_size, remaining)
-                f.write(chunk[:write_size])
-                remaining -= write_size
-        self._filled_paths.append(path)
+        try:
+            with open(path, "wb") as f:
+                remaining = size_bytes
+                while remaining > 0:
+                    write_size = min(chunk_size, remaining)
+                    f.write(chunk[:write_size])
+                    remaining -= write_size
+        except Exception:
+            logger.warning("fill_disk write failed path=%s", path, exc_info=True)
+            _remove_if_exists(path)
+            self._filled_paths.remove(path)
+            raise
 
     def cleanup_disk(self, path: str) -> None:
         logger.info("cleanup_disk path=%s", path)
