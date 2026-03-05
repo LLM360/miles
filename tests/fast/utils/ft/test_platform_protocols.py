@@ -66,5 +66,8 @@ class TestNotificationProtocolStructuralSubtyping:
             async def send(self, title: str, content: str, severity: str) -> None:
                 pass
 
+            async def aclose(self) -> None:
+                pass
+
         instance: NotificationProtocol = _ConformingNotification()
         assert isinstance(instance, _ConformingNotification)

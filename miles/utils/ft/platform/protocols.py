@@ -33,6 +33,8 @@ class TrainingJobProtocol(Protocol):
 class NotificationProtocol(Protocol):
     async def send(self, title: str, content: str, severity: str) -> None: ...
 
+    async def aclose(self) -> None: ...
+
 
 class DiagnosticSchedulerProtocol(Protocol):
     async def run_diagnostic_pipeline(

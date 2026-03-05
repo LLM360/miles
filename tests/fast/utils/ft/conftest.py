@@ -227,6 +227,9 @@ class FakeNotifier:
     async def send(self, title: str, content: str, severity: str) -> None:
         self.calls.append((title, content, severity))
 
+    async def aclose(self) -> None:
+        pass
+
 
 class FakeTrainingJob:
     """Programmable implementation of TrainingJobProtocol for testing."""

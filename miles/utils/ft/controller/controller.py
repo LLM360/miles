@@ -92,7 +92,7 @@ class FtController:
             await self._stop_scrape_loop(scrape_task)
             if self._controller_exporter is not None:
                 self._controller_exporter.stop()
-            if self._notifier is not None and hasattr(self._notifier, "aclose"):
+            if self._notifier is not None:
                 try:
                     await self._notifier.aclose()
                 except Exception:

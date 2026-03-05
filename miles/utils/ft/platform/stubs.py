@@ -42,3 +42,6 @@ class StubNotifier:
             "stub_send_notification title=%s severity=%s content=%s",
             title, severity, content,
         )
+
+    async def aclose(self) -> None:
+        pass
