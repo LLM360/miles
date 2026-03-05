@@ -18,7 +18,7 @@ from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.platform.protocols import JobStatus
-from tests.fast.utils.ft.helpers import FakeNodeManager, FakeTrainingJob, get_sample_value, make_test_exporter
+from tests.fast.utils.ft.conftest import FakeNodeManager, FakeTrainingJob, get_sample_value, make_test_exporter
 
 
 def _make_prom_response(
@@ -98,7 +98,7 @@ class TestControllerPrometheusMode:
             node_id="node-0", exporter_address="http://node-0:9090",
         )
         await controller.log_step(
-            run_id="run-1", rank=0, step=1,
+            run_id="run-1", step=1,
             metrics={"loss": 2.5, "mfu": 0.42},
         )
 

@@ -32,7 +32,7 @@ def _make_wandb_with_timed_mfu(
     wandb = MiniWandb(active_run_id=run_id)
     for i, (value, timestamp) in enumerate(entries):
         wandb.log_step(
-            run_id=run_id, rank=0, step=i + 1,
+            run_id=run_id, step=i + 1,
             metrics={"mfu": value}, receive_time=timestamp,
         )
     return wandb

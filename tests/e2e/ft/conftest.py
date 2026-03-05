@@ -255,7 +255,7 @@ async def wait_for_training_stable(
 
 def get_iteration_count(mini_wandb: MiniWandb) -> int:
     """Query current iteration from MiniWandb."""
-    value = mini_wandb.latest(metric_name="iteration", rank=0)
+    value = mini_wandb.latest(metric_name="iteration")
     if value is None:
         return 0
     return int(value)

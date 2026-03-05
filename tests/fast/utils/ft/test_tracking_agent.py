@@ -15,12 +15,11 @@ class TestFtTrackingAgentLog:
         mock_controller = MagicMock()
         mock_get_handle.return_value = mock_controller
 
-        agent = FtTrackingAgent(rank=0, run_id="test-run-1")
+        agent = FtTrackingAgent(run_id="test-run-1")
         agent.log(metrics={"loss": 2.5, "grad_norm": 1.1}, step=10)
 
         mock_controller.log_step.remote.assert_called_once_with(
             run_id="test-run-1",
-            rank=0,
             step=10,
             metrics={"loss": 2.5, "grad_norm": 1.1},
         )
@@ -32,14 +31,14 @@ class TestFtTrackingAgentLog:
         mock_controller = MagicMock()
         mock_get_handle.return_value = mock_controller
 
-        agent = FtTrackingAgent(rank=0, run_id="test-run-1")
+        agent = FtTrackingAgent(run_id="test-run-1")
         agent.log(metrics={"loss": 2.5}, step=1)
         agent.log(metrics={"loss": 1.8}, step=2)
 
         assert mock_controller.log_step.remote.call_count == 2
 
     def test_log_without_run_id_is_noop(self) -> None:
-        agent = FtTrackingAgent(rank=0, run_id="")
+        agent = FtTrackingAgent(run_id="")
         agent._controller_handle = MagicMock()
 
         agent.log(metrics={"loss": 2.5}, step=10)
@@ -48,12 +47,12 @@ class TestFtTrackingAgentLog:
 
     def test_log_reads_run_id_from_env(self) -> None:
         with patch.dict("os.environ", {"FT_TRAINING_RUN_ID": "env-run-1"}):
-            agent = FtTrackingAgent(rank=0)
+            agent = FtTrackingAgent()
             assert agent._run_id == "env-run-1"
 
     def test_log_explicit_run_id_overrides_env(self) -> None:
         with patch.dict("os.environ", {"FT_TRAINING_RUN_ID": "env-run-1"}):
-            agent = FtTrackingAgent(rank=0, run_id="explicit-run")
+            agent = FtTrackingAgent(run_id="explicit-run")
             assert agent._run_id == "explicit-run"
 
     @patch("miles.utils.ft.agents.tracking_agent.FtTrackingAgent._get_controller_handle")
@@ -64,7 +63,7 @@ class TestFtTrackingAgentLog:
         mock_controller.log_step.remote.side_effect = RuntimeError("boom")
         mock_get_handle.return_value = mock_controller
 
-        agent = FtTrackingAgent(rank=0, run_id="test-run-1")
+        agent = FtTrackingAgent(run_id="test-run-1")
         agent.log(metrics={"loss": 2.5}, step=10)
 
     def test_log_controller_unreachable_is_noop(self) -> None:
@@ -72,7 +71,7 @@ class TestFtTrackingAgentLog:
             "miles.utils.ft.agents.tracking_agent.FtTrackingAgent._get_controller_handle",
             return_value=None,
         ):
-            agent = FtTrackingAgent(rank=0, run_id="test-run-1")
+            agent = FtTrackingAgent(run_id="test-run-1")
             agent.log(metrics={"loss": 2.5}, step=10)
 
 
@@ -88,7 +87,7 @@ class TestTrackingUtilsIntegration:
         mock_controller = MagicMock()
         mock_get_handle.return_value = mock_controller
 
-        agent = FtTrackingAgent(rank=0, run_id="test-run-1")
+        agent = FtTrackingAgent(run_id="test-run-1")
         tracking_utils.set_ft_tracking_agent(agent)
         try:
             args = MagicMock()
@@ -103,7 +102,6 @@ class TestTrackingUtilsIntegration:
 
             mock_controller.log_step.remote.assert_called_once_with(
                 run_id="test-run-1",
-                rank=0,
                 step=42,
                 metrics={"train/loss": 2.5, "train/grad_norm": 1.1},
             )

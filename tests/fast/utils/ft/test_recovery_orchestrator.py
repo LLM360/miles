@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
-from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb as MiniWandbCls
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.mini_wandb import MiniWandb as MiniWandbCls
 from miles.utils.ft.controller.recovery_orchestrator import (
     RecoveryContext,
     RecoveryOrchestrator,
@@ -17,7 +17,7 @@ from miles.utils.ft.models import (
     RecoveryPhase,
 )
 from miles.utils.ft.platform.protocols import JobStatus
-from tests.fast.utils.ft.helpers import (
+from tests.fast.utils.ft.conftest import (
     FakeDiagnosticScheduler,
     FakeNodeManager,
     FakeNotifier,
@@ -262,7 +262,7 @@ class TestMonitoring:
 
         for i in range(1, 4):
             mini_wandb.log_step(
-                run_id="test-run", rank=0, step=i,
+                run_id="test-run", step=i,
                 metrics={"iteration": float(i)},
             )
 
@@ -291,7 +291,7 @@ class TestMonitoring:
 
         for i in range(1, 6):
             mini_wandb.log_step(
-                run_id="test-run", rank=0, step=i,
+                run_id="test-run", step=i,
                 metrics={"iteration": float(i)},
             )
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import torch.distributed as dist
 import wandb
 
 from miles.utils.ft.agents.tracking_agent import FtTrackingAgent
@@ -19,8 +18,8 @@ def init_tracking(args, primary: bool = True, **kwargs) -> None:
     else:
         wandb_utils.init_wandb_secondary(args, **kwargs)
 
-    if args.use_fault_tolerance and _ft_tracking_agent is None and dist.is_initialized():
-        _ft_tracking_agent = FtTrackingAgent(rank=dist.get_rank())
+    if args.use_fault_tolerance and _ft_tracking_agent is None:
+        _ft_tracking_agent = FtTrackingAgent()
 
 
 # TODO further refactor, e.g. put TensorBoard init to the "init" part

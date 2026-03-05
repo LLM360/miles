@@ -31,12 +31,12 @@ class TestStepToLogStepFlow:
         )
 
         await harness.controller.log_step(
-            run_id=run_id, rank=0, step=5,
+            run_id=run_id, step=5,
             metrics={"loss": 2.5, "grad_norm": 1.1},
         )
 
-        assert harness.mini_wandb.latest(metric_name="loss", rank=0) == 2.5
-        assert harness.mini_wandb.latest(metric_name="grad_norm", rank=0) == 1.1
+        assert harness.mini_wandb.latest(metric_name="loss") == 2.5
+        assert harness.mini_wandb.latest(metric_name="grad_norm") == 1.1
 
 
 class TestRegisterRankPlacement:
@@ -115,17 +115,17 @@ class TestRunIdClear:
             node_id="node-0", exporter_address="http://localhost:9999",
         )
         await harness.controller.log_step(
-            run_id=run_id_1, rank=0, step=10,
+            run_id=run_id_1, step=10,
             metrics={"loss": 2.0},
         )
-        assert harness.mini_wandb.latest(metric_name="loss", rank=0) == 2.0
+        assert harness.mini_wandb.latest(metric_name="loss") == 2.0
 
         await harness.controller.register_rank(
             run_id=run_id_2, rank=0, world_size=2,
             node_id="node-0", exporter_address="http://localhost:9999",
         )
 
-        assert harness.mini_wandb.latest(metric_name="loss", rank=0) is None
+        assert harness.mini_wandb.latest(metric_name="loss") is None
 
 
 class TestMultiRankConcurrentStep:
@@ -142,14 +142,11 @@ class TestMultiRankConcurrentStep:
 
         for rank in range(4):
             await harness.controller.log_step(
-                run_id=run_id, rank=rank, step=1,
+                run_id=run_id, step=1,
                 metrics={"loss": float(rank) + 1.0},
             )
 
-        for rank in range(4):
-            assert harness.mini_wandb.latest(
-                metric_name="loss", rank=rank
-            ) == float(rank) + 1.0
+        assert harness.mini_wandb.latest(metric_name="loss") == 4.0
 
 
 class TestControllerUnreachable:

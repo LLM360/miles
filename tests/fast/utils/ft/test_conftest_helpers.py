@@ -5,7 +5,7 @@ import pytest
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models import DiagnosticResult, MetricSample
 from miles.utils.ft.platform.protocols import JobStatus
-from tests.fast.utils.ft.helpers import (
+from tests.fast.utils.ft.conftest import (
     FakeNodeAgent,
     FakeNodeManager,
     FakeTrainingJob,
@@ -47,50 +47,50 @@ class TestMakeFakeMetricStore:
 class TestMakeFakeMiniWandb:
     def test_empty_wandb(self) -> None:
         wandb = make_fake_mini_wandb()
-        assert wandb.latest(metric_name="loss", rank=0) is None
+        assert wandb.latest(metric_name="loss") is None
 
     def test_with_steps(self) -> None:
         wandb = make_fake_mini_wandb(steps={
             1: {"loss": 3.0, "grad_norm": 1.0},
             2: {"loss": 2.5, "grad_norm": 0.8},
         })
-        assert wandb.latest(metric_name="loss", rank=0) == 2.5
-        result = wandb.query_last_n_steps(metric_name="loss", rank=0, last_n=10)
+        assert wandb.latest(metric_name="loss") == 2.5
+        result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
         assert len(result) == 2
         assert result[0] == (1, 3.0)
         assert result[1] == (2, 2.5)
 
 
 class TestFakeNodeManager:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_mark_and_get_bad_nodes(self) -> None:
         manager = FakeNodeManager()
         await manager.mark_node_bad(node_id="node-1", reason="gpu failure")
         await manager.mark_node_bad(node_id="node-2", reason="network error")
         assert await manager.get_bad_nodes() == ["node-1", "node-2"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_unmark_node(self) -> None:
         manager = FakeNodeManager()
         await manager.mark_node_bad(node_id="node-1", reason="test")
         await manager.unmark_node_bad(node_id="node-1")
         assert await manager.get_bad_nodes() == []
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_is_node_bad(self) -> None:
         manager = FakeNodeManager()
         assert not manager.is_node_bad("node-1")
         await manager.mark_node_bad(node_id="node-1", reason="test")
         assert manager.is_node_bad("node-1")
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_unmark_nonexistent_node(self) -> None:
         manager = FakeNodeManager()
         await manager.unmark_node_bad(node_id="node-1")
 
 
 class TestFakeTrainingJob:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_status_sequence(self) -> None:
         job = FakeTrainingJob(status_sequence=[
             JobStatus.PENDING,
@@ -102,19 +102,19 @@ class TestFakeTrainingJob:
         assert await job.get_training_status() == JobStatus.FAILED
         assert await job.get_training_status() == JobStatus.FAILED
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_default_status_is_running(self) -> None:
         job = FakeTrainingJob()
         assert await job.get_training_status() == JobStatus.RUNNING
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_stop_sets_flag(self) -> None:
         job = FakeTrainingJob()
         assert not job._stopped
         await job.stop_training()
         assert job._stopped
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_submit_resets_call_count(self) -> None:
         job = FakeTrainingJob(status_sequence=[
             JobStatus.PENDING,
@@ -130,20 +130,20 @@ class TestTestCollector:
     def test_is_base_collector(self) -> None:
         assert issubclass(TestCollector, BaseCollector)
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_default_empty_metrics(self) -> None:
         collector = TestCollector()
         output = await collector.collect()
         assert output.metrics == []
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_with_preset_metrics(self) -> None:
         metrics = [MetricSample(name="temp", labels={"gpu": "0"}, value=75.0)]
         collector = TestCollector(metrics=metrics)
         output = await collector.collect()
         assert output.metrics == metrics
 
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_set_metrics(self) -> None:
         collector = TestCollector()
         new_metrics = [MetricSample(name="temp", labels={}, value=80.0)]
@@ -153,7 +153,7 @@ class TestTestCollector:
 
 
 class TestFakeNodeAgent:
-    @pytest.mark.asyncio()
+    @pytest.mark.anyio
     async def test_run_diagnostic(self) -> None:
         result = DiagnosticResult(
             diagnostic_type="gpu_check",

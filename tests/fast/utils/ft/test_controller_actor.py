@@ -9,7 +9,7 @@ from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.platform.controller_actor import _FtControllerActorCls
 from miles.utils.ft.platform.controller_factory import build_ft_controller
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
-from tests.fast.utils.ft.helpers import make_test_controller
+from tests.fast.utils.ft.conftest import make_test_controller
 
 from unittest.mock import MagicMock
 
@@ -133,10 +133,10 @@ class TestFtControllerActorProxy:
             node_id="node-0", exporter_address="http://node-0:9100",
         )
         await actor.log_step(
-            run_id="test-run", rank=0, step=1, metrics={"loss": 0.5},
+            run_id="test-run", step=1, metrics={"loss": 0.5},
         )
 
-        assert harness.mini_wandb.latest(metric_name="loss", rank=0) == 0.5
+        assert harness.mini_wandb.latest(metric_name="loss") == 0.5
 
     @pytest.mark.anyio
     async def test_shutdown_sets_flag(self) -> None:

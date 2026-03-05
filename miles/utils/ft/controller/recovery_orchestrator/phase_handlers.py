@@ -86,7 +86,7 @@ async def _reattempt_poll(
     status = await training_job.get_training_status()
 
     if status == JobStatus.RUNNING:
-        iteration = mini_wandb.latest(metric_name="iteration", rank=0)
+        iteration = mini_wandb.latest(metric_name="iteration")
         ctx.reattempt_start_time = datetime.now(timezone.utc)
         ctx.reattempt_base_iteration = (
             int(iteration) if iteration is not None and math.isfinite(iteration) else 0
@@ -144,7 +144,7 @@ async def step_monitoring(
 
 
 def _iteration_progress(ctx: RecoveryContext, mini_wandb: MiniWandb) -> int:
-    current_iteration = mini_wandb.latest(metric_name="iteration", rank=0)
+    current_iteration = mini_wandb.latest(metric_name="iteration")
     if current_iteration is None or not math.isfinite(current_iteration):
         return 0
     base = ctx.reattempt_base_iteration or 0

@@ -12,10 +12,10 @@ from miles.utils.ft.metric_names import (
     TRAINING_JOB_STATUS,
     XID_CODE_RECENT,
 )
-from miles.utils.ft.controller.metrics.exporter import ControllerExporter
+from miles.utils.ft.controller.controller_exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import DetectorContext
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.mini_wandb import MiniWandb
 from miles.utils.ft.models import MetricSample
 from miles.utils.ft.platform.protocols import JobStatus
 
@@ -55,12 +55,11 @@ def make_fake_metric_store(
 def make_fake_mini_wandb(
     steps: dict[int, dict[str, float]] | None = None,
     run_id: str = "test-run",
-    rank: int = 0,
 ) -> MiniWandb:
     wandb = MiniWandb(active_run_id=run_id)
     if steps:
         for step_num, metrics in sorted(steps.items()):
-            wandb.log_step(run_id=run_id, rank=rank, step=step_num, metrics=metrics)
+            wandb.log_step(run_id=run_id, step=step_num, metrics=metrics)
     return wandb
 
 

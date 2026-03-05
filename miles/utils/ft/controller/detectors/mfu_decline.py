@@ -41,7 +41,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         self._baseline_steps = baseline_steps
 
     def evaluate(self, ctx: DetectorContext) -> Decision:
-        recent_mfu = ctx.mini_wandb.query_last_n_steps("mfu", rank=0, last_n=self._consecutive_steps)
+        recent_mfu = ctx.mini_wandb.query_last_n_steps("mfu", last_n=self._consecutive_steps)
         if len(recent_mfu) < self._consecutive_steps:
             return Decision(action=ActionType.NONE, reason="insufficient MFU data")
 
@@ -88,7 +88,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         """
         lookup_window = timedelta(minutes=self._decline_timeout_minutes * 2)
         timed_mfu = ctx.mini_wandb.query_time_window(
-            "mfu", rank=0, window=lookup_window,
+            "mfu", window=lookup_window,
         )
         if not timed_mfu:
             return 0.0
@@ -110,7 +110,7 @@ class MfuDeclineDetector(BaseFaultDetector):
             return self._mfu_baseline
 
         total_needed = self._baseline_steps + self._consecutive_steps
-        all_data = mini_wandb.query_last_n_steps("mfu", rank=0, last_n=total_needed)
+        all_data = mini_wandb.query_last_n_steps("mfu", last_n=total_needed)
 
         baseline_data = all_data[:-self._consecutive_steps] if len(all_data) > self._consecutive_steps else []
         if not baseline_data:

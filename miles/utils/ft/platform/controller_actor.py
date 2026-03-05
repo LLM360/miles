@@ -28,13 +28,11 @@ class _FtControllerActorCls:
     async def log_step(
         self,
         run_id: str,
-        rank: int,
         step: int,
         metrics: dict[str, float],
     ) -> None:
         await self._ctrl.log_step(
             run_id=run_id,
-            rank=rank,
             step=step,
             metrics=metrics,
         )

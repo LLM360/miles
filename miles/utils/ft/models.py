@@ -17,14 +17,14 @@ class TimedStepValue(NamedTuple):
 
 
 class TrainingMetricStoreProtocol(Protocol):
-    def latest(self, metric_name: str, rank: int) -> float | None: ...
+    def latest(self, metric_name: str) -> float | None: ...
 
     def query_last_n_steps(
-        self, metric_name: str, rank: int, last_n: int,
+        self, metric_name: str, last_n: int,
     ) -> list[StepValue]: ...
 
     def query_time_window(
-        self, metric_name: str, rank: int, window: timedelta,
+        self, metric_name: str, window: timedelta,
     ) -> list[TimedStepValue]: ...
 
 

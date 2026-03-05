@@ -13,7 +13,7 @@ import pytest
 
 from miles.utils.ft.controller.detectors import build_detector_chain
 from miles.utils.ft.models import MetricSample
-from tests.fast.utils.ft.helpers import (
+from tests.fast.utils.ft.conftest import (
     ControllerTestHarness,
     inject_healthy_node,
     make_test_controller,
@@ -40,7 +40,7 @@ async def _register_n_nodes(
 
 
 class TestControllerMemoryLeak:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_controller_main_loop_no_memory_leak(self) -> None:
         harness = make_test_controller(
             detectors=build_detector_chain(),
@@ -85,7 +85,6 @@ class TestControllerMemoryLeak:
     ) -> None:
         harness.mini_wandb.log_step(
             run_id=run_id,
-            rank=0,
             step=step,
             metrics={
                 "loss": 2.5 - step * 0.001,

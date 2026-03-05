@@ -10,7 +10,7 @@ import pytest
 import miles.utils.ft.metric_names as mn
 from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
-from tests.fast.utils.ft.helpers import (
+from tests.fast.utils.ft.conftest import (
     AlwaysNoneDetector,
     FixedDecisionDetector,
     get_sample_value,
@@ -43,7 +43,7 @@ class TestGpuLostDirectEviction:
         assert harness.node_manager.is_node_bad("node-0")
         assert harness.training_job._stopped
         assert harness.training_job._submitted
-        assert harness.mini_wandb.latest(metric_name="loss", rank=0) is None
+        assert harness.mini_wandb.latest(metric_name="loss") is None
 
 
 # -------------------------------------------------------------------
@@ -76,7 +76,7 @@ class TestCrashReattemptSuccess:
 
         for i in range(1, 11):
             harness.mini_wandb.log_step(
-                run_id="test-run", rank=0, step=i,
+                run_id="test-run", step=i,
                 metrics={"iteration": float(i)},
             )
 
@@ -190,7 +190,7 @@ class TestRecoveryCompleteBackToMonitoring:
 
         for i in range(1, 11):
             harness.mini_wandb.log_step(
-                run_id="test-run", rank=0, step=i,
+                run_id="test-run", step=i,
                 metrics={"iteration": float(i)},
             )
         await harness.controller._tick()
@@ -239,7 +239,7 @@ class TestExporterModeGauge:
 
         for i in range(1, 11):
             harness.mini_wandb.log_step(
-                run_id="test-run", rank=0, step=i,
+                run_id="test-run", step=i,
                 metrics={"iteration": float(i)},
             )
 

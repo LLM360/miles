@@ -25,7 +25,7 @@ class MiniWandb:
         self._active_run_id = active_run_id
         self._max_steps = max_steps
         self._max_age = max_age
-        self._data: dict[int, deque[_StepRecord]] = {}
+        self._data: deque[_StepRecord] = deque()
 
     def set_active_run_id(self, run_id: str) -> None:
         self._active_run_id = run_id
@@ -33,7 +33,6 @@ class MiniWandb:
     def log_step(
         self,
         run_id: str,
-        rank: int,
         step: int,
         metrics: dict[str, float],
         receive_time: datetime | None = None,
@@ -52,23 +51,16 @@ class MiniWandb:
             metrics=metrics,
         )
 
-        if rank not in self._data:
-            self._data[rank] = deque()
-        self._data[rank].append(record)
-
-        self._evict(rank)
+        self._data.append(record)
+        self._evict()
 
     def query_last_n_steps(
         self,
         metric_name: str,
-        rank: int,
         last_n: int,
     ) -> list[StepValue]:
-        if rank not in self._data:
-            return []
-
         result: list[StepValue] = []
-        for record in reversed(self._data[rank]):
+        for record in reversed(self._data):
             if metric_name in record.metrics:
                 result.append(StepValue(step=record.step, value=record.metrics[metric_name]))
                 if len(result) >= last_n:
@@ -80,15 +72,11 @@ class MiniWandb:
     def query_time_window(
         self,
         metric_name: str,
-        rank: int,
         window: timedelta,
     ) -> list[TimedStepValue]:
-        if rank not in self._data:
-            return []
-
         cutoff = datetime.now(timezone.utc) - window
         result: list[TimedStepValue] = []
-        for record in self._data[rank]:
+        for record in self._data:
             if record.receive_time >= cutoff and metric_name in record.metrics:
                 result.append(TimedStepValue(
                     step=record.step,
@@ -98,11 +86,8 @@ class MiniWandb:
 
         return result
 
-    def latest(self, metric_name: str, rank: int) -> float | None:
-        if rank not in self._data:
-            return None
-
-        for record in reversed(self._data[rank]):
+    def latest(self, metric_name: str) -> float | None:
+        for record in reversed(self._data):
             if metric_name in record.metrics:
                 return record.metrics[metric_name]
 
@@ -111,12 +96,10 @@ class MiniWandb:
     def clear(self) -> None:
         self._data.clear()
 
-    def _evict(self, rank: int) -> None:
-        buffer = self._data[rank]
-
-        while len(buffer) > self._max_steps:
-            buffer.popleft()
+    def _evict(self) -> None:
+        while len(self._data) > self._max_steps:
+            self._data.popleft()
 
         cutoff = datetime.now(timezone.utc) - self._max_age
-        while buffer and buffer[0].receive_time < cutoff:
-            buffer.popleft()
+        while self._data and self._data[0].receive_time < cutoff:
+            self._data.popleft()

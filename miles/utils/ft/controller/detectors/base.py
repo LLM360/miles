@@ -4,7 +4,7 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from miles.utils.ft.controller.metrics.protocol import MetricStoreProtocol
+from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.models import Decision, TrainingMetricStoreProtocol
 from miles.utils.ft.platform.protocols import JobStatus
 
@@ -33,7 +33,7 @@ class BaseFaultDetector(ABC):
 
 def get_non_finite_loss(mini_wandb: TrainingMetricStoreProtocol) -> float | None:
     """Return the loss value if it is non-finite (NaN/Inf), otherwise None."""
-    latest_loss = mini_wandb.latest("loss", rank=0)
+    latest_loss = mini_wandb.latest("loss")
     if latest_loss is not None and not math.isfinite(latest_loss):
         return latest_loss
     return None

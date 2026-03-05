@@ -121,12 +121,11 @@ class FtController:
     async def log_step(
         self,
         run_id: str,
-        rank: int,
         step: int,
         metrics: dict[str, float],
     ) -> None:
         self._rank_registry.log_step(
-            run_id=run_id, rank=rank, step=step, metrics=metrics,
+            run_id=run_id, step=step, metrics=metrics,
         )
 
     async def register_rank(
@@ -222,8 +221,8 @@ class FtController:
         if not is_recovery:
             self._controller_exporter.update_recovery_phase(None)
 
-        loss = self._mini_wandb.latest(metric_name="loss", rank=0)
-        mfu = self._mini_wandb.latest(metric_name="mfu", rank=0)
+        loss = self._mini_wandb.latest(metric_name="loss")
+        mfu = self._mini_wandb.latest(metric_name="mfu")
         self._controller_exporter.update_training_metrics(loss=loss, mfu=mfu)
 
     # -------------------------------------------------------------------
