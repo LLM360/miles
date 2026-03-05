@@ -159,7 +159,7 @@ class TestIntraMachineCommDiagnostic:
             result = await diag.run(node_id="node-0")
 
         assert result.passed is False
-        assert "not found" in result.details
+        assert "failed to execute" in result.details
 
     @pytest.mark.asyncio
     async def test_fail_when_subprocess_returns_nonzero(self) -> None:
@@ -200,6 +200,7 @@ class TestIntraMachineCommDiagnostic:
 
         assert result.passed is False
         assert "timed out" in result.details
+        assert "5s" in result.details
         mock_proc.kill.assert_called_once()
         mock_proc.wait.assert_called_once()
 
@@ -246,3 +247,30 @@ class TestIntraMachineCommDiagnostic:
             result = await diag.run(node_id="node-0")
 
         assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_fail_when_permission_denied(self) -> None:
+        diag = IntraMachineCommDiagnostic()
+
+        with patch(
+            "asyncio.create_subprocess_exec",
+            side_effect=PermissionError("permission denied"),
+        ):
+            result = await diag.run(node_id="node-0")
+
+        assert result.passed is False
+        assert "failed to execute" in result.details
+
+    @pytest.mark.asyncio
+    async def test_stderr_truncated_at_500_chars(self) -> None:
+        diag = IntraMachineCommDiagnostic()
+        long_stderr = "E" * 600
+        mock_proc = _make_mock_process(
+            stdout="", stderr=long_stderr, returncode=1,
+        )
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await diag.run(node_id="node-0")
+
+        assert result.passed is False
+        assert len(result.details) < 600

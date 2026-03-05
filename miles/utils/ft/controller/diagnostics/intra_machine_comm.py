@@ -80,9 +80,9 @@ class IntraMachineCommDiagnostic(BaseDiagnostic):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-        except FileNotFoundError:
+        except OSError:
             logger.warning(
-                "intra_machine_binary_not_found node=%s binary=%s",
+                "intra_machine_exec_failed node=%s binary=%s",
                 node_id, self._nccl_test_binary,
                 exc_info=True,
             )
@@ -90,7 +90,7 @@ class IntraMachineCommDiagnostic(BaseDiagnostic):
                 diagnostic_type=self.diagnostic_type,
                 node_id=node_id,
                 passed=False,
-                details=f"{self._nccl_test_binary} not found",
+                details=f"failed to execute {self._nccl_test_binary}",
             )
 
         try:
