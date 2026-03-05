@@ -55,8 +55,7 @@ class RankRegistry:
         if run_id != self.active_run_id:
             logger.info(
                 "new_run_registered run_id=%s previous_run_id=%s",
-                run_id,
-                self.active_run_id,
+                run_id, self.active_run_id,
             )
             self.active_run_id = run_id
             self.expected_world_size = None
@@ -72,10 +71,7 @@ class RankRegistry:
             self.rank_pids[rank] = pid
         logger.info(
             "rank_registered run_id=%s rank=%d world_size=%d node_id=%s",
-            run_id,
-            rank,
-            world_size,
-            node_id,
+            run_id, rank, world_size, node_id,
         )
 
         if self._scrape_target_manager is not None:
@@ -89,11 +85,13 @@ class RankRegistry:
         run_id: str,
         step: int,
         metrics: dict[str, float],
+        rank: int | None = None,
     ) -> None:
         self._mini_wandb.log_step(
             run_id=run_id,
             step=step,
             metrics=metrics,
+            rank=rank,
         )
 
     def get_rank_pids_for_node(self, node_id: str) -> dict[int, int]:

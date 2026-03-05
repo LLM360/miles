@@ -13,6 +13,7 @@ class _StepRecord:
     step: int
     receive_time: datetime
     metrics: dict[str, float]
+    rank: int | None = None
 
 
 class MiniWandb:
@@ -36,6 +37,7 @@ class MiniWandb:
         step: int,
         metrics: dict[str, float],
         receive_time: datetime | None = None,
+        rank: int | None = None,
     ) -> None:
         if self._active_run_id is not None and run_id != self._active_run_id:
             logger.debug(
@@ -49,19 +51,26 @@ class MiniWandb:
             step=step,
             receive_time=receive_time or datetime.now(timezone.utc),
             metrics=metrics,
+            rank=rank,
         )
 
         self._data.append(record)
         self._evict()
 
+    def _matches_rank(self, record: _StepRecord, rank: int | None) -> bool:
+        if rank is None:
+            return True
+        return record.rank == rank
+
     def query_last_n_steps(
         self,
         metric_name: str,
         last_n: int,
+        rank: int | None = None,
     ) -> list[StepValue]:
         result: list[StepValue] = []
         for record in reversed(self._data):
-            if metric_name in record.metrics:
+            if metric_name in record.metrics and self._matches_rank(record, rank):
                 result.append(StepValue(step=record.step, value=record.metrics[metric_name]))
                 if len(result) >= last_n:
                     break
@@ -73,24 +82,27 @@ class MiniWandb:
         self,
         metric_name: str,
         window: timedelta,
+        rank: int | None = None,
     ) -> list[TimedStepValue]:
         cutoff = datetime.now(timezone.utc) - window
         result: list[TimedStepValue] = []
         for record in self._data:
-            if record.receive_time >= cutoff and metric_name in record.metrics:
-                result.append(
-                    TimedStepValue(
-                        step=record.step,
-                        timestamp=record.receive_time,
-                        value=record.metrics[metric_name],
-                    )
-                )
+            if (
+                record.receive_time >= cutoff
+                and metric_name in record.metrics
+                and self._matches_rank(record, rank)
+            ):
+                result.append(TimedStepValue(
+                    step=record.step,
+                    timestamp=record.receive_time,
+                    value=record.metrics[metric_name],
+                ))
 
         return result
 
-    def latest(self, metric_name: str) -> float | None:
+    def latest(self, metric_name: str, rank: int | None = None) -> float | None:
         for record in reversed(self._data):
-            if metric_name in record.metrics:
+            if metric_name in record.metrics and self._matches_rank(record, rank):
                 return record.metrics[metric_name]
 
         return None

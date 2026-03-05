@@ -128,9 +128,10 @@ class FtController:
         run_id: str,
         step: int,
         metrics: dict[str, float],
+        rank: int | None = None,
     ) -> None:
         self._rank_registry.log_step(
-            run_id=run_id, step=step, metrics=metrics,
+            run_id=run_id, step=step, metrics=metrics, rank=rank,
         )
 
     async def register_rank(
