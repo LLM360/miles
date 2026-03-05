@@ -14,12 +14,6 @@ from miles.utils.ft.agents.prometheus_exporter import PrometheusExporter
 
 logger = logging.getLogger(__name__)
 
-_PHASE_TO_NUMERIC: dict[str, float] = {
-    "idle": 0.0,
-    "training": 1.0,
-    "checkpoint_saving": 2.0,
-}
-
 
 class FtMegatronAgent(ControllerHandleMixin):
     """Embedded fault-tolerance agent for Megatron training processes.
@@ -61,7 +55,7 @@ class FtMegatronAgent(ControllerHandleMixin):
         self._phase_child = phase_gauge.labels(**self._labels)
         self._last_iteration: int = 0
         self._iteration_child.set(0)
-        self._phase_child.set(_PHASE_TO_NUMERIC["idle"])
+        self._phase_child.set(mn.PHASE_TO_NUMERIC["idle"])
 
         self._register_rank()
 
@@ -100,7 +94,7 @@ class FtMegatronAgent(ControllerHandleMixin):
             if iteration is not None:
                 self._last_iteration = iteration
             self._iteration_child.set(self._last_iteration)
-            self._phase_child.set(_PHASE_TO_NUMERIC.get(phase, 0.0))
+            self._phase_child.set(mn.PHASE_TO_NUMERIC.get(phase, 0.0))
         except Exception:
             logger.warning(
                 "FtMegatronAgent.step() failed at iteration=%s",

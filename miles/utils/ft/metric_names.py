@@ -31,6 +31,17 @@ TRAINING_JOB_STATUS = "miles_ft_training_job_status"
 TRAINING_LOSS_LATEST = "miles_ft_training_loss_latest"
 TRAINING_MFU_LATEST = "miles_ft_training_mfu_latest"
 
+# Training phase numeric encoding (shared between MegatronAgent and detectors)
+PHASE_IDLE: float = 0.0
+PHASE_TRAINING: float = 1.0
+PHASE_CHECKPOINT_SAVING: float = 2.0
+
+PHASE_TO_NUMERIC: dict[str, float] = {
+    "idle": PHASE_IDLE,
+    "training": PHASE_TRAINING,
+    "checkpoint_saving": PHASE_CHECKPOINT_SAVING,
+}
+
 # Controller operational
 CONTROLLER_MODE = "miles_ft_controller_mode"
 CONTROLLER_TICK_COUNT = "miles_ft_controller_tick_count"

@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from miles.utils.ft.metric_names import (
+    PHASE_CHECKPOINT_SAVING,
     TRAINING_ITERATION,
     TRAINING_PHASE,
 )
@@ -8,8 +9,6 @@ from miles.utils.ft.controller.detectors.base import BaseFaultDetector, Detector
 from miles.utils.ft.controller.mini_prometheus.protocol import MetricStoreProtocol
 from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
-
-_PHASE_CHECKPOINT_SAVING: float = 2.0
 
 
 class HangDetector(BaseFaultDetector):
@@ -52,7 +51,7 @@ class HangDetector(BaseFaultDetector):
             return False
 
         for row in df.iter_rows(named=True):
-            if row["value"] == _PHASE_CHECKPOINT_SAVING:
+            if row["value"] == PHASE_CHECKPOINT_SAVING:
                 return True
 
         return False
