@@ -32,17 +32,26 @@ async def retry_async(
     description: str,
     max_retries: int = DEFAULT_MAX_RETRIES,
     sleep_fn: Callable[[float], Coroutine[Any, Any, None]] = asyncio.sleep,
+    per_call_timeout: float | None = None,
 ) -> RetryResult[_T]:
     """Retry an async callable up to *max_retries* times with exponential backoff.
 
     Returns a :class:`RetryResult` with ``ok=True`` and the return value on
     success, or ``ok=False`` with an error description if all attempts fail.
+
+    When *per_call_timeout* is set, each individual call is wrapped with
+    ``asyncio.wait_for`` to prevent a single hung invocation from blocking
+    the entire retry loop.
     """
     last_error: str = ""
 
     for attempt in range(max_retries):
         try:
-            value = await func()
+            coro = func()
+            if per_call_timeout is not None:
+                value = await asyncio.wait_for(coro, timeout=per_call_timeout)
+            else:
+                value = await coro
             return RetryResult(ok=True, value=value)
         except Exception as exc:
             last_error = str(exc)
