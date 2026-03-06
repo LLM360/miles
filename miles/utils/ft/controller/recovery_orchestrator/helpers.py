@@ -38,14 +38,15 @@ async def stop_and_submit(
             )
             return False
 
-    result = await retry_async(
-        lambda: training_job.submit_training(excluded_node_ids=excluded_node_ids),
-        description="submit_training",
-    )
-    if result.ok and result.value is not None and on_new_run is not None:
-        on_new_run(result.value)
+    try:
+        run_id = await training_job.submit_training(excluded_node_ids=excluded_node_ids)
+    except Exception:
+        logger.error("submit_training_failed", exc_info=True)
+        return False
 
-    return result.ok
+    if on_new_run is not None:
+        on_new_run(run_id)
+    return True
 
 
 async def get_already_bad_nodes(node_manager: NodeManagerProtocol) -> set[str]:

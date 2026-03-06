@@ -57,6 +57,7 @@ _DEFAULT_TIMEOUT_SECONDS = 300
 _SUBMIT_TIMEOUT_SECONDS = 60
 _GET_STATUS_TIMEOUT_SECONDS = 30
 _STOP_JOB_TIMEOUT_SECONDS = 30
+_SUBMIT_MAX_ATTEMPTS = 3
 
 
 async def stop_all_active_jobs(
@@ -121,25 +122,71 @@ class RayTrainingJob(TrainingJobProtocol):
             if ray_node_ids:
                 entrypoint += f" --excluded-node-ids {','.join(ray_node_ids)}"
 
-        start = time.monotonic()
-        job_id = await asyncio.wait_for(
-            asyncio.to_thread(
-                self._client.submit_job,
-                entrypoint=entrypoint,
-                runtime_env=runtime_env,
-            ),
-            timeout=_SUBMIT_TIMEOUT_SECONDS,
-        )
-        elapsed = time.monotonic() - start
+        last_submission_id: str | None = None
+        last_error: Exception | None = None
 
-        self._job_id = job_id
-        logger.info(
-            "submit_training job_id=%s run_id=%s elapsed_seconds=%.3f",
-            job_id,
-            run_id,
-            elapsed,
-        )
-        return run_id
+        for attempt in range(_SUBMIT_MAX_ATTEMPTS):
+            submission_id = f"miles-{self._ft_id}-{run_id}-{attempt}"
+
+            if attempt > 0 and last_submission_id is not None:
+                recovered_job_id = await self._check_job_exists(last_submission_id)
+                if recovered_job_id is not None:
+                    self._job_id = recovered_job_id
+                    logger.info(
+                        "submit_training_recovered job_id=%s submission_id=%s run_id=%s",
+                        recovered_job_id, last_submission_id, run_id,
+                    )
+                    return run_id
+
+            last_submission_id = submission_id
+            try:
+                start = time.monotonic()
+                job_id = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self._client.submit_job,
+                        entrypoint=entrypoint,
+                        runtime_env=runtime_env,
+                        submission_id=submission_id,
+                    ),
+                    timeout=_SUBMIT_TIMEOUT_SECONDS,
+                )
+                elapsed = time.monotonic() - start
+                self._job_id = job_id
+                logger.info(
+                    "submit_training job_id=%s run_id=%s elapsed_seconds=%.3f",
+                    job_id, run_id, elapsed,
+                )
+                return run_id
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "submit_training_attempt_failed attempt=%d/%d submission_id=%s",
+                    attempt + 1, _SUBMIT_MAX_ATTEMPTS, submission_id,
+                    exc_info=True,
+                )
+
+        if last_submission_id is not None:
+            recovered_job_id = await self._check_job_exists(last_submission_id)
+            if recovered_job_id is not None:
+                self._job_id = recovered_job_id
+                logger.info("submit_training_recovered_final job_id=%s", recovered_job_id)
+                return run_id
+
+        raise last_error  # type: ignore[misc]
+
+    async def _check_job_exists(self, submission_id: str) -> str | None:
+        """Query whether a job with the given submission_id exists on Ray. Returns submission_id or None."""
+        try:
+            info = await asyncio.wait_for(
+                asyncio.to_thread(self._client.get_job_info, submission_id),
+                timeout=_GET_STATUS_TIMEOUT_SECONDS,
+            )
+            if info is not None:
+                return submission_id
+            return None
+        except Exception:
+            logger.warning("_check_job_exists_failed submission_id=%s", submission_id, exc_info=True)
+            return None
 
     async def stop_training(self, timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS) -> None:
         if self._job_id is None:
