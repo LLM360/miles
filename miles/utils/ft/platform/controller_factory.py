@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 from miles.utils.ft.protocols.platform import (
@@ -44,6 +46,7 @@ class FtControllerConfig(FtBaseModel):
     prometheus_url: str = "http://prometheus:9090"
     controller_exporter_port: int = 0
     tick_interval: float = 30.0
+    scrape_interval_seconds: float = 10.0
 
 
 _NOTIFIER_SENTINEL: object = object()
@@ -58,6 +61,8 @@ def build_ft_controller(
     notifier_override: NotificationProtocol | None | object = _NOTIFIER_SENTINEL,
     detectors_override: list[BaseFaultDetector] | None = None,
     diagnostic_orchestrator_override: DiagnosticOrchestratorProtocol | None = None,
+    recovery_cooldown_override: SlidingWindowThrottle | None = None,
+    registration_grace_ticks_override: int | None = None,
     **kwargs: object,
 ) -> FtController:
     """Build an FtController with all dependent components from config parameters.
@@ -120,7 +125,7 @@ def build_ft_controller(
         config.controller_exporter_port, config.k8s_label_prefix or "(none)",
     )
 
-    return FtController.create(
+    create_kwargs: dict[str, Any] = dict(
         node_manager=node_manager,
         training_job=training_job,
         metric_store=metric_store,
@@ -132,6 +137,12 @@ def build_ft_controller(
         controller_exporter=controller_exporter,
         diagnostic_orchestrator=diagnostic_orchestrator_override,
     )
+    if recovery_cooldown_override is not None:
+        create_kwargs["recovery_cooldown"] = recovery_cooldown_override
+    if registration_grace_ticks_override is not None:
+        create_kwargs["registration_grace_ticks"] = registration_grace_ticks_override
+
+    return FtController.create(**create_kwargs)
 
 
 def _build_platform_components(
@@ -235,7 +246,9 @@ def _build_metric_store(
 ) -> tuple[MiniPrometheus | PrometheusClient, MiniPrometheus | None]:
     """Return (metric_store, scrape_target_manager) based on config backend."""
     if config.metric_store_backend == "mini":
-        mini_prom = MiniPrometheus(config=MiniPrometheusConfig())
+        mini_prom = MiniPrometheus(config=MiniPrometheusConfig(
+            scrape_interval=timedelta(seconds=config.scrape_interval_seconds),
+        ))
         mini_prom.add_scrape_target(
             target_id="controller",
             address=controller_exporter.address,
