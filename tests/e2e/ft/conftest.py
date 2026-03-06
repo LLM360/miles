@@ -153,8 +153,8 @@ async def ft_controller_handle(
 
 
 async def _wait_for_named_actor(
-        name: str,
-        timeout: float,
+    name: str,
+    timeout: float,
 ) -> ray.actor.ActorHandle:
     """Poll until a named Ray actor becomes available."""
     deadline = time.monotonic() + timeout
