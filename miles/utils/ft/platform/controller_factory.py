@@ -211,11 +211,9 @@ def _resolve_notify_config() -> tuple[str, str]:
 
 
 def _get_notifier_class(notify_platform: str) -> type[WebhookNotifier]:
-    from miles.utils.ft.platform.notifiers import (
-        DiscordWebhookNotifier,
-        LarkWebhookNotifier,
-        SlackWebhookNotifier,
-    )
+    from miles.utils.ft.platform.notifiers.discord_notifier import DiscordWebhookNotifier
+    from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
+    from miles.utils.ft.platform.notifiers.slack_notifier import SlackWebhookNotifier
 
     registry: dict[str, type[WebhookNotifier]] = {
         "lark": LarkWebhookNotifier,
