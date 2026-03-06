@@ -16,11 +16,12 @@ from miles.utils.ft.controller.diagnostics.stack_trace import (
 from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
+from miles.utils.ft.protocols.platform import DiagnosticSchedulerProtocol
 
 logger = logging.getLogger(__name__)
 
 
-class DiagnosticScheduler:
+class DiagnosticScheduler(DiagnosticSchedulerProtocol):
     """Layered progressive diagnostic pipeline.
 
     Runs registered diagnostic steps in order on all agents (nodes)
