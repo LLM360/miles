@@ -23,11 +23,11 @@ class TestEnterRecovery:
             reason="test recovery",
         ))
         harness = make_test_controller(detectors=[detector])
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
 
         await harness.controller._tick()
 
-        assert harness.controller._recovery_orchestrator is not None
+        assert harness.controller.recovery_manager.in_progress
 
     @pytest.mark.anyio
     async def test_recovery_mode_skips_non_critical_detectors(self) -> None:
@@ -59,12 +59,12 @@ class TestEnterRecovery:
         harness = make_test_controller(detectors=[enter_recovery, critical])
 
         await harness.controller._tick()
-        assert harness.controller._recovery_orchestrator is not None
+        assert harness.controller.recovery_manager.in_progress
         assert critical.call_count == 0
 
         await harness.controller._tick()
         assert critical.call_count == 1
-        assert "node-new-bad" in harness.controller._recovery_orchestrator.bad_node_ids
+        assert "node-new-bad" in harness.controller.recovery_manager.bad_node_ids
 
     @pytest.mark.anyio
     async def test_critical_detector_no_duplicate_bad_nodes(self) -> None:
@@ -81,7 +81,7 @@ class TestEnterRecovery:
         harness = make_test_controller(detectors=[enter_recovery, critical])
 
         await harness.controller._tick()
-        orch = harness.controller._recovery_orchestrator
+        orch = harness.controller.recovery_manager.orchestrator
         assert orch is not None
         orch._context.bad_node_ids.append("node-1")
 
@@ -101,12 +101,12 @@ class TestEnterRecovery:
         )
 
         await harness.controller._tick()
-        assert harness.controller._recovery_orchestrator is not None
+        assert harness.controller.recovery_manager.in_progress
 
-        harness.controller._recovery_orchestrator._context.phase = RecoveryPhase.DONE
+        harness.controller.recovery_manager.orchestrator._context.phase = RecoveryPhase.DONE
 
         await harness.controller._tick()
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
 
     @pytest.mark.anyio
     async def test_exporter_mode_reflects_recovery(self) -> None:

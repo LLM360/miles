@@ -25,12 +25,12 @@ class TestStepToLogStepFlow:
         harness = make_test_controller()
         run_id = "integ-megatron-1"
 
-        await harness.controller.register_rank(
+        harness.rank_registry.register_rank(
             run_id=run_id, rank=0, world_size=4,
             node_id="node-0", exporter_address="http://localhost:9999",
         )
 
-        await harness.controller.log_step(
+        harness.rank_registry.log_step(
             run_id=run_id, step=5,
             metrics={"loss": 2.5, "grad_norm": 1.1},
         )
@@ -45,11 +45,11 @@ class TestRegisterRankPlacement:
         harness = make_test_controller()
         run_id = "integ-megatron-2"
 
-        await harness.controller.register_rank(
+        harness.rank_registry.register_rank(
             run_id=run_id, rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
-        await harness.controller.register_rank(
+        harness.rank_registry.register_rank(
             run_id=run_id, rank=1, world_size=4,
             node_id="node-1", exporter_address="http://node-1:9090",
         )
@@ -66,7 +66,7 @@ class TestScrapeTargetRegistration:
             run_id = "integ-megatron-3"
             exporter_address = agent.get_exporter_address()
 
-            await harness.controller.register_rank(
+            harness.rank_registry.register_rank(
                 run_id=run_id, rank=0, world_size=4,
                 node_id="node-0", exporter_address=exporter_address,
             )
@@ -85,7 +85,7 @@ class TestHeartbeatScrape:
             run_id = "integ-megatron-4"
             exporter_address = agent.get_exporter_address()
 
-            await harness.controller.register_rank(
+            harness.rank_registry.register_rank(
                 run_id=run_id, rank=0, world_size=4,
                 node_id="node-0", exporter_address=exporter_address,
             )
@@ -110,17 +110,17 @@ class TestRunIdClear:
         run_id_1 = "integ-megatron-run-1"
         run_id_2 = "integ-megatron-run-2"
 
-        await harness.controller.register_rank(
+        harness.rank_registry.register_rank(
             run_id=run_id_1, rank=0, world_size=2,
             node_id="node-0", exporter_address="http://localhost:9999",
         )
-        await harness.controller.log_step(
+        harness.rank_registry.log_step(
             run_id=run_id_1, step=10,
             metrics={"loss": 2.0},
         )
         assert harness.mini_wandb.latest(metric_name="loss") == 2.0
 
-        await harness.controller.register_rank(
+        harness.rank_registry.register_rank(
             run_id=run_id_2, rank=0, world_size=2,
             node_id="node-0", exporter_address="http://localhost:9999",
         )

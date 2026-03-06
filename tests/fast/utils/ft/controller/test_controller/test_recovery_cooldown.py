@@ -23,15 +23,15 @@ class TestRecoveryCooldown:
         )
 
         await harness.controller._tick()
-        assert harness.controller._recovery_orchestrator is not None
-        harness.controller._recovery_orchestrator = None
+        assert harness.controller.recovery_manager.in_progress
+        harness.controller._recovery_manager._orchestrator = None
 
         await harness.controller._tick()
-        assert harness.controller._recovery_orchestrator is not None
-        harness.controller._recovery_orchestrator = None
+        assert harness.controller.recovery_manager.in_progress
+        harness.controller._recovery_manager._orchestrator = None
 
         await harness.controller._tick()
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 1
         title, content, severity = harness.notifier.calls[0]
@@ -51,9 +51,9 @@ class TestRecoveryCooldown:
         )
 
         await harness.controller._tick()
-        harness.controller._recovery_orchestrator = None
+        harness.controller._recovery_manager._orchestrator = None
         await harness.controller._tick()
-        harness.controller._recovery_orchestrator = None
+        harness.controller._recovery_manager._orchestrator = None
 
         crash_detector._decision = Decision(
             action=ActionType.ENTER_RECOVERY,
@@ -61,7 +61,7 @@ class TestRecoveryCooldown:
             reason="hang",
         )
         await harness.controller._tick()
-        assert harness.controller._recovery_orchestrator is not None
+        assert harness.controller.recovery_manager.in_progress
 
     @pytest.mark.anyio
     async def test_recovery_within_cooldown_window_counted(self) -> None:
@@ -76,9 +76,9 @@ class TestRecoveryCooldown:
         )
 
         await harness.controller._tick()
-        harness.controller._recovery_orchestrator = None
+        harness.controller._recovery_manager._orchestrator = None
 
         await harness.controller._tick()
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 1

@@ -121,7 +121,7 @@ class TestGetStatus:
     @pytest.mark.asyncio
     async def test_active_run_id_after_register(self) -> None:
         harness = make_test_controller()
-        await harness.controller.register_rank(
+        harness.rank_registry.register_rank(
             run_id="run-42", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
@@ -182,7 +182,8 @@ class TestGetStatus:
             phase_history=[RecoveryPhase.CHECK_ALERTS, RecoveryPhase.EVICT_AND_RESTART],
             bad_node_ids=["node-1"],
         )
-        controller._recovery_orchestrator = mock_orch
+        controller._recovery_manager._orchestrator = mock_orch
+        controller._recovery_manager._diagnosing_nodes = set(mock_orch.bad_node_ids)
 
         status = controller.get_status()
         assert status.recovery_in_progress is True
@@ -197,7 +198,8 @@ class TestGetStatus:
             phase_history=[RecoveryPhase.CHECK_ALERTS, RecoveryPhase.NOTIFY],
             bad_node_ids=["node-2"],
         )
-        controller._recovery_orchestrator = mock_orch
+        controller._recovery_manager._orchestrator = mock_orch
+        controller._recovery_manager._diagnosing_nodes = set(mock_orch.bad_node_ids)
 
         status = controller.get_status()
         assert status.recovery_in_progress is True
@@ -212,7 +214,8 @@ class TestGetStatus:
             phase_history=[RecoveryPhase.CHECK_ALERTS, RecoveryPhase.DIAGNOSING],
             bad_node_ids=["node-3"],
         )
-        controller._recovery_orchestrator = mock_orch
+        controller._recovery_manager._orchestrator = mock_orch
+        controller._recovery_manager._diagnosing_nodes = set(mock_orch.bad_node_ids)
 
         status = controller.get_status()
         assert status.recovery_in_progress is True
@@ -238,19 +241,19 @@ class TestAgentManagement:
     def test_register_agent_adds_to_dict(self) -> None:
         harness = make_test_controller()
         agent = object()
-        harness.controller.register_agent("node-0", agent)
+        harness.rank_registry.register_agent("node-0", agent)
 
-        assert "node-0" in harness.controller._rank_registry.agents
-        assert harness.controller._rank_registry.agents["node-0"] is agent
+        assert "node-0" in harness.rank_registry.agents
+        assert harness.rank_registry.agents["node-0"] is agent
 
     def test_register_overwrites_existing(self) -> None:
         harness = make_test_controller()
         agent1 = object()
         agent2 = object()
-        harness.controller.register_agent("node-0", agent1)
-        harness.controller.register_agent("node-0", agent2)
+        harness.rank_registry.register_agent("node-0", agent1)
+        harness.rank_registry.register_agent("node-0", agent2)
 
-        assert harness.controller._rank_registry.agents["node-0"] is agent2
+        assert harness.rank_registry.agents["node-0"] is agent2
 
 
 class TestDefaultDiagnosticSchedulerWiring:

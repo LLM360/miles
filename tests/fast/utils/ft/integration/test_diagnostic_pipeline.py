@@ -10,7 +10,7 @@ import pytest
 
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.models import RecoveryPhase
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     ControllerTestHarness,
     make_fake_agents,
@@ -36,7 +36,7 @@ def _enter_recovery_and_skip_to_diagnosing(
         controller_exporter=harness.controller_exporter,
     )
     orch._context.phase = RecoveryPhase.DIAGNOSING
-    harness.controller._recovery_orchestrator = orch
+    harness.controller._recovery_manager._orchestrator = orch
 
 
 class TestDiagnosticPipelineWithBadNode:
@@ -59,10 +59,10 @@ class TestDiagnosticPipelineWithBadNode:
         )
 
         for node_id, agent in agents.items():
-            harness.controller.register_agent(node_id, agent)
+            harness.rank_registry.register_agent(node_id, agent)
 
         _enter_recovery_and_skip_to_diagnosing(harness, scheduler)
-        orch = harness.controller._recovery_orchestrator
+        orch = harness.controller.recovery_manager.orchestrator
         assert orch is not None
         assert orch.phase == RecoveryPhase.DIAGNOSING
 
@@ -74,11 +74,11 @@ class TestDiagnosticPipelineWithBadNode:
 
         # Advance to completion
         for _ in range(10):
-            if harness.controller._recovery_orchestrator is None:
+            if not harness.controller.recovery_manager.in_progress:
                 break
             await harness.controller._tick()
 
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
         assert harness.node_manager.is_node_bad("node-1")
         assert not harness.node_manager.is_node_bad("node-0")
 
@@ -103,10 +103,10 @@ class TestDiagnosticPipelineAllPass:
         )
 
         for node_id, agent in agents.items():
-            harness.controller.register_agent(node_id, agent)
+            harness.rank_registry.register_agent(node_id, agent)
 
         _enter_recovery_and_skip_to_diagnosing(harness, scheduler)
-        orch = harness.controller._recovery_orchestrator
+        orch = harness.controller.recovery_manager.orchestrator
         assert orch is not None
 
         # DIAGNOSING: all pass → NOTIFY
@@ -117,11 +117,11 @@ class TestDiagnosticPipelineAllPass:
         await harness.controller._tick()
 
         for _ in range(5):
-            if harness.controller._recovery_orchestrator is None:
+            if not harness.controller.recovery_manager.in_progress:
                 break
             await harness.controller._tick()
 
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
         assert harness.notifier is not None
         assert len(harness.notifier.calls) >= 1
         assert not harness.node_manager.is_node_bad("node-0")
@@ -141,7 +141,7 @@ class TestDiagnosticPipelineEmptyPipeline:
         )
 
         _enter_recovery_and_skip_to_diagnosing(harness, scheduler)
-        orch = harness.controller._recovery_orchestrator
+        orch = harness.controller.recovery_manager.orchestrator
         assert orch is not None
         assert orch.phase == RecoveryPhase.DIAGNOSING
 
@@ -171,10 +171,10 @@ class TestDiagnosticPipelineInterMachine:
         )
 
         for node_id, agent in agents.items():
-            harness.controller.register_agent(node_id, agent)
+            harness.rank_registry.register_agent(node_id, agent)
 
         _enter_recovery_and_skip_to_diagnosing(harness, scheduler)
-        orch = harness.controller._recovery_orchestrator
+        orch = harness.controller.recovery_manager.orchestrator
         assert orch is not None
 
         await harness.controller._tick()
@@ -184,11 +184,11 @@ class TestDiagnosticPipelineInterMachine:
         )
 
         for _ in range(10):
-            if harness.controller._recovery_orchestrator is None:
+            if not harness.controller.recovery_manager.in_progress:
                 break
             await harness.controller._tick()
 
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
         assert harness.node_manager.is_node_bad("node-1")
         assert not harness.node_manager.is_node_bad("node-0")
         assert not harness.node_manager.is_node_bad("node-2")
@@ -211,10 +211,10 @@ class TestDiagnosticPipelineInterMachine:
         )
 
         for node_id, agent in agents.items():
-            harness.controller.register_agent(node_id, agent)
+            harness.rank_registry.register_agent(node_id, agent)
 
         _enter_recovery_and_skip_to_diagnosing(harness, scheduler)
-        orch = harness.controller._recovery_orchestrator
+        orch = harness.controller.recovery_manager.orchestrator
         assert orch is not None
 
         await harness.controller._tick()
@@ -224,11 +224,11 @@ class TestDiagnosticPipelineInterMachine:
         await harness.controller._tick()
 
         for _ in range(5):
-            if harness.controller._recovery_orchestrator is None:
+            if not harness.controller.recovery_manager.in_progress:
                 break
             await harness.controller._tick()
 
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
         assert harness.notifier is not None
         assert len(harness.notifier.calls) >= 1
         assert not harness.node_manager.is_node_bad("node-0")
@@ -256,10 +256,10 @@ class TestDiagnosticPipelineMultiStep:
         )
 
         for node_id, agent in agents.items():
-            harness.controller.register_agent(node_id, agent)
+            harness.rank_registry.register_agent(node_id, agent)
 
         _enter_recovery_and_skip_to_diagnosing(harness, scheduler)
-        orch = harness.controller._recovery_orchestrator
+        orch = harness.controller.recovery_manager.orchestrator
         assert orch is not None
 
         # DIAGNOSING → gpu passes, intra fails node-1 → EVICT_AND_RESTART
@@ -269,10 +269,10 @@ class TestDiagnosticPipelineMultiStep:
         )
 
         for _ in range(10):
-            if harness.controller._recovery_orchestrator is None:
+            if not harness.controller.recovery_manager.in_progress:
                 break
             await harness.controller._tick()
 
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
         assert harness.node_manager.is_node_bad("node-1")
         assert not harness.node_manager.is_node_bad("node-0")

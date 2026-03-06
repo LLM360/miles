@@ -127,7 +127,7 @@ class TestAllDetectorsCrashSilentPass:
 
         assert not harness.node_manager._bad_nodes
         assert not harness.training_job._stopped
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
 
 
 class TestExecuteDecisionUnknownAction:
@@ -153,7 +153,7 @@ class TestExecuteDecision:
         assert not harness.node_manager._bad_nodes
         assert not harness.training_job._stopped
         assert not harness.training_job._submitted
-        assert harness.controller._recovery_orchestrator is None
+        assert not harness.controller.recovery_manager.in_progress
 
     @pytest.mark.anyio
     async def test_mark_bad_and_restart_does_not_raise(self) -> None:

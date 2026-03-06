@@ -21,14 +21,14 @@ _MAX_RSS_GROWTH_BYTES = 50 * 1024 * 1024  # 50 MB
 _NODE_IDS = ["node-0", "node-1", "node-2", "node-3"]
 
 
-async def _register_n_nodes(
-    controller: object,
+def _register_n_nodes(
+    rank_registry: object,
     run_id: str,
     node_ids: list[str] = _NODE_IDS,
 ) -> None:
     world_size = len(node_ids)
     for rank, node_id in enumerate(node_ids):
-        await controller.register_rank(
+        rank_registry.register_rank(
             run_id=run_id,
             rank=rank,
             world_size=world_size,
@@ -45,7 +45,7 @@ class TestControllerMemoryLeak:
         controller = harness.controller
 
         run_id = "leak-test-run"
-        await _register_n_nodes(controller, run_id=run_id)
+        _register_n_nodes(harness.rank_registry, run_id=run_id)
 
         for node_id in _NODE_IDS:
             inject_healthy_node(harness.metric_store, node_id=node_id)
