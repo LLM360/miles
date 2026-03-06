@@ -16,7 +16,7 @@ from miles.utils.ft.controller.recovery.context import (
     PENDING_TIMEOUT_SECONDS,
     RecoveryContext,
 )
-from miles.utils.ft.models.fault import ActionType
+from miles.utils.ft.models.fault import ActionType, unique_node_ids
 from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import (
     DiagnosticOrchestratorProtocol,
@@ -40,14 +40,25 @@ async def step_check_alerts(
     ctx: RecoveryContext,
     alert_checker: AlertChecker,
 ) -> RecoveryPhase:
-    bad_node_ids, reasons = alert_checker.check_alerts()
+    faults = alert_checker.check_alerts()
+    if not faults:
+        logger.info("check_alerts_clean trigger=%s", ctx.trigger)
+        return RecoveryPhase.REATTEMPTING
 
-    if bad_node_ids:
-        ctx.bad_node_ids = bad_node_ids
+    non_ephemeral = [f for f in faults if not f.ephemeral]
+    ephemeral_only = [f for f in faults if f.ephemeral]
+
+    if non_ephemeral:
+        all_faults = non_ephemeral + ephemeral_only
+        ctx.bad_node_ids = sorted(unique_node_ids(all_faults))
+        reasons = [f.reason for f in all_faults]
         logger.info("check_alerts_found bad_nodes=%s reasons=%s", ctx.bad_node_ids, reasons)
         return RecoveryPhase.EVICT_AND_RESTART
 
-    logger.info("check_alerts_clean trigger=%s", ctx.trigger)
+    logger.info(
+        "check_alerts_ephemeral_only nodes=%s trigger=%s",
+        sorted(unique_node_ids(ephemeral_only)), ctx.trigger,
+    )
     return RecoveryPhase.REATTEMPTING
 
 
