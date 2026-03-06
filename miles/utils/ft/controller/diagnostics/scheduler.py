@@ -37,12 +37,14 @@ class DiagnosticScheduler:
         agents: dict[str, NodeAgentProtocol],
         pipeline: list[str] | None = None,
         default_timeout_seconds: int = 120,
+        pipeline_timeout_seconds: int = 900,
         node_addresses: dict[str, str] | None = None,
         rank_pids_provider: Callable[[str], dict[int, int]] | None = None,
     ) -> None:
         self._agents = agents
         self._pipeline = pipeline or []
         self._default_timeout_seconds = default_timeout_seconds
+        self._pipeline_timeout_seconds = pipeline_timeout_seconds
         self._rank_pids_provider = rank_pids_provider
         self._inter_machine = InterMachineOrchestrator(
             agents=agents,
@@ -59,6 +61,29 @@ class DiagnosticScheduler:
             trigger_reason, suspect_node_ids, self._pipeline,
         )
 
+        try:
+            return await asyncio.wait_for(
+                self._run_diagnostic_pipeline_inner(
+                    trigger_reason=trigger_reason,
+                    suspect_node_ids=suspect_node_ids,
+                ),
+                timeout=self._pipeline_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "diagnostic_pipeline_timeout timeout=%d trigger=%s",
+                self._pipeline_timeout_seconds, trigger_reason,
+            )
+            return Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason=f"diagnostic pipeline timed out after {self._pipeline_timeout_seconds}s",
+            )
+
+    async def _run_diagnostic_pipeline_inner(
+        self,
+        trigger_reason: TriggerType,
+        suspect_node_ids: list[str] | None = None,
+    ) -> Decision:
         if trigger_reason == TriggerType.HANG and self._rank_pids_provider is not None:
             suspect_from_trace = await self._run_stack_trace_pre_step()
             if suspect_from_trace:
@@ -221,6 +246,8 @@ class DiagnosticScheduler:
     # Helpers
     # ------------------------------------------------------------------
 
+    _RPC_TIMEOUT_BUFFER_SECONDS = 30
+
     async def _call_agent_diagnostic(
         self,
         agent: NodeAgentProtocol,
@@ -229,8 +256,21 @@ class DiagnosticScheduler:
         timeout_seconds: int,
     ) -> DiagnosticResult:
         try:
-            return await agent.run_diagnostic(
-                diagnostic_type, timeout_seconds=timeout_seconds,
+            return await asyncio.wait_for(
+                agent.run_diagnostic(
+                    diagnostic_type, timeout_seconds=timeout_seconds,
+                ),
+                timeout=timeout_seconds + self._RPC_TIMEOUT_BUFFER_SECONDS,
+            )
+
+        except asyncio.TimeoutError:
+            logger.warning(
+                "diagnostic_agent_rpc_timeout node=%s type=%s timeout=%d",
+                node_id, diagnostic_type, timeout_seconds,
+            )
+            return DiagnosticResult.fail_result(
+                diagnostic_type=diagnostic_type, node_id=node_id,
+                details=f"agent RPC timed out after {timeout_seconds + self._RPC_TIMEOUT_BUFFER_SECONDS}s",
             )
 
         except UnknownDiagnosticError:

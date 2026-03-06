@@ -16,6 +16,7 @@ from miles.utils.ft.protocols.agents import NodeAgentProtocol
 logger = logging.getLogger(__name__)
 
 _BASE_PORT = 29500
+_RPC_TIMEOUT_BUFFER_SECONDS = 30
 
 
 class PairResult(NamedTuple):
@@ -89,21 +90,30 @@ class InterMachineOrchestrator:
             return PairResult(master_id=master_id, worker_id=worker_id, passed=False)
 
         try:
-            master_result, worker_result = await asyncio.gather(
-                master_agent.run_diagnostic(
-                    diagnostic_type="inter_machine",
-                    timeout_seconds=timeout_seconds,
-                    master_addr=master_addr,
-                    master_port=port,
+            master_result, worker_result = await asyncio.wait_for(
+                asyncio.gather(
+                    master_agent.run_diagnostic(
+                        diagnostic_type="inter_machine",
+                        timeout_seconds=timeout_seconds,
+                        master_addr=master_addr,
+                        master_port=port,
+                    ),
+                    worker_agent.run_diagnostic(
+                        diagnostic_type="inter_machine",
+                        timeout_seconds=timeout_seconds,
+                        master_addr=master_addr,
+                        master_port=port,
+                    ),
                 ),
-                worker_agent.run_diagnostic(
-                    diagnostic_type="inter_machine",
-                    timeout_seconds=timeout_seconds,
-                    master_addr=master_addr,
-                    master_port=port,
-                ),
+                timeout=timeout_seconds + _RPC_TIMEOUT_BUFFER_SECONDS,
             )
             passed = master_result.passed and worker_result.passed
+        except asyncio.TimeoutError:
+            logger.warning(
+                "inter_machine_pair_rpc_timeout master=%s worker=%s timeout=%d",
+                master_id, worker_id, timeout_seconds,
+            )
+            passed = False
         except Exception:
             logger.warning(
                 "inter_machine_pair_failed master=%s worker=%s",
