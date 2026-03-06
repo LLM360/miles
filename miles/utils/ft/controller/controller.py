@@ -13,7 +13,7 @@ from miles.utils.ft.controller.actions import (
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
-from miles.utils.ft.controller.metrics.exporter import ControllerExporter
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
@@ -51,8 +51,8 @@ class FtController:
         metric_store: MetricStoreProtocol,
         detectors: list[BaseFaultDetector],
         tick_interval: float,
-        controller_exporter: ControllerExporter | None,
-        registration_grace_ticks: int,
+        controller_exporter: ControllerExporter | None = None,
+        registration_grace_ticks: int = 5,
     ) -> None:
         self._training_job = platform_deps.training_job
         self._metric_store = metric_store
@@ -62,7 +62,7 @@ class FtController:
         self._agents = agents
         self._detectors = detectors
         self._tick_interval = tick_interval
-        self._controller_exporter = controller_exporter
+        self._controller_exporter = controller_exporter or NullControllerExporter()
         self._registration_grace_ticks = registration_grace_ticks
         self._platform_deps = platform_deps
         self._recovery_manager = recovery_manager
@@ -109,11 +109,8 @@ class FtController:
             on_new_run=None,
         )
 
-        duration_cb = (
-            controller_exporter.observe_recovery_duration
-            if controller_exporter is not None
-            else None
-        )
+        resolved_exporter = controller_exporter or NullControllerExporter()
+        duration_cb = resolved_exporter.observe_recovery_duration
         recovery_manager = RecoveryLifecycleManager(
             cooldown=recovery_cooldown or RecoveryCooldown(window_minutes=30.0, max_count=3),
             on_recovery_duration=duration_cb,
@@ -227,9 +224,8 @@ class FtController:
             logger.error("tick_failed tick=%d", self._tick_count, exc_info=True)
         finally:
             duration = time.monotonic() - t0
-            if self._controller_exporter is not None:
-                self._controller_exporter.update_tick_duration(duration)
-                self._controller_exporter.update_last_tick_timestamp(time.time())
+            self._controller_exporter.update_tick_duration(duration)
+            self._controller_exporter.update_last_tick_timestamp(time.time())
             if job_status is not None:
                 self._update_exporter_metrics(job_status)
 
@@ -330,10 +326,9 @@ class FtController:
             decision.action.value, trigger_str, decision.bad_node_ids,
             self._rank_registry.run_id, self._tick_count,
         )
-        if self._controller_exporter is not None:
-            self._controller_exporter.record_decision(
-                action=decision.action.value, trigger=trigger_str,
-            )
+        self._controller_exporter.record_decision(
+            action=decision.action.value, trigger=trigger_str,
+        )
 
         if decision.action == ActionType.MARK_BAD_AND_RESTART:
             await handle_mark_bad_and_restart(decision=decision, deps=self._platform_deps)
@@ -365,9 +360,6 @@ class FtController:
     # ------------------------------------------------------------------
 
     def _update_exporter_metrics(self, job_status: JobStatus) -> None:
-        if self._controller_exporter is None:
-            return
-
         is_recovery = self._recovery_manager.in_progress
         self._controller_exporter.update_from_state(
             job_status=job_status,
@@ -383,8 +375,7 @@ class FtController:
 
     async def _stop_services(self, scrape_task: asyncio.Task[None] | None) -> None:
         await stop_metric_store_task(self._metric_store, scrape_task)
-        if self._controller_exporter is not None:
-            self._controller_exporter.stop()
+        self._controller_exporter.stop()
         if self._platform_deps.notifier is not None:
             try:
                 await self._platform_deps.notifier.aclose()

@@ -4,7 +4,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
-from miles.utils.ft.controller.metrics.exporter import ControllerExporter
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 from miles.utils.ft.controller.recovery_orchestrator.alert_checker import AlertChecker
@@ -50,7 +50,7 @@ class RecoveryOrchestrator:
         self._mini_wandb = mini_wandb
         self._notifier = notifier
         self._diagnostic_scheduler = diagnostic_scheduler
-        self._controller_exporter = controller_exporter
+        self._controller_exporter = controller_exporter or NullControllerExporter()
         self._on_new_run = on_new_run
         self._alert_checker = AlertChecker(metric_store=metric_store)
 
@@ -181,6 +181,4 @@ class RecoveryOrchestrator:
         logger.info("recovery_transition %s -> %s", old.value, new_phase.value)
 
     def _update_exporter(self) -> None:
-        if self._controller_exporter is None:
-            return
         self._controller_exporter.update_recovery_phase(self._context.phase)

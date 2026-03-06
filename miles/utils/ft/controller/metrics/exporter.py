@@ -152,3 +152,62 @@ class ControllerExporter:
         if mode != ControllerMode.RECOVERY:
             self.update_recovery_phase(None)
         self.update_training_metrics(loss=latest_loss, mfu=latest_mfu)
+
+
+class NullControllerExporter(ControllerExporter):
+    """No-op exporter that silently discards all metrics.
+
+    Used when no Prometheus endpoint is configured, eliminating
+    ``if exporter is not None`` guards in the controller code.
+    """
+
+    def __init__(self) -> None:
+        pass
+
+    @property
+    def address(self) -> str:
+        return ""
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def update_mode(self, *, is_recovery: bool) -> None:
+        pass
+
+    def update_tick_count(self) -> None:
+        pass
+
+    def update_recovery_phase(self, phase: RecoveryPhase | None) -> None:
+        pass
+
+    def update_training_job_status(self, status: JobStatus) -> None:
+        pass
+
+    def update_tick_duration(self, seconds: float) -> None:
+        pass
+
+    def record_decision(self, action: str, trigger: str) -> None:
+        pass
+
+    def observe_recovery_duration(self, seconds: float) -> None:
+        pass
+
+    def update_last_tick_timestamp(self, timestamp: float) -> None:
+        pass
+
+    def update_training_metrics(self, loss: float | None, mfu: float | None) -> None:
+        pass
+
+    def update_from_state(
+        self,
+        *,
+        job_status: JobStatus,
+        mode: ControllerMode,
+        recovery_phase: RecoveryPhase | None,
+        latest_loss: float | None,
+        latest_mfu: float | None,
+    ) -> None:
+        pass
