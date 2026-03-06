@@ -9,6 +9,8 @@ Usage:
 
 The xlsx can be downloaded from:
     https://docs.nvidia.com/deploy/xid-errors/Xid-Catalog.xlsx
+with doc at:
+    https://docs.nvidia.com/deploy/xid-errors/analyzing-xid-catalog.html
 """
 import logging
 from pathlib import Path
