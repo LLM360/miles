@@ -63,6 +63,7 @@ class TestRunIdIsolation:
         )
         assert harness.mini_wandb.latest(metric_name="loss") == 2.0
 
+        harness.controller._activate_run("run-2")
         harness.controller.rank_registry.register_training_rank(
             run_id="run-2", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
@@ -86,6 +87,7 @@ class TestRunIdIsolation:
             metrics={"loss": 2.0},
         )
 
+        harness.controller._activate_run("run-2")
         harness.controller.rank_registry.register_training_rank(
             run_id="run-2", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
