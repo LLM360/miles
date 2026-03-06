@@ -176,36 +176,16 @@ class TestReattemptPollBranches:
 
         assert result is None
 
+    @pytest.mark.parametrize("bad_iteration_value", [float("nan"), float("inf"), None],
+                             ids=["nan", "inf", "none"])
     @pytest.mark.anyio
-    async def test_running_with_nan_iteration_sets_base_zero(self) -> None:
+    async def test_running_with_non_finite_iteration_sets_base_zero(
+        self, bad_iteration_value: float | None,
+    ) -> None:
         ctx = _make_ctx()
         ctx.reattempt_submitted = True
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
-        mini_wandb = _make_mini_wandb_with_iteration(float("nan"))
-
-        result = await _reattempt_poll(ctx, training_job, mini_wandb)
-
-        assert result is not None
-        assert ctx.reattempt_base_iteration == 0
-
-    @pytest.mark.anyio
-    async def test_running_with_inf_iteration_sets_base_zero(self) -> None:
-        ctx = _make_ctx()
-        ctx.reattempt_submitted = True
-        training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
-        mini_wandb = _make_mini_wandb_with_iteration(float("inf"))
-
-        result = await _reattempt_poll(ctx, training_job, mini_wandb)
-
-        assert result is not None
-        assert ctx.reattempt_base_iteration == 0
-
-    @pytest.mark.anyio
-    async def test_running_with_none_iteration_sets_base_zero(self) -> None:
-        ctx = _make_ctx()
-        ctx.reattempt_submitted = True
-        training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
-        mini_wandb = MiniWandb()
+        mini_wandb = _make_mini_wandb_with_iteration(bad_iteration_value)
 
         result = await _reattempt_poll(ctx, training_job, mini_wandb)
 
@@ -476,24 +456,11 @@ class TestStepNotify:
 
 
 class TestIterationProgress:
-    def test_none_iteration_returns_zero(self) -> None:
+    @pytest.mark.parametrize("iteration_value", [None, float("nan"), float("inf"), float("-inf")],
+                             ids=["none", "nan", "pos_inf", "neg_inf"])
+    def test_non_finite_or_none_iteration_returns_zero(self, iteration_value: float | None) -> None:
         ctx = _make_ctx(reattempt_base_iteration=5)
-        mini_wandb = MiniWandb()
-        assert _iteration_progress(ctx, mini_wandb) == 0
-
-    def test_nan_iteration_returns_zero(self) -> None:
-        ctx = _make_ctx(reattempt_base_iteration=5)
-        mini_wandb = _make_mini_wandb_with_iteration(float("nan"))
-        assert _iteration_progress(ctx, mini_wandb) == 0
-
-    def test_positive_inf_iteration_returns_zero(self) -> None:
-        ctx = _make_ctx(reattempt_base_iteration=5)
-        mini_wandb = _make_mini_wandb_with_iteration(float("inf"))
-        assert _iteration_progress(ctx, mini_wandb) == 0
-
-    def test_negative_inf_iteration_returns_zero(self) -> None:
-        ctx = _make_ctx(reattempt_base_iteration=5)
-        mini_wandb = _make_mini_wandb_with_iteration(float("-inf"))
+        mini_wandb = _make_mini_wandb_with_iteration(iteration_value)
         assert _iteration_progress(ctx, mini_wandb) == 0
 
     def test_negative_progress_returns_zero(self) -> None:

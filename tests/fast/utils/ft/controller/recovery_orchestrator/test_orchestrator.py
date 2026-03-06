@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb as MiniWandbCls
 from miles.utils.ft.controller.recovery_orchestrator import (
@@ -659,61 +661,25 @@ def _make_timed_out_orchestrator(
 
 
 class TestGlobalTimeoutExemption:
-    def test_notify_phase_not_affected_by_timeout(self) -> None:
-        orch = _make_timed_out_orchestrator(RecoveryPhase.NOTIFY)
-
+    @pytest.mark.parametrize("phase,expected_timed_out,expected_phase", [
+        (RecoveryPhase.NOTIFY, False, RecoveryPhase.NOTIFY),
+        (RecoveryPhase.DONE, False, RecoveryPhase.DONE),
+        (RecoveryPhase.CHECK_ALERTS, True, RecoveryPhase.NOTIFY),
+        (RecoveryPhase.MONITORING, True, RecoveryPhase.NOTIFY),
+        (RecoveryPhase.DIAGNOSING, True, RecoveryPhase.NOTIFY),
+        (RecoveryPhase.REATTEMPTING, True, RecoveryPhase.NOTIFY),
+        (RecoveryPhase.EVICT_AND_RESTART, True, RecoveryPhase.NOTIFY),
+    ])
+    def test_global_timeout_per_phase(
+        self,
+        phase: RecoveryPhase,
+        expected_timed_out: bool,
+        expected_phase: RecoveryPhase,
+    ) -> None:
+        orch = _make_timed_out_orchestrator(phase)
         timed_out = orch._check_global_timeout()
-
-        assert timed_out is False
-        assert orch.phase == RecoveryPhase.NOTIFY
-
-    def test_done_phase_not_affected_by_timeout(self) -> None:
-        orch = _make_timed_out_orchestrator(RecoveryPhase.DONE)
-
-        timed_out = orch._check_global_timeout()
-
-        assert timed_out is False
-        assert orch.phase == RecoveryPhase.DONE
-
-    def test_check_alerts_phase_transitions_on_timeout(self) -> None:
-        orch = _make_timed_out_orchestrator(RecoveryPhase.CHECK_ALERTS)
-
-        timed_out = orch._check_global_timeout()
-
-        assert timed_out is True
-        assert orch.phase == RecoveryPhase.NOTIFY
-
-    def test_monitoring_phase_transitions_on_timeout(self) -> None:
-        orch = _make_timed_out_orchestrator(RecoveryPhase.MONITORING)
-
-        timed_out = orch._check_global_timeout()
-
-        assert timed_out is True
-        assert orch.phase == RecoveryPhase.NOTIFY
-
-    def test_diagnosing_phase_transitions_on_timeout(self) -> None:
-        orch = _make_timed_out_orchestrator(RecoveryPhase.DIAGNOSING)
-
-        timed_out = orch._check_global_timeout()
-
-        assert timed_out is True
-        assert orch.phase == RecoveryPhase.NOTIFY
-
-    def test_reattempting_phase_transitions_on_timeout(self) -> None:
-        orch = _make_timed_out_orchestrator(RecoveryPhase.REATTEMPTING)
-
-        timed_out = orch._check_global_timeout()
-
-        assert timed_out is True
-        assert orch.phase == RecoveryPhase.NOTIFY
-
-    def test_evict_and_restart_phase_transitions_on_timeout(self) -> None:
-        orch = _make_timed_out_orchestrator(RecoveryPhase.EVICT_AND_RESTART)
-
-        timed_out = orch._check_global_timeout()
-
-        assert timed_out is True
-        assert orch.phase == RecoveryPhase.NOTIFY
+        assert timed_out is expected_timed_out
+        assert orch.phase == expected_phase
 
 
 class TestNotifyPhaseNoTimeoutLoop:

@@ -185,7 +185,11 @@ class TestMiniPrometheusRangeFunctions:
         assert len(filtered) == 1
         assert filtered["value"][0] >= 2.0
 
-    def test_min_over_time(self) -> None:
+    @pytest.mark.parametrize("method_name,expected_value", [
+        ("min_over_time", 70.0),
+        ("max_over_time", 85.0),
+    ])
+    def test_range_aggregation(self, method_name: str, expected_value: float) -> None:
         store = make_fake_metric_store()
         now = datetime.now(timezone.utc)
 
@@ -196,8 +200,8 @@ class TestMiniPrometheusRangeFunctions:
                 timestamp=now - timedelta(minutes=3 - i),
             )
 
-        df = store.min_over_time("gpu_temp", window=timedelta(minutes=5))
-        assert df["value"][0] == 70.0
+        df = getattr(store, method_name)("gpu_temp", window=timedelta(minutes=5))
+        assert df["value"][0] == expected_value
 
     def test_avg_over_time(self) -> None:
         store = make_fake_metric_store()
@@ -212,20 +216,6 @@ class TestMiniPrometheusRangeFunctions:
 
         df = store.avg_over_time("metric_a", window=timedelta(minutes=5))
         assert df["value"][0] == pytest.approx(20.0)
-
-    def test_max_over_time(self) -> None:
-        store = make_fake_metric_store()
-        now = datetime.now(timezone.utc)
-
-        for i, val in enumerate([75.0, 80.0, 70.0, 85.0]):
-            store.ingest_samples(
-                target_id="node-0",
-                samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=val)],
-                timestamp=now - timedelta(minutes=3 - i),
-            )
-
-        df = store.max_over_time("gpu_temp", window=timedelta(minutes=5))
-        assert df["value"][0] == 85.0
 
     def test_label_filter_with_polars_compare(self) -> None:
         store = make_fake_metric_store()
@@ -428,7 +418,11 @@ class TestMiniPrometheusScrapeTargets:
 
 
 class TestMiniPrometheusRangeFunctionEdgeCases:
-    def test_single_sample_count_over_time(self) -> None:
+    @pytest.mark.parametrize("method_name,expected_value", [
+        ("count_over_time", 1.0),
+        ("changes", 0.0),
+    ])
+    def test_single_sample_method(self, method_name: str, expected_value: float) -> None:
         store = make_fake_metric_store()
         now = datetime.now(timezone.utc)
 
@@ -438,23 +432,9 @@ class TestMiniPrometheusRangeFunctionEdgeCases:
             timestamp=now,
         )
 
-        df = store.count_over_time("metric", window=timedelta(minutes=5))
+        df = getattr(store, method_name)("metric", window=timedelta(minutes=5))
         assert len(df) == 1
-        assert df["value"][0] == 1.0
-
-    def test_single_sample_changes_returns_zero(self) -> None:
-        store = make_fake_metric_store()
-        now = datetime.now(timezone.utc)
-
-        store.ingest_samples(
-            target_id="node-0",
-            samples=[MetricSample(name="metric", labels={}, value=42.0)],
-            timestamp=now,
-        )
-
-        df = store.changes("metric", window=timedelta(minutes=5))
-        assert len(df) == 1
-        assert df["value"][0] == 0.0
+        assert df["value"][0] == expected_value
 
     def test_changes_with_polars_filter(self) -> None:
         store = make_fake_metric_store()
