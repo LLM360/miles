@@ -12,15 +12,6 @@ import polars as pl
 
 
 class RangeAggregationMixin:
-    @abstractmethod
-    def _dispatch_range_function(
-        self,
-        func_name: str,
-        metric_name: str,
-        window: timedelta,
-        label_filters: dict[str, str] | None,
-    ) -> pl.DataFrame: ...
-
     def changes(
         self,
         metric_name: str,
@@ -60,3 +51,12 @@ class RangeAggregationMixin:
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return self._dispatch_range_function("max_over_time", metric_name, window, label_filters)
+
+    @abstractmethod
+    def _dispatch_range_function(
+        self,
+        func_name: str,
+        metric_name: str,
+        window: timedelta,
+        label_filters: dict[str, str] | None,
+    ) -> pl.DataFrame: ...

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from collections import deque
 from dataclasses import dataclass
@@ -6,13 +8,6 @@ from datetime import datetime, timedelta, timezone
 from miles.utils.ft.protocols.metrics import StepValue, TimedStepValue
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class _StepRecord:
-    step: int
-    receive_time: datetime
-    metrics: dict[str, float]
 
 
 class MiniWandb:
@@ -67,11 +62,6 @@ class MiniWandb:
         data.append(record)
         self._evict(run_id)
 
-    def _active_data(self) -> deque[_StepRecord]:
-        if self._active_run_id is None:
-            return deque()
-        return self._runs.get(self._active_run_id, deque())
-
     def query_last_n_steps(
         self,
         metric_name: str,
@@ -114,6 +104,11 @@ class MiniWandb:
 
         return None
 
+    def _active_data(self) -> deque[_StepRecord]:
+        if self._active_run_id is None:
+            return deque()
+        return self._runs.get(self._active_run_id, deque())
+
     def _evict(self, run_id: str) -> None:
         data = self._runs.get(run_id)
         if data is None:
@@ -129,3 +124,10 @@ class MiniWandb:
         if not data:
             del self._runs[run_id]
             self._last_step.pop(run_id, None)
+
+
+@dataclass
+class _StepRecord:
+    step: int
+    receive_time: datetime
+    metrics: dict[str, float]

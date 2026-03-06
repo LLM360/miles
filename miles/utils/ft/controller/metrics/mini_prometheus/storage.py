@@ -44,10 +44,6 @@ class MiniPrometheus(RangeAggregationMixin):
     def remove_scrape_target(self, target_id: str) -> None:
         self._scrape_loop.remove_target(target_id)
 
-    @property
-    def _scrape_targets(self) -> dict[str, str]:
-        return self._scrape_loop.targets
-
     # -------------------------------------------------------------------
     # Scrape lifecycle (delegated to ScrapeLoop)
     # -------------------------------------------------------------------
@@ -121,6 +117,10 @@ class MiniPrometheus(RangeAggregationMixin):
             window,
             label_filters,
         )
+
+    @property
+    def _scrape_targets(self) -> dict[str, str]:
+        return self._scrape_loop.targets
 
     # -------------------------------------------------------------------
     # Internal: eviction

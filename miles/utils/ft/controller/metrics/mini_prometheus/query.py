@@ -78,57 +78,6 @@ def query_range(
     return pl.DataFrame(rows)
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _labels_match(labels: dict[str, str], filters: dict[str, str]) -> bool:
-    return all(labels.get(k) == v for k, v in filters.items())
-
-
-def _iter_matching(
-    series: dict[SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[SeriesKey, dict[str, str]],
-    name_index: dict[str, set[SeriesKey]],
-    metric_name: str,
-    label_filters: dict[str, str] | None,
-) -> Iterator[tuple[dict[str, str], deque[TimeSeriesSample]]]:
-    for key in name_index.get(metric_name, []):
-        samples = series.get(key)
-        if not samples:
-            continue
-
-        labels = label_maps[key]
-        if label_filters and not _labels_match(labels, label_filters):
-            continue
-
-        yield labels, samples
-
-
-def _instant_query(
-    series: dict[SeriesKey, deque[TimeSeriesSample]],
-    label_maps: dict[SeriesKey, dict[str, str]],
-    name_index: dict[str, set[SeriesKey]],
-    metric_name: str,
-    label_filters: dict[str, str] | None,
-    value_fn: Callable[[deque[TimeSeriesSample]], float | None],
-) -> pl.DataFrame:
-    rows: list[dict] = []
-    for labels, samples in _iter_matching(series, label_maps, name_index, metric_name, label_filters):
-        value = value_fn(samples)
-        if value is None:
-            continue
-
-        row: dict = {"__name__": metric_name, "value": value}
-        row.update(labels)
-        rows.append(row)
-
-    if not rows:
-        return EMPTY_INSTANT
-    return pl.DataFrame(rows)
-
-
 def range_aggregate(
     series: dict[SeriesKey, deque[TimeSeriesSample]],
     label_maps: dict[SeriesKey, dict[str, str]],
@@ -164,6 +113,57 @@ def range_aggregate(
         label_filters,
         value_fn=_extract,
     )
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _instant_query(
+    series: dict[SeriesKey, deque[TimeSeriesSample]],
+    label_maps: dict[SeriesKey, dict[str, str]],
+    name_index: dict[str, set[SeriesKey]],
+    metric_name: str,
+    label_filters: dict[str, str] | None,
+    value_fn: Callable[[deque[TimeSeriesSample]], float | None],
+) -> pl.DataFrame:
+    rows: list[dict] = []
+    for labels, samples in _iter_matching(series, label_maps, name_index, metric_name, label_filters):
+        value = value_fn(samples)
+        if value is None:
+            continue
+
+        row: dict = {"__name__": metric_name, "value": value}
+        row.update(labels)
+        rows.append(row)
+
+    if not rows:
+        return EMPTY_INSTANT
+    return pl.DataFrame(rows)
+
+
+def _iter_matching(
+    series: dict[SeriesKey, deque[TimeSeriesSample]],
+    label_maps: dict[SeriesKey, dict[str, str]],
+    name_index: dict[str, set[SeriesKey]],
+    metric_name: str,
+    label_filters: dict[str, str] | None,
+) -> Iterator[tuple[dict[str, str], deque[TimeSeriesSample]]]:
+    for key in name_index.get(metric_name, []):
+        samples = series.get(key)
+        if not samples:
+            continue
+
+        labels = label_maps[key]
+        if label_filters and not _labels_match(labels, label_filters):
+            continue
+
+        yield labels, samples
+
+
+def _labels_match(labels: dict[str, str], filters: dict[str, str]) -> bool:
+    return all(labels.get(k) == v for k, v in filters.items())
 
 
 def _compute_aggregate(func_name: str, samples: list[TimeSeriesSample]) -> float:

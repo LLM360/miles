@@ -12,14 +12,6 @@ from miles.utils.ft.models.metrics import MetricSample
 logger = logging.getLogger(__name__)
 
 
-class _IngestTarget(Protocol):
-    def ingest_samples(
-        self,
-        target_id: str,
-        samples: list[MetricSample],
-    ) -> None: ...
-
-
 class ScrapeLoop:
     def __init__(self, store: _IngestTarget, scrape_interval_seconds: float) -> None:
         self._store = store
@@ -37,11 +29,6 @@ class ScrapeLoop:
     @property
     def targets(self) -> dict[str, str]:
         return dict(self._targets)
-
-    def _ensure_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=10.0)
-        return self._client
 
     async def scrape_once(self) -> None:
         targets = list(self._targets.items())
@@ -80,3 +67,16 @@ class ScrapeLoop:
         if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
+
+    def _ensure_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=10.0)
+        return self._client
+
+
+class _IngestTarget(Protocol):
+    def ingest_samples(
+        self,
+        target_id: str,
+        samples: list[MetricSample],
+    ) -> None: ...

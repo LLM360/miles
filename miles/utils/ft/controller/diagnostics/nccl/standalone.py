@@ -24,6 +24,71 @@ _MIN_INTER_MACHINE_NODES = 2
 
 
 # ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+async def run_intra_machine_diagnostics(
+    node_ids: list[str] | None = None,
+    timeout_seconds: int = 120,
+) -> list[DiagnosticResult]:
+    """Run intra-machine NCCL all_reduce_perf on all (or specified) GPU nodes.
+
+    Returns one DiagnosticResult per node.
+    """
+    nodes = _discover_gpu_nodes(node_ids=node_ids)
+
+    async with _managed_agents(nodes) as agents:
+        futures = {
+            nid: agent.run_diagnostic.remote(
+                diagnostic_type="intra_machine",
+                timeout_seconds=timeout_seconds,
+            )
+            for nid, agent in agents.items()
+        }
+
+        results: list[DiagnosticResult] = []
+        for node_id, ref in futures.items():
+            result: DiagnosticResult = ray.get(ref, timeout=timeout_seconds + 60)
+            logger.info(
+                "intra_machine node=%s passed=%s details=%s",
+                node_id, result.passed, result.details,
+            )
+            results.append(result)
+
+        return results
+
+
+async def run_inter_machine_diagnostics(
+    node_ids: list[str] | None = None,
+    timeout_seconds: int = 180,
+) -> list[str]:
+    """Run inter-machine NCCL all_gather_perf across all (or specified) GPU nodes.
+
+    Returns list of bad node IDs (empty if all healthy).
+    """
+    nodes = _discover_gpu_nodes(node_ids=node_ids)
+
+    if len(nodes) < _MIN_INTER_MACHINE_NODES:
+        logger.info(
+            "inter_machine_skip — fewer than %d GPU nodes (%d found)",
+            _MIN_INTER_MACHINE_NODES, len(nodes),
+        )
+        return []
+
+    async with _managed_agents(nodes) as agents:
+        node_addresses = _build_node_addresses(nodes)
+        orchestrator = InterMachineOrchestrator(
+            agents=agents,
+            node_addresses=node_addresses,
+        )
+
+        return await orchestrator.run(
+            node_ids=sorted(agents.keys()),
+            timeout_seconds=timeout_seconds,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Node discovery
 # ---------------------------------------------------------------------------
 
@@ -119,68 +184,3 @@ async def _managed_agents(
         yield agents
     finally:
         _kill_agents(agents)
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-async def run_intra_machine_diagnostics(
-    node_ids: list[str] | None = None,
-    timeout_seconds: int = 120,
-) -> list[DiagnosticResult]:
-    """Run intra-machine NCCL all_reduce_perf on all (or specified) GPU nodes.
-
-    Returns one DiagnosticResult per node.
-    """
-    nodes = _discover_gpu_nodes(node_ids=node_ids)
-
-    async with _managed_agents(nodes) as agents:
-        futures = {
-            nid: agent.run_diagnostic.remote(
-                diagnostic_type="intra_machine",
-                timeout_seconds=timeout_seconds,
-            )
-            for nid, agent in agents.items()
-        }
-
-        results: list[DiagnosticResult] = []
-        for node_id, ref in futures.items():
-            result: DiagnosticResult = ray.get(ref, timeout=timeout_seconds + 60)
-            logger.info(
-                "intra_machine node=%s passed=%s details=%s",
-                node_id, result.passed, result.details,
-            )
-            results.append(result)
-
-        return results
-
-
-async def run_inter_machine_diagnostics(
-    node_ids: list[str] | None = None,
-    timeout_seconds: int = 180,
-) -> list[str]:
-    """Run inter-machine NCCL all_gather_perf across all (or specified) GPU nodes.
-
-    Returns list of bad node IDs (empty if all healthy).
-    """
-    nodes = _discover_gpu_nodes(node_ids=node_ids)
-
-    if len(nodes) < _MIN_INTER_MACHINE_NODES:
-        logger.info(
-            "inter_machine_skip — fewer than %d GPU nodes (%d found)",
-            _MIN_INTER_MACHINE_NODES, len(nodes),
-        )
-        return []
-
-    async with _managed_agents(nodes) as agents:
-        node_addresses = _build_node_addresses(nodes)
-        orchestrator = InterMachineOrchestrator(
-            node_agents=agents,
-            node_addresses=node_addresses,
-        )
-
-        return await orchestrator.run(
-            node_ids=sorted(agents.keys()),
-            timeout_seconds=timeout_seconds,
-        )
