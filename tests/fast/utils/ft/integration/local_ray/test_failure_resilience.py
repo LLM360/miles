@@ -1,12 +1,14 @@
-"""Local Ray: Failure resilience — controller death, stale handles, cooldown."""
+"""Local Ray: Failure resilience — controller death, stale handles, cooldown, agent graceful degradation."""
 from __future__ import annotations
 
 import time
+from unittest.mock import patch
 
 import pytest
 import ray
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
+from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 from miles.utils.ft.agents.utils.controller_handle import (
     ControllerHandleMixin,
 )
@@ -94,3 +96,53 @@ class TestControllerTimeoutBehavior:
 
         with pytest.raises(ray.exceptions.RayError):
             ray.get(handle.get_status.remote(), timeout=2)
+
+
+class TestAgentCreatedWithoutController:
+    """FtTrainingRankAgent.__init__ should not crash when no controller exists (F8)."""
+
+    def test_training_rank_agent_survives_missing_controller(
+        self,
+        local_ray: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", "no-ctrl-test")
+        monkeypatch.setenv("MILES_FT_ID", "nonexistent_ft_999")
+
+        with patch("socket.gethostname", return_value="fake-node"):
+            agent = FtTrainingRankAgent(rank=0, world_size=1)
+
+        agent.shutdown()
+
+    def test_tracking_agent_survives_missing_controller(
+        self,
+        local_ray: None,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", "no-ctrl-track")
+        monkeypatch.setenv("MILES_FT_ID", "nonexistent_ft_999")
+
+        tracking = FtTrackingAgent(run_id="no-ctrl-track")
+        tracking.log(metrics={"loss": 0.5}, step=1)
+
+
+class TestBlockingCallRetryAfterControllerDeath:
+    """FtTrainingRankAgent register uses ray.get(timeout=10) + retry_sync (F2)."""
+
+    def test_register_rank_retries_gracefully_on_dead_controller(
+        self,
+        running_controller: tuple[ray.actor.ActorHandle, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        handle, run_id = running_controller
+
+        ray.kill(handle, no_restart=True)
+        time.sleep(0.5)
+
+        monkeypatch.setenv("MILES_FT_TRAINING_RUN_ID", run_id)
+        monkeypatch.setenv("MILES_FT_ID", "")
+
+        with patch("socket.gethostname", return_value="fake-retry-node"):
+            agent = FtTrainingRankAgent(rank=0, world_size=1)
+
+        agent.shutdown()
