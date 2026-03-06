@@ -8,7 +8,7 @@ from prometheus_client import CollectorRegistry
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
 from miles.utils.ft.models import ActionType, Decision, TriggerType

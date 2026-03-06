@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb as MiniWandbCls
 from miles.utils.ft.controller.recovery_orchestrator.context import RecoveryContext
 from miles.utils.ft.controller.recovery_orchestrator.orchestrator import RecoveryOrchestrator

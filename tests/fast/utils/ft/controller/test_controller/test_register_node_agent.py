@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
 from tests.fast.utils.ft.conftest import StubDiagnostic, make_test_controller
 
 

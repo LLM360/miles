@@ -9,7 +9,7 @@ from tests.fast.utils.ft.helpers import (
 )
 
 from miles.utils.ft.controller.detectors.hang import HangDetector
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
 from miles.utils.ft.models.metric_names import TRAINING_ITERATION, TRAINING_PHASE
 from miles.utils.ft.models import ActionType, GaugeSample
 from miles.utils.ft.protocols.platform import JobStatus
