@@ -385,7 +385,12 @@ class TestKmsgCollectorInterval:
 
 class TestKmsgCollectorRealFile:
     """End-to-end: write XID/kernel-event strings to a tmp file,
-    verify KmsgCollector parses them via real KmsgFileReader."""
+    verify KmsgCollector parses them via real KmsgFileReader.
+
+    KmsgFileReader does SEEK_END on creation, so we must call collect()
+    once first to initialize the reader, then append new content, then
+    collect() again to read it.
+    """
 
     @pytest.mark.anyio
     async def test_xid_detected_from_real_file(self, tmp_path: Path) -> None:
@@ -393,6 +398,7 @@ class TestKmsgCollectorRealFile:
         kmsg_file.write_text("")
 
         collector = KmsgCollector(kmsg_path=kmsg_file)
+        await collector.collect()
 
         with open(kmsg_file, "a") as f:
             f.write("NVRM: Xid (PCI:0000:3b:00): 48, pid=1234\n")
@@ -409,6 +415,7 @@ class TestKmsgCollectorRealFile:
         kmsg_file.write_text("")
 
         collector = KmsgCollector(kmsg_path=kmsg_file)
+        await collector.collect()
 
         with open(kmsg_file, "a") as f:
             f.write("Kernel panic - not syncing: Fatal exception\n")
@@ -419,11 +426,12 @@ class TestKmsgCollectorRealFile:
 
     @pytest.mark.anyio
     async def test_incremental_reads_across_collects(self, tmp_path: Path) -> None:
-        """Two collect() calls, each seeing only newly appended lines."""
+        """Two collect() cycles after init, each seeing only newly appended lines."""
         kmsg_file = tmp_path / "kmsg"
         kmsg_file.write_text("")
 
         collector = KmsgCollector(kmsg_path=kmsg_file)
+        await collector.collect()
 
         with open(kmsg_file, "a") as f:
             f.write("NVRM: Xid (PCI:0000:3b:00): 48, pid=1\n")
