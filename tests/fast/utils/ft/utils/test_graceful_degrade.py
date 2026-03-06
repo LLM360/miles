@@ -83,6 +83,43 @@ class TestSyncGracefulDegrade:
 
         assert Foo.compute(42) == -1
 
+    def test_log_includes_call_args(self, caplog: pytest.LogCaptureFixture) -> None:
+        @graceful_degrade()
+        def process(name: str, count: int) -> None:
+            raise RuntimeError("fail")
+
+        with caplog.at_level(logging.WARNING):
+            process("widget", count=7)
+
+        assert "process failed" in caplog.text
+        assert "name='widget'" in caplog.text
+        assert "count=7" in caplog.text
+
+    def test_log_excludes_self_and_cls(self, caplog: pytest.LogCaptureFixture) -> None:
+        class Svc:
+            @graceful_degrade()
+            def run(self, phase: str) -> None:
+                raise RuntimeError("x")
+
+        with caplog.at_level(logging.WARNING):
+            Svc().run("init")
+
+        assert "phase='init'" in caplog.text
+        assert "self=" not in caplog.text
+
+    def test_long_arg_repr_is_truncated(self, caplog: pytest.LogCaptureFixture) -> None:
+        @graceful_degrade()
+        def ingest(data: str) -> None:
+            raise RuntimeError("big")
+
+        with caplog.at_level(logging.WARNING):
+            ingest("x" * 500)
+
+        log_line = caplog.text
+        assert "data=" in log_line
+        assert "..." in log_line
+        assert len(log_line) < 1000
+
 
 class TestAsyncGracefulDegrade:
     @pytest.mark.anyio
@@ -123,3 +160,15 @@ class TestAsyncGracefulDegrade:
             pass
 
         assert inspect.iscoroutinefunction(coro)
+
+    @pytest.mark.anyio
+    async def test_async_log_includes_call_args(self, caplog: pytest.LogCaptureFixture) -> None:
+        @graceful_degrade()
+        async def fetch(url: str, retries: int = 3) -> str:
+            raise ConnectionError("down")
+
+        with caplog.at_level(logging.WARNING):
+            await fetch("https://example.com")
+
+        assert "url='https://example.com'" in caplog.text
+        assert "retries=3" in caplog.text
