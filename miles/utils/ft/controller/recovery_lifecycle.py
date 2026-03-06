@@ -40,28 +40,10 @@ class RecoveryLifecycleManager:
         return self._orchestrator is not None
 
     @property
-    def orchestrator(self) -> RecoveryOrchestrator | None:
-        return self._orchestrator
-
-    @property
     def phase(self) -> RecoveryPhase | None:
         if self._orchestrator is None:
             return None
         return self._orchestrator.phase
-
-    @property
-    def bad_node_ids(self) -> list[str]:
-        if self._orchestrator is None:
-            return []
-        return self._orchestrator.bad_node_ids
-
-    @property
-    def diagnosing_nodes(self) -> set[str]:
-        return set(self._diagnosing_nodes)
-
-    @property
-    def last_phase_history(self) -> list[RecoveryPhase] | None:
-        return self._last_phase_history
 
     def snapshot(self) -> RecoverySnapshot:
         if self._orchestrator is not None:

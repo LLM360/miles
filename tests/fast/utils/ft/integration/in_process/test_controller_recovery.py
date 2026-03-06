@@ -8,8 +8,7 @@ from __future__ import annotations
 import pytest
 
 import miles.utils.ft.models.metric_names as mn
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.recovery import RecoveryPhase
+from miles.utils.ft.models import ActionType, Decision, RecoveryPhase, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
@@ -64,8 +63,8 @@ class TestCrashReattemptSuccess:
         )
 
         await harness.controller._tick()
-        assert harness.controller.recovery_manager.in_progress
-        orch = harness.controller.recovery_manager.orchestrator
+        assert harness.controller._recovery_manager.in_progress
+        orch = harness.controller._recovery_manager._orchestrator
 
         for _ in range(20):
             if orch.phase == RecoveryPhase.MONITORING:
@@ -81,7 +80,7 @@ class TestCrashReattemptSuccess:
             )
 
         await harness.controller._tick()
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
 
 
 # -------------------------------------------------------------------
@@ -99,7 +98,7 @@ class TestCrashReattemptFailDiagnoseNotify:
         )
 
         await harness.controller._tick()
-        orch = harness.controller.recovery_manager.orchestrator
+        orch = harness.controller._recovery_manager._orchestrator
         assert orch is not None
 
         for _ in range(20):
@@ -112,7 +111,7 @@ class TestCrashReattemptFailDiagnoseNotify:
         assert orch.phase == RecoveryPhase.NOTIFY
 
         await harness.controller._tick()
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
         assert harness.notifier is not None
         assert len(harness.notifier.calls) >= 1
 
@@ -135,7 +134,7 @@ class TestGlobalTimeout:
         )
 
         await harness.controller._tick()
-        orch = harness.controller.recovery_manager.orchestrator
+        orch = harness.controller._recovery_manager._orchestrator
         assert orch is not None
 
         from datetime import datetime, timedelta, timezone
@@ -162,10 +161,10 @@ class TestRecoveryCompleteBackToMonitoring:
         )
 
         await harness.controller._tick()
-        assert harness.controller.recovery_manager.in_progress
+        assert harness.controller._recovery_manager.in_progress
         initial_detector_count = enter_recovery.call_count
 
-        orch = harness.controller.recovery_manager.orchestrator
+        orch = harness.controller._recovery_manager._orchestrator
         assert orch is not None
 
         for _ in range(20):
@@ -182,7 +181,7 @@ class TestRecoveryCompleteBackToMonitoring:
             )
         await harness.controller._tick()
 
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
 
         harness.controller.rank_roster.rank_placement[0] = "node-0"
         await harness.controller._tick()
@@ -215,7 +214,7 @@ class TestExporterModeGauge:
         assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) is not None
         assert get_sample_value(registry, mn.CONTROLLER_RECOVERY_PHASE) > 0
 
-        orch = harness.controller.recovery_manager.orchestrator
+        orch = harness.controller._recovery_manager._orchestrator
         assert orch is not None
 
         for _ in range(20):
@@ -230,7 +229,7 @@ class TestExporterModeGauge:
                 metrics={"iteration": float(i)},
             )
 
-        while harness.controller.recovery_manager.in_progress:
+        while harness.controller._recovery_manager.in_progress:
             await harness.controller._tick()
 
         assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0

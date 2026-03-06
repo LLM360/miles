@@ -5,7 +5,7 @@ import pytest
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
@@ -60,11 +60,11 @@ class TestCriticalDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[enter_recovery, crashing_critical])
 
         await harness.controller._tick()
-        assert harness.controller.recovery_manager.in_progress
+        assert harness.controller._recovery_manager.in_progress
 
         await harness.controller._tick()
         assert crashing_critical.call_count == 1
-        assert harness.controller.recovery_manager.in_progress
+        assert harness.controller._recovery_manager.in_progress
 
     @pytest.mark.anyio
     async def test_critical_detector_non_mark_bad_action_is_ignored(self) -> None:
@@ -77,7 +77,7 @@ class TestCriticalDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[enter_recovery, critical_notify])
 
         await harness.controller._tick()
-        orch = harness.controller.recovery_manager.orchestrator
+        orch = harness.controller._recovery_manager._orchestrator
         assert orch is not None
         bad_before = list(orch.bad_node_ids)
 
@@ -96,7 +96,7 @@ class TestCriticalDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[enter_recovery, critical_empty])
 
         await harness.controller._tick()
-        orch = harness.controller.recovery_manager.orchestrator
+        orch = harness.controller._recovery_manager._orchestrator
         assert orch is not None
 
         await harness.controller._tick()
@@ -121,12 +121,12 @@ class TestRecoveryCompletionMetrics:
         )
 
         await harness.controller._tick()
-        assert harness.controller.recovery_manager.in_progress
+        assert harness.controller._recovery_manager.in_progress
 
-        harness.controller.recovery_manager.orchestrator._context.phase = RecoveryPhase.DONE
+        harness.controller._recovery_manager._orchestrator._context.phase = RecoveryPhase.DONE
 
         await harness.controller._tick()
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
 
         value = get_sample_value(
             registry,
@@ -143,12 +143,12 @@ class TestRecoveryCompletionMetrics:
         )
 
         await harness.controller._tick()
-        orch = harness.controller.recovery_manager.orchestrator
+        orch = harness.controller._recovery_manager._orchestrator
         assert orch is not None
         orch._context.phase = RecoveryPhase.DONE
 
         await harness.controller._tick()
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
 
         status = harness.controller.get_status()
         assert status.phase_history is not None

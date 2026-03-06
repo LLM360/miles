@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models import ActionType, Decision, TriggerType
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     make_test_controller,
@@ -19,15 +19,15 @@ class TestRecoveryCooldown:
         )
 
         await harness.controller._tick()
-        assert harness.controller.recovery_manager.in_progress
+        assert harness.controller._recovery_manager.in_progress
         harness.controller._recovery_manager._orchestrator = None
 
         await harness.controller._tick()
-        assert harness.controller.recovery_manager.in_progress
+        assert harness.controller._recovery_manager.in_progress
         harness.controller._recovery_manager._orchestrator = None
 
         await harness.controller._tick()
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 1
         title, content, severity = harness.notifier.calls[0]
@@ -53,7 +53,7 @@ class TestRecoveryCooldown:
             reason="hang",
         )
         await harness.controller._tick()
-        assert harness.controller.recovery_manager.in_progress
+        assert harness.controller._recovery_manager.in_progress
 
     @pytest.mark.anyio
     async def test_recovery_within_cooldown_window_counted(self) -> None:
@@ -67,6 +67,6 @@ class TestRecoveryCooldown:
         harness.controller._recovery_manager._orchestrator = None
 
         await harness.controller._tick()
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
         assert harness.notifier is not None
         assert len(harness.notifier.calls) == 1

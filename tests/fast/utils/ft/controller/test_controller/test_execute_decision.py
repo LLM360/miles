@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     AlwaysMarkBadDetector,
@@ -128,7 +128,7 @@ class TestAllDetectorsCrashSilentPass:
 
         assert not harness.node_manager._bad_nodes
         assert not harness.training_job._stopped
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
 
 
 class TestExecuteDecisionUnknownAction:
@@ -154,7 +154,7 @@ class TestExecuteDecision:
         assert not harness.node_manager._bad_nodes
         assert not harness.training_job._stopped
         assert not harness.training_job._submitted
-        assert not harness.controller.recovery_manager.in_progress
+        assert not harness.controller._recovery_manager.in_progress
 
     @pytest.mark.anyio
     async def test_mark_bad_and_restart_does_not_raise(self) -> None:

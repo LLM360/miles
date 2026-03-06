@@ -145,10 +145,6 @@ class FtController:
     def mini_wandb(self) -> MiniWandb:
         return self._mini_wandb
 
-    @property
-    def recovery_manager(self) -> RecoveryLifecycleManager:
-        return self._recovery_manager
-
     def register_node_agent(
         self, node_id: str, agent: NodeAgentProtocol, exporter_address: str = "",
     ) -> None:

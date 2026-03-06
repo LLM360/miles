@@ -49,10 +49,9 @@ class TestRecoveryLifecycleManagerInitialState:
     def test_not_in_progress_initially(self) -> None:
         manager = _make_manager()
         assert not manager.in_progress
-        assert manager.orchestrator is None
+        assert manager._orchestrator is None
         assert manager.phase is None
-        assert manager.bad_node_ids == []
-        assert manager.last_phase_history is None
+        assert manager._last_phase_history is None
 
 
 class TestRecoveryLifecycleManagerStart:
@@ -71,7 +70,7 @@ class TestRecoveryLifecycleManagerStart:
 
         assert result is True
         assert manager.in_progress
-        assert manager.orchestrator is fake_orch
+        assert manager._orchestrator is fake_orch
 
     @pytest.mark.anyio
     async def test_start_throttled_returns_false(self) -> None:
@@ -143,7 +142,7 @@ class TestRecoveryLifecycleManagerStep:
             await manager.step()
 
         assert not manager.in_progress
-        assert manager.last_phase_history == [RecoveryPhase.CHECK_ALERTS, RecoveryPhase.DONE]
+        assert manager._last_phase_history == [RecoveryPhase.CHECK_ALERTS, RecoveryPhase.DONE]
         duration_cb.assert_called_once_with(45.0)
 
     @pytest.mark.anyio

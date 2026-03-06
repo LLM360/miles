@@ -11,7 +11,7 @@ from miles.utils.ft.controller.detectors.base import BaseFaultDetector, Detector
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.platform import (
     DiagnosticOrchestratorProtocol,
     JobStatus,
@@ -299,7 +299,7 @@ async def run_controller_briefly(harness: ControllerTestHarness, delay: float = 
 async def advance_until_recovery_complete(harness: ControllerTestHarness, max_ticks: int = 10) -> None:
     """Tick the controller until recovery is no longer in progress."""
     for _ in range(max_ticks):
-        if not harness.controller.recovery_manager.in_progress:
+        if not harness.controller._recovery_manager.in_progress:
             return
         await harness.controller._tick()
-    assert not harness.controller.recovery_manager.in_progress
+    assert not harness.controller._recovery_manager.in_progress

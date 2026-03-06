@@ -10,7 +10,7 @@ import pytest
 
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.recovery_orchestrator.orchestrator import RecoveryOrchestrator
-from miles.utils.ft.models.recovery import RecoveryPhase
+from miles.utils.ft.models import RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     ControllerTestHarness,
@@ -52,7 +52,7 @@ def _make_diagnostic_test_env(
     for node_id, agent in agents.items():
         harness.controller.register_node_agent(node_id, agent)
     _enter_recovery_and_skip_to_diagnosing(harness, orchestrator)
-    orch = harness.controller.recovery_manager.orchestrator
+    orch = harness.controller._recovery_manager._orchestrator
     assert orch is not None
     return harness, orch
 
