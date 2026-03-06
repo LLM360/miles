@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from miles.utils.ft.agents.collectors.base import BaseCollector
+from miles.utils.ft.agents._support.collectors.base import BaseCollector
 from miles.utils.ft.models import DiagnosticResult, MetricSample
 
 
@@ -28,6 +28,33 @@ class TestCollector(BaseCollector):
 
     def _collect_sync(self) -> list[MetricSample]:
         return list(self._metrics)
+
+
+class FailingCollector(BaseCollector):
+    """Collector that always raises on collect. Tracks call count."""
+
+    def __init__(self, collect_interval: float = 10.0) -> None:
+        self.collect_interval = collect_interval
+        self.call_count = 0
+
+    def _collect_sync(self) -> list[MetricSample]:
+        self.call_count += 1
+        raise RuntimeError("collect failed")
+
+
+class FailingCloseCollector(BaseCollector):
+    """Collector whose close() always raises. Tracks whether close was called."""
+
+    def __init__(self, collect_interval: float = 10.0) -> None:
+        self.collect_interval = collect_interval
+        self.close_called = False
+
+    def _collect_sync(self) -> list[MetricSample]:
+        return []
+
+    async def close(self) -> None:
+        self.close_called = True
+        raise RuntimeError("close failed")
 
 
 # ---------------------------------------------------------------------------

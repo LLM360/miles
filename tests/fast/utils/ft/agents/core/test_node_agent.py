@@ -12,14 +12,7 @@ from tests.fast.utils.ft.conftest import (
     StubDiagnostic,
     TestCollector,
 )
-
-
-class _FailingCollector(BaseCollector):
-    def _collect_sync(self) -> list[MetricSample]:
-        raise RuntimeError("simulated collector failure")
-
-    async def collect(self) -> CollectorOutput:
-        raise RuntimeError("simulated collector failure")
+from tests.fast.utils.ft.helpers import FailingCloseCollector, FailingCollector
 
 
 class _CountingCollector(BaseCollector):
@@ -213,8 +206,7 @@ class TestFtNodeAgentCollectionLoop:
             metrics=[MetricSample(name="good_metric", labels={}, value=42.0)],
             collect_interval=0.05,
         )
-        failing = _FailingCollector()
-        failing.collect_interval = 0.05
+        failing = FailingCollector(collect_interval=0.05)
         agent = FtNodeAgent(
             node_id="test-node-fail",
             collectors=[failing, good_collector],
@@ -234,10 +226,8 @@ class TestFtNodeAgentCollectionLoop:
 
     @pytest.mark.anyio
     async def test_all_collectors_failing_keeps_tasks_alive(self) -> None:
-        failing1 = _FailingCollector()
-        failing1.collect_interval = 0.05
-        failing2 = _FailingCollector()
-        failing2.collect_interval = 0.05
+        failing1 = FailingCollector(collect_interval=0.05)
+        failing2 = FailingCollector(collect_interval=0.05)
         agent = FtNodeAgent(
             node_id="test-node-all-fail",
             collectors=[failing1, failing2],
@@ -386,20 +376,7 @@ class TestFtNodeAgentLifecycle:
 
     @pytest.mark.anyio
     async def test_close_failure_does_not_block_other_collectors(self) -> None:
-        class _FailingCloseCollector(BaseCollector):
-            def __init__(self) -> None:
-                self.collect_interval = 0.05
-
-            def _collect_sync(self) -> list[MetricSample]:
-                return []
-
-            async def collect(self) -> CollectorOutput:
-                return CollectorOutput(metrics=[])
-
-            async def close(self) -> None:
-                raise RuntimeError("close failed")
-
-        failing = _FailingCloseCollector()
+        failing = FailingCloseCollector(collect_interval=0.05)
         good = _CountingCollector(collect_interval=0.05)
         agent = FtNodeAgent(
             node_id="test-node-close-fail",

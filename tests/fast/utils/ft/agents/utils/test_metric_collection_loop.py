@@ -9,6 +9,7 @@ import pytest
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.utils.metric_collection_loop import MetricCollectionLoop
 from miles.utils.ft.models._metrics import CollectorOutput, MetricSample
+from tests.fast.utils.ft.helpers import FailingCloseCollector, FailingCollector
 
 
 class _PassCollector(BaseCollector):
@@ -23,33 +24,6 @@ class _PassCollector(BaseCollector):
     def _collect_sync(self) -> list[MetricSample]:
         self.collect_count += 1
         return list(self._metrics)
-
-
-class _FailingCollector(BaseCollector):
-    """Collector whose collect() always raises."""
-
-    collect_interval: float = 0.01
-
-    def __init__(self) -> None:
-        self.collect_count = 0
-
-    def _collect_sync(self) -> list[MetricSample]:
-        self.collect_count += 1
-        raise RuntimeError("collect failed")
-
-
-class _FailingCloseCollector(BaseCollector):
-    """Collector whose close() raises."""
-
-    collect_interval: float = 0.01
-    close_called: bool = False
-
-    def _collect_sync(self) -> list[MetricSample]:
-        return []
-
-    async def close(self) -> None:
-        self.close_called = True
-        raise RuntimeError("close failed")
 
 
 def _make_exporter() -> MagicMock:
@@ -130,7 +104,7 @@ class TestStop:
     @pytest.mark.anyio
     async def test_close_exception_is_isolated(self) -> None:
         """One collector's close() failure must not prevent other collectors from closing."""
-        failing = _FailingCloseCollector()
+        failing = FailingCloseCollector(collect_interval=0.01)
         normal = _PassCollector()
         exporter = _make_exporter()
         loop = MetricCollectionLoop(
@@ -169,7 +143,7 @@ class TestRunSingleCollector:
     @pytest.mark.anyio
     async def test_collect_exception_does_not_kill_loop(self) -> None:
         """A collector that raises on collect() should not stop the loop."""
-        collector = _FailingCollector()
+        collector = FailingCollector(collect_interval=0.01)
         exporter = _make_exporter()
         loop = MetricCollectionLoop(node_id="n0", collectors=[collector], exporter=exporter)
 
@@ -177,5 +151,5 @@ class TestRunSingleCollector:
         await asyncio.sleep(0.05)
         await loop.stop()
 
-        assert collector.collect_count >= 2
+        assert collector.call_count >= 2
         exporter.update_metrics.assert_not_called()
