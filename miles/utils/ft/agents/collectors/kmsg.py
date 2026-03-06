@@ -51,17 +51,7 @@ class KmsgCollector(BaseCollector):
     def _read_lines(self) -> list[str]:
         if self._reader is None:
             self._reader = _create_reader(self._kmsg_path)
-
-        try:
-            return self._reader.read_new_lines()
-        except OSError:
-            logger.warning(
-                "KmsgFileReader failed, switching to DmesgSubprocessReader",
-                exc_info=True,
-            )
-            self._reader.close()
-            self._reader = DmesgSubprocessReader()
-            return self._reader.read_new_lines()
+        return self._reader.read_new_lines()
 
     def _process_xid_events(self, lines: list[str]) -> list[MetricSample]:
         now = datetime.now(timezone.utc)
