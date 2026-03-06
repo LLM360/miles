@@ -8,7 +8,7 @@ import pytest
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.stub import StubCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.models import CollectorOutput, MetricSample, UnknownDiagnosticError
+from miles.utils.ft.models import CollectorOutput, GaugeSample, UnknownDiagnosticError
 from tests.fast.utils.ft.conftest import (
     SlowDiagnostic,
     StubDiagnostic,
@@ -23,14 +23,14 @@ class _CountingCollector(BaseCollector):
         self.call_count = 0
         self.closed = False
 
-    def _collect_sync(self) -> list[MetricSample]:
+    def _collect_sync(self) -> list[GaugeSample]:
         self.call_count += 1
-        return [MetricSample(name="count", labels={}, value=float(self.call_count))]
+        return [GaugeSample(name="count", labels={}, value=float(self.call_count))]
 
     async def collect(self) -> CollectorOutput:
         self.call_count += 1
         return CollectorOutput(metrics=[
-            MetricSample(name="count", labels={}, value=float(self.call_count)),
+            GaugeSample(name="count", labels={}, value=float(self.call_count)),
         ])
 
     async def close(self) -> None:
@@ -93,12 +93,12 @@ class TestFtNodeAgentExporter:
     async def test_update_exporter_creates_gauges(self, make_node_agent: MakeNodeAgent) -> None:
         agent = make_node_agent(node_id="test-node-gauge")
         metrics = [
-            MetricSample(
+            GaugeSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
                 value=75.0,
             ),
-            MetricSample(
+            GaugeSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "1"},
                 value=80.0,
@@ -120,7 +120,7 @@ class TestFtNodeAgentExporter:
     async def test_update_exporter_unlabeled_metric(self, make_node_agent: MakeNodeAgent) -> None:
         agent = make_node_agent(node_id="test-node-unlabeled")
         metrics = [
-            MetricSample(name="uptime_seconds", labels={}, value=123.0),
+            GaugeSample(name="uptime_seconds", labels={}, value=123.0),
         ]
         agent._exporter.update_metrics(metrics)
 
@@ -135,14 +135,14 @@ class TestFtNodeAgentExporter:
     async def test_update_exporter_overwrites_value(self, make_node_agent: MakeNodeAgent) -> None:
         agent = make_node_agent(node_id="test-node-overwrite")
         agent._exporter.update_metrics([
-            MetricSample(
+            GaugeSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
                 value=60.0,
             ),
         ])
         agent._exporter.update_metrics([
-            MetricSample(
+            GaugeSample(
                 name="gpu_temperature_celsius",
                 labels={"gpu": "0"},
                 value=90.0,
@@ -161,7 +161,7 @@ class TestFtNodeAgentCollectionLoop:
     async def test_collection_loop_updates_exporter(self, make_node_agent: MakeNodeAgent) -> None:
         test_collector = TestCollector(
             metrics=[
-                MetricSample(
+                GaugeSample(
                     name="gpu_temperature_celsius",
                     labels={"gpu": "0"},
                     value=65.0,
@@ -186,7 +186,7 @@ class TestFtNodeAgentCollectionLoop:
     @pytest.mark.anyio
     async def test_stop_cancels_tasks(self) -> None:
         test_collector = TestCollector(
-            metrics=[MetricSample(name="dummy", labels={}, value=1.0)],
+            metrics=[GaugeSample(name="dummy", labels={}, value=1.0)],
             collect_interval=0.05,
         )
         agent = FtNodeAgent(
@@ -202,7 +202,7 @@ class TestFtNodeAgentCollectionLoop:
     @pytest.mark.anyio
     async def test_failing_collector_does_not_crash_loop(self, make_node_agent: MakeNodeAgent) -> None:
         good_collector = TestCollector(
-            metrics=[MetricSample(name="good_metric", labels={}, value=42.0)],
+            metrics=[GaugeSample(name="good_metric", labels={}, value=42.0)],
             collect_interval=0.05,
         )
         failing = FailingCollector(collect_interval=0.05)
@@ -245,12 +245,12 @@ class TestFtNodeAgentCollectionLoop:
     async def test_multiple_metrics_exported(self, make_node_agent: MakeNodeAgent) -> None:
         test_collector = TestCollector(
             metrics=[
-                MetricSample(
+                GaugeSample(
                     name="gpu_temperature_celsius",
                     labels={"gpu": "0"},
                     value=70.0,
                 ),
-                MetricSample(
+                GaugeSample(
                     name="gpu_memory_used_bytes",
                     labels={"gpu": "0"},
                     value=4096.0,
@@ -303,7 +303,7 @@ class TestFtNodeAgentLifecycle:
     @pytest.mark.anyio
     async def test_start_twice_is_idempotent(self, make_node_agent: MakeNodeAgent) -> None:
         test_collector = TestCollector(
-            metrics=[MetricSample(name="dummy", labels={}, value=1.0)],
+            metrics=[GaugeSample(name="dummy", labels={}, value=1.0)],
             collect_interval=0.05,
         )
         agent = make_node_agent(

@@ -4,16 +4,16 @@ from __future__ import annotations
 import pytest
 
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
-from miles.utils.ft.models.metrics import MetricSample
+from miles.utils.ft.models.metrics import GaugeSample
 
 
 class _FakeStore:
     """Records ingest_samples calls."""
 
     def __init__(self) -> None:
-        self.ingested: list[tuple[str, list[MetricSample]]] = []
+        self.ingested: list[tuple[str, list[GaugeSample]]] = []
 
-    def ingest_samples(self, target_id: str, samples: list[MetricSample]) -> None:
+    def ingest_samples(self, target_id: str, samples: list[GaugeSample]) -> None:
         self.ingested.append((target_id, samples))
 
 

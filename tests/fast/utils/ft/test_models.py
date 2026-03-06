@@ -4,19 +4,20 @@ from pydantic import ValidationError
 from miles.utils.ft.models import (
     ActionType,
     CollectorOutput,
+    CounterSample,
     Decision,
     DiagnosticResult,
     FtBaseModel,
-    MetricSample,
+    GaugeSample,
     NodeFault,
     TriggerType,
 )
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 
-class TestMetricSample:
+class TestGaugeSample:
     def test_normal_construction(self) -> None:
-        sample = MetricSample(
+        sample = GaugeSample(
             name="gpu_temperature_celsius",
             labels={"gpu": "0"},
             value=75.0,
@@ -24,27 +25,53 @@ class TestMetricSample:
         assert sample.name == "gpu_temperature_celsius"
         assert sample.labels == {"gpu": "0"}
         assert sample.value == 75.0
+        assert sample.metric_type == "gauge"
 
     def test_missing_required_field_raises(self) -> None:
         with pytest.raises(ValidationError):
-            MetricSample(name="test", labels={"a": "b"})  # type: ignore[call-arg]
+            GaugeSample(name="test", labels={"a": "b"})  # type: ignore[call-arg]
 
     def test_empty_labels(self) -> None:
-        sample = MetricSample(name="xid_count_total", labels={}, value=3.0, metric_type="counter")
+        sample = GaugeSample(name="metric", labels={}, value=42.0)
         assert sample.labels == {}
-        assert sample.metric_type == "counter"
 
-
-class TestFtBaseModelExtraForbid:
     def test_unknown_field_raises(self) -> None:
         with pytest.raises(ValidationError):
-            MetricSample(
+            GaugeSample(
                 name="test",
                 labels={},
                 value=1.0,
                 unknown_field="oops",  # type: ignore[call-arg]
             )
 
+
+class TestCounterSample:
+    def test_normal_construction(self) -> None:
+        sample = CounterSample(
+            name="xid_count_total",
+            labels={},
+            delta=3.0,
+        )
+        assert sample.name == "xid_count_total"
+        assert sample.labels == {}
+        assert sample.delta == 3.0
+        assert sample.metric_type == "counter"
+
+    def test_missing_required_field_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            CounterSample(name="test", labels={})  # type: ignore[call-arg]
+
+    def test_unknown_field_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            CounterSample(
+                name="test",
+                labels={},
+                delta=1.0,
+                unknown_field="oops",  # type: ignore[call-arg]
+            )
+
+
+class TestFtBaseModelExtraForbid:
     def test_extra_forbid_on_subclass(self) -> None:
         with pytest.raises(ValidationError):
             Decision(
@@ -59,11 +86,19 @@ class TestCollectorOutput:
         output = CollectorOutput(metrics=[])
         assert output.metrics == []
 
-    def test_with_metrics(self) -> None:
-        sample = MetricSample(name="gpu_available", labels={"gpu": "0"}, value=1.0)
+    def test_with_gauge_metrics(self) -> None:
+        sample = GaugeSample(name="gpu_available", labels={"gpu": "0"}, value=1.0)
         output = CollectorOutput(metrics=[sample])
         assert len(output.metrics) == 1
         assert output.metrics[0].name == "gpu_available"
+
+    def test_with_mixed_metrics(self) -> None:
+        gauge = GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=72.0)
+        counter = CounterSample(name="xid_count", labels={}, delta=3.0)
+        output = CollectorOutput(metrics=[gauge, counter])
+        assert len(output.metrics) == 2
+        assert isinstance(output.metrics[0], GaugeSample)
+        assert isinstance(output.metrics[1], CounterSample)
 
 
 class TestDecision:

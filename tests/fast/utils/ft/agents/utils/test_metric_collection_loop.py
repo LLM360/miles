@@ -8,7 +8,7 @@ import pytest
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.utils.metric_collection_loop import MetricCollectionLoop
-from miles.utils.ft.models.metrics import CollectorOutput, MetricSample
+from miles.utils.ft.models.metrics import CollectorOutput, GaugeSample
 from tests.fast.utils.ft.helpers import FailingCloseCollector, FailingCollector
 
 
@@ -17,11 +17,11 @@ class _PassCollector(BaseCollector):
 
     collect_interval: float = 0.01
 
-    def __init__(self, metrics: list[MetricSample] | None = None) -> None:
+    def __init__(self, metrics: list[GaugeSample] | None = None) -> None:
         self._metrics = metrics or []
         self.collect_count = 0
 
-    def _collect_sync(self) -> list[MetricSample]:
+    def _collect_sync(self) -> list[GaugeSample]:
         self.collect_count += 1
         return list(self._metrics)
 
@@ -125,7 +125,7 @@ class TestStop:
 class TestRunSingleCollector:
     @pytest.mark.anyio
     async def test_successful_collect_updates_exporter(self) -> None:
-        sample = MetricSample(name="m", labels={}, value=1.0)
+        sample = GaugeSample(name="m", labels={}, value=1.0)
         collector = _PassCollector(metrics=[sample])
         exporter = _make_exporter()
         loop = MetricCollectionLoop(node_id="n0", collectors=[collector], exporter=exporter)

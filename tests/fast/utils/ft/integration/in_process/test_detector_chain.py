@@ -17,7 +17,7 @@ from miles.utils.ft.controller.detectors import (
     build_detector_chain,
 )
 from miles.utils.ft.models.metric_names import NODE_NETWORK_UP, TRAINING_ITERATION
-from miles.utils.ft.models import ActionType, MetricSample
+from miles.utils.ft.models import ActionType, GaugeSample
 from miles.utils.ft.protocols.platform import JobStatus
 
 _RANK_PLACEMENT: dict[int, str] = {0: "node-0", 1: "node-1"}
@@ -32,12 +32,12 @@ class TestDetectorChainIntegration:
         now = datetime.now(timezone.utc)
         store.ingest_samples(
             target_id="rank-0",
-            samples=[MetricSample(name=TRAINING_ITERATION, labels={"rank": "0"}, value=100.0)],
+            samples=[GaugeSample(name=TRAINING_ITERATION, labels={"rank": "0"}, value=100.0)],
             timestamp=now - timedelta(minutes=5),
         )
         store.ingest_samples(
             target_id="rank-0",
-            samples=[MetricSample(name=TRAINING_ITERATION, labels={"rank": "0"}, value=110.0)],
+            samples=[GaugeSample(name=TRAINING_ITERATION, labels={"rank": "0"}, value=110.0)],
             timestamp=now - timedelta(minutes=1),
         )
 
@@ -84,23 +84,23 @@ class TestDetectorChainIntegration:
         now = datetime.now(timezone.utc)
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name=NODE_NETWORK_UP, labels={"device": "ib0"}, value=0.0)],
+            samples=[GaugeSample(name=NODE_NETWORK_UP, labels={"device": "ib0"}, value=0.0)],
             timestamp=now - timedelta(minutes=3),
         )
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name=NODE_NETWORK_UP, labels={"device": "ib0"}, value=0.0)],
+            samples=[GaugeSample(name=NODE_NETWORK_UP, labels={"device": "ib0"}, value=0.0)],
             timestamp=now - timedelta(minutes=1),
         )
 
         store.ingest_samples(
             target_id="rank-0",
-            samples=[MetricSample(name=TRAINING_ITERATION, labels={"rank": "0"}, value=100.0)],
+            samples=[GaugeSample(name=TRAINING_ITERATION, labels={"rank": "0"}, value=100.0)],
             timestamp=now - timedelta(minutes=5),
         )
         store.ingest_samples(
             target_id="rank-0",
-            samples=[MetricSample(name=TRAINING_ITERATION, labels={"rank": "0"}, value=100.0)],
+            samples=[GaugeSample(name=TRAINING_ITERATION, labels={"rank": "0"}, value=100.0)],
             timestamp=now - timedelta(minutes=1),
         )
 

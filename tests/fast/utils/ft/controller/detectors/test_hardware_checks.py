@@ -9,7 +9,7 @@ from miles.utils.ft.controller.detectors.hardware_checks import (
     check_majority_nic_down,
 )
 from miles.utils.ft.models.metric_names import NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP, XID_CODE_RECENT
-from miles.utils.ft.models import MetricSample
+from miles.utils.ft.models import GaugeSample
 from tests.fast.utils.ft.conftest import make_fake_metric_store
 
 
@@ -19,7 +19,7 @@ class TestCheckCriticalXidErrorPaths:
     ) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=XID_CODE_RECENT, labels={"xid": "NaN"}, value=1.0),
+            GaugeSample(name=XID_CODE_RECENT, labels={"xid": "NaN"}, value=1.0),
         ])
 
         with caplog.at_level(logging.WARNING):
@@ -31,7 +31,7 @@ class TestCheckCriticalXidErrorPaths:
     def test_non_critical_xid_returns_empty(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=XID_CODE_RECENT, labels={"xid": "999"}, value=1.0),
+            GaugeSample(name=XID_CODE_RECENT, labels={"xid": "999"}, value=1.0),
         ])
 
         result = check_critical_xid(store)
@@ -41,7 +41,7 @@ class TestCheckCriticalXidErrorPaths:
     def test_critical_xid_returns_fault(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=XID_CODE_RECENT, labels={"xid": "48"}, value=1.0),
+            GaugeSample(name=XID_CODE_RECENT, labels={"xid": "48"}, value=1.0),
         ])
 
         result = check_critical_xid(store)
@@ -55,10 +55,10 @@ class TestCheckCriticalXidErrorPaths:
     ) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=XID_CODE_RECENT, labels={"xid": "48"}, value=1.0),
+            GaugeSample(name=XID_CODE_RECENT, labels={"xid": "48"}, value=1.0),
         ])
         store.ingest_samples(target_id="node-1", samples=[
-            MetricSample(name=XID_CODE_RECENT, labels={"xid": "not_a_number"}, value=1.0),
+            GaugeSample(name=XID_CODE_RECENT, labels={"xid": "not_a_number"}, value=1.0),
         ])
 
         with caplog.at_level(logging.WARNING):
@@ -73,7 +73,7 @@ class TestCheckCriticalXidErrorPaths:
     ) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=XID_CODE_RECENT, labels={"xid": ""}, value=1.0),
+            GaugeSample(name=XID_CODE_RECENT, labels={"xid": ""}, value=1.0),
         ])
 
         with caplog.at_level(logging.WARNING):
@@ -92,7 +92,7 @@ class TestCheckCriticalXidErrorPaths:
     def test_custom_critical_xid_codes(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=XID_CODE_RECENT, labels={"xid": "999"}, value=1.0),
+            GaugeSample(name=XID_CODE_RECENT, labels={"xid": "999"}, value=1.0),
         ])
 
         result = check_critical_xid(store, critical_xid_codes=frozenset({999}))
@@ -102,7 +102,7 @@ class TestCheckCriticalXidErrorPaths:
     def test_node_id_none_skipped(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=XID_CODE_RECENT, labels={"xid": "48"}, value=1.0),
+            GaugeSample(name=XID_CODE_RECENT, labels={"xid": "48"}, value=1.0),
         ])
         df = store.query_latest(XID_CODE_RECENT)
         assert not df.is_empty()
@@ -115,8 +115,8 @@ class TestCheckMajorityNicDown:
     def test_exactly_half_nics_down_does_not_trigger(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=NODE_NETWORK_UP, labels={"interface": "eth0"}, value=1.0),
-            MetricSample(name=NODE_NETWORK_UP, labels={"interface": "eth1"}, value=0.0),
+            GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth0"}, value=1.0),
+            GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth1"}, value=0.0),
         ])
 
         result = check_majority_nic_down(store)
@@ -125,9 +125,9 @@ class TestCheckMajorityNicDown:
     def test_majority_nics_down_triggers(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=NODE_NETWORK_UP, labels={"interface": "eth0"}, value=0.0),
-            MetricSample(name=NODE_NETWORK_UP, labels={"interface": "eth1"}, value=0.0),
-            MetricSample(name=NODE_NETWORK_UP, labels={"interface": "eth2"}, value=1.0),
+            GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth0"}, value=0.0),
+            GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth1"}, value=0.0),
+            GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth2"}, value=1.0),
         ])
 
         result = check_majority_nic_down(store)
@@ -137,8 +137,8 @@ class TestCheckMajorityNicDown:
     def test_all_nics_up_returns_empty(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=NODE_NETWORK_UP, labels={"interface": "eth0"}, value=1.0),
-            MetricSample(name=NODE_NETWORK_UP, labels={"interface": "eth1"}, value=1.0),
+            GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth0"}, value=1.0),
+            GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth1"}, value=1.0),
         ])
 
         result = check_majority_nic_down(store)
@@ -154,7 +154,7 @@ class TestCheckDiskFault:
     def test_below_threshold_returns_fault(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=500e6),
+            GaugeSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=500e6),
         ])
 
         result = check_disk_fault(store)
@@ -166,7 +166,7 @@ class TestCheckDiskFault:
     def test_above_threshold_returns_empty(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=100e9),
+            GaugeSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=100e9),
         ])
 
         assert check_disk_fault(store) == []
@@ -179,10 +179,10 @@ class TestCheckDiskFault:
     def test_multiple_nodes_only_low_ones_flagged(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=200e6),
+            GaugeSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=200e6),
         ])
         store.ingest_samples(target_id="node-1", samples=[
-            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=50e9),
+            GaugeSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=50e9),
         ])
 
         result = check_disk_fault(store)
@@ -193,7 +193,7 @@ class TestCheckDiskFault:
     def test_custom_threshold(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=5e9),
+            GaugeSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=5e9),
         ])
 
         result_default = check_disk_fault(store)
@@ -206,7 +206,7 @@ class TestCheckDiskFault:
     def test_exactly_at_threshold_does_not_trigger(self) -> None:
         store = make_fake_metric_store()
         store.ingest_samples(target_id="node-0", samples=[
-            MetricSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=1e9),
+            GaugeSample(name=NODE_FILESYSTEM_AVAIL_BYTES, labels={"mountpoint": "/"}, value=1e9),
         ])
 
         result = check_disk_fault(store, disk_available_threshold_bytes=1e9)

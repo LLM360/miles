@@ -3,7 +3,7 @@
 import pytest
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models import DiagnosticResult, MetricSample
+from miles.utils.ft.models import DiagnosticResult, GaugeSample
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     FakeNodeAgent,
@@ -138,7 +138,7 @@ class TestTestCollector:
 
     @pytest.mark.anyio
     async def test_with_preset_metrics(self) -> None:
-        metrics = [MetricSample(name="temp", labels={"gpu": "0"}, value=75.0)]
+        metrics = [GaugeSample(name="temp", labels={"gpu": "0"}, value=75.0)]
         collector = TestCollector(metrics=metrics)
         output = await collector.collect()
         assert output.metrics == metrics
@@ -146,7 +146,7 @@ class TestTestCollector:
     @pytest.mark.anyio
     async def test_set_metrics(self) -> None:
         collector = TestCollector()
-        new_metrics = [MetricSample(name="temp", labels={}, value=80.0)]
+        new_metrics = [GaugeSample(name="temp", labels={}, value=80.0)]
         collector.set_metrics(new_metrics)
         output = await collector.collect()
         assert output.metrics == new_metrics

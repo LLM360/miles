@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models import MetricSample
+from miles.utils.ft.models import GaugeSample
 from tests.fast.utils.ft.helpers.metric_injectors import make_fake_metric_store
 
 
@@ -16,7 +16,7 @@ class TestMiniPrometheusQueryLatest:
         store = self._make_store()
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=75.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=75.0)],
         )
 
         df = store.query_latest("gpu_temp")
@@ -30,12 +30,12 @@ class TestMiniPrometheusQueryLatest:
 
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=70.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=70.0)],
             timestamp=t1,
         )
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=80.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=80.0)],
             timestamp=t2,
         )
 
@@ -48,8 +48,8 @@ class TestMiniPrometheusQueryLatest:
         store.ingest_samples(
             target_id="node-0",
             samples=[
-                MetricSample(name="gpu_available", labels={"gpu": "0"}, value=1.0),
-                MetricSample(name="gpu_available", labels={"gpu": "1"}, value=0.0),
+                GaugeSample(name="gpu_available", labels={"gpu": "0"}, value=1.0),
+                GaugeSample(name="gpu_available", labels={"gpu": "1"}, value=0.0),
             ],
         )
 
@@ -62,8 +62,8 @@ class TestMiniPrometheusQueryLatest:
         store.ingest_samples(
             target_id="node-0",
             samples=[
-                MetricSample(name="xid_code_recent", labels={"xid": "48"}, value=1.0),
-                MetricSample(name="xid_code_recent", labels={"xid": "31"}, value=1.0),
+                GaugeSample(name="xid_code_recent", labels={"xid": "48"}, value=1.0),
+                GaugeSample(name="xid_code_recent", labels={"xid": "31"}, value=1.0),
             ],
         )
 
@@ -76,13 +76,13 @@ class TestMiniPrometheusQueryLatest:
         store.ingest_samples(
             target_id="node-0",
             samples=[
-                MetricSample(name="gpu_available", labels={"gpu": "0"}, value=1.0),
+                GaugeSample(name="gpu_available", labels={"gpu": "0"}, value=1.0),
             ],
         )
         store.ingest_samples(
             target_id="node-1",
             samples=[
-                MetricSample(name="gpu_available", labels={"gpu": "0"}, value=0.0),
+                GaugeSample(name="gpu_available", labels={"gpu": "0"}, value=0.0),
             ],
         )
 
@@ -94,11 +94,11 @@ class TestMiniPrometheusQueryLatest:
         store = self._make_store()
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=70.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=70.0)],
         )
         store.ingest_samples(
             target_id="node-1",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=80.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=80.0)],
         )
 
         df = store.query_latest("gpu_temp")
@@ -118,7 +118,7 @@ class TestMiniPrometheusRangeFunctions:
         for i in range(5):
             store.ingest_samples(
                 target_id="node-0",
-                samples=[MetricSample(name="nic_alert", labels={}, value=1.0)],
+                samples=[GaugeSample(name="nic_alert", labels={}, value=1.0)],
                 timestamp=now - timedelta(minutes=4 - i),
             )
 
@@ -144,7 +144,7 @@ class TestMiniPrometheusRangeFunctions:
             store.ingest_samples(
                 target_id="node-0",
                 samples=[
-                    MetricSample(
+                    GaugeSample(
                         name="miles_ft_training_iteration",
                         labels={"rank": "0"},
                         value=100.0,
@@ -166,7 +166,7 @@ class TestMiniPrometheusRangeFunctions:
             store.ingest_samples(
                 target_id="node-0",
                 samples=[
-                    MetricSample(
+                    GaugeSample(
                         name="miles_ft_training_iteration",
                         labels={"rank": "0"},
                         value=val,
@@ -196,7 +196,7 @@ class TestMiniPrometheusRangeFunctions:
         for i, val in enumerate([75.0, 80.0, 70.0, 85.0]):
             store.ingest_samples(
                 target_id="node-0",
-                samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=val)],
+                samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=val)],
                 timestamp=now - timedelta(minutes=3 - i),
             )
 
@@ -210,7 +210,7 @@ class TestMiniPrometheusRangeFunctions:
         for i, val in enumerate([10.0, 20.0, 30.0]):
             store.ingest_samples(
                 target_id="node-0",
-                samples=[MetricSample(name="metric_a", labels={}, value=val)],
+                samples=[GaugeSample(name="metric_a", labels={}, value=val)],
                 timestamp=now - timedelta(minutes=2 - i),
             )
 
@@ -222,8 +222,8 @@ class TestMiniPrometheusRangeFunctions:
         store.ingest_samples(
             target_id="node-0",
             samples=[
-                MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=95.0),
-                MetricSample(name="gpu_temp", labels={"gpu": "1"}, value=70.0),
+                GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=95.0),
+                GaugeSample(name="gpu_temp", labels={"gpu": "1"}, value=70.0),
             ],
         )
 
@@ -244,17 +244,17 @@ class TestMiniPrometheusQueryRange:
 
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=70.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=70.0)],
             timestamp=t1,
         )
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=75.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=75.0)],
             timestamp=t2,
         )
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=80.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=80.0)],
             timestamp=t3,
         )
 
@@ -270,7 +270,7 @@ class TestMiniPrometheusQueryRange:
         for i, val in enumerate([70.0, 75.0, 80.0, 85.0]):
             store.ingest_samples(
                 target_id="node-0",
-                samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=val)],
+                samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=val)],
                 timestamp=now - timedelta(minutes=3 - i),
             )
 
@@ -300,12 +300,12 @@ class TestMiniPrometheusRetention:
 
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=70.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=70.0)],
             timestamp=now - timedelta(minutes=10),
         )
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=80.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=80.0)],
             timestamp=now,
         )
 
@@ -323,12 +323,12 @@ class TestMiniPrometheusRetention:
 
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="old_metric", labels={}, value=1.0)],
+            samples=[GaugeSample(name="old_metric", labels={}, value=1.0)],
             timestamp=now - timedelta(minutes=10),
         )
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="new_metric", labels={}, value=2.0)],
+            samples=[GaugeSample(name="new_metric", labels={}, value=2.0)],
             timestamp=now,
         )
 
@@ -342,7 +342,7 @@ class TestMiniPrometheusIngestSamples:
         store = MiniPrometheus()
         store.ingest_samples(
             target_id="node-42",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=75.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=75.0)],
         )
 
         df = store.query_latest("gpu_temp")
@@ -356,7 +356,7 @@ class TestMiniPrometheusIngestSamples:
         store.ingest_samples(
             target_id="rank-0",
             samples=[
-                MetricSample(
+                GaugeSample(
                     name="training_iter",
                     labels={"rank": "0", "node_id": "real-node-hostname"},
                     value=100.0,
@@ -372,7 +372,7 @@ class TestMiniPrometheusIngestSamples:
         store = MiniPrometheus()
         store.ingest_samples(
             target_id="scrape-target-0",
-            samples=[MetricSample(name="gpu_temp", labels={"gpu": "0"}, value=75.0)],
+            samples=[GaugeSample(name="gpu_temp", labels={"gpu": "0"}, value=75.0)],
         )
 
         df = store.query_latest("gpu_temp")
@@ -389,11 +389,11 @@ class TestMiniPrometheusIngestSamples:
         store = MiniPrometheus()
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="gpu_available", labels={"gpu": "0"}, value=1.0)],
+            samples=[GaugeSample(name="gpu_available", labels={"gpu": "0"}, value=1.0)],
         )
         store.ingest_samples(
             target_id="node-1",
-            samples=[MetricSample(name="gpu_available", labels={"gpu": "0"}, value=0.0)],
+            samples=[GaugeSample(name="gpu_available", labels={"gpu": "0"}, value=0.0)],
         )
 
         df = store.query_latest("gpu_available").filter(pl.col("value") == 0.0)
@@ -428,7 +428,7 @@ class TestMiniPrometheusRangeFunctionEdgeCases:
 
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="metric", labels={}, value=42.0)],
+            samples=[GaugeSample(name="metric", labels={}, value=42.0)],
             timestamp=now,
         )
 
@@ -443,7 +443,7 @@ class TestMiniPrometheusRangeFunctionEdgeCases:
         for i in range(3):
             store.ingest_samples(
                 target_id="node-0",
-                samples=[MetricSample(name="iter", labels={"rank": "0"}, value=100.0)],
+                samples=[GaugeSample(name="iter", labels={"rank": "0"}, value=100.0)],
                 timestamp=now - timedelta(minutes=2 - i),
             )
 
@@ -458,7 +458,7 @@ class TestMiniPrometheusRangeFunctionEdgeCases:
 
         store.ingest_samples(
             target_id="node-0",
-            samples=[MetricSample(name="alert", labels={}, value=1.0)],
+            samples=[GaugeSample(name="alert", labels={}, value=1.0)],
             timestamp=now,
         )
 

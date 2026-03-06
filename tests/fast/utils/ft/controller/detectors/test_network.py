@@ -6,7 +6,7 @@ from tests.fast.utils.ft.helpers import make_detector_context, make_fake_metric_
 from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.models.metric_names import NODE_NETWORK_UP
-from miles.utils.ft.models import ActionType, MetricSample
+from miles.utils.ft.models import ActionType, GaugeSample
 
 
 def _inject_nic_at_time(
@@ -18,7 +18,7 @@ def _inject_nic_at_time(
 ) -> None:
     store.ingest_samples(
         target_id=node_id,
-        samples=[MetricSample(name=NODE_NETWORK_UP, labels={"device": device}, value=value)],
+        samples=[GaugeSample(name=NODE_NETWORK_UP, labels={"device": device}, value=value)],
         timestamp=timestamp,
     )
 

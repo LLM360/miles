@@ -16,7 +16,7 @@ from miles.utils.ft.agents.collectors.kmsg import (
     _parse_xid_codes,
     _prune_xid_window,
 )
-from miles.utils.ft.models.metrics import CollectorOutput, MetricSample
+from miles.utils.ft.models.metrics import CollectorOutput, CounterSample, GaugeSample
 from tests.fast.utils.ft.conftest import FakeKmsgReader
 
 
@@ -26,7 +26,7 @@ def _make_kmsg_collector(lines: list[str], **kwargs: Any) -> KmsgCollector:
     return collector
 
 
-def _filter_metrics(result: CollectorOutput, name: str) -> list[MetricSample]:
+def _filter_metrics(result: CollectorOutput, name: str) -> list[GaugeSample | CounterSample]:
     return [m for m in result.metrics if m.name == name]
 
 
@@ -134,8 +134,8 @@ class TestBuildXidSamples:
 
         counter = [s for s in samples if s.name == "miles_ft_xid_count_total"]
         assert len(counter) == 1
-        assert counter[0].value == 5.0
-        assert counter[0].metric_type == "counter"
+        assert isinstance(counter[0], CounterSample)
+        assert counter[0].delta == 5.0
 
 
 class TestCountKernelEvents:
@@ -171,8 +171,8 @@ class TestKernelEventSamples:
         samples = _kernel_event_samples(3)
         assert len(samples) == 1
         assert samples[0].name == "miles_ft_kernel_event_count"
-        assert samples[0].value == 3.0
-        assert samples[0].metric_type == "counter"
+        assert isinstance(samples[0], CounterSample)
+        assert samples[0].delta == 3.0
 
 
 # ---------------------------------------------------------------------------
@@ -219,8 +219,8 @@ class TestKmsgCollectorXid:
         assert len(xid_samples) == 0
 
         count_sample = _filter_metrics(result, "miles_ft_xid_count_total")
-        assert count_sample[0].value == 0.0
-        assert count_sample[0].metric_type == "counter"
+        assert isinstance(count_sample[0], CounterSample)
+        assert count_sample[0].delta == 0.0
 
     @pytest.mark.anyio
     async def test_xid_count_total(self) -> None:
@@ -232,8 +232,8 @@ class TestKmsgCollectorXid:
 
         result = await collector.collect()
         count = _filter_metrics(result, "miles_ft_xid_count_total")
-        assert count[0].value == 3.0
-        assert count[0].metric_type == "counter"
+        assert isinstance(count[0], CounterSample)
+        assert count[0].delta == 3.0
 
     @pytest.mark.anyio
     async def test_xid_stale_gauge_cleared(self) -> None:
@@ -267,7 +267,7 @@ class TestKmsgCollectorKernelEvents:
 
         result = await collector.collect()
         kernel = _filter_metrics(result, "miles_ft_kernel_event_count")
-        assert kernel[0].value == 1.0
+        assert kernel[0].delta == 1.0
 
     @pytest.mark.anyio
     async def test_mce_detected(self) -> None:
@@ -277,7 +277,7 @@ class TestKmsgCollectorKernelEvents:
 
         result = await collector.collect()
         kernel = _filter_metrics(result, "miles_ft_kernel_event_count")
-        assert kernel[0].value == 1.0
+        assert kernel[0].delta == 1.0
 
     @pytest.mark.anyio
     async def test_no_kernel_events(self) -> None:
@@ -287,7 +287,7 @@ class TestKmsgCollectorKernelEvents:
 
         result = await collector.collect()
         kernel = _filter_metrics(result, "miles_ft_kernel_event_count")
-        assert kernel[0].value == 0.0
+        assert kernel[0].delta == 0.0
 
 
 class TestKmsgCollectorDmesgFallback:
@@ -422,7 +422,7 @@ class TestKmsgCollectorRealFile:
 
         result = await collector.collect()
         kernel = _filter_metrics(result, "miles_ft_kernel_event_count")
-        assert kernel[0].value == 1.0
+        assert kernel[0].delta == 1.0
 
     @pytest.mark.anyio
     async def test_incremental_reads_across_collects(self, tmp_path: Path) -> None:

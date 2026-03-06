@@ -11,7 +11,7 @@ from tests.fast.utils.ft.helpers import (
 from miles.utils.ft.controller.detectors.hang import HangDetector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.models.metric_names import TRAINING_ITERATION, TRAINING_PHASE
-from miles.utils.ft.models import ActionType, MetricSample
+from miles.utils.ft.models import ActionType, GaugeSample
 from miles.utils.ft.protocols.platform import JobStatus
 
 
@@ -23,7 +23,7 @@ def _inject_iteration(
 ) -> None:
     store.ingest_samples(
         target_id=f"rank-{rank}",
-        samples=[MetricSample(name=TRAINING_ITERATION, labels={"rank": rank}, value=value)],
+        samples=[GaugeSample(name=TRAINING_ITERATION, labels={"rank": rank}, value=value)],
         timestamp=timestamp,
     )
 
@@ -35,7 +35,7 @@ def _inject_phase(
 ) -> None:
     store.ingest_samples(
         target_id=f"rank-{rank}",
-        samples=[MetricSample(name=TRAINING_PHASE, labels={"rank": rank}, value=phase)],
+        samples=[GaugeSample(name=TRAINING_PHASE, labels={"rank": rank}, value=phase)],
     )
 
 

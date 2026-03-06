@@ -8,7 +8,7 @@ import pytest
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models import MetricSample
+from miles.utils.ft.models import GaugeSample
 from tests.fast.utils.ft.conftest import TestCollector
 
 
@@ -35,7 +35,7 @@ class TestNodeAgentMiniPrometheusIntegration:
     async def test_scrape_and_query_latest(self) -> None:
         test_collector = TestCollector(
             metrics=[
-                MetricSample(
+                GaugeSample(
                     name="gpu_temperature_celsius",
                     labels={"gpu": "0"},
                     value=72.5,
@@ -54,7 +54,7 @@ class TestNodeAgentMiniPrometheusIntegration:
     async def test_updated_values_visible_after_rescrape(self) -> None:
         test_collector = TestCollector(
             metrics=[
-                MetricSample(
+                GaugeSample(
                     name="gpu_temperature_celsius",
                     labels={"gpu": "0"},
                     value=60.0,
@@ -68,7 +68,7 @@ class TestNodeAgentMiniPrometheusIntegration:
             assert 60.0 in df1["value"].to_list()
 
             test_collector.set_metrics([
-                MetricSample(
+                GaugeSample(
                     name="gpu_temperature_celsius",
                     labels={"gpu": "0"},
                     value=85.0,
@@ -92,17 +92,17 @@ class TestNodeAgentMiniPrometheusIntegration:
     async def test_multiple_metrics_all_queryable(self) -> None:
         test_collector = TestCollector(
             metrics=[
-                MetricSample(
+                GaugeSample(
                     name="gpu_temperature_celsius",
                     labels={"gpu": "0"},
                     value=70.0,
                 ),
-                MetricSample(
+                GaugeSample(
                     name="gpu_memory_used_bytes",
                     labels={"gpu": "0"},
                     value=8192.0,
                 ),
-                MetricSample(
+                GaugeSample(
                     name="gpu_power_watts",
                     labels={"gpu": "0"},
                     value=250.0,
@@ -125,12 +125,12 @@ class TestNodeAgentMiniPrometheusIntegration:
     async def test_label_filter_query(self) -> None:
         test_collector = TestCollector(
             metrics=[
-                MetricSample(
+                GaugeSample(
                     name="gpu_temperature_celsius",
                     labels={"gpu": "0"},
                     value=65.0,
                 ),
-                MetricSample(
+                GaugeSample(
                     name="gpu_temperature_celsius",
                     labels={"gpu": "1"},
                     value=78.0,
