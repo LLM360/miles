@@ -1,7 +1,5 @@
 # Fault Tolerance (`miles.utils.ft`)
 
-Fault tolerance for Miles.
-
 ## Architecture
 
 The directory layout also tightly follows the architecture.
