@@ -30,7 +30,7 @@ class FtNodeAgent:
         self._diagnostics: dict[str, DiagnosticProtocol] = {d.diagnostic_type: d for d in (diagnostics or [])}
 
         self._exporter = PrometheusExporter()
-        self._collection_loop = MetricCollectionLoop(
+        self._metric_collection_loop = MetricCollectionLoop(
             node_id=node_id,
             collectors=prepared_collectors,
             exporter=self._exporter,
@@ -44,10 +44,10 @@ class FtNodeAgent:
         return self._exporter.get_address()
 
     async def start(self) -> None:
-        await self._collection_loop.start()
+        await self._metric_collection_loop.start()
 
     async def stop(self) -> None:
-        await self._collection_loop.stop()
+        await self._metric_collection_loop.stop()
         self._exporter.shutdown()
 
     # ------------------------------------------------------------------

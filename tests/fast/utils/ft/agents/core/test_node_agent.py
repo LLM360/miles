@@ -195,9 +195,9 @@ class TestFtNodeAgentCollectionLoop:
         )
         await agent.start()
 
-        assert len(agent._collection_loop.tasks) == 1
+        assert len(agent._metric_collection_loop.tasks) == 1
         await agent.stop()
-        assert len(agent._collection_loop.tasks) == 0
+        assert len(agent._metric_collection_loop.tasks) == 0
 
     @pytest.mark.anyio
     async def test_failing_collector_does_not_crash_loop(self, make_node_agent: MakeNodeAgent) -> None:
@@ -231,8 +231,8 @@ class TestFtNodeAgentCollectionLoop:
         await agent.start()
         await asyncio.sleep(0.3)
 
-        assert len(agent._collection_loop.tasks) == 2
-        assert all(not t.done() for t in agent._collection_loop.tasks)
+        assert len(agent._metric_collection_loop.tasks) == 2
+        assert all(not t.done() for t in agent._metric_collection_loop.tasks)
 
         address = agent.get_exporter_address()
         async with httpx.AsyncClient() as client:
@@ -311,10 +311,10 @@ class TestFtNodeAgentLifecycle:
             collectors=[test_collector],
         )
         await agent.start()
-        first_tasks = list(agent._collection_loop.tasks)
+        first_tasks = list(agent._metric_collection_loop.tasks)
         await agent.start()
 
-        assert agent._collection_loop.tasks == first_tasks
+        assert agent._metric_collection_loop.tasks == first_tasks
 
     @pytest.mark.anyio
     async def test_stop_without_start(self) -> None:
@@ -335,7 +335,7 @@ class TestFtNodeAgentLifecycle:
     async def test_start_with_empty_collectors(self, make_node_agent: MakeNodeAgent) -> None:
         agent = make_node_agent(node_id="test-node-empty-collectors", collectors=[])
         await agent.start()
-        assert len(agent._collection_loop.tasks) == 0
+        assert len(agent._metric_collection_loop.tasks) == 0
 
     @pytest.mark.anyio
     async def test_stop_calls_close_on_all_collectors(self) -> None:
