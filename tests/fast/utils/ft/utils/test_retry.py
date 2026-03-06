@@ -1,4 +1,4 @@
-"""Tests for miles.utils.ft.retry (retry_sync, retry_async, retry_async_or_raise)."""
+"""Tests for miles.utils.ft.utils.retry (retry_sync, retry_async, retry_async_or_raise)."""
 from __future__ import annotations
 
 import asyncio
@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from miles.utils.ft.retry import RetryResult, retry_async, retry_async_or_raise, retry_sync
+from miles.utils.ft.utils.retry import RetryResult, retry_async, retry_async_or_raise, retry_sync
 
-_SLEEP_PATCH = "miles.utils.ft.retry.time.sleep"
-_ASYNC_SLEEP_PATCH = "miles.utils.ft.retry.asyncio.sleep"
+_SLEEP_PATCH = "miles.utils.ft.utils.retry.time.sleep"
+_ASYNC_SLEEP_PATCH = "miles.utils.ft.utils.retry.asyncio.sleep"
 
 
 # -----------------------------------------------------------------------
@@ -151,7 +151,7 @@ class TestRetrySyncBackoff:
 class TestRetrySyncLogging:
     def test_logs_warning_per_failure(self, caplog: pytest.LogCaptureFixture) -> None:
         with patch(_SLEEP_PATCH), \
-             caplog.at_level(logging.WARNING, logger="miles.utils.ft.retry"):
+             caplog.at_level(logging.WARNING, logger="miles.utils.ft.utils.retry"):
             retry_sync(
                 func=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
                 description="log_check",
@@ -163,7 +163,7 @@ class TestRetrySyncLogging:
 
     def test_logs_error_on_exhaustion(self, caplog: pytest.LogCaptureFixture) -> None:
         with patch(_SLEEP_PATCH), \
-             caplog.at_level(logging.ERROR, logger="miles.utils.ft.retry"):
+             caplog.at_level(logging.ERROR, logger="miles.utils.ft.utils.retry"):
             retry_sync(
                 func=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
                 description="exhaust_check",

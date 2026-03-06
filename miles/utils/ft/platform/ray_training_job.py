@@ -9,7 +9,7 @@ from uuid import uuid4
 import ray
 from ray.job_submission import JobSubmissionClient
 
-from miles.utils.ft.polling import poll_until
+from miles.utils.ft.utils.polling import poll_until
 from miles.utils.ft.protocols.platform import JobStatus
 
 logger = logging.getLogger(__name__)

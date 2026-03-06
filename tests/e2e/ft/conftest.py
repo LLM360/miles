@@ -27,7 +27,7 @@ from miles.utils.ft.fault_injectors.fault_injector import deploy_fault_injector
 from miles.utils.ft.models import ControllerMode, ControllerStatus, RecoveryPhase
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.platform.ray_training_job import stop_all_active_jobs
-from miles.utils.ft.polling import poll_until
+from miles.utils.ft.utils.polling import poll_until
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 logger = logging.getLogger(__name__)

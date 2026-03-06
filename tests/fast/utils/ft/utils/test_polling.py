@@ -1,4 +1,4 @@
-"""Tests for miles.utils.ft.polling (poll_until)."""
+"""Tests for miles.utils.ft.utils.polling (poll_until)."""
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from miles.utils.ft.polling import poll_until
+from miles.utils.ft.utils.polling import poll_until
 
 
 # -----------------------------------------------------------------------
@@ -204,7 +204,7 @@ class TestPollUntilLogging:
             call_count += 1
             return call_count
 
-        with caplog.at_level(logging.INFO, logger="miles.utils.ft.polling"):
+        with caplog.at_level(logging.INFO, logger="miles.utils.ft.utils.polling"):
             result = await poll_until(
                 probe=probe,
                 predicate=lambda v: v >= 8,
@@ -220,7 +220,7 @@ class TestPollUntilLogging:
 
     @pytest.mark.anyio
     async def test_no_logging_when_log_every_zero(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.INFO, logger="miles.utils.ft.polling"):
+        with caplog.at_level(logging.INFO, logger="miles.utils.ft.utils.polling"):
             await poll_until(
                 probe=lambda: True,
                 predicate=lambda v: v is True,

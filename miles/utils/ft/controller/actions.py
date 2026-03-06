@@ -10,7 +10,7 @@ from miles.utils.ft.controller.recovery_orchestrator.helpers import (
     safe_notify,
     stop_and_submit,
 )
-from miles.utils.ft.retry import retry_async
+from miles.utils.ft.utils.retry import retry_async
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models.fault import Decision
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol

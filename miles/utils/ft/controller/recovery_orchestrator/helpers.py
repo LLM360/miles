@@ -5,7 +5,7 @@ import logging
 from collections.abc import Callable
 
 from miles.utils.ft.protocols.platform import JobStatus, NotificationProtocol, TrainingJobProtocol
-from miles.utils.ft.retry import retry_async
+from miles.utils.ft.utils.retry import retry_async
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,7 @@ async def stop_and_submit(
         lambda: training_job.submit_training(excluded_node_ids=excluded_node_ids),
         description="submit_training",
     )
-    if result.ok and on_new_run is not None:
-        assert result.value is not None
+    if result.ok and result.value is not None and on_new_run is not None:
         on_new_run(result.value)
 
     return result.ok

@@ -6,7 +6,7 @@ import asyncio
 import pytest
 
 from miles.utils.ft.controller.recovery_orchestrator.helpers import stop_and_submit
-from miles.utils.ft.retry import RetryResult, retry_async
+from miles.utils.ft.utils.retry import RetryResult, retry_async
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import FakeTrainingJob, make_failing_training_job
 

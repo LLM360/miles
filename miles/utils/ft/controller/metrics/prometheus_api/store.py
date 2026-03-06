@@ -15,7 +15,7 @@ from miles.utils.ft.controller.metrics.prometheus_api.response_parser import (
     parse_instant_response,
     parse_range_response,
 )
-from miles.utils.ft.retry import retry_sync
+from miles.utils.ft.utils.retry import retry_sync
 
 logger = logging.getLogger(__name__)
 
