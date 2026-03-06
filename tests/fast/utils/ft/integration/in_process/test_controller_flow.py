@@ -27,10 +27,12 @@ class TestRegisterRankLogStepQuery:
         harness.controller.rank_roster.register_training_rank(
             run_id=run_id, rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         harness.controller.rank_roster.register_training_rank(
             run_id=run_id, rank=1, world_size=4,
             node_id="node-1", exporter_address="http://node-1:9090",
+            pid=1,
         )
 
         harness.mini_wandb.log_step(
@@ -56,6 +58,7 @@ class TestRunIdIsolation:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         harness.mini_wandb.log_step(
             run_id="run-1", step=10,
@@ -67,6 +70,7 @@ class TestRunIdIsolation:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
 
         assert harness.mini_wandb.latest(metric_name="loss") is None
@@ -81,6 +85,7 @@ class TestRunIdIsolation:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         harness.mini_wandb.log_step(
             run_id="run-1", step=10,
@@ -91,6 +96,7 @@ class TestRunIdIsolation:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
 
         harness.mini_wandb.log_step(

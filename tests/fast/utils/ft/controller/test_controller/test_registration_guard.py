@@ -43,6 +43,7 @@ class TestRegistrationGuardNoRanks:
         harness.controller._rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9100",
+            pid=1,
         )
 
         await harness.controller._tick()
@@ -66,6 +67,7 @@ class TestRegistrationGraceTicks:
         harness.controller._rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9100",
+            pid=1,
         )
 
         for _ in range(3):
@@ -88,6 +90,7 @@ class TestRegistrationGraceTicks:
         harness.controller._rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9100",
+            pid=1,
         )
 
         await harness.controller._tick()

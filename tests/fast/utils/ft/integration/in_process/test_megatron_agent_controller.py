@@ -30,6 +30,7 @@ class TestStepToLogStepFlow:
         harness.controller.rank_roster.register_training_rank(
             run_id=run_id, rank=0, world_size=4,
             node_id="node-0", exporter_address="http://localhost:9999",
+            pid=1,
         )
 
         harness.mini_wandb.log_step(
@@ -51,10 +52,12 @@ class TestRegisterRankPlacement:
         harness.controller.rank_roster.register_training_rank(
             run_id=run_id, rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         harness.controller.rank_roster.register_training_rank(
             run_id=run_id, rank=1, world_size=4,
             node_id="node-1", exporter_address="http://node-1:9090",
+            pid=1,
         )
 
         assert harness.controller._rank_roster.rank_placement == {0: "node-0", 1: "node-1"}
@@ -73,6 +76,7 @@ class TestScrapeTargetRegistration:
             harness.controller.rank_roster.register_training_rank(
                 run_id=run_id, rank=0, world_size=4,
                 node_id="node-0", exporter_address=exporter_address,
+                pid=1,
             )
 
             assert "rank-0" in harness.metric_store._scrape_targets
@@ -93,6 +97,7 @@ class TestHeartbeatScrape:
             harness.controller.rank_roster.register_training_rank(
                 run_id=run_id, rank=0, world_size=4,
                 node_id="node-0", exporter_address=exporter_address,
+                pid=1,
             )
 
             agent.set_phase("training")
@@ -119,6 +124,7 @@ class TestRunIdClear:
         harness.controller.rank_roster.register_training_rank(
             run_id=run_id_1, rank=0, world_size=2,
             node_id="node-0", exporter_address="http://localhost:9999",
+            pid=1,
         )
         harness.mini_wandb.log_step(
             run_id=run_id_1, step=10,
@@ -130,6 +136,7 @@ class TestRunIdClear:
         harness.controller.rank_roster.register_training_rank(
             run_id=run_id_2, rank=0, world_size=2,
             node_id="node-0", exporter_address="http://localhost:9999",
+            pid=1,
         )
 
         assert harness.mini_wandb.latest(metric_name="loss") is None

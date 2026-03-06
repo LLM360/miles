@@ -76,6 +76,7 @@ class TestControllerPrometheusMode:
         controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
 
         assert controller._rank_roster.rank_placement == {0: "node-0"}
@@ -97,6 +98,7 @@ class TestControllerPrometheusMode:
         controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         controller.mini_wandb.log_step(
             run_id="run-1", step=1,

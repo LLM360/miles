@@ -16,6 +16,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
 
         assert harness.controller._rank_roster.run_id == "run-1"
@@ -29,10 +30,12 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=1, world_size=2,
             node_id="node-1", exporter_address="http://node-1:9090",
+            pid=1,
         )
 
         assert harness.controller._rank_roster.rank_placement == {0: "node-0", 1: "node-1"}
@@ -45,6 +48,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         harness.mini_wandb.log_step(
             run_id="run-1", step=1, metrics={"loss": 3.0},
@@ -53,6 +57,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0-new", exporter_address="http://node-0-new:9090",
+            pid=1,
         )
 
         assert harness.controller._rank_roster.rank_placement[0] == "node-0-new"
@@ -66,6 +71,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
 
         assert "rank-0" in harness.metric_store._scrape_targets
@@ -79,6 +85,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         assert "rank-0" in harness.metric_store._scrape_targets
 
@@ -86,6 +93,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=1, world_size=2,
             node_id="node-1", exporter_address="http://node-1:9090",
+            pid=1,
         )
 
         assert "rank-0" not in harness.metric_store._scrape_targets
@@ -99,10 +107,12 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=1, world_size=4,
             node_id="node-1", exporter_address="http://node-1:9090",
+            pid=1,
         )
         assert "rank-0" in harness.metric_store._scrape_targets
         assert "rank-1" in harness.metric_store._scrape_targets
@@ -111,6 +121,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=2, world_size=4,
             node_id="node-2", exporter_address="http://node-2:9090",
+            pid=1,
         )
 
         assert "rank-0" not in harness.metric_store._scrape_targets
@@ -129,6 +140,7 @@ class TestRegisterRank:
             harness.controller.rank_roster.register_training_rank(
                 run_id="run-1", rank=rank, world_size=4,
                 node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
+                pid=1,
             )
 
         assert len(harness.controller._rank_roster.rank_placement) == 3
@@ -154,6 +166,7 @@ class TestRegisterRank:
             harness.controller.rank_roster.register_training_rank(
                 run_id="run-1", rank=rank, world_size=4,
                 node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
+                pid=1,
             )
 
         assert harness.controller._rank_roster.expected_world_size == 4
@@ -173,6 +186,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=8,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         assert harness.controller._rank_roster.expected_world_size == 8
 
@@ -180,6 +194,7 @@ class TestRegisterRank:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
         assert harness.controller._rank_roster.expected_world_size == 4
         assert harness.controller._rank_roster.rank_placement == {0: "node-0"}
@@ -297,6 +312,7 @@ class TestLogStep:
         harness.controller.rank_roster.register_training_rank(
             run_id=run_id, rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
 
         harness.mini_wandb.log_step(
@@ -313,6 +329,7 @@ class TestLogStep:
         harness.controller.rank_roster.register_training_rank(
             run_id="run-123", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
+            pid=1,
         )
 
         harness.mini_wandb.log_step(

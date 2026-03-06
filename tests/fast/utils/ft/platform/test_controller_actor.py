@@ -149,6 +149,7 @@ class TestFtControllerActorProxy:
         await actor.register_training_rank(
             run_id="test-run", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9100",
+            pid=1,
         )
 
         assert harness.controller._rank_roster.rank_placement == {0: "node-0"}
@@ -161,6 +162,7 @@ class TestFtControllerActorProxy:
         await actor.register_training_rank(
             run_id="test-run", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9100",
+            pid=1,
         )
         await actor.log_step(
             run_id="test-run", step=1, metrics={"loss": 0.5},

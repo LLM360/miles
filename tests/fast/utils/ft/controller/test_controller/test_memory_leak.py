@@ -34,6 +34,7 @@ def _register_n_nodes(
             world_size=world_size,
             node_id=node_id,
             exporter_address=f"http://{node_id}:9090",
+            pid=1,
         )
 
 
