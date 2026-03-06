@@ -169,7 +169,7 @@ class FtController:
                 self._controller_exporter.update_last_tick_timestamp(time.time())
 
     async def _tick_inner(self) -> None:
-        self._warn_incomplete_registration()
+        self._rank_registry.warn_if_incomplete()
         job_status = await self._training_job.get_training_status()
 
         if self._recovery_manager.in_progress:
@@ -193,18 +193,6 @@ class FtController:
 
         self._update_exporter_metrics(job_status)
         await self._execute_decision(decision)
-
-    def _warn_incomplete_registration(self) -> None:
-        if (
-            self._rank_registry.expected_world_size is not None
-            and len(self._rank_registry.rank_placement) < self._rank_registry.expected_world_size
-        ):
-            logger.warning(
-                "incomplete_rank_registration registered=%d expected=%d run_id=%s",
-                len(self._rank_registry.rank_placement),
-                self._rank_registry.expected_world_size,
-                self._rank_registry.active_run_id,
-            )
 
     def _should_run_detectors(self) -> bool:
         if len(self._rank_registry.rank_placement) == 0:

@@ -124,6 +124,18 @@ class RankRegistry:
             if nid == node_id and rank in self.rank_pids
         }
 
+    def warn_if_incomplete(self) -> None:
+        if (
+            self.expected_world_size is not None
+            and len(self.rank_placement) < self.expected_world_size
+        ):
+            logger.warning(
+                "incomplete_rank_registration registered=%d expected=%d run_id=%s",
+                len(self.rank_placement),
+                self.expected_world_size,
+                self.active_run_id,
+            )
+
     def _remove_old_scrape_targets(self) -> None:
         if self._scrape_target_manager is not None:
             for old_rank in self.rank_placement:
