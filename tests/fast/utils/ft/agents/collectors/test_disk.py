@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -132,3 +133,25 @@ class TestCollectDiskIoTime:
             samples = collector._collect_disk_io_time()
 
         assert samples == []
+
+
+class TestDiskCollectorRealHardware:
+    """Zero-mock tests against real /sys/block and statvfs."""
+
+    @pytest.mark.anyio
+    async def test_collect_returns_disk_metrics(self) -> None:
+        collector = DiskCollector(disk_mounts=[Path("/")])
+        result = await collector.collect()
+
+        names = {s.name for s in result.metrics}
+        assert mn.NODE_FILESYSTEM_AVAIL_BYTES in names
+        assert mn.NODE_DISK_IO_TIME_SECONDS_TOTAL in names
+
+    @pytest.mark.anyio
+    async def test_avail_bytes_positive(self) -> None:
+        collector = DiskCollector(disk_mounts=[Path("/")])
+        result = await collector.collect()
+        for s in result.metrics:
+            if s.name == mn.NODE_FILESYSTEM_AVAIL_BYTES:
+                assert s.value > 0
+            assert math.isfinite(s.value)
