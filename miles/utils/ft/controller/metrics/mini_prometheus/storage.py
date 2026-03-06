@@ -8,6 +8,7 @@ import polars as pl
 
 from miles.utils.ft.controller.metrics.aggregation_mixin import RangeAggregationMixin
 from miles.utils.ft.controller.metrics.mini_prometheus.query import SeriesKey, TimeSeriesSample
+from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
 from miles.utils.ft.controller.metrics.mini_prometheus.query import query_latest as _query_latest
 from miles.utils.ft.controller.metrics.mini_prometheus.query import query_range as _query_range
 from miles.utils.ft.controller.metrics.mini_prometheus.query import range_aggregate as _range_aggregate
@@ -21,7 +22,7 @@ class MiniPrometheusConfig:
     retention: timedelta = field(default_factory=lambda: timedelta(minutes=60))
 
 
-class MiniPrometheus(RangeAggregationMixin):
+class MiniPrometheus(MetricStoreProtocol, ScrapeTargetManagerProtocol, RangeAggregationMixin):
     def __init__(self, config: MiniPrometheusConfig | None = None) -> None:
         self._config = config or MiniPrometheusConfig()
         self._series: dict[SeriesKey, deque[TimeSeriesSample]] = {}
