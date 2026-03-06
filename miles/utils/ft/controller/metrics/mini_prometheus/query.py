@@ -189,12 +189,6 @@ def _compute_aggregate(func_name: str, samples: list[TimeSeriesSample]) -> float
             return 0.0
         return float(sum(1 for i in range(1, len(samples)) if samples[i].value != samples[i - 1].value))
 
-    if func_name == "min_over_time":
-        return min(s.value for s in samples)
-
-    if func_name == "max_over_time":
-        return max(s.value for s in samples)
-
     if func_name == "avg_over_time":
         return sum(s.value for s in samples) / len(samples)
 

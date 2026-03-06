@@ -53,19 +53,6 @@ class MetricQueryProtocol(Protocol):
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame: ...
 
-    def min_over_time(
-        self,
-        metric_name: str,
-        window: timedelta,
-        label_filters: dict[str, str] | None = None,
-    ) -> pl.DataFrame: ...
-
-    def max_over_time(
-        self,
-        metric_name: str,
-        window: timedelta,
-        label_filters: dict[str, str] | None = None,
-    ) -> pl.DataFrame: ...
 
 
 @runtime_checkable

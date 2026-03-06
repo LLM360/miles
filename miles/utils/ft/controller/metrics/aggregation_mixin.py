@@ -36,22 +36,6 @@ class RangeAggregationMixin:
     ) -> pl.DataFrame:
         return self._dispatch_range_function("avg_over_time", metric_name, window, label_filters)
 
-    def min_over_time(
-        self,
-        metric_name: str,
-        window: timedelta,
-        label_filters: dict[str, str] | None = None,
-    ) -> pl.DataFrame:
-        return self._dispatch_range_function("min_over_time", metric_name, window, label_filters)
-
-    def max_over_time(
-        self,
-        metric_name: str,
-        window: timedelta,
-        label_filters: dict[str, str] | None = None,
-    ) -> pl.DataFrame:
-        return self._dispatch_range_function("max_over_time", metric_name, window, label_filters)
-
     @abstractmethod
     def _dispatch_range_function(
         self,

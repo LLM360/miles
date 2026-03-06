@@ -63,10 +63,6 @@ class RecoveryLifecycleManager:
     def last_phase_history(self) -> list[RecoveryPhase] | None:
         return self._last_phase_history
 
-    @property
-    def cooldown(self) -> RecoveryCooldown:
-        return self._cooldown
-
     def snapshot(self) -> RecoverySnapshot:
         if self._orchestrator is not None:
             phase = self._orchestrator.phase

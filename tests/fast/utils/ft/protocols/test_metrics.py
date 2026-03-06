@@ -88,15 +88,6 @@ class _QueryOnlyStore:
     ) -> pl.DataFrame:
         return pl.DataFrame()
 
-    def min_over_time(
-        self, metric_name: str, window: timedelta, label_filters: dict[str, str] | None = None,
-    ) -> pl.DataFrame:
-        return pl.DataFrame()
-
-    def max_over_time(
-        self, metric_name: str, window: timedelta, label_filters: dict[str, str] | None = None,
-    ) -> pl.DataFrame:
-        return pl.DataFrame()
 
 
 class _FakeMiniWandb:

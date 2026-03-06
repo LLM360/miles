@@ -191,14 +191,6 @@ class TestComputeAggregate:
         samples = [TimeSeriesSample(timestamp=_now(), value=1.0)]
         assert _compute_aggregate("changes", samples) == 0.0
 
-    def test_min_over_time(self) -> None:
-        samples = [TimeSeriesSample(timestamp=_now(), value=v) for v in [5.0, 2.0, 8.0]]
-        assert _compute_aggregate("min_over_time", samples) == 2.0
-
-    def test_max_over_time(self) -> None:
-        samples = [TimeSeriesSample(timestamp=_now(), value=v) for v in [5.0, 2.0, 8.0]]
-        assert _compute_aggregate("max_over_time", samples) == 8.0
-
     def test_avg_over_time(self) -> None:
         samples = [TimeSeriesSample(timestamp=_now(), value=v) for v in [2.0, 4.0, 6.0]]
         assert _compute_aggregate("avg_over_time", samples) == 4.0

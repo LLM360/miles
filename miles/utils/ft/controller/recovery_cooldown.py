@@ -28,5 +28,3 @@ class RecoveryCooldown:
         )
         return recent_count >= self._max_count
 
-    def reset(self) -> None:
-        self._history.clear()
