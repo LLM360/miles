@@ -151,7 +151,7 @@ class TestFtControllerActorProxy:
             node_id="node-0", exporter_address="http://node-0:9100",
         )
 
-        assert harness.controller._rank_registry.rank_placement == {0: "node-0"}
+        assert harness.controller._rank_roster.rank_placement == {0: "node-0"}
 
     @pytest.mark.anyio
     async def test_log_step_writes_to_mini_wandb(self) -> None:

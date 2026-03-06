@@ -15,7 +15,7 @@ from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.rank_registry import RankRegistry
+from miles.utils.ft.controller.rank_roster import RankRoster
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
 from miles.utils.ft.controller.recovery_lifecycle import RecoveryLifecycleManager
 from miles.utils.ft.models.fault import ActionType, Decision
@@ -44,7 +44,7 @@ class FtController:
         *,
         platform_deps: PlatformDeps,
         recovery_manager: RecoveryLifecycleManager,
-        rank_registry: RankRegistry,
+        rank_roster: RankRoster,
         mini_wandb: MiniWandb,
         scrape_target_manager: ScrapeTargetManagerProtocol | None,
         agents: dict[str, NodeAgentProtocol],
@@ -56,7 +56,7 @@ class FtController:
     ) -> None:
         self._training_job = platform_deps.training_job
         self._metric_store = metric_store
-        self._rank_registry = rank_registry
+        self._rank_roster = rank_roster
         self._mini_wandb = mini_wandb
         self._scrape_target_manager = scrape_target_manager
         self._agents = agents
@@ -87,14 +87,14 @@ class FtController:
         registration_grace_ticks: int = 5,
     ) -> FtController:
         agents: dict[str, NodeAgentProtocol] = {}
-        rank_registry = RankRegistry(scrape_target_manager=scrape_target_manager)
+        rank_roster = RankRoster(scrape_target_manager=scrape_target_manager)
 
         resolved_scheduler: DiagnosticSchedulerProtocol = (
             diagnostic_scheduler
             or DiagnosticScheduler(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=lambda node_id: rank_registry.get_rank_pids_for_node(node_id),
+                rank_pids_provider=lambda node_id: rank_roster.get_rank_pids_for_node(node_id),
             )
         )
 
@@ -119,7 +119,7 @@ class FtController:
         instance = cls(
             platform_deps=platform_deps,
             recovery_manager=recovery_manager,
-            rank_registry=rank_registry,
+            rank_roster=rank_roster,
             mini_wandb=mini_wandb,
             scrape_target_manager=scrape_target_manager,
             agents=agents,
@@ -138,8 +138,8 @@ class FtController:
     # ------------------------------------------------------------------
 
     @property
-    def rank_registry(self) -> RankRegistry:
-        return self._rank_registry
+    def rank_roster(self) -> RankRoster:
+        return self._rank_roster
 
     @property
     def mini_wandb(self) -> MiniWandb:
@@ -191,7 +191,7 @@ class FtController:
             recovery_phase=snap.phase,
             phase_history=snap.phase_history,
             tick_count=self._tick_count,
-            active_run_id=self._rank_registry.run_id,
+            active_run_id=self._rank_roster.run_id,
             bad_nodes=snap.diagnosing_nodes,
             recovery_in_progress=snap.in_progress,
             bad_nodes_confirmed=snap.bad_nodes_confirmed,
@@ -199,9 +199,9 @@ class FtController:
         )
 
     def _activate_run(self, run_id: str) -> None:
-        """Create a fresh RankRegistry for the new run and switch MiniWandb."""
-        self._rank_registry.cleanup()
-        self._rank_registry = RankRegistry(
+        """Create a fresh RankRoster for the new run and switch MiniWandb."""
+        self._rank_roster.cleanup()
+        self._rank_roster = RankRoster(
             run_id=run_id,
             scrape_target_manager=self._scrape_target_manager,
         )
@@ -217,7 +217,7 @@ class FtController:
         t0 = time.monotonic()
         job_status: JobStatus | None = None
         try:
-            self._rank_registry.warn_if_incomplete()
+            self._rank_roster.warn_if_incomplete()
             job_status = await self._training_job.get_training_status()
             await self._tick_inner(job_status)
         except Exception:
@@ -243,14 +243,14 @@ class FtController:
 
         logger.info(
             "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
-            self._tick_count, self._rank_registry.run_id,
+            self._tick_count, self._rank_roster.run_id,
             decision.action.value, decision.reason,
         )
 
         await self._execute_decision(decision)
 
     def _should_run_detectors(self) -> bool:
-        if len(self._rank_registry.rank_placement) == 0:
+        if len(self._rank_roster.rank_placement) == 0:
             logger.info("skip_detectors_no_ranks tick=%d", self._tick_count)
             return False
 
@@ -271,7 +271,7 @@ class FtController:
         return DetectorContext(
             metric_store=self._metric_store,
             mini_wandb=self._mini_wandb,
-            rank_placement=dict(self._rank_registry.rank_placement),
+            rank_placement=dict(self._rank_roster.rank_placement),
             job_status=job_status,
         )
 
@@ -324,7 +324,7 @@ class FtController:
         logger.info(
             "decision_event decision_action=%s trigger=%s bad_node_ids=%s run_id=%s tick=%d",
             decision.action.value, trigger_str, decision.bad_node_ids,
-            self._rank_registry.run_id, self._tick_count,
+            self._rank_roster.run_id, self._tick_count,
         )
         self._controller_exporter.record_decision(
             action=decision.action.value, trigger=trigger_str,

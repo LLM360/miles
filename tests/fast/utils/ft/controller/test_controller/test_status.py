@@ -93,7 +93,7 @@ class TestGetStatus:
     async def test_active_run_id_after_register(self) -> None:
         harness = make_test_controller()
         harness.controller._activate_run("run-42")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-42", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9090",
         )

@@ -72,7 +72,7 @@ class TestCrashReattemptSuccess:
             await harness.controller._tick()
         assert orch.phase == RecoveryPhase.MONITORING
 
-        active_run_id = harness.controller._rank_registry.run_id
+        active_run_id = harness.controller._rank_roster.run_id
         for i in range(1, 11):
             harness.mini_wandb.log_step(
                 run_id=active_run_id, step=i,
@@ -173,7 +173,7 @@ class TestRecoveryCompleteBackToMonitoring:
             await harness.controller._tick()
         assert enter_recovery.call_count == initial_detector_count
 
-        active_run_id = harness.controller._rank_registry.run_id
+        active_run_id = harness.controller._rank_roster.run_id
         for i in range(1, 11):
             harness.mini_wandb.log_step(
                 run_id=active_run_id, step=i,
@@ -183,7 +183,7 @@ class TestRecoveryCompleteBackToMonitoring:
 
         assert not harness.controller.recovery_manager.in_progress
 
-        harness.controller.rank_registry.rank_placement[0] = "node-0"
+        harness.controller.rank_roster.rank_placement[0] = "node-0"
         await harness.controller._tick()
         assert enter_recovery.call_count > initial_detector_count
 
@@ -222,7 +222,7 @@ class TestExporterModeGauge:
                 break
             await harness.controller._tick()
 
-        active_run_id = harness.controller._rank_registry.run_id
+        active_run_id = harness.controller._rank_roster.run_id
         for i in range(1, 11):
             harness.mini_wandb.log_step(
                 run_id=active_run_id, step=i,

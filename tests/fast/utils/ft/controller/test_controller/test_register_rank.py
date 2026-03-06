@@ -13,36 +13,36 @@ class TestRegisterRank:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
 
-        assert harness.controller._rank_registry.run_id == "run-1"
-        assert harness.controller._rank_registry.rank_placement == {0: "node-0"}
+        assert harness.controller._rank_roster.run_id == "run-1"
+        assert harness.controller._rank_roster.rank_placement == {0: "node-0"}
 
     @pytest.mark.anyio
     async def test_same_run_id_different_rank_appends(self) -> None:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=1, world_size=2,
             node_id="node-1", exporter_address="http://node-1:9090",
         )
 
-        assert harness.controller._rank_registry.rank_placement == {0: "node-0", 1: "node-1"}
+        assert harness.controller._rank_roster.rank_placement == {0: "node-0", 1: "node-1"}
 
     @pytest.mark.anyio
     async def test_same_run_id_same_rank_updates(self) -> None:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
@@ -50,12 +50,12 @@ class TestRegisterRank:
             run_id="run-1", step=1, metrics={"loss": 3.0},
         )
 
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0-new", exporter_address="http://node-0-new:9090",
         )
 
-        assert harness.controller._rank_registry.rank_placement[0] == "node-0-new"
+        assert harness.controller._rank_roster.rank_placement[0] == "node-0-new"
         assert harness.mini_wandb.latest(metric_name="loss") == 3.0
 
     @pytest.mark.anyio
@@ -63,7 +63,7 @@ class TestRegisterRank:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
@@ -76,14 +76,14 @@ class TestRegisterRank:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
         assert "rank-0" in harness.metric_store._scrape_targets
 
         harness.controller._activate_run("run-2")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=1, world_size=2,
             node_id="node-1", exporter_address="http://node-1:9090",
         )
@@ -96,11 +96,11 @@ class TestRegisterRank:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=1, world_size=4,
             node_id="node-1", exporter_address="http://node-1:9090",
         )
@@ -108,7 +108,7 @@ class TestRegisterRank:
         assert "rank-1" in harness.metric_store._scrape_targets
 
         harness.controller._activate_run("run-2")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=2, world_size=4,
             node_id="node-2", exporter_address="http://node-2:9090",
         )
@@ -126,14 +126,14 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         for rank in range(3):
-            harness.controller.rank_registry.register_training_rank(
+            harness.controller.rank_roster.register_training_rank(
                 run_id="run-1", rank=rank, world_size=4,
                 node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
             )
 
-        assert len(harness.controller._rank_registry.rank_placement) == 3
-        assert 3 not in harness.controller._rank_registry.rank_placement
-        assert harness.controller._rank_registry.expected_world_size == 4
+        assert len(harness.controller._rank_roster.rank_placement) == 3
+        assert 3 not in harness.controller._rank_roster.rank_placement
+        assert harness.controller._rank_roster.expected_world_size == 4
 
         with caplog.at_level(logging.WARNING):
             await harness.controller._tick()
@@ -151,13 +151,13 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         for rank in range(4):
-            harness.controller.rank_registry.register_training_rank(
+            harness.controller.rank_roster.register_training_rank(
                 run_id="run-1", rank=rank, world_size=4,
                 node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
             )
 
-        assert harness.controller._rank_registry.expected_world_size == 4
-        assert len(harness.controller._rank_registry.rank_placement) == 4
+        assert harness.controller._rank_roster.expected_world_size == 4
+        assert len(harness.controller._rank_roster.rank_placement) == 4
 
         with caplog.at_level(logging.WARNING):
             await harness.controller._tick()
@@ -170,64 +170,64 @@ class TestRegisterRank:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=8,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
-        assert harness.controller._rank_registry.expected_world_size == 8
+        assert harness.controller._rank_roster.expected_world_size == 8
 
         harness.controller._activate_run("run-2")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
-        assert harness.controller._rank_registry.expected_world_size == 4
-        assert harness.controller._rank_registry.rank_placement == {0: "node-0"}
+        assert harness.controller._rank_roster.expected_world_size == 4
+        assert harness.controller._rank_roster.rank_placement == {0: "node-0"}
 
     @pytest.mark.anyio
     async def test_register_rank_stores_pid(self) -> None:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
             pid=1234,
         )
 
-        assert harness.controller._rank_registry.rank_pids == {0: 1234}
+        assert harness.controller._rank_roster.rank_pids == {0: 1234}
 
     @pytest.mark.anyio
     async def test_new_run_id_clears_rank_pids(self) -> None:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
             pid=1234,
         )
-        assert harness.controller._rank_registry.rank_pids == {0: 1234}
+        assert harness.controller._rank_roster.rank_pids == {0: 1234}
 
         harness.controller._activate_run("run-2")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-2", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
             pid=5678,
         )
-        assert harness.controller._rank_registry.rank_pids == {0: 5678}
+        assert harness.controller._rank_roster.rank_pids == {0: 5678}
 
     @pytest.mark.anyio
     async def test_register_rank_without_pid_does_not_store(self) -> None:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
 
-        assert harness.controller._rank_registry.rank_pids == {}
+        assert harness.controller._rank_roster.rank_pids == {}
 
 
 class TestGetRankPidsForNode:
@@ -236,23 +236,23 @@ class TestGetRankPidsForNode:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9090",
             pid=100,
         )
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=1, world_size=4,
             node_id="node-0", exporter_address="http://node-0:9091",
             pid=101,
         )
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=2, world_size=4,
             node_id="node-1", exporter_address="http://node-1:9090",
             pid=200,
         )
 
-        result = harness.controller._rank_registry.get_rank_pids_for_node("node-0")
+        result = harness.controller._rank_roster.get_rank_pids_for_node("node-0")
         assert result == {0: 100, 1: 101}
 
     @pytest.mark.anyio
@@ -260,13 +260,13 @@ class TestGetRankPidsForNode:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
             pid=100,
         )
 
-        result = harness.controller._rank_registry.get_rank_pids_for_node("node-999")
+        result = harness.controller._rank_roster.get_rank_pids_for_node("node-999")
         assert result == {}
 
     @pytest.mark.anyio
@@ -274,17 +274,17 @@ class TestGetRankPidsForNode:
         harness = make_test_controller()
 
         harness.controller._activate_run("run-1")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
             pid=100,
         )
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-1", rank=1, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9091",
         )
 
-        result = harness.controller._rank_registry.get_rank_pids_for_node("node-0")
+        result = harness.controller._rank_roster.get_rank_pids_for_node("node-0")
         assert result == {0: 100}
 
 
@@ -294,7 +294,7 @@ class TestLogStep:
         harness = make_test_controller()
         run_id = "run-123"
         harness.controller._activate_run(run_id)
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id=run_id, rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
@@ -310,7 +310,7 @@ class TestLogStep:
     async def test_log_step_mismatched_run_id(self) -> None:
         harness = make_test_controller()
         harness.controller._activate_run("run-123")
-        harness.controller.rank_registry.register_training_rank(
+        harness.controller.rank_roster.register_training_rank(
             run_id="run-123", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
@@ -331,7 +331,7 @@ class TestLogStep:
             metrics={"loss": 3.0},
         )
 
-        assert harness.controller._rank_registry.run_id is None
+        assert harness.controller._rank_roster.run_id is None
         assert harness.mini_wandb.latest(metric_name="loss") is None
         harness.mini_wandb.set_active_run_id("run-123")
         assert harness.mini_wandb.latest(metric_name="loss") == 3.0

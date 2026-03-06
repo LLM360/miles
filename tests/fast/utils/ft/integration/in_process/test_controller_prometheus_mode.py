@@ -73,12 +73,12 @@ class TestControllerPrometheusMode:
         )
 
         controller._activate_run("run-1")
-        controller.rank_registry.register_training_rank(
+        controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=2,
             node_id="node-0", exporter_address="http://node-0:9090",
         )
 
-        assert controller._rank_registry.rank_placement == {0: "node-0"}
+        assert controller._rank_roster.rank_placement == {0: "node-0"}
 
     @pytest.mark.asyncio
     async def test_training_metrics_propagated_to_exporter(self) -> None:
@@ -94,7 +94,7 @@ class TestControllerPrometheusMode:
         )
 
         controller._activate_run("run-1")
-        controller.rank_registry.register_training_rank(
+        controller.rank_roster.register_training_rank(
             run_id="run-1", rank=0, world_size=1,
             node_id="node-0", exporter_address="http://node-0:9090",
         )

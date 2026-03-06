@@ -7,11 +7,11 @@ from miles.utils.ft.protocols.metrics import ScrapeTargetManagerProtocol
 logger = logging.getLogger(__name__)
 
 
-class RankRegistry:
+class RankRoster:
     """Tracks rank placement for a single training run.
 
     Each run gets a fresh instance; the FtController creates a new
-    RankRegistry via ``_activate_run`` whenever a training job is
+    RankRoster via ``_activate_run`` whenever a training job is
     (re)submitted.
     """
 

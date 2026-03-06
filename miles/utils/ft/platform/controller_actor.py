@@ -54,7 +54,7 @@ class _FtControllerActorCls:
         exporter_address: str,
         pid: int | None = None,
     ) -> None:
-        self._ctrl.rank_registry.register_training_rank(
+        self._ctrl.rank_roster.register_training_rank(
             run_id=run_id,
             rank=rank,
             world_size=world_size,

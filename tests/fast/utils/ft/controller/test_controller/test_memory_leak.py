@@ -22,13 +22,13 @@ _NODE_IDS = ["node-0", "node-1", "node-2", "node-3"]
 
 
 def _register_n_nodes(
-    rank_registry: object,
+    rank_roster: object,
     run_id: str,
     node_ids: list[str] = _NODE_IDS,
 ) -> None:
     world_size = len(node_ids)
     for rank, node_id in enumerate(node_ids):
-        rank_registry.register_training_rank(
+        rank_roster.register_training_rank(
             run_id=run_id,
             rank=rank,
             world_size=world_size,
@@ -46,7 +46,7 @@ class TestControllerMemoryLeak:
 
         run_id = "leak-test-run"
         harness.controller._activate_run(run_id)
-        _register_n_nodes(harness.controller.rank_registry, run_id=run_id)
+        _register_n_nodes(harness.controller.rank_roster, run_id=run_id)
 
         for node_id in _NODE_IDS:
             inject_healthy_node(harness.metric_store, node_id=node_id)
