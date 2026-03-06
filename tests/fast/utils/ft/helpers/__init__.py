@@ -30,6 +30,11 @@ from tests.fast.utils.ft.helpers.controller_fakes import (
     FakeNotifier,
     FakeTrainingJob,
     FixedDecisionDetector,
+    failing_mark_node_bad,
+    failing_stop_training,
+    failing_submit_training,
+    make_failing_node_manager,
+    make_failing_training_job,
     make_test_controller,
 )
 from tests.fast.utils.ft.helpers.diagnostic_fakes import (
@@ -84,6 +89,11 @@ __all__ = [
     "FakeNotifier",
     "FakeTrainingJob",
     "FixedDecisionDetector",
+    "failing_mark_node_bad",
+    "failing_stop_training",
+    "failing_submit_training",
+    "make_failing_node_manager",
+    "make_failing_training_job",
     "SlowDiagnostic",
     "StubDiagnostic",
     "TestCollector",

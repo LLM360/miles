@@ -29,6 +29,8 @@ from tests.fast.utils.ft.conftest import (
     FakeNotifier,
     FakeTrainingJob,
     HangingDiagnosticScheduler,
+    make_failing_node_manager,
+    make_failing_training_job,
 )
 
 
@@ -113,12 +115,7 @@ class TestStepReattempting:
 
     @pytest.mark.anyio
     async def test_submit_failure_transitions_to_notify(self) -> None:
-        training_job = FakeTrainingJob()
-
-        async def failing_submit(excluded_node_ids: list[str] | None = None) -> str:
-            raise RuntimeError("submit failed")
-
-        training_job.submit_training = failing_submit  # type: ignore[assignment]
+        training_job = make_failing_training_job(fail_submit=True)
         ctx = _make_ctx()
         mini_wandb = MiniWandb()
 
@@ -381,12 +378,7 @@ class TestStepEvictAndRestart:
     async def test_eviction_failure_transitions_to_notify(self) -> None:
         ctx = _make_ctx()
         ctx.bad_node_ids = ["node-bad"]
-        node_manager = FakeNodeManager()
-
-        async def always_fail(node_id: str, reason: str = "") -> None:
-            raise RuntimeError("eviction failed")
-
-        node_manager.mark_node_bad = always_fail  # type: ignore[assignment]
+        node_manager = make_failing_node_manager()
         training_job = FakeTrainingJob()
         mini_wandb = MiniWandb()
 
@@ -404,12 +396,7 @@ class TestStepEvictAndRestart:
         ctx = _make_ctx()
         ctx.bad_node_ids = ["node-bad"]
         node_manager = FakeNodeManager()
-        training_job = FakeTrainingJob()
-
-        async def failing_submit(excluded_node_ids: list[str] | None = None) -> str:
-            raise RuntimeError("submit failed")
-
-        training_job.submit_training = failing_submit  # type: ignore[assignment]
+        training_job = make_failing_training_job(fail_submit=True)
         mini_wandb = MiniWandb()
 
         result = await step_evict_and_restart(

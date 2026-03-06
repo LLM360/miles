@@ -17,6 +17,8 @@ from tests.fast.utils.ft.conftest import (
     FakeNodeManager,
     FakeNotifier,
     FakeTrainingJob,
+    make_failing_node_manager,
+    make_failing_training_job,
 )
 
 
@@ -163,13 +165,8 @@ class TestRestartFailure:
     async def test_restart_failure_notifies(self) -> None:
         node_manager = FakeNodeManager()
         notifier = FakeNotifier()
-        training_job = FakeTrainingJob()
+        training_job = make_failing_training_job(fail_submit=True)
         mini_wandb = MiniWandb()
-
-        async def failing_submit(excluded_node_ids: list[str] | None = None) -> str:
-            raise RuntimeError("submit failed permanently")
-
-        training_job.submit_training = failing_submit  # type: ignore[assignment]
 
         deps = _make_deps(
             node_manager=node_manager, training_job=training_job,
@@ -187,19 +184,10 @@ class TestRestartFailure:
     @pytest.mark.anyio
     async def test_double_failure_sends_both_notifications(self) -> None:
         """Both mark_node_bad and submit_training fail — two notifications expected."""
-        node_manager = FakeNodeManager()
+        node_manager = make_failing_node_manager()
         notifier = FakeNotifier()
-        training_job = FakeTrainingJob()
+        training_job = make_failing_training_job(fail_submit=True)
         mini_wandb = MiniWandb()
-
-        async def always_fail_mark(node_id: str, reason: str = "") -> None:
-            raise RuntimeError("mark failed")
-
-        async def always_fail_submit(excluded_node_ids: list[str] | None = None) -> str:
-            raise RuntimeError("submit failed")
-
-        node_manager.mark_node_bad = always_fail_mark  # type: ignore[assignment]
-        training_job.submit_training = always_fail_submit  # type: ignore[assignment]
 
         deps = _make_deps(
             node_manager=node_manager, training_job=training_job,

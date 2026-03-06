@@ -22,6 +22,9 @@ from tests.fast.utils.ft.conftest import (
     FakeNodeManager,
     FakeNotifier,
     FakeTrainingJob,
+    failing_mark_node_bad,
+    failing_stop_training,
+    failing_submit_training,
     get_sample_value,
     inject_critical_xid,
     inject_disk_fault,
@@ -236,9 +239,7 @@ class TestReattempting:
         )
         orch._context.phase = RecoveryPhase.REATTEMPTING
 
-        async def failing_stop(timeout_seconds: int = 300) -> None:
-            raise RuntimeError("stop failed")
-        training_job.stop_training = failing_stop
+        training_job.stop_training = failing_stop_training
 
         asyncio.run(orch.step())
         assert orch._context.reattempt_submitted
@@ -387,9 +388,7 @@ class TestEvictAndRestart:
         orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
         orch._context.bad_node_ids = ["node-0"]
 
-        async def failing_mark(node_id: str, reason: str = "") -> None:
-            raise RuntimeError("K8s API unreachable")
-        node_mgr.mark_node_bad = failing_mark
+        node_mgr.mark_node_bad = failing_mark_node_bad
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.NOTIFY
@@ -411,9 +410,7 @@ class TestEvictAndRestart:
         orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
         orch._context.bad_node_ids = ["node-0"]
 
-        async def failing_submit() -> str:
-            raise RuntimeError("submit failed")
-        training_job.submit_training = failing_submit
+        training_job.submit_training = failing_submit_training
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.NOTIFY
@@ -491,9 +488,7 @@ class TestReattemptingSubmitFailure:
         )
         orch._context.phase = RecoveryPhase.REATTEMPTING
 
-        async def failing_submit() -> str:
-            raise RuntimeError("submit failed")
-        training_job.submit_training = failing_submit
+        training_job.submit_training = failing_submit_training
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.NOTIFY
@@ -522,9 +517,7 @@ class TestEvictStopTrainingFailure:
         orch._context.phase = RecoveryPhase.EVICT_AND_RESTART
         orch._context.bad_node_ids = ["node-0"]
 
-        async def failing_stop(timeout_seconds: int = 300) -> None:
-            raise RuntimeError("stop failed")
-        training_job.stop_training = failing_stop
+        training_job.stop_training = failing_stop_training
 
         asyncio.run(orch.step())
         assert orch.phase == RecoveryPhase.DONE

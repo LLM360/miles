@@ -11,7 +11,7 @@ from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, Mi
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_registry import RankRegistry
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
     JobStatus,
@@ -116,6 +116,17 @@ def AlwaysNoneDetector() -> FixedDecisionDetector:
 
 def AlwaysMarkBadDetector() -> FixedDecisionDetector:
     return FixedDecisionDetector(decision=_ALWAYS_MARK_BAD_DECISION)
+
+
+def AlwaysEnterRecoveryDetector(
+    trigger: TriggerType = TriggerType.CRASH,
+    reason: str = "test recovery",
+) -> FixedDecisionDetector:
+    return FixedDecisionDetector(decision=Decision(
+        action=ActionType.ENTER_RECOVERY,
+        trigger=trigger,
+        reason=reason,
+    ))
 
 
 class CrashingDetector(BaseFaultDetector):
@@ -226,3 +237,47 @@ def make_test_controller(
         notifier=real_notifier,
         rank_registry=rank_registry,
     )
+
+
+# ---------------------------------------------------------------------------
+# Standalone failing callables (for monkey-patching existing fakes)
+# ---------------------------------------------------------------------------
+
+
+async def failing_stop_training(timeout_seconds: int = 300) -> None:
+    raise RuntimeError("stop failed")
+
+
+async def failing_submit_training(excluded_node_ids: list[str] | None = None) -> str:
+    raise RuntimeError("submit failed")
+
+
+async def failing_mark_node_bad(node_id: str, reason: str = "") -> None:
+    raise RuntimeError("mark_node_bad failed")
+
+
+# ---------------------------------------------------------------------------
+# Factory helpers (create fakes pre-wired with failures)
+# ---------------------------------------------------------------------------
+
+
+def make_failing_training_job(
+    *,
+    fail_stop: bool = False,
+    fail_submit: bool = False,
+    status_sequence: list[JobStatus] | None = None,
+) -> FakeTrainingJob:
+    """FakeTrainingJob with configurable method failures."""
+    job = FakeTrainingJob(status_sequence=status_sequence)
+    if fail_stop:
+        job.stop_training = failing_stop_training  # type: ignore[assignment]
+    if fail_submit:
+        job.submit_training = failing_submit_training  # type: ignore[assignment]
+    return job
+
+
+def make_failing_node_manager() -> FakeNodeManager:
+    """FakeNodeManager whose mark_node_bad always raises."""
+    mgr = FakeNodeManager()
+    mgr.mark_node_bad = failing_mark_node_bad  # type: ignore[assignment]
+    return mgr
