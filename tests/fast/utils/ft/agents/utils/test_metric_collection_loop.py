@@ -8,7 +8,7 @@ import pytest
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.utils.metric_collection_loop import MetricCollectionLoop
-from miles.utils.ft.models._metrics import CollectorOutput, MetricSample
+from miles.utils.ft.models.metrics import CollectorOutput, MetricSample
 from tests.fast.utils.ft.helpers import FailingCloseCollector, FailingCollector
 
 

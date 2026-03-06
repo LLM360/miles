@@ -13,7 +13,7 @@ import polars as pl
 
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 from miles.utils.ft.metric_names import GPU_AVAILABLE, NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP, XID_CODE_RECENT
-from miles.utils.ft.models._fault import NodeFault
+from miles.utils.ft.models.fault import NodeFault
 
 logger = logging.getLogger(__name__)
 

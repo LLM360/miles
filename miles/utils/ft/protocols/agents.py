@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from miles.utils.ft.models._diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostics import DiagnosticResult
 
 
 class NodeAgentProtocol(Protocol):

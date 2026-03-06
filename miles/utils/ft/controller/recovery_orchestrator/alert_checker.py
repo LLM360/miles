@@ -8,7 +8,7 @@ import polars as pl
 from miles.utils.ft.controller.detectors.hardware_checks import check_all_hardware_faults
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 from miles.utils.ft.metric_names import NODE_NETWORK_UP
-from miles.utils.ft.models._fault import NodeFault, unique_node_ids
+from miles.utils.ft.models.fault import NodeFault, unique_node_ids
 
 logger = logging.getLogger(__name__)
 

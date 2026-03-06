@@ -1,7 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
 
-from miles.utils.ft.models._metrics import CollectorOutput, MetricSample
+from miles.utils.ft.models.metrics import CollectorOutput, MetricSample
 
 _COLLECT_TIMEOUT_MULTIPLIER = 2.0
 

@@ -7,7 +7,7 @@ from typing import Protocol
 import httpx
 
 from miles.utils.ft.controller.metrics.mini_prometheus.scraper import parse_prometheus_text
-from miles.utils.ft.models._metrics import MetricSample
+from miles.utils.ft.models.metrics import MetricSample
 
 logger = logging.getLogger(__name__)
 

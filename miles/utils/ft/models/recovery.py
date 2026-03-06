@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from miles.utils.ft.models._base import FtBaseModel
+from miles.utils.ft.models.base import FtBaseModel
 
 
 class RecoveryPhase(str, Enum):

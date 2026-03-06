@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from miles.utils.ft.agents.collectors.kmsg import KmsgCollector
-from miles.utils.ft.models._metrics import CollectorOutput, MetricSample
+from miles.utils.ft.models.metrics import CollectorOutput, MetricSample
 from tests.fast.utils.ft.conftest import FakeKmsgReader
 
 

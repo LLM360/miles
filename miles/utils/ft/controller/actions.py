@@ -11,7 +11,7 @@ from miles.utils.ft.controller.recovery_orchestrator.helpers import (
     stop_clear_submit,
 )
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
-from miles.utils.ft.models._fault import Decision
+from miles.utils.ft.models.fault import Decision
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,

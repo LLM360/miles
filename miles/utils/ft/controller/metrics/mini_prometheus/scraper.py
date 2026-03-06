@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from prometheus_client.parser import text_string_to_metric_families
 
-from miles.utils.ft.models._metrics import MetricSample
+from miles.utils.ft.models.metrics import MetricSample
 
 
 def parse_prometheus_text(text: str) -> list[MetricSample]:

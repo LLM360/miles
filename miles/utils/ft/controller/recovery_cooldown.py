@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.models._fault import TriggerType
+from miles.utils.ft.models.fault import TriggerType
 
 
 class RecoveryCooldown:

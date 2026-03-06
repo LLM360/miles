@@ -4,7 +4,7 @@ import os
 
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.controller.diagnostics.nccl.utils import build_nccl_test_cmd, run_nccl_test
-from miles.utils.ft.models._diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostics import DiagnosticResult
 
 
 class InterMachineCommDiagnostic(BaseDiagnostic):

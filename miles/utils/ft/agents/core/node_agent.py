@@ -6,7 +6,7 @@ import logging
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.utils.metric_collection_loop import MetricCollectionLoop
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
-from miles.utils.ft.models._diagnostics import DiagnosticResult, UnknownDiagnosticError
+from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.protocols.agents import DiagnosticProtocol
 
 logger = logging.getLogger(__name__)

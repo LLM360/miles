@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from miles.utils.ft.models._fault import TriggerType
-from miles.utils.ft.models._recovery import RecoveryPhase
+from miles.utils.ft.models.fault import TriggerType
+from miles.utils.ft.models.recovery import RecoveryPhase
 
 PENDING_TIMEOUT_SECONDS: int = 300
 

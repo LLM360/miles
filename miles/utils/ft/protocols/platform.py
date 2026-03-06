@@ -4,7 +4,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from miles.utils.ft.models._fault import Decision, TriggerType
+    from miles.utils.ft.models.fault import Decision, TriggerType
 
 
 class JobStatus(str, Enum):

@@ -1,4 +1,4 @@
-from miles.utils.ft.models._base import FtBaseModel
+from miles.utils.ft.models.base import FtBaseModel
 
 
 class DiagnosticResult(FtBaseModel):

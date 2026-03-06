@@ -3,7 +3,7 @@ from miles.utils.ft.controller.detectors.base import (
     DetectorContext,
     get_non_finite_loss,
 )
-from miles.utils.ft.models._fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.metrics import TrainingMetricStoreProtocol
 from miles.utils.ft.protocols.platform import JobStatus
 

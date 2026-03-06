@@ -2,7 +2,7 @@ from enum import Enum
 
 from pydantic import Field
 
-from miles.utils.ft.models._base import FtBaseModel
+from miles.utils.ft.models.base import FtBaseModel
 
 
 class ActionType(str, Enum):

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from miles.utils.ft.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.models._fault import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol, TrainingMetricStoreProtocol
 
 logger = logging.getLogger(__name__)

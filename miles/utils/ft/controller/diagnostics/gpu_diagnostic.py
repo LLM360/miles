@@ -11,7 +11,7 @@ import logging
 import sys
 
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
-from miles.utils.ft.models._diagnostics import DiagnosticResult
+from miles.utils.ft.models.diagnostics import DiagnosticResult
 
 logger = logging.getLogger(__name__)
 

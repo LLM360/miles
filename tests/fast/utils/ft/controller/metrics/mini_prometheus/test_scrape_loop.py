@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
-from miles.utils.ft.models._metrics import MetricSample
+from miles.utils.ft.models.metrics import MetricSample
 
 
 class _FakeStore:

@@ -13,7 +13,7 @@ from miles.utils.ft.agents.collectors.kernel_log_reader import (
     KmsgFileReader,
 )
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models._metrics import MetricSample
+from miles.utils.ft.models.metrics import MetricSample
 
 logger = logging.getLogger(__name__)
 

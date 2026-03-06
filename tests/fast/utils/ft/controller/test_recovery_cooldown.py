@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
-from miles.utils.ft.models._fault import TriggerType
+from miles.utils.ft.models.fault import TriggerType
 
 
 class TestRecoveryCooldown:

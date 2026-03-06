@@ -12,7 +12,7 @@ from miles.utils.ft.controller.metrics.mini_prometheus.query import query_latest
 from miles.utils.ft.controller.metrics.mini_prometheus.query import query_range as _query_range
 from miles.utils.ft.controller.metrics.mini_prometheus.query import range_aggregate as _range_aggregate
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
-from miles.utils.ft.models._metrics import MetricSample
+from miles.utils.ft.models.metrics import MetricSample
 
 
 @dataclass

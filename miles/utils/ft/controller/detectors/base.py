@@ -4,7 +4,7 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from miles.utils.ft.models._fault import Decision
+from miles.utils.ft.models.fault import Decision
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol, TrainingMetricStoreProtocol
 from miles.utils.ft.protocols.platform import JobStatus
 

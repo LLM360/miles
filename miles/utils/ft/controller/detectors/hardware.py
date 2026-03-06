@@ -4,7 +4,7 @@ from miles.utils.ft.controller.detectors.hardware_checks import (
     DISK_AVAILABLE_THRESHOLD_BYTES,
     check_all_hardware_faults,
 )
-from miles.utils.ft.models._fault import Decision
+from miles.utils.ft.models.fault import Decision
 
 
 class HighConfidenceHardwareDetector(BaseFaultDetector):

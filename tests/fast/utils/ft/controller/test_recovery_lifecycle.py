@@ -6,8 +6,8 @@ import pytest
 
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
 from miles.utils.ft.controller.recovery_lifecycle import RecoveryLifecycleManager
-from miles.utils.ft.models._fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models._recovery import RecoveryPhase
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models.recovery import RecoveryPhase
 
 
 def _make_manager(

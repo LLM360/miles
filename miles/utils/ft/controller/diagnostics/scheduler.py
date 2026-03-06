@@ -14,8 +14,8 @@ from miles.utils.ft.controller.diagnostics.stack_trace import (
     StackTraceAggregator,
     StackTraceDiagnostic,
 )
-from miles.utils.ft.models._diagnostics import DiagnosticResult, UnknownDiagnosticError
-from miles.utils.ft.models._fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
