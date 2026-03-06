@@ -7,12 +7,13 @@ from prometheus_client import Gauge
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
+from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
 logger = logging.getLogger(__name__)
 
 
-class TrainingRankHeartbeat:
-    """Prometheus heartbeat gauges for a single training rank.
+class TrainingRankMetricExporter:
+    """Prometheus metric exporter for a single training rank.
 
     Exposes iteration and phase gauges via an HTTP exporter that the
     FtController can scrape.  This class owns the PrometheusExporter
@@ -54,37 +55,25 @@ class TrainingRankHeartbeat:
     def get_exporter_address(self) -> str:
         return self._exporter.get_address()
 
+    @graceful_degrade()
     def set_phase(
         self,
         phase: Literal["idle", "training", "checkpoint_saving"],
     ) -> None:
-        try:
-            self._phase_child.set(mn.PHASE_TO_NUMERIC[phase])
-        except Exception:
-            logger.warning(
-                "TrainingRankHeartbeat.set_phase(%r) failed",
-                phase,
-                exc_info=True,
-            )
+        self._phase_child.set(mn.PHASE_TO_NUMERIC[phase])
 
+    @graceful_degrade()
     def step(self, iteration: int) -> None:
         if iteration <= self._last_iteration:
             logger.warning(
-                "TrainingRankHeartbeat.step() non-increasing iteration: got %d, last was %d",
+                "TrainingRankMetricExporter.step() non-increasing iteration: got %d, last was %d",
                 iteration,
                 self._last_iteration,
             )
             return
 
-        try:
-            self._last_iteration = iteration
-            self._iteration_child.set(self._last_iteration)
-        except Exception:
-            logger.warning(
-                "TrainingRankHeartbeat.step() failed at iteration=%s",
-                iteration,
-                exc_info=True,
-            )
+        self._last_iteration = iteration
+        self._iteration_child.set(self._last_iteration)
 
     def shutdown(self) -> None:
         self._exporter.shutdown()

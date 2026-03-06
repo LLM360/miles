@@ -1,6 +1,6 @@
-"""Unit tests for TrainingRankHeartbeat.
+"""Unit tests for TrainingRankMetricExporter.
 
-TrainingRankHeartbeat owns the Prometheus exporter and heartbeat gauges
+TrainingRankMetricExporter owns the Prometheus exporter and metric gauges
 (iteration + phase). These tests verify gauge creation, updates, and the
 HTTP exposition endpoint.
 """
@@ -10,7 +10,7 @@ from collections.abc import Iterator
 import httpx
 import pytest
 
-from miles.utils.ft.agents.utils.training_rank_heartbeat import TrainingRankHeartbeat
+from miles.utils.ft.agents.utils.training_rank_metric_exporter import TrainingRankMetricExporter
 
 
 def _parse_gauge(text: str, metric_name: str, labels: dict[str, str]) -> float:
@@ -28,18 +28,18 @@ def _parse_gauge(text: str, metric_name: str, labels: dict[str, str]) -> float:
 
 
 @pytest.fixture()
-def heartbeat() -> Iterator[TrainingRankHeartbeat]:
-    hb = TrainingRankHeartbeat(rank=0, node_id="test-node")
-    yield hb
-    hb.shutdown()
+def metric_exporter() -> Iterator[TrainingRankMetricExporter]:
+    exporter = TrainingRankMetricExporter(rank=0, node_id="test-node")
+    yield exporter
+    exporter.shutdown()
 
 
-class TestTrainingRankHeartbeatExporter:
+class TestTrainingRankMetricExporterExporter:
     @pytest.mark.anyio
     async def test_exporter_returns_prometheus_format(
-        self, heartbeat: TrainingRankHeartbeat
+        self, metric_exporter: TrainingRankMetricExporter
     ) -> None:
-        address = heartbeat.get_exporter_address()
+        address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
 
@@ -48,18 +48,18 @@ class TestTrainingRankHeartbeatExporter:
 
     @pytest.mark.anyio
     async def test_exporter_address_has_port(
-        self, heartbeat: TrainingRankHeartbeat
+        self, metric_exporter: TrainingRankMetricExporter
     ) -> None:
-        address = heartbeat.get_exporter_address()
+        address = metric_exporter.get_exporter_address()
         assert address.startswith("http://localhost:")
         port = int(address.split(":")[-1])
         assert port > 0
 
     @pytest.mark.anyio
     async def test_initial_gauge_values(
-        self, heartbeat: TrainingRankHeartbeat
+        self, metric_exporter: TrainingRankMetricExporter
     ) -> None:
-        address = heartbeat.get_exporter_address()
+        address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
 
@@ -69,14 +69,14 @@ class TestTrainingRankHeartbeatExporter:
         assert 'rank="0"' in text
 
 
-class TestTrainingRankHeartbeatStep:
+class TestTrainingRankMetricExporterStep:
     @pytest.mark.anyio
     async def test_step_updates_iteration_gauge(
-        self, heartbeat: TrainingRankHeartbeat
+        self, metric_exporter: TrainingRankMetricExporter
     ) -> None:
-        heartbeat.step(iteration=42)
+        metric_exporter.step(iteration=42)
 
-        address = heartbeat.get_exporter_address()
+        address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
 
@@ -85,42 +85,42 @@ class TestTrainingRankHeartbeatStep:
         assert "42.0" in text
 
     def test_step_warns_on_non_increasing_iteration(
-        self, heartbeat: TrainingRankHeartbeat, caplog: pytest.LogCaptureFixture
+        self, metric_exporter: TrainingRankMetricExporter, caplog: pytest.LogCaptureFixture
     ) -> None:
-        heartbeat.step(iteration=5)
-        heartbeat.step(iteration=5)
+        metric_exporter.step(iteration=5)
+        metric_exporter.step(iteration=5)
         assert "non-increasing iteration" in caplog.text
-        assert heartbeat._last_iteration == 5
+        assert metric_exporter._last_iteration == 5
 
     def test_step_warns_on_decreasing_iteration(
-        self, heartbeat: TrainingRankHeartbeat, caplog: pytest.LogCaptureFixture
+        self, metric_exporter: TrainingRankMetricExporter, caplog: pytest.LogCaptureFixture
     ) -> None:
-        heartbeat.step(iteration=5)
-        heartbeat.step(iteration=3)
+        metric_exporter.step(iteration=5)
+        metric_exporter.step(iteration=3)
         assert "non-increasing iteration" in caplog.text
-        assert heartbeat._last_iteration == 5
+        assert metric_exporter._last_iteration == 5
 
     @pytest.mark.anyio
     async def test_step_iteration_monotonic_across_phases(
-        self, heartbeat: TrainingRankHeartbeat
+        self, metric_exporter: TrainingRankMetricExporter
     ) -> None:
         """Simulate a full rollout cycle with split set_phase/step API."""
-        address = heartbeat.get_exporter_address()
+        address = metric_exporter.get_exporter_address()
         labels = {"rank": "0"}
 
-        heartbeat.set_phase("training")
+        metric_exporter.set_phase("training")
         for step_id in range(4):
-            heartbeat.step(iteration=step_id)
+            metric_exporter.step(iteration=step_id)
 
-        heartbeat.set_phase("idle")
-        heartbeat.set_phase("checkpoint_saving")
-        heartbeat.set_phase("idle")
+        metric_exporter.set_phase("idle")
+        metric_exporter.set_phase("checkpoint_saving")
+        metric_exporter.set_phase("idle")
 
-        heartbeat.set_phase("training")
+        metric_exporter.set_phase("training")
         for step_id in range(4, 8):
-            heartbeat.step(iteration=step_id)
+            metric_exporter.step(iteration=step_id)
 
-        heartbeat.set_phase("idle")
+        metric_exporter.set_phase("idle")
 
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{address}/metrics")
@@ -130,24 +130,24 @@ class TestTrainingRankHeartbeatStep:
         assert phase == 0.0
 
     def test_step_exception_does_not_propagate(
-        self, heartbeat: TrainingRankHeartbeat
+        self, metric_exporter: TrainingRankMetricExporter
     ) -> None:
         from unittest.mock import patch
 
         with patch.object(
-            heartbeat, "_iteration_child", **{"set.side_effect": RuntimeError("boom")}
+            metric_exporter, "_iteration_child", **{"set.side_effect": RuntimeError("boom")}
         ):
-            heartbeat.step(iteration=1)
+            metric_exporter.step(iteration=1)
 
 
-class TestTrainingRankHeartbeatSetPhase:
+class TestTrainingRankMetricExporterSetPhase:
     @pytest.mark.anyio
     async def test_set_phase_updates_phase_gauge(
-        self, heartbeat: TrainingRankHeartbeat
+        self, metric_exporter: TrainingRankMetricExporter
     ) -> None:
-        heartbeat.set_phase("checkpoint_saving")
+        metric_exporter.set_phase("checkpoint_saving")
 
-        address = heartbeat.get_exporter_address()
+        address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
 
@@ -157,12 +157,12 @@ class TestTrainingRankHeartbeatSetPhase:
 
     @pytest.mark.anyio
     async def test_set_phase_idle_preserves_iteration(
-        self, heartbeat: TrainingRankHeartbeat
+        self, metric_exporter: TrainingRankMetricExporter
     ) -> None:
-        heartbeat.step(iteration=10)
-        heartbeat.set_phase("idle")
+        metric_exporter.step(iteration=10)
+        metric_exporter.set_phase("idle")
 
-        address = heartbeat.get_exporter_address()
+        address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
 

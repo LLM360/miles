@@ -1,9 +1,9 @@
 """Unit tests for FtTrainingRankAgent.
 
-FtTrainingRankAgent delegates heartbeat gauges to TrainingRankHeartbeat
+FtTrainingRankAgent delegates metric exposition to TrainingRankMetricExporter
 and is responsible for rank registration with FtController, plus the
-maybe_create factory.  Heartbeat-level tests live in
-test_training_rank_heartbeat.py.
+maybe_create factory.  Exporter-level tests live in
+test_training_rank_metric_exporter.py.
 """
 
 from collections.abc import Iterator
@@ -161,10 +161,10 @@ class TestFtTrainingRankAgentFaultTolerance:
             if agent is not None:
                 agent.shutdown()
 
-    def test_step_delegates_to_heartbeat(self) -> None:
+    def test_step_delegates_to_metric_exporter(self) -> None:
         agent = FtTrainingRankAgent(rank=0, world_size=4)
         try:
             agent.step(iteration=1)
-            assert agent._heartbeat._last_iteration == 1
+            assert agent._metric_exporter._last_iteration == 1
         finally:
             agent.shutdown()
