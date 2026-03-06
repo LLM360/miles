@@ -10,7 +10,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
+from miles.utils.ft.controller.recovery_orchestrator.helpers import SlidingWindowThrottle
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.platform import (
     DiagnosticOrchestratorProtocol,
@@ -205,7 +205,7 @@ def make_test_controller(
     if controller_exporter is None:
         controller_exporter = ControllerExporter(registry=CollectorRegistry())
 
-    recovery_cooldown = RecoveryCooldown(
+    recovery_cooldown = SlidingWindowThrottle(
         window_minutes=recovery_cooldown_minutes,
         max_count=recovery_cooldown_max_count,
     )

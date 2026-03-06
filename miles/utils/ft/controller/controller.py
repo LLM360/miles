@@ -16,7 +16,7 @@ from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task,
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
-from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
+from miles.utils.ft.controller.recovery_orchestrator.helpers import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery_lifecycle import RecoveryLifecycleManager
 from miles.utils.ft.models.fault import ActionType, Decision
 from miles.utils.ft.models.recovery import (
@@ -83,7 +83,7 @@ class FtController:
         tick_interval: float = 30.0,
         controller_exporter: ControllerExporter | None = None,
         diagnostic_orchestrator: DiagnosticOrchestratorProtocol | None = None,
-        recovery_cooldown: RecoveryCooldown | None = None,
+        recovery_cooldown: SlidingWindowThrottle | None = None,
         registration_grace_ticks: int = 5,
     ) -> FtController:
         agents: dict[str, NodeAgentProtocol] = {}
@@ -94,7 +94,6 @@ class FtController:
             or DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
-                rank_pids_provider=lambda node_id: rank_roster.get_rank_pids_for_node(node_id),
             )
         )
 
@@ -112,7 +111,7 @@ class FtController:
         resolved_exporter = controller_exporter or NullControllerExporter()
         duration_cb = resolved_exporter.observe_recovery_duration
         recovery_manager = RecoveryLifecycleManager(
-            cooldown=recovery_cooldown or RecoveryCooldown(window_minutes=30.0, max_count=3),
+            cooldown=recovery_cooldown or SlidingWindowThrottle(window_minutes=30.0, max_count=3),
             on_recovery_duration=duration_cb,
         )
 
@@ -131,6 +130,7 @@ class FtController:
         )
 
         platform_deps.on_new_run = instance._activate_run
+        platform_deps.rank_pids_provider = lambda node_id: instance._rank_roster.get_rank_pids_for_node(node_id)
         return instance
 
     # ------------------------------------------------------------------

@@ -1,11 +1,14 @@
-"""Tests for recovery_orchestrator/helpers.py (retry_async, stop_and_submit)."""
+"""Tests for recovery_orchestrator/helpers.py (retry_async, stop_and_submit, SlidingWindowThrottle)."""
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
-from miles.utils.ft.controller.recovery_orchestrator.helpers import stop_and_submit
+from miles.utils.ft.controller.recovery_orchestrator.helpers import SlidingWindowThrottle, stop_and_submit
+from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.utils.retry import RetryResult, retry_async
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import FakeTrainingJob, make_failing_training_job
@@ -192,3 +195,43 @@ class TestStopAndSubmit:
 
         assert result is True
         assert training_job._submitted
+
+
+class TestSlidingWindowThrottle:
+    def test_not_throttled_below_max_count(self) -> None:
+        throttle = SlidingWindowThrottle(window_minutes=30.0, max_count=3)
+        throttle.record(TriggerType.CRASH)
+        throttle.record(TriggerType.CRASH)
+        assert not throttle.is_throttled(TriggerType.CRASH)
+
+    def test_throttled_at_max_count(self) -> None:
+        throttle = SlidingWindowThrottle(window_minutes=30.0, max_count=3)
+        throttle.record(TriggerType.CRASH)
+        throttle.record(TriggerType.CRASH)
+        throttle.record(TriggerType.CRASH)
+        assert throttle.is_throttled(TriggerType.CRASH)
+
+    def test_different_triggers_tracked_separately(self) -> None:
+        throttle = SlidingWindowThrottle(window_minutes=30.0, max_count=2)
+        throttle.record(TriggerType.CRASH)
+        throttle.record(TriggerType.CRASH)
+        assert throttle.is_throttled(TriggerType.CRASH)
+        assert not throttle.is_throttled(TriggerType.HANG)
+
+    def test_old_entries_outside_window_ignored(self) -> None:
+        throttle = SlidingWindowThrottle(window_minutes=10.0, max_count=2)
+
+        old_time = datetime.now(timezone.utc) - timedelta(minutes=15)
+        with patch(
+            "miles.utils.ft.controller.recovery_orchestrator.helpers.datetime",
+        ) as mock_dt:
+            mock_dt.now.return_value = old_time
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+            throttle.record(TriggerType.CRASH)
+
+        throttle.record(TriggerType.CRASH)
+        assert not throttle.is_throttled(TriggerType.CRASH)
+
+    def test_empty_history_not_throttled(self) -> None:
+        throttle = SlidingWindowThrottle(window_minutes=30.0, max_count=1)
+        assert not throttle.is_throttled(TriggerType.CRASH)
