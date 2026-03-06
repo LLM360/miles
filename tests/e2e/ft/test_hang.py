@@ -15,7 +15,7 @@ from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
     assert_phase_path_contains,
     get_status,
-    wait_for_recovery_complete,
+    wait_for_mode_transition,
     wait_for_training_stable,
 )
 
@@ -32,14 +32,12 @@ async def test_hang_detection_and_recovery(
     fault_injector: FaultInjectorFactory,
     target_node: str,
 ) -> None:
-    # Step 1: Wait for stable baseline
     await wait_for_training_stable(
         handle=ft_controller_handle,
         n_iterations=5,
         timeout=300.0,
     )
 
-    # Step 2: SIGSTOP to freeze a training process
     injector = fault_injector.deploy_to(node_id=target_node)
 
     procs = ray.get(injector.find_training_processes.remote())
@@ -50,9 +48,9 @@ async def test_hang_detection_and_recovery(
     ray.get(injector.stop_process.remote(pid=target_pid))
     logger.info("SIGSTOP sent to pid=%d on node=%s", target_pid, target_node)
 
-    # Step 3: Wait for hang detection → recovery
-    status = await wait_for_recovery_complete(
+    status = await wait_for_mode_transition(
         handle=ft_controller_handle,
+        target_mode=ControllerMode.MONITORING,
         timeout=720.0,
         poll_interval=10.0,
     )
@@ -62,7 +60,6 @@ async def test_hang_detection_and_recovery(
 
     assert status.mode == ControllerMode.MONITORING
 
-    # Step 4: Verify recovery path and training resumes
     final_status = get_status(ft_controller_handle)
     assert_phase_path_contains(final_status, [
         RecoveryPhase.CHECK_ALERTS,
