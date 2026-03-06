@@ -60,7 +60,7 @@ class TestTrainingJobStatusExporter:
 
 class TestGetStatus:
     def test_monitoring_mode_default(self) -> None:
-        harness = make_test_controller()
+        harness = make_test_controller(register_dummy_rank=False)
         status = harness.controller.get_status()
         assert status.mode == ControllerMode.MONITORING
         assert status.recovery_phase is None

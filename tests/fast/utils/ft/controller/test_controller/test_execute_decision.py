@@ -268,10 +268,10 @@ class TestMarkBadAndRestartReal:
         assert harness.training_job._submitted
 
     @pytest.mark.anyio
-    async def test_clears_mini_wandb_before_submit(self) -> None:
+    async def test_new_run_isolates_mini_wandb_from_old_data(self) -> None:
         harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
         harness.mini_wandb.log_step(
-            run_id="test", step=1, metrics={"loss": 1.0},
+            run_id="dummy-run", step=1, metrics={"loss": 1.0},
         )
         assert harness.mini_wandb.latest(metric_name="loss") == 1.0
 
