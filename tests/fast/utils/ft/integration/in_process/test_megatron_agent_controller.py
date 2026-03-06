@@ -11,13 +11,13 @@ not by FtMegatronAgent.step().
 import httpx
 import pytest
 
-from miles.utils.ft.agents.core.megatron_agent import FtMegatronAgent
+from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 
 from tests.fast.utils.ft.conftest import make_test_controller
 
 
-def _make_agent(rank: int = 0, world_size: int = 4) -> FtMegatronAgent:
-    return FtMegatronAgent(rank=rank, world_size=world_size)
+def _make_agent(rank: int = 0, world_size: int = 4) -> FtTrainingRankAgent:
+    return FtTrainingRankAgent(rank=rank, world_size=world_size)
 
 
 class TestStepToLogStepFlow:
