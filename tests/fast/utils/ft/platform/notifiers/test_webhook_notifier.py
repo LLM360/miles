@@ -7,7 +7,7 @@ import pytest
 from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
 from tests.fast.utils.ft.platform.notifiers.conftest import make_error_response, make_ok_response
 
-_SLEEP_PATCH = "miles.utils.ft.platform.notifiers.webhook_notifier.asyncio.sleep"
+_SLEEP_PATCH = "miles.utils.ft.retry.asyncio.sleep"
 
 
 class TestWebhookNotifierRetry:
@@ -33,7 +33,7 @@ class TestWebhookNotifierRetry:
             with caplog.at_level(logging.WARNING), pytest.raises(httpx.HTTPStatusError):
                 await notifier.send(title="Fault Alert", content="test error", severity="critical")
 
-            assert "webhook_send_failed" in caplog.text
+            assert "retry_failed" in caplog.text
 
     @pytest.mark.anyio
     async def test_connect_error_raises_after_retries(
@@ -47,7 +47,7 @@ class TestWebhookNotifierRetry:
             with caplog.at_level(logging.WARNING), pytest.raises(httpx.ConnectError):
                 await notifier.send(title="Alert", content="unreachable", severity="warning")
 
-            assert "webhook_send_failed" in caplog.text
+            assert "retry_failed" in caplog.text
 
     @pytest.mark.anyio
     async def test_retry_succeeds_on_second_attempt(
@@ -75,7 +75,7 @@ class TestWebhookNotifierRetry:
                 await notifier.send(title="Alert", content="fail all", severity="critical")
 
         assert mock_post.call_count == 3
-        assert "webhook_send_failed_all_retries" in caplog.text
+        assert "retry_exhausted" in caplog.text
 
     @pytest.mark.anyio
     async def test_retry_uses_exponential_backoff(
