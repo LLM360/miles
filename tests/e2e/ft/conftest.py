@@ -121,25 +121,6 @@ async def _cleanup_environment() -> None:
         await node_mgr.aclose()
 
 
-async def _wait_for_named_actor(
-    name: str,
-    timeout: float,
-) -> ray.actor.ActorHandle:
-    """Poll until a named Ray actor becomes available."""
-    deadline = time.monotonic() + timeout
-    last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            return ray.get_actor(name)
-        except ValueError as exc:
-            last_error = exc
-            await asyncio.sleep(_ACTOR_POLL_INTERVAL)
-
-    raise TimeoutError(
-        f"Named actor '{name}' did not appear within {timeout}s: {last_error}"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Function-scoped: independent training launch per test
 # ---------------------------------------------------------------------------
@@ -176,6 +157,25 @@ async def ft_controller_handle(
         logger.warning("ft_controller_teardown_failed", exc_info=True)
 
     await _cleanup_environment()
+
+
+async def _wait_for_named_actor(
+        name: str,
+        timeout: float,
+) -> ray.actor.ActorHandle:
+    """Poll until a named Ray actor becomes available."""
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            return ray.get_actor(name)
+        except ValueError as exc:
+            last_error = exc
+            await asyncio.sleep(_ACTOR_POLL_INTERVAL)
+
+    raise TimeoutError(
+        f"Named actor '{name}' did not appear within {timeout}s: {last_error}"
+    )
 
 
 # ---------------------------------------------------------------------------
