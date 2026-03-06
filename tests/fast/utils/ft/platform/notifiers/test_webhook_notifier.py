@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
+from tests.fast.utils.ft.platform.notifiers.conftest import make_error_response, make_ok_response
 
 _SLEEP_PATCH = "miles.utils.ft.platform.notifiers.webhook_notifier.asyncio.sleep"
 
@@ -27,11 +28,7 @@ class TestWebhookNotifierRetry:
     async def test_http_error_raises_after_retries(
         self, notifier: LarkWebhookNotifier, caplog: pytest.LogCaptureFixture,
     ) -> None:
-        mock_response = httpx.Response(
-            status_code=500,
-            request=httpx.Request("POST", "https://example.com"),
-        )
-        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=mock_response), \
+        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=make_error_response()), \
              patch(_SLEEP_PATCH, new_callable=AsyncMock):
             with caplog.at_level(logging.WARNING), pytest.raises(httpx.HTTPStatusError):
                 await notifier.send(title="Fault Alert", content="test error", severity="critical")
@@ -56,13 +53,10 @@ class TestWebhookNotifierRetry:
     async def test_retry_succeeds_on_second_attempt(
         self, notifier: LarkWebhookNotifier,
     ) -> None:
-        ok_response = httpx.Response(status_code=200, request=httpx.Request("POST", "https://example.com"))
-        err_response = httpx.Response(status_code=500, request=httpx.Request("POST", "https://example.com"))
-
         with patch.object(
             notifier._client, "post",
             new_callable=AsyncMock,
-            side_effect=[err_response, ok_response],
+            side_effect=[make_error_response(), make_ok_response()],
         ) as mock_post, patch(_SLEEP_PATCH, new_callable=AsyncMock):
             await notifier.send(title="Alert", content="retry test", severity="warning")
 
@@ -72,12 +66,10 @@ class TestWebhookNotifierRetry:
     async def test_retry_exhausts_all_attempts(
         self, notifier: LarkWebhookNotifier, caplog: pytest.LogCaptureFixture,
     ) -> None:
-        err_response = httpx.Response(status_code=500, request=httpx.Request("POST", "https://example.com"))
-
         with patch.object(
             notifier._client, "post",
             new_callable=AsyncMock,
-            return_value=err_response,
+            return_value=make_error_response(),
         ) as mock_post, patch(_SLEEP_PATCH, new_callable=AsyncMock):
             with caplog.at_level(logging.ERROR), pytest.raises(httpx.HTTPStatusError):
                 await notifier.send(title="Alert", content="fail all", severity="critical")

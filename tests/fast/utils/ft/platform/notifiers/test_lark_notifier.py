@@ -1,9 +1,9 @@
 from unittest.mock import AsyncMock, patch
 
-import httpx
 import pytest
 
 from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
+from tests.fast.utils.ft.platform.notifiers.conftest import make_ok_response
 
 
 class TestLarkWebhookNotifierPayload:
@@ -17,8 +17,7 @@ class TestLarkWebhookNotifierPayload:
 
     @pytest.mark.anyio
     async def test_send_posts_correct_json(self, notifier: LarkWebhookNotifier) -> None:
-        mock_response = httpx.Response(status_code=200, request=httpx.Request("POST", "https://example.com"))
-        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=mock_response) as mock_post:
+        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=make_ok_response()) as mock_post:
             await notifier.send(title="Fault Alert", content="GPU lost on node-3", severity="critical")
 
             mock_post.assert_called_once()
@@ -35,8 +34,7 @@ class TestLarkWebhookNotifierPayload:
     async def test_send_includes_severity_in_header(
         self, notifier: LarkWebhookNotifier, severity: str,
     ) -> None:
-        mock_response = httpx.Response(status_code=200, request=httpx.Request("POST", "https://example.com"))
-        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=mock_response) as mock_post:
+        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=make_ok_response()) as mock_post:
             await notifier.send(title="Alert", content="test", severity=severity)
 
             payload = mock_post.call_args[1]["json"]
