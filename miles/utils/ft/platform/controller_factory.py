@@ -9,12 +9,19 @@ from pydantic import ConfigDict, Field
 
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.detectors import build_detector_chain
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
+from miles.utils.ft.protocols.platform import (
+    DiagnosticSchedulerProtocol,
+    NodeManagerProtocol,
+    NotificationProtocol,
+    TrainingJobProtocol,
+)
 
 if TYPE_CHECKING:
     from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
@@ -155,43 +162,70 @@ def _build_metric_store(
     raise ValueError(f"Unknown metric-store-backend: {config.metric_store_backend}")
 
 
+_NOTIFIER_SENTINEL: object = object()
+
+
 def build_ft_controller(
     config: FtControllerConfig | None = None,
     *,
     start_exporter: bool = True,
+    node_manager_override: NodeManagerProtocol | None = None,
+    training_job_override: TrainingJobProtocol | None = None,
+    notifier_override: NotificationProtocol | None | object = _NOTIFIER_SENTINEL,
+    detectors_override: list[BaseFaultDetector] | None = None,
+    diagnostic_scheduler_override: DiagnosticSchedulerProtocol | None = None,
     **kwargs: object,
 ) -> FtController:
     """Build an FtController with all dependent components from config parameters.
 
     Accepts either an ``FtControllerConfig`` or keyword arguments that
     are forwarded to the config constructor.
+
+    Optional ``*_override`` parameters allow tests to inject fake
+    dependencies while still using the real ``FtControllerActor`` wrapper.
     """
     if config is not None and kwargs:
         raise ValueError(
             "Cannot provide both 'config' and keyword arguments to build_ft_controller; "
             "use one or the other"
         )
+
+    _has_nm = node_manager_override is not None
+    _has_tj = training_job_override is not None
+    if _has_nm != _has_tj:
+        raise ValueError(
+            "node_manager_override and training_job_override must be provided together"
+        )
+
     if config is None:
         config = FtControllerConfig(**kwargs)  # type: ignore[arg-type]
 
     ft_id = config.ft_id or uuid4().hex[:8]
 
-    node_manager, training_job = _build_platform_components(
-        platform=config.platform,
-        ray_address=config.ray_address,
-        entrypoint=config.entrypoint,
-        runtime_env=config.runtime_env,
-        ft_id=ft_id,
-        k8s_label_prefix=config.k8s_label_prefix,
-    )
+    if node_manager_override is not None and training_job_override is not None:
+        node_manager: NodeManagerProtocol = node_manager_override
+        training_job: TrainingJobProtocol = training_job_override
+    else:
+        node_manager, training_job = _build_platform_components(
+            platform=config.platform,
+            ray_address=config.ray_address,
+            entrypoint=config.entrypoint,
+            runtime_env=config.runtime_env,
+            ft_id=ft_id,
+            k8s_label_prefix=config.k8s_label_prefix,
+        )
 
     controller_exporter = ControllerExporter(port=config.controller_exporter_port)
     metric_store, scrape_target_manager = _build_metric_store(config, controller_exporter)
 
     mini_wandb = MiniWandb()
 
-    notifier = _build_notifier(platform=config.platform)
-    detectors = build_detector_chain()
+    if notifier_override is not _NOTIFIER_SENTINEL:
+        notifier: NotificationProtocol | None = notifier_override  # type: ignore[assignment]
+    else:
+        notifier = _build_notifier(platform=config.platform)
+
+    detectors = detectors_override if detectors_override is not None else build_detector_chain()
 
     if start_exporter:
         controller_exporter.start()
@@ -212,4 +246,5 @@ def build_ft_controller(
         detectors=detectors,
         tick_interval=config.tick_interval,
         controller_exporter=controller_exporter,
+        diagnostic_scheduler=diagnostic_scheduler_override,
     )
