@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
-from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models._diagnostics import DiagnosticResult
 
 
+@runtime_checkable
 class NodeAgentProtocol(Protocol):
     async def run_diagnostic(
         self, diagnostic_type: str, timeout_seconds: int = 120,
@@ -12,6 +13,7 @@ class NodeAgentProtocol(Protocol):
     ) -> DiagnosticResult: ...
 
 
+@runtime_checkable
 class DiagnosticProtocol(Protocol):
     diagnostic_type: str
 

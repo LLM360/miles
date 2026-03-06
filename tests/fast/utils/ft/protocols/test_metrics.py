@@ -10,10 +10,14 @@ import pytest
 
 from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.protocols.metrics import (
     MetricQueryProtocol,
     MetricStoreLifecycle,
     MetricStoreProtocol,
+    ScrapeTargetManagerProtocol,
+    TrainingMetricStoreProtocol,
 )
 from miles.utils.ft.protocols.platform import JobStatus
 
@@ -30,6 +34,30 @@ class TestMiniPrometheusProtocolCompliance:
     def test_satisfies_metric_store_protocol(self) -> None:
         store = MiniPrometheus()
         assert isinstance(store, MetricStoreProtocol)
+
+    def test_satisfies_scrape_target_manager_protocol(self) -> None:
+        store = MiniPrometheus()
+        assert isinstance(store, ScrapeTargetManagerProtocol)
+
+
+class TestPrometheusClientProtocolCompliance:
+    def test_satisfies_metric_query_protocol(self) -> None:
+        client = PrometheusClient(url="http://localhost:9090")
+        assert isinstance(client, MetricQueryProtocol)
+
+    def test_satisfies_metric_store_lifecycle(self) -> None:
+        client = PrometheusClient(url="http://localhost:9090")
+        assert isinstance(client, MetricStoreLifecycle)
+
+    def test_satisfies_metric_store_protocol(self) -> None:
+        client = PrometheusClient(url="http://localhost:9090")
+        assert isinstance(client, MetricStoreProtocol)
+
+
+class TestMiniWandbProtocolCompliance:
+    def test_satisfies_training_metric_store_protocol(self) -> None:
+        store = MiniWandb()
+        assert isinstance(store, TrainingMetricStoreProtocol)
 
 
 class _QueryOnlyStore:

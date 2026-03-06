@@ -80,12 +80,14 @@ class MetricStoreProtocol(MetricQueryProtocol, MetricStoreLifecycle, Protocol):
     ...
 
 
+@runtime_checkable
 class ScrapeTargetManagerProtocol(Protocol):
     def add_scrape_target(self, target_id: str, address: str) -> None: ...
 
     def remove_scrape_target(self, target_id: str) -> None: ...
 
 
+@runtime_checkable
 class TrainingMetricStoreProtocol(Protocol):
     def latest(self, metric_name: str) -> float | None: ...
 

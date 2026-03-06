@@ -1,6 +1,8 @@
 import pytest
 
+from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 from miles.utils.ft.protocols.platform import (
+    DiagnosticSchedulerProtocol,
     JobStatus,
     NodeManagerProtocol,
     NotificationProtocol,
@@ -158,3 +160,31 @@ class TestNotificationProtocol:
         assert instance.sent == [("alert", "gpu down", "critical")]
         await instance.aclose()
         assert instance.closed
+
+
+class TestStubProtocolCompliance:
+    def test_stub_node_manager_satisfies_protocol(self) -> None:
+        assert isinstance(StubNodeManager(), NodeManagerProtocol)
+
+    def test_stub_training_job_satisfies_protocol(self) -> None:
+        assert isinstance(StubTrainingJob(), TrainingJobProtocol)
+
+    def test_stub_notifier_satisfies_protocol(self) -> None:
+        assert isinstance(StubNotifier(), NotificationProtocol)
+
+
+class TestDiagnosticSchedulerProtocol:
+    def test_conforming_class_passes_isinstance(self) -> None:
+        class _Conforming:
+            async def run_diagnostic_pipeline(
+                self, trigger_reason: object, suspect_node_ids: list[str] | None = None,
+            ) -> object:
+                return None
+
+        assert isinstance(_Conforming(), DiagnosticSchedulerProtocol)
+
+    def test_missing_method_fails_isinstance(self) -> None:
+        class _Empty:
+            pass
+
+        assert not isinstance(_Empty(), DiagnosticSchedulerProtocol)
