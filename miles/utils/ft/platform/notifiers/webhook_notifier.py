@@ -27,6 +27,7 @@ class WebhookNotifier(abc.ABC):
         ...
 
     async def send(self, title: str, content: str, severity: str) -> None:
+        logger.info(f"webhook send: {title=} {content=} {severity=}")
         payload = self._build_payload(title=title, content=content, severity=severity)
 
         async def _post() -> None:
