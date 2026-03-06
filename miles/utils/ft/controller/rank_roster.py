@@ -33,7 +33,7 @@ class RankRoster:
         world_size: int,
         node_id: str,
         exporter_address: str,
-        pid: int,
+        pid: int | None = None,
     ) -> None:
         if run_id != self.run_id:
             logger.warning(
@@ -44,7 +44,8 @@ class RankRoster:
         _validate_rank(rank=rank, world_size=world_size, node_id=node_id)
         self.expected_world_size = world_size
         self.rank_placement[rank] = node_id
-        self.rank_pids[rank] = pid
+        if pid is not None:
+            self.rank_pids[rank] = pid
         logger.info(
             "rank_registered run_id=%s rank=%d world_size=%d node_id=%s",
             run_id, rank, world_size, node_id,

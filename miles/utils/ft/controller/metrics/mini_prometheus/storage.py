@@ -22,7 +22,7 @@ class MiniPrometheusConfig:
     retention: timedelta = field(default_factory=lambda: timedelta(minutes=60))
 
 
-class MiniPrometheus(MetricStoreProtocol, ScrapeTargetManagerProtocol, RangeAggregationMixin):
+class MiniPrometheus(RangeAggregationMixin, MetricStoreProtocol, ScrapeTargetManagerProtocol):
     def __init__(self, config: MiniPrometheusConfig | None = None) -> None:
         self._config = config or MiniPrometheusConfig()
         self._series: dict[SeriesKey, deque[TimeSeriesSample]] = {}

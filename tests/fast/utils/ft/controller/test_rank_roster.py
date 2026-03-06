@@ -85,7 +85,7 @@ class TestRegisterTrainingRankValidation:
 class TestRunIdMatching:
     def test_matching_run_id_accepted(self) -> None:
         registry = _make_registry(run_id="run-1")
-        registry.register_training_rank(**_VALID_KWARGS, pid=42)
+        registry.register_training_rank(**{**_VALID_KWARGS, "pid": 42})
 
         assert registry.rank_placement == {0: "node-0"}
         assert registry.rank_pids == {0: 42}
@@ -111,7 +111,7 @@ class TestRunIdMatching:
 class TestRegisterTrainingRankHappyPath:
     def test_state_after_single_registration(self) -> None:
         registry = _make_registry()
-        registry.register_training_rank(**_VALID_KWARGS, pid=42)
+        registry.register_training_rank(**{**_VALID_KWARGS, "pid": 42})
 
         assert registry.rank_placement == {0: "node-0"}
         assert registry.expected_world_size == 2
