@@ -30,7 +30,7 @@ class FtNodeAgent:
         self._diagnostics: dict[str, DiagnosticProtocol] = {d.diagnostic_type: d for d in (diagnostics or [])}
 
         self._exporter = PrometheusExporter()
-        self._metric_collection_loop = MetricCollectionLoop(
+        self._collection_loop = MetricCollectionLoop(
             node_id=node_id,
             collectors=prepared_collectors,
             exporter=self._exporter,
@@ -44,28 +44,21 @@ class FtNodeAgent:
         return self._exporter.get_address()
 
     async def start(self) -> None:
-        await self._metric_collection_loop.start()
+        await self._collection_loop.start()
 
     async def stop(self) -> None:
-        await self._metric_collection_loop.stop()
+        await self._collection_loop.stop()
         self._exporter.shutdown()
 
     # ------------------------------------------------------------------
     # Diagnostics
     # ------------------------------------------------------------------
 
-    def set_diagnostic(self, diagnostic: DiagnosticProtocol) -> None:
-        """Register (or replace) a diagnostic by its diagnostic_type."""
-        self._diagnostics[diagnostic.diagnostic_type] = diagnostic
-
-    def remove_diagnostic(self, diagnostic_type: str) -> None:
-        """Remove a diagnostic by type. No-op if not present."""
-        self._diagnostics.pop(diagnostic_type, None)
-
     async def run_diagnostic(
         self,
         diagnostic_type: str,
         timeout_seconds: int = 120,
+        **kwargs: object,
     ) -> DiagnosticResult:
         diagnostic = self._diagnostics.get(diagnostic_type)
         if diagnostic is None:
@@ -79,6 +72,7 @@ class FtNodeAgent:
                 diagnostic.run(
                     node_id=self._node_id,
                     timeout_seconds=timeout_seconds,
+                    **kwargs,
                 ),
                 timeout=timeout_seconds + 5,
             )
