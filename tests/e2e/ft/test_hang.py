@@ -1,7 +1,4 @@
-"""E2E: Training hang via SIGSTOP → detection → recovery.
-
-Slowest E2E test due to the hang detection timeout (~5-10 min).
-"""
+"""E2E: Training hang via SIGSTOP → detection → recovery."""
 
 from __future__ import annotations
 
