@@ -6,6 +6,7 @@ from miles.utils.ft.platform.controller_factory import (
     FtControllerConfig,
     build_ft_controller,
 )
+from miles.utils.ft.platform.ray_node_agent_proxy import RayNodeAgentProxy
 
 
 class _FtControllerActorCls:
@@ -51,7 +52,7 @@ class _FtControllerActorCls:
         world_size: int,
         node_id: str,
         exporter_address: str,
-        pid: int,
+        pid: int | None = None,
     ) -> None:
         self._ctrl.rank_registry.register_training_rank(
             run_id=run_id,
@@ -62,8 +63,13 @@ class _FtControllerActorCls:
             pid=pid,
         )
 
-    def register_node_agent(self, node_id: str, agent: object) -> None:
-        self._ctrl.register_node_agent(node_id=node_id, agent=agent)
+    def register_node_agent(
+        self, node_id: str, agent: object, exporter_address: str = "",
+    ) -> None:
+        proxy = RayNodeAgentProxy(agent)
+        self._ctrl.register_node_agent(
+            node_id=node_id, agent=proxy, exporter_address=exporter_address,
+        )
 
     def get_status(self) -> object:
         return self._ctrl.get_status()
