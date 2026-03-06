@@ -216,18 +216,16 @@ class FtController:
         try:
             self._rank_roster.warn_if_incomplete()
             job_status = await self._training_job.get_training_status()
-            await self._tick_inner(job_status)
+
+            if self._recovery_manager.in_progress:
+                await self._tick_mode_recovery(job_status)
+            else:
+                await self._tick_mode_monitoring(job_status)
         except Exception:
             logger.error("tick_failed tick=%d", self._tick_count, exc_info=True)
         finally:
             tick_duration = time.monotonic() - t0
             self._update_exporter_metrics(job_status, tick_duration=tick_duration)
-
-    async def _tick_inner(self, job_status: JobStatus) -> None:
-        if self._recovery_manager.in_progress:
-            await self._tick_mode_recovery(job_status)
-        else:
-            await self._tick_mode_monitoring(job_status)
 
     async def _tick_mode_recovery(self, job_status: JobStatus) -> None:
         new_bad_nodes = self._collect_critical_bad_nodes(job_status)
