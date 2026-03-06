@@ -14,6 +14,9 @@ class _FtControllerActorCls:
     Created as a Detached Named Async Actor so that FtMegatronAgent
     can find it via ``ray.get_actor(ft_controller_actor_name(ft_id))``.
     FtController remains a plain Python class for testability.
+
+    Agent-facing methods (register_rank, log_step, register_agent) route
+    directly to the RankRegistry exposed by FtController.
     """
 
     def __init__(self, config: FtControllerConfig | None = None, **kwargs: object) -> None:
@@ -31,7 +34,7 @@ class _FtControllerActorCls:
         step: int,
         metrics: dict[str, float],
     ) -> None:
-        await self._ctrl.log_step(
+        self._ctrl.rank_registry.log_step(
             run_id=run_id,
             step=step,
             metrics=metrics,
@@ -46,7 +49,7 @@ class _FtControllerActorCls:
         exporter_address: str,
         pid: int | None = None,
     ) -> None:
-        await self._ctrl.register_rank(
+        self._ctrl.rank_registry.register_rank(
             run_id=run_id,
             rank=rank,
             world_size=world_size,
@@ -56,7 +59,7 @@ class _FtControllerActorCls:
         )
 
     def register_agent(self, node_id: str, agent: object) -> None:
-        self._ctrl.register_agent(node_id=node_id, agent=agent)
+        self._ctrl.rank_registry.register_agent(node_id=node_id, agent=agent)
 
     def get_status(self) -> object:
         return self._ctrl.get_status()
