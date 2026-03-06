@@ -9,7 +9,6 @@ Required environment variables:
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import threading
@@ -28,6 +27,7 @@ from miles.utils.ft.fault_injectors.fault_injector import deploy_fault_injector
 from miles.utils.ft.models import ControllerMode, ControllerStatus, RecoveryPhase
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.platform.ray_training_job import stop_all_active_jobs
+from miles.utils.ft.polling import poll_until
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 logger = logging.getLogger(__name__)
@@ -141,18 +141,22 @@ async def _wait_for_named_actor(
     timeout: float,
 ) -> ray.actor.ActorHandle:
     """Poll until a named Ray actor becomes available."""
-    deadline = time.monotonic() + timeout
-    last_error: Exception | None = None
-    while time.monotonic() < deadline:
+
+    def _probe() -> ray.actor.ActorHandle | None:
         try:
             return ray.get_actor(name)
-        except ValueError as exc:
-            last_error = exc
-            await asyncio.sleep(_ACTOR_POLL_INTERVAL)
+        except ValueError:
+            return None
 
-    raise TimeoutError(
-        f"Named actor '{name}' did not appear within {timeout}s: {last_error}"
+    handle = await poll_until(
+        probe=_probe,
+        predicate=lambda h: h is not None,
+        timeout=timeout,
+        poll_interval=_ACTOR_POLL_INTERVAL,
+        description=f"named_actor({name})",
     )
+    assert handle is not None
+    return handle
 
 
 # ---------------------------------------------------------------------------
@@ -297,13 +301,20 @@ async def wait_for_training_pid(
     poll_interval: float = 3.0,
 ) -> int:
     """Poll until a training process appears on the injector's node, then return its PID."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+
+    def _probe() -> int | None:
         procs = ray.get(injector.find_training_processes.remote())
-        if procs:
-            return procs[0]["pid"]
-        await asyncio.sleep(poll_interval)
-    raise TimeoutError(f"No training processes appeared within {timeout}s")
+        return procs[0]["pid"] if procs else None
+
+    pid = await poll_until(
+        probe=_probe,
+        predicate=lambda p: p is not None,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description="training_pid",
+    )
+    assert pid is not None
+    return pid
 
 
 # ---------------------------------------------------------------------------
@@ -317,23 +328,12 @@ async def wait_for_recovery_complete(
     poll_interval: float = 5.0,
 ) -> ControllerStatus:
     """Poll get_status() until mode returns to MONITORING."""
-    deadline = time.monotonic() + timeout
-    poll_count = 0
-    while time.monotonic() < deadline:
-        status = get_status(handle)
-        poll_count += 1
-        if status.mode == ControllerMode.MONITORING:
-            return status
-        if poll_count % 6 == 0:
-            elapsed = timeout - (deadline - time.monotonic())
-            logger.info(
-                "wait_for_recovery_complete elapsed=%.0fs status=%s",
-                elapsed, status,
-            )
-        await asyncio.sleep(poll_interval)
-    raise TimeoutError(
-        f"Recovery did not complete within {timeout}s, "
-        f"last status: {get_status(handle)}"
+    return await poll_until(
+        probe=lambda: get_status(handle),
+        predicate=lambda s: s.mode == ControllerMode.MONITORING,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description="recovery_complete",
     )
 
 
@@ -345,24 +345,12 @@ async def wait_for_training_stable(
 ) -> None:
     """Poll controller for N consecutive successful iterations."""
     baseline = get_iteration_count(handle)
-    deadline = time.monotonic() + timeout
-    poll_count = 0
-    while time.monotonic() < deadline:
-        current = get_iteration_count(handle)
-        poll_count += 1
-        if current - baseline >= n_iterations:
-            return
-        if poll_count % 6 == 0:
-            elapsed = timeout - (deadline - time.monotonic())
-            logger.info(
-                "wait_for_training_stable elapsed=%.0fs progress=%d/%d",
-                elapsed, current - baseline, n_iterations,
-            )
-        await asyncio.sleep(poll_interval)
-    current = get_iteration_count(handle)
-    raise TimeoutError(
-        f"Training did not stabilize: need {n_iterations} iterations, "
-        f"got {current - baseline} in {timeout}s"
+    await poll_until(
+        probe=lambda: get_iteration_count(handle),
+        predicate=lambda current: current - baseline >= n_iterations,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description=f"training_stable(need={n_iterations})",
     )
 
 
@@ -373,23 +361,12 @@ async def wait_for_recovery_phase(
     poll_interval: float = 5.0,
 ) -> ControllerStatus:
     """Poll get_status() until recovery_phase matches."""
-    deadline = time.monotonic() + timeout
-    poll_count = 0
-    while time.monotonic() < deadline:
-        status = get_status(handle)
-        poll_count += 1
-        if status.recovery_phase == phase:
-            return status
-        if poll_count % 6 == 0:
-            elapsed = timeout - (deadline - time.monotonic())
-            logger.info(
-                "wait_for_recovery_phase target='%s' elapsed=%.0fs status=%s",
-                phase, elapsed, status,
-            )
-        await asyncio.sleep(poll_interval)
-    raise TimeoutError(
-        f"Did not reach recovery phase '{phase}' within {timeout}s, "
-        f"last status: {get_status(handle)}"
+    return await poll_until(
+        probe=lambda: get_status(handle),
+        predicate=lambda s: s.recovery_phase == phase,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        description=f"recovery_phase({phase})",
     )
 
 
@@ -406,30 +383,20 @@ async def wait_for_mode_transition(
     """
     deadline = time.monotonic() + timeout
 
-    while time.monotonic() < deadline:
-        status = get_status(handle)
-        if status.mode != target_mode:
-            logger.info(
-                "wait_for_mode_transition mode left '%s' → '%s'",
-                target_mode, status.mode,
-            )
-            break
-        await asyncio.sleep(poll_interval)
-    else:
-        raise TimeoutError(
-            f"Mode never left '{target_mode}' within {timeout}s, "
-            f"last status: {get_status(handle)}"
-        )
+    await poll_until(
+        probe=lambda: get_status(handle),
+        predicate=lambda s: s.mode != target_mode,
+        timeout=deadline - time.monotonic(),
+        poll_interval=poll_interval,
+        description=f"mode_leave({target_mode})",
+    )
 
-    while time.monotonic() < deadline:
-        status = get_status(handle)
-        if status.mode == target_mode:
-            return status
-        await asyncio.sleep(poll_interval)
-
-    raise TimeoutError(
-        f"Mode did not return to '{target_mode}' within {timeout}s, "
-        f"last status: {get_status(handle)}"
+    return await poll_until(
+        probe=lambda: get_status(handle),
+        predicate=lambda s: s.mode == target_mode,
+        timeout=deadline - time.monotonic(),
+        poll_interval=poll_interval,
+        description=f"mode_return({target_mode})",
     )
 
 
