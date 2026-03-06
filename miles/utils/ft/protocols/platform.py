@@ -42,7 +42,7 @@ class NotificationProtocol(Protocol):
 
 
 @runtime_checkable
-class DiagnosticSchedulerProtocol(Protocol):
+class DiagnosticOrchestratorProtocol(Protocol):
     async def run_diagnostic_pipeline(
         self,
         trigger_reason: TriggerType,

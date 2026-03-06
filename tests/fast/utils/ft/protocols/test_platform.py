@@ -2,7 +2,7 @@ import pytest
 
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 from miles.utils.ft.protocols.platform import (
-    DiagnosticSchedulerProtocol,
+    DiagnosticOrchestratorProtocol,
     JobStatus,
     NodeManagerProtocol,
     NotificationProtocol,
@@ -173,7 +173,7 @@ class TestStubProtocolCompliance:
         assert isinstance(StubNotifier(), NotificationProtocol)
 
 
-class TestDiagnosticSchedulerProtocol:
+class TestDiagnosticOrchestratorProtocol:
     def test_conforming_class_passes_isinstance(self) -> None:
         class _Conforming:
             async def run_diagnostic_pipeline(
@@ -181,10 +181,10 @@ class TestDiagnosticSchedulerProtocol:
             ) -> object:
                 return None
 
-        assert isinstance(_Conforming(), DiagnosticSchedulerProtocol)
+        assert isinstance(_Conforming(), DiagnosticOrchestratorProtocol)
 
     def test_missing_method_fails_isinstance(self) -> None:
         class _Empty:
             pass
 
-        assert not isinstance(_Empty(), DiagnosticSchedulerProtocol)
+        assert not isinstance(_Empty(), DiagnosticOrchestratorProtocol)

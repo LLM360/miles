@@ -20,7 +20,7 @@ from miles.utils.ft.controller.recovery_orchestrator.phase_handlers import (
 from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import (
-    DiagnosticSchedulerProtocol,
+    DiagnosticOrchestratorProtocol,
     NodeManagerProtocol,
     NotificationProtocol,
     TrainingJobProtocol,
@@ -38,7 +38,7 @@ class RecoveryOrchestrator:
         metric_store: MetricQueryProtocol,
         mini_wandb: MiniWandb,
         notifier: NotificationProtocol | None,
-        diagnostic_scheduler: DiagnosticSchedulerProtocol,
+        diagnostic_orchestrator: DiagnosticOrchestratorProtocol,
         controller_exporter: ControllerExporter | None = None,
         on_new_run: Callable[[str], None] | None = None,
         global_timeout_seconds: int = 1800,
@@ -49,7 +49,7 @@ class RecoveryOrchestrator:
         self._training_job = training_job
         self._mini_wandb = mini_wandb
         self._notifier = notifier
-        self._diagnostic_scheduler = diagnostic_scheduler
+        self._diagnostic_orchestrator = diagnostic_orchestrator
         self._controller_exporter = controller_exporter or NullControllerExporter()
         self._on_new_run = on_new_run
         self._alert_checker = AlertChecker(metric_store=metric_store)
@@ -143,7 +143,7 @@ class RecoveryOrchestrator:
             RecoveryPhase.CHECK_ALERTS: lambda: step_check_alerts(ctx, self._alert_checker),
             RecoveryPhase.REATTEMPTING: lambda: step_reattempting(ctx, self._training_job, self._mini_wandb, on_new_run=self._on_new_run),
             RecoveryPhase.MONITORING: lambda: step_monitoring(ctx, self._training_job, self._mini_wandb),
-            RecoveryPhase.DIAGNOSING: lambda: step_diagnosing(ctx, self._diagnostic_scheduler),
+            RecoveryPhase.DIAGNOSING: lambda: step_diagnosing(ctx, self._diagnostic_orchestrator),
             RecoveryPhase.EVICT_AND_RESTART: lambda: step_evict_and_restart(
                 ctx, self._node_manager, self._training_job, self._mini_wandb, on_new_run=self._on_new_run,
             ),

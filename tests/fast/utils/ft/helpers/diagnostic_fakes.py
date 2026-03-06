@@ -68,12 +68,12 @@ class SlowDiagnostic(BaseDiagnostic):
 
 
 # ---------------------------------------------------------------------------
-# Diagnostic scheduler fakes
+# Diagnostic orchestrator fakes
 # ---------------------------------------------------------------------------
 
 
-class FakeDiagnosticScheduler:
-    """Programmable stub for DiagnosticScheduler in recovery tests."""
+class FakeDiagnosticOrchestrator:
+    """Programmable stub for DiagnosticOrchestrator in recovery tests."""
 
     def __init__(self, decision: Decision | None = None) -> None:
         self._decision = decision or Decision(
@@ -95,8 +95,8 @@ class FakeDiagnosticScheduler:
         return self._decision
 
 
-class HangingDiagnosticScheduler:
-    """Scheduler whose run_diagnostic_pipeline never returns (simulates hang)."""
+class HangingDiagnosticOrchestrator:
+    """Orchestrator whose run_diagnostic_pipeline never returns (simulates hang)."""
 
     async def run_diagnostic_pipeline(
         self,

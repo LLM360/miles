@@ -13,7 +13,7 @@ from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.models.fault import TriggerType
 from tests.fast.utils.ft.conftest import (
-    FakeDiagnosticScheduler,
+    FakeDiagnosticOrchestrator,
     FakeNodeManager,
     FakeNotifier,
     FakeTrainingJob,
@@ -48,7 +48,7 @@ def _make_deps(
         metric_store=None,  # type: ignore[arg-type]
         mini_wandb=mini_wandb or MiniWandb(),
         notifier=notifier,
-        diagnostic_scheduler=FakeDiagnosticScheduler(),
+        diagnostic_orchestrator=FakeDiagnosticOrchestrator(),
         controller_exporter=None,
     )
 

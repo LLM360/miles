@@ -1,4 +1,4 @@
-"""Integration tests: Controller → Recovery → DiagnosticScheduler → NodeAgent.
+"""Integration tests: Controller → Recovery → DiagnosticOrchestrator → NodeAgent.
 
 Tests the full diagnostic pipeline through the Controller's recovery flow.
 Note: CHECK_ALERTS phase is bypassed (set directly to DIAGNOSING) due to
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models import RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
@@ -22,7 +22,7 @@ from tests.fast.utils.ft.conftest import (
 
 def _enter_recovery_and_skip_to_diagnosing(
     harness: ControllerTestHarness,
-    scheduler: DiagnosticScheduler,
+    orchestrator: DiagnosticOrchestrator,
 ) -> None:
     """Helper: create a RecoveryOrchestrator already in DIAGNOSING phase."""
     orch = RecoveryOrchestrator(
@@ -32,7 +32,7 @@ def _enter_recovery_and_skip_to_diagnosing(
         metric_store=harness.metric_store,
         mini_wandb=harness.mini_wandb,
         notifier=harness.notifier,
-        diagnostic_scheduler=scheduler,
+        diagnostic_orchestrator=orchestrator,
         controller_exporter=harness.controller_exporter,
     )
     orch._context.phase = RecoveryPhase.DIAGNOSING
@@ -44,14 +44,14 @@ def _make_diagnostic_test_env(
     pipeline: list[str],
 ) -> tuple[ControllerTestHarness, RecoveryOrchestrator]:
     agents = make_fake_agents(node_results)
-    scheduler = DiagnosticScheduler(agents=agents, pipeline=pipeline)
+    orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=pipeline)
     harness = make_test_controller(
         status_sequence=[JobStatus.RUNNING] * 50,
-        diagnostic_scheduler=scheduler,
+        diagnostic_orchestrator=orchestrator,
     )
     for node_id, agent in agents.items():
         harness.controller.register_node_agent(node_id, agent)
-    _enter_recovery_and_skip_to_diagnosing(harness, scheduler)
+    _enter_recovery_and_skip_to_diagnosing(harness, orchestrator)
     orch = harness.controller.recovery_manager.orchestrator
     assert orch is not None
     return harness, orch

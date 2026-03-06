@@ -21,7 +21,7 @@ from miles.utils.ft.controller.recovery_orchestrator.context import (
 from miles.utils.ft.models.fault import ActionType
 from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import (
-    DiagnosticSchedulerProtocol,
+    DiagnosticOrchestratorProtocol,
     JobStatus,
     NodeManagerProtocol,
     NotificationProtocol,
@@ -112,9 +112,9 @@ async def step_monitoring(
 
 async def step_diagnosing(
     ctx: RecoveryContext,
-    diagnostic_scheduler: DiagnosticSchedulerProtocol,
+    diagnostic_orchestrator: DiagnosticOrchestratorProtocol,
 ) -> RecoveryPhase:
-    decision = await diagnostic_scheduler.run_diagnostic_pipeline(
+    decision = await diagnostic_orchestrator.run_diagnostic_pipeline(
         trigger_reason=ctx.trigger,
     )
 

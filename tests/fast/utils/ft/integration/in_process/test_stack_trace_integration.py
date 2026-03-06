@@ -1,6 +1,6 @@
 """Integration tests for the stack trace diagnostic pipeline.
 
-Tests the full flow: Controller → DiagnosticScheduler → StackTraceDiagnostic
+Tests the full flow: Controller → DiagnosticOrchestrator → StackTraceDiagnostic
 → StackTraceAggregator, with FakeNodeAgent instances providing configurable
 stack trace results.
 """
@@ -18,7 +18,7 @@ from tests.fast.utils.ft.helpers import (
     mock_stack_trace_diagnostic,
 )
 
-from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.models import ActionType
 
 
@@ -48,12 +48,12 @@ class TestHangWithStackTraceSuspect:
                 make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
             ]
         ):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -83,12 +83,12 @@ class TestHangWithStackTraceSuspect:
                 make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
             ]
         ):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -113,12 +113,12 @@ class TestCrashSkipsStackTrace:
         )
 
         with patch("miles.utils.ft.controller.diagnostics.stack_trace.StackTraceDiagnostic") as mock_diag_cls:
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
             )
 
@@ -153,12 +153,12 @@ class TestHangWithCollectionFailure:
                 make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
             ]
         ):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 

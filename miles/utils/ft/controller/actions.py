@@ -16,7 +16,7 @@ from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models.fault import Decision
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 from miles.utils.ft.protocols.platform import (
-    DiagnosticSchedulerProtocol,
+    DiagnosticOrchestratorProtocol,
     NodeManagerProtocol,
     NotificationProtocol,
     TrainingJobProtocol,
@@ -34,7 +34,7 @@ class PlatformDeps:
     metric_store: MetricQueryProtocol
     mini_wandb: MiniWandb
     notifier: NotificationProtocol | None
-    diagnostic_scheduler: DiagnosticSchedulerProtocol
+    diagnostic_orchestrator: DiagnosticOrchestratorProtocol
     controller_exporter: ControllerExporter | None
     on_new_run: Callable[[str], None] | None = field(default=None)
 
@@ -95,7 +95,7 @@ async def handle_enter_recovery(
         metric_store=deps.metric_store,
         mini_wandb=deps.mini_wandb,
         notifier=deps.notifier,
-        diagnostic_scheduler=deps.diagnostic_scheduler,
+        diagnostic_orchestrator=deps.diagnostic_orchestrator,
         controller_exporter=deps.controller_exporter,
         on_new_run=deps.on_new_run,
     )

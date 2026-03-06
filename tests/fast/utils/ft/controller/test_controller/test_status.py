@@ -7,7 +7,7 @@ import pytest
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.models import ControllerMode, RecoveryPhase
@@ -194,8 +194,8 @@ class TestAgentManagement:
         assert harness.controller._agents["node-0"] is agent2
 
 
-class TestDefaultDiagnosticSchedulerWiring:
-    def test_default_scheduler_has_rank_pids_provider(self) -> None:
+class TestDefaultDiagnosticOrchestratorWiring:
+    def test_default_orchestrator_has_rank_pids_provider(self) -> None:
         controller = FtController.create(
             node_manager=FakeNodeManager(),
             training_job=FakeTrainingJob(),
@@ -203,16 +203,16 @@ class TestDefaultDiagnosticSchedulerWiring:
             mini_wandb=MiniWandb(),
         )
 
-        scheduler = controller._platform_deps.diagnostic_scheduler
-        assert isinstance(scheduler, DiagnosticScheduler)
-        assert callable(scheduler._rank_pids_provider)
+        orchestrator = controller._platform_deps.diagnostic_orchestrator
+        assert isinstance(orchestrator, DiagnosticOrchestrator)
+        assert callable(orchestrator._rank_pids_provider)
 
 
 class TestDefaultDiagnosticPipeline:
-    def test_default_scheduler_has_gpu_pipeline(self) -> None:
+    def test_default_orchestrator_has_gpu_pipeline(self) -> None:
         harness = make_test_controller()
-        scheduler = harness.controller._platform_deps.diagnostic_scheduler
-        assert "gpu" in scheduler._pipeline
+        orchestrator = harness.controller._platform_deps.diagnostic_orchestrator
+        assert "gpu" in orchestrator._pipeline
 
 
 class TestShutdown:

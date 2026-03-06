@@ -1,4 +1,4 @@
-"""Tests for DiagnosticScheduler and BaseDiagnostic."""
+"""Tests for DiagnosticOrchestrator and BaseDiagnostic."""
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +9,7 @@ import pytest
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
-from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.models import ActionType, DiagnosticResult
 from tests.fast.utils.ft.helpers import (
     FakeNodeAgent,
@@ -59,36 +59,36 @@ class TestBaseDiagnostic:
 
 
 # ---------------------------------------------------------------------------
-# DiagnosticScheduler tests
+# DiagnosticOrchestrator tests
 # ---------------------------------------------------------------------------
 
 
-class TestDiagnosticSchedulerEmptyPipeline:
+class TestDiagnosticOrchestratorEmptyPipeline:
     @pytest.mark.anyio
     async def test_empty_pipeline_returns_notify_human(self) -> None:
         agents = make_fake_agents({"node-0": {}})
-        scheduler = DiagnosticScheduler(agents=agents, pipeline=[])
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[])
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
 
     @pytest.mark.anyio
     async def test_no_pipeline_arg_returns_notify_human(self) -> None:
-        scheduler = DiagnosticScheduler(agents={})
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="hang")
+        orchestrator = DiagnosticOrchestrator(agents={})
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="hang")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
 
 
-class TestDiagnosticSchedulerSingleStep:
+class TestDiagnosticOrchestratorSingleStep:
     @pytest.mark.anyio
     async def test_all_pass_returns_notify_human(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": True},
             "node-1": {"gpu": True},
         })
-        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
 
@@ -98,8 +98,8 @@ class TestDiagnosticSchedulerSingleStep:
             "node-0": {"gpu": True},
             "node-1": {"gpu": False},
         })
-        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-1" in decision.bad_node_ids
@@ -111,24 +111,24 @@ class TestDiagnosticSchedulerSingleStep:
             "node-0": {"gpu": False},
             "node-1": {"gpu": False},
         })
-        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
 
 
-class TestDiagnosticSchedulerMultiStep:
+class TestDiagnosticOrchestratorMultiStep:
     @pytest.mark.anyio
     async def test_first_step_catches_bad_node(self) -> None:
         agents = make_fake_agents({
             "node-0": {"gpu": False, "intra": True},
             "node-1": {"gpu": True, "intra": True},
         })
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["gpu", "intra"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert decision.bad_node_ids == ["node-0"]
@@ -140,10 +140,10 @@ class TestDiagnosticSchedulerMultiStep:
             "node-0": {"gpu": True, "intra": True},
             "node-1": {"gpu": True, "intra": False},
         })
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["gpu", "intra"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert decision.bad_node_ids == ["node-1"]
@@ -155,15 +155,15 @@ class TestDiagnosticSchedulerMultiStep:
             "node-0": {"gpu": True, "intra": True},
             "node-1": {"gpu": True, "intra": True},
         })
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["gpu", "intra"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
 
 
-class TestDiagnosticSchedulerErrorHandling:
+class TestDiagnosticOrchestratorErrorHandling:
     @pytest.mark.anyio
     async def test_agent_exception_treated_as_failure(self) -> None:
         class _RaisingAgent:
@@ -177,8 +177,8 @@ class TestDiagnosticSchedulerErrorHandling:
             **good_agents,
             "node-1": _RaisingAgent(),
         }
-        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-1" in decision.bad_node_ids
@@ -186,10 +186,10 @@ class TestDiagnosticSchedulerErrorHandling:
     @pytest.mark.anyio
     async def test_trigger_reason_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         agents: dict[str, FakeNodeAgent] = {}
-        scheduler = DiagnosticScheduler(agents=agents, pipeline=[])
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[])
 
         with caplog.at_level(logging.INFO):
-            await scheduler.run_diagnostic_pipeline(
+            await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
                 suspect_node_ids=["node-0"],
             )
@@ -198,8 +198,8 @@ class TestDiagnosticSchedulerErrorHandling:
 
     @pytest.mark.anyio
     async def test_no_agents_returns_notify(self) -> None:
-        scheduler = DiagnosticScheduler(agents={}, pipeline=["gpu"])
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        orchestrator = DiagnosticOrchestrator(agents={}, pipeline=["gpu"])
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
 
@@ -210,8 +210,8 @@ class TestDiagnosticSchedulerErrorHandling:
             "node-1": {"gpu": False},
             "node-2": {"gpu": True},
         })
-        scheduler = DiagnosticScheduler(agents=agents, pipeline=["gpu"])
-        decision = await scheduler.run_diagnostic_pipeline(
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["gpu"])
+        decision = await orchestrator.run_diagnostic_pipeline(
             trigger_reason="crash",
             suspect_node_ids=["node-0", "node-2"],
         )
@@ -222,7 +222,7 @@ class TestDiagnosticSchedulerErrorHandling:
         assert "node-2" not in decision.bad_node_ids
 
 
-class TestDiagnosticSchedulerInterMachine:
+class TestDiagnosticOrchestratorInterMachine:
     """Tests for the inter-machine diagnostic step with cross-comparison."""
 
     @pytest.mark.anyio
@@ -232,10 +232,10 @@ class TestDiagnosticSchedulerInterMachine:
             "node-1": {"inter_machine": True},
             "node-2": {"inter_machine": True},
         })
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
         assert decision.action == ActionType.NOTIFY_HUMAN
 
     @pytest.mark.anyio
@@ -245,10 +245,10 @@ class TestDiagnosticSchedulerInterMachine:
             "node-1": {"inter_machine": True},
             "node-2": {"inter_machine": True},
         })
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-0" in decision.bad_node_ids
@@ -260,10 +260,10 @@ class TestDiagnosticSchedulerInterMachine:
             "node-1": {"inter_machine": False},
             "node-2": {"inter_machine": False},
         })
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
         assert decision.action == ActionType.NOTIFY_HUMAN
 
     @pytest.mark.anyio
@@ -272,19 +272,19 @@ class TestDiagnosticSchedulerInterMachine:
             "node-0": {"inter_machine": False},
             "node-1": {"inter_machine": False},
         })
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
         assert decision.action == ActionType.NOTIFY_HUMAN
 
     @pytest.mark.anyio
     async def test_inter_machine_single_node_skipped(self) -> None:
         agents = make_fake_agents({"node-0": {"inter_machine": True}})
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
         assert decision.action == ActionType.NOTIFY_HUMAN
 
     def test_inter_machine_pairing_is_round_robin(self) -> None:
@@ -329,29 +329,29 @@ class TestDiagnosticSchedulerInterMachine:
             "node-2": {"inter_machine": True},
         })
         agents = {**good_agents, "node-1": _RaisingInterMachineAgent()}  # type: ignore[dict-item]
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["inter_machine"],
         )
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-1" in decision.bad_node_ids
 
 
-class TestDiagnosticSchedulerLiveAgents:
-    """Test scheduler with real FtNodeAgent instances (not FakeNodeAgent)."""
+class TestDiagnosticOrchestratorLiveAgents:
+    """Test orchestrator with real FtNodeAgent instances (not FakeNodeAgent)."""
 
     @pytest.mark.anyio
-    async def test_scheduler_with_real_node_agents(self) -> None:
+    async def test_orchestrator_with_real_node_agents(self) -> None:
         stub = StubDiagnostic(passed=True, details="all good")
         agent0 = FtNodeAgent(node_id="node-0", diagnostics=[stub])
         agent1 = FtNodeAgent(node_id="node-1", diagnostics=[stub])
 
         agents = {"node-0": agent0, "node-1": agent1}
-        scheduler = DiagnosticScheduler(agents=agents, pipeline=["stub"])
+        orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=["stub"])
 
         try:
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
             )
             assert decision.action == ActionType.NOTIFY_HUMAN
@@ -360,19 +360,19 @@ class TestDiagnosticSchedulerLiveAgents:
             await agent1.stop()
 
     @pytest.mark.anyio
-    async def test_scheduler_with_mismatched_diagnostic_type(self) -> None:
+    async def test_orchestrator_with_mismatched_diagnostic_type(self) -> None:
         good = StubDiagnostic(passed=True)
         bad = StubDiagnostic(passed=False, details="gpu broken", diagnostic_type="failing")
         agent0 = FtNodeAgent(node_id="node-0", diagnostics=[good])
         agent1 = FtNodeAgent(node_id="node-1", diagnostics=[bad])
 
         agents = {"node-0": agent0, "node-1": agent1}
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents, pipeline=["stub"],
         )
 
         try:
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
             )
             # node-1 has diagnostic_type="failing", not "stub",
@@ -405,12 +405,12 @@ class TestStackTracePreStep:
             make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
             make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
         ]) as mock_diag_cls:
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -431,12 +431,12 @@ class TestStackTracePreStep:
         with patch(
             "miles.utils.ft.controller.diagnostics.stack_trace.StackTraceDiagnostic"
         ) as mock_diag_cls:
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="crash",
             )
 
@@ -452,11 +452,11 @@ class TestStackTracePreStep:
         with patch(
             "miles.utils.ft.controller.diagnostics.stack_trace.StackTraceDiagnostic"
         ) as mock_diag_cls:
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -481,12 +481,12 @@ class TestStackTracePreStep:
             make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
             make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
         ]):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -508,12 +508,12 @@ class TestStackTracePreStep:
             make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
             make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
         ]):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -534,12 +534,12 @@ class TestStackTracePreStep:
             make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
             make_trace_result("node-1", passed=False, details="failed to collect"),
         ]):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -564,12 +564,12 @@ class TestStackTracePreStep:
             RuntimeError("py-spy crashed"),
             make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
         ]):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -594,12 +594,12 @@ class TestStackTracePreStep:
             make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
             make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
         ]):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=raising_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
             )
 
@@ -624,12 +624,12 @@ class TestStackTracePreStep:
             make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
             make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
         ]):
-            scheduler = DiagnosticScheduler(
+            orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=pids_provider,
             )
-            decision = await scheduler.run_diagnostic_pipeline(
+            decision = await orchestrator.run_diagnostic_pipeline(
                 trigger_reason="hang",
                 suspect_node_ids=["node-1"],
             )
@@ -652,13 +652,13 @@ class TestAgentRpcHang:
     async def test_hanging_agent_returns_fail_result(self) -> None:
         good_agents = make_fake_agents({"node-0": {"gpu": True}})
         agents = {**good_agents, "node-hang": HangingNodeAgent(node_id="node-hang")}
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents,
             pipeline=["gpu"],
             default_timeout_seconds=0,
         )
 
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-hang" in decision.bad_node_ids
@@ -672,13 +672,13 @@ class TestAgentRpcHang:
             "node-1": {"gpu": True},
         })
         agents = {**good_agents, "node-hang": HangingNodeAgent(node_id="node-hang")}
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents,
             pipeline=["gpu"],
             default_timeout_seconds=0,
         )
 
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert "node-hang" in decision.bad_node_ids
@@ -691,13 +691,13 @@ class TestAgentRpcHang:
             "node-0": HangingNodeAgent(node_id="node-0"),
             "node-1": HangingNodeAgent(node_id="node-1"),
         }
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents,
             pipeline=["gpu"],
             default_timeout_seconds=0,
         )
 
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.MARK_BAD_AND_RESTART
         assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
@@ -715,14 +715,14 @@ class TestPipelineTimeout:
         agents: dict = {
             "node-0": HangingNodeAgent(node_id="node-0"),
         }
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents,
             pipeline=["gpu"],
             default_timeout_seconds=9999,
             pipeline_timeout_seconds=0,
         )
 
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
         assert "timed out" in decision.reason
@@ -734,14 +734,14 @@ class TestPipelineTimeout:
             "node-0": HangingNodeAgent(node_id="node-0"),
             "node-1": HangingNodeAgent(node_id="node-1"),
         }
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents,
             pipeline=["gpu"],
             default_timeout_seconds=99999,
             pipeline_timeout_seconds=0,
         )
 
-        decision = await scheduler.run_diagnostic_pipeline(trigger_reason="crash")
+        decision = await orchestrator.run_diagnostic_pipeline(trigger_reason="crash")
 
         assert decision.action == ActionType.NOTIFY_HUMAN
         assert "timed out" in decision.reason

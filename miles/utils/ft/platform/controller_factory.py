@@ -17,7 +17,7 @@ from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusCli
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 from miles.utils.ft.protocols.platform import (
-    DiagnosticSchedulerProtocol,
+    DiagnosticOrchestratorProtocol,
     NodeManagerProtocol,
     NotificationProtocol,
     TrainingJobProtocol,
@@ -57,7 +57,7 @@ def build_ft_controller(
     training_job_override: TrainingJobProtocol | None = None,
     notifier_override: NotificationProtocol | None | object = _NOTIFIER_SENTINEL,
     detectors_override: list[BaseFaultDetector] | None = None,
-    diagnostic_scheduler_override: DiagnosticSchedulerProtocol | None = None,
+    diagnostic_orchestrator_override: DiagnosticOrchestratorProtocol | None = None,
     **kwargs: object,
 ) -> FtController:
     """Build an FtController with all dependent components from config parameters.
@@ -130,7 +130,7 @@ def build_ft_controller(
         detectors=detectors,
         tick_interval=config.tick_interval,
         controller_exporter=controller_exporter,
-        diagnostic_scheduler=diagnostic_scheduler_override,
+        diagnostic_orchestrator=diagnostic_orchestrator_override,
     )
 
 

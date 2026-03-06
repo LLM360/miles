@@ -13,7 +13,7 @@ from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
 from miles.utils.ft.models import ActionType, Decision, TriggerType
 from miles.utils.ft.protocols.platform import (
-    DiagnosticSchedulerProtocol,
+    DiagnosticOrchestratorProtocol,
     JobStatus,
     NodeManagerProtocol,
     TrainingJobProtocol,
@@ -175,7 +175,7 @@ def make_test_controller(
     notifier: FakeNotifier | None = FakeNotifier,
     tick_interval: float = 0.01,
     controller_exporter: ControllerExporter | None = None,
-    diagnostic_scheduler: object | None = None,
+    diagnostic_orchestrator: object | None = None,
     recovery_cooldown_minutes: float = 30.0,
     recovery_cooldown_max_count: int = 3,
     registration_grace_ticks: int = 0,
@@ -186,8 +186,8 @@ def make_test_controller(
     ``notifier`` defaults to a fresh FakeNotifier instance. Pass ``None``
     explicitly to create a Controller without a notifier.
 
-    ``diagnostic_scheduler`` defaults to a real DiagnosticScheduler with
-    empty pipeline (same behavior as old stub). Pass a FakeDiagnosticScheduler
+    ``diagnostic_orchestrator`` defaults to a real DiagnosticOrchestrator with
+    empty pipeline (same behavior as old stub). Pass a FakeDiagnosticOrchestrator
     for recovery-specific tests.
     """
     real_notifier: FakeNotifier | None = FakeNotifier() if notifier is FakeNotifier else notifier
@@ -215,7 +215,7 @@ def make_test_controller(
         detectors=detectors,
         tick_interval=tick_interval,
         controller_exporter=controller_exporter,
-        diagnostic_scheduler=diagnostic_scheduler,
+        diagnostic_orchestrator=diagnostic_orchestrator,
         recovery_cooldown=recovery_cooldown,
         registration_grace_ticks=registration_grace_ticks,
     )

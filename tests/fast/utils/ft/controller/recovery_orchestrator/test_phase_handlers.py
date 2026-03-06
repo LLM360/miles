@@ -24,11 +24,11 @@ from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
-    FakeDiagnosticScheduler,
+    FakeDiagnosticOrchestrator,
     FakeNodeManager,
     FakeNotifier,
     FakeTrainingJob,
-    HangingDiagnosticScheduler,
+    HangingDiagnosticOrchestrator,
     make_failing_node_manager,
     make_failing_training_job,
 )
@@ -274,10 +274,10 @@ class TestStepDiagnosing:
             bad_node_ids=["node-X"],
             reason="gpu diagnostic failed",
         )
-        scheduler = FakeDiagnosticScheduler(decision=decision)
+        orchestrator = FakeDiagnosticOrchestrator(decision=decision)
         ctx = _make_ctx()
 
-        result = await step_diagnosing(ctx, scheduler)
+        result = await step_diagnosing(ctx, orchestrator)
 
         assert result == RecoveryPhase.EVICT_AND_RESTART
         assert ctx.bad_node_ids == ["node-X"]
@@ -288,21 +288,21 @@ class TestStepDiagnosing:
             action=ActionType.NOTIFY_HUMAN,
             reason="all diagnostics passed",
         )
-        scheduler = FakeDiagnosticScheduler(decision=decision)
+        orchestrator = FakeDiagnosticOrchestrator(decision=decision)
         ctx = _make_ctx()
 
-        result = await step_diagnosing(ctx, scheduler)
+        result = await step_diagnosing(ctx, orchestrator)
 
         assert result == RecoveryPhase.NOTIFY
 
     @pytest.mark.anyio
-    async def test_hanging_scheduler_completes_via_pipeline_timeout(self) -> None:
+    async def test_hanging_orchestrator_completes_via_pipeline_timeout(self) -> None:
         """step_diagnosing returns NOTIFY when pipeline timeout fires on a hanging agent."""
         from tests.fast.utils.ft.conftest import HangingNodeAgent
-        from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+        from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 
         agents: dict = {"node-0": HangingNodeAgent(node_id="node-0")}
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents=agents,
             pipeline=["gpu"],
             default_timeout_seconds=9999,
@@ -310,7 +310,7 @@ class TestStepDiagnosing:
         )
         ctx = _make_ctx()
 
-        result = await step_diagnosing(ctx, scheduler)
+        result = await step_diagnosing(ctx, orchestrator)
 
         assert result == RecoveryPhase.NOTIFY
 

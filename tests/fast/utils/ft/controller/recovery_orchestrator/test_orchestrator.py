@@ -20,7 +20,7 @@ from miles.utils.ft.models import (
 )
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
-    FakeDiagnosticScheduler,
+    FakeDiagnosticOrchestrator,
     FakeNodeManager,
     FakeNotifier,
     FakeTrainingJob,
@@ -48,7 +48,7 @@ _OrchestratorWithStore = tuple[
     FakeNodeManager,
     FakeTrainingJob,
     FakeNotifier | None,
-    FakeDiagnosticScheduler,
+    FakeDiagnosticOrchestrator,
     MiniPrometheus,
     MiniWandbCls,
 ]
@@ -68,7 +68,7 @@ def _make_orchestrator_with_store(
     training_job = FakeTrainingJob(status_sequence=status_sequence)
     metric_store = make_fake_metric_store()
     mini_wandb = make_fake_mini_wandb()
-    diag_scheduler = FakeDiagnosticScheduler(decision=diagnostic_decision)
+    diag_orchestrator = FakeDiagnosticOrchestrator(decision=diagnostic_decision)
 
     orch = RecoveryOrchestrator(
         trigger=trigger,
@@ -77,14 +77,14 @@ def _make_orchestrator_with_store(
         metric_store=metric_store,
         mini_wandb=mini_wandb,
         notifier=notifier,
-        diagnostic_scheduler=diag_scheduler,
+        diagnostic_orchestrator=diag_orchestrator,
         controller_exporter=controller_exporter,
         global_timeout_seconds=global_timeout_seconds,
         monitoring_success_iterations=monitoring_success_iterations,
         monitoring_timeout_seconds=monitoring_timeout_seconds,
     )
 
-    return orch, node_manager, training_job, notifier, diag_scheduler, metric_store, mini_wandb
+    return orch, node_manager, training_job, notifier, diag_orchestrator, metric_store, mini_wandb
 
 
 def _make_orchestrator(
@@ -94,7 +94,7 @@ def _make_orchestrator(
     FakeNodeManager,
     FakeTrainingJob,
     FakeNotifier | None,
-    FakeDiagnosticScheduler,
+    FakeDiagnosticOrchestrator,
 ]:
     orch, node_mgr, job, notif, diag, _, _ = _make_orchestrator_with_store(**kwargs)  # type: ignore[arg-type]
     return orch, node_mgr, job, notif, diag

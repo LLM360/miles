@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class RayNodeAgentProxy(NodeAgentProtocol):
     """Adapts a Ray actor handle to NodeAgentProtocol.
 
-    DiagnosticScheduler calls ``agent.run_diagnostic(...)`` as a normal
+    DiagnosticOrchestrator calls ``agent.run_diagnostic(...)`` as a normal
     async method.  This proxy translates the call into a Ray remote
     invocation (``handle.run_diagnostic.remote(...)``), which returns an
     ObjectRef that can be awaited in async code.

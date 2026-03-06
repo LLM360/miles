@@ -11,7 +11,7 @@ from miles.utils.ft.controller.actions import (
     handle_notify_human,
 )
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
@@ -26,7 +26,7 @@ from miles.utils.ft.models.recovery import (
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
 from miles.utils.ft.protocols.platform import (
-    DiagnosticSchedulerProtocol,
+    DiagnosticOrchestratorProtocol,
     JobStatus,
     NodeManagerProtocol,
     NotificationProtocol,
@@ -82,16 +82,16 @@ class FtController:
         detectors: list[BaseFaultDetector] | None = None,
         tick_interval: float = 30.0,
         controller_exporter: ControllerExporter | None = None,
-        diagnostic_scheduler: DiagnosticSchedulerProtocol | None = None,
+        diagnostic_orchestrator: DiagnosticOrchestratorProtocol | None = None,
         recovery_cooldown: RecoveryCooldown | None = None,
         registration_grace_ticks: int = 5,
     ) -> FtController:
         agents: dict[str, NodeAgentProtocol] = {}
         rank_roster = RankRoster(scrape_target_manager=scrape_target_manager)
 
-        resolved_scheduler: DiagnosticSchedulerProtocol = (
-            diagnostic_scheduler
-            or DiagnosticScheduler(
+        resolved_orchestrator: DiagnosticOrchestratorProtocol = (
+            diagnostic_orchestrator
+            or DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
                 rank_pids_provider=lambda node_id: rank_roster.get_rank_pids_for_node(node_id),
@@ -104,7 +104,7 @@ class FtController:
             metric_store=metric_store,
             mini_wandb=mini_wandb,
             notifier=notifier,
-            diagnostic_scheduler=resolved_scheduler,
+            diagnostic_orchestrator=resolved_orchestrator,
             controller_exporter=controller_exporter,
             on_new_run=None,
         )

@@ -2,7 +2,7 @@
 
 Submodules:
 - controller_fakes: platform fakes, test detectors, controller harness
-- diagnostic_fakes: diagnostic stubs, scheduler fakes, node agent fakes
+- diagnostic_fakes: diagnostic stubs, orchestrator fakes, node agent fakes
 - metric_injectors: metric store/wandb factories, inject_* helpers
 - agent_fakes: collector fakes, HW-collector mocks, stack trace helpers
 """
@@ -40,9 +40,9 @@ from tests.fast.utils.ft.helpers.controller_fakes import (
     run_controller_briefly,
 )
 from tests.fast.utils.ft.helpers.diagnostic_fakes import (
-    FakeDiagnosticScheduler,
+    FakeDiagnosticOrchestrator,
     FakeNodeAgent,
-    HangingDiagnosticScheduler,
+    HangingDiagnosticOrchestrator,
     HangingNodeAgent,
     SlowDiagnostic,
     StubDiagnostic,
@@ -83,11 +83,11 @@ __all__ = [
     "CriticalFixedDecisionDetector",
     "FailingCloseCollector",
     "FailingCollector",
-    "FakeDiagnosticScheduler",
+    "FakeDiagnosticOrchestrator",
     "FakeKmsgReader",
     "FakeNodeAgent",
     "FakeNodeManager",
-    "HangingDiagnosticScheduler",
+    "HangingDiagnosticOrchestrator",
     "HangingNodeAgent",
     "FakeNotifier",
     "FakeTrainingJob",

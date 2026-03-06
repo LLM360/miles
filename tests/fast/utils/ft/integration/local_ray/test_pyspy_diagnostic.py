@@ -157,13 +157,13 @@ class TestStackTraceAggregatorWithRealTraces:
         assert suspects == []
 
 
-class TestSchedulerHangTraceFullChain:
-    """DiagnosticScheduler runs stack trace pre-step on hang trigger with real py-spy (PY4)."""
+class TestOrchestratorHangTraceFullChain:
+    """DiagnosticOrchestrator runs stack trace pre-step on hang trigger with real py-spy (PY4)."""
 
-    async def test_scheduler_hang_trigger_collects_real_traces(
+    async def test_orchestrator_hang_trigger_collects_real_traces(
         self, local_ray: None,
     ) -> None:
-        from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+        from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
         from miles.utils.ft.models.fault import ActionType, TriggerType
 
         worker_a = _BusyWorker.remote()
@@ -183,13 +183,13 @@ class TestSchedulerHangTraceFullChain:
         def pids_provider(node_id: str) -> dict[int, int]:
             return node_pids.get(node_id, {})
 
-        scheduler = DiagnosticScheduler(
+        orchestrator = DiagnosticOrchestrator(
             agents={},
             pipeline=[],
             rank_pids_provider=pids_provider,
         )
 
-        decision = await scheduler.run_diagnostic_pipeline(
+        decision = await orchestrator.run_diagnostic_pipeline(
             trigger_reason=TriggerType.HANG,
         )
 
