@@ -18,7 +18,16 @@ from miles.utils.ft.models.fault import NodeFault
 
 logger = logging.getLogger(__name__)
 
-CRITICAL_XID_CODES: frozenset[int] = frozenset({48, 62, 64, 79})
+CRITICAL_XID_CODES: frozenset[int] = frozenset({
+    # Double Bit ECC error — uncorrectable memory error, GPU reset required
+    48,
+    # Internal micro-controller halt (PMU_HALT_ERROR), GPU reset required
+    62,
+    # ECC page retirement / row remapping recording failure, potential data corruption
+    64,
+    # GPU has fallen off the bus — PCIe link lost, reboot/replace required
+    79,
+})
 DISK_AVAILABLE_THRESHOLD_BYTES: float = 1e9  # 1 GB
 
 
