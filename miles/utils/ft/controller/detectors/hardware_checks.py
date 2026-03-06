@@ -12,10 +12,7 @@ from datetime import timedelta
 
 import polars as pl
 
-from miles.utils.ft.controller.detectors.gpu.checks import (
-    CRITICAL_XID_CODES,
-    check_gpu_faults,
-)
+from miles.utils.ft.controller.detectors.gpu.checks import check_gpu_faults
 from miles.utils.ft.models.fault import NodeFault
 from miles.utils.ft.models.metric_names import NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
@@ -27,11 +24,10 @@ DISK_AVAILABLE_THRESHOLD_BYTES: float = 1e9  # 1 GB
 
 def check_all_hardware_faults(
     metric_store: MetricQueryProtocol,
-    critical_xid_codes: frozenset[int] = CRITICAL_XID_CODES,
     disk_available_threshold_bytes: float = DISK_AVAILABLE_THRESHOLD_BYTES,
 ) -> list[NodeFault]:
     return [
-        *check_gpu_faults(metric_store, critical_xid_codes=critical_xid_codes),
+        *check_gpu_faults(metric_store),
         *_check_disk_fault(metric_store, disk_available_threshold_bytes=disk_available_threshold_bytes),
         *_check_majority_nic_down(metric_store),
     ]
