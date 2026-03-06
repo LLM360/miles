@@ -55,12 +55,12 @@ class TestRunLoopSurviveTickFailure:
         original_tick_inner = harness.controller._tick_inner
         call_count = 0
 
-        async def _exploding_tick_inner() -> None:
+        async def _exploding_tick_inner(*args: object) -> None:
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
                 raise RuntimeError("transient failure")
-            await original_tick_inner()
+            await original_tick_inner(*args)
 
         harness.controller._tick_inner = _exploding_tick_inner  # type: ignore[assignment]
 
