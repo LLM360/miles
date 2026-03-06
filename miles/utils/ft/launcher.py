@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import shlex
 from typing import Annotated
+from uuid import uuid4
 
+import ray
 import typer
 
-from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.platform.controller_factory import (
-    FtControllerConfig,
-    build_ft_controller,
-)
+from miles.utils.ft.platform.controller_actor import FtControllerActor
+from miles.utils.ft.platform.controller_factory import FtControllerConfig
+from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 logger = logging.getLogger(__name__)
 
@@ -54,14 +53,16 @@ def main(
 ) -> None:
     """FT Controller entry point.
 
-    Builds an FtController, submits the training command (passed after --)
-    as a Ray job, and runs the controller loop inline.
+    Creates an FtController as a named Ray Actor, submits the training
+    command (passed after --) as a Ray job, and blocks until the
+    controller loop finishes.
 
     Usage: python -m miles.utils.ft.launcher [OPTIONS] -- COMMAND...
     """
     entrypoint = shlex.join(ctx.args)
     runtime_env = json.loads(runtime_env_json) if runtime_env_json else {}
 
+    ft_id = ft_id or uuid4().hex[:8]
     config = FtControllerConfig(
         ft_id=ft_id,
         k8s_label_suffix=k8s_label_suffix,
@@ -75,20 +76,18 @@ def main(
         tick_interval=tick_interval,
     )
 
-    controller = build_ft_controller(config=config)
+    actor_name = ft_controller_actor_name(ft_id)
     logger.info(
-        "launcher_started platform=%s backend=%s exporter_port=%d entrypoint=%s",
+        "launcher_started actor_name=%s platform=%s backend=%s exporter_port=%d entrypoint=%s",
+        actor_name,
         config.platform,
         config.metric_store_backend,
         config.controller_exporter_port,
         entrypoint,
     )
-    asyncio.run(_submit_and_run(controller))
 
-
-async def _submit_and_run(controller: FtController) -> None:
-    await controller.submit_initial_training()
-    await controller.run()
+    actor = FtControllerActor.options(name=actor_name).remote(config=config)
+    ray.get(actor.submit_and_run.remote())
 
 
 if __name__ == "__main__":

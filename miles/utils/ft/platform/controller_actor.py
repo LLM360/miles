@@ -11,7 +11,7 @@ from miles.utils.ft.platform.controller_factory import (
 class _FtControllerActorCls:
     """Thin wrapper around FtController for use as a Ray Actor.
 
-    Created as a Detached Named Async Actor so that FtMegatronAgent
+    Created as a Named Async Actor so that FtMegatronAgent
     can find it via ``ray.get_actor(ft_controller_actor_name(ft_id))``.
     FtController remains a plain Python class for testability.
 
@@ -23,6 +23,10 @@ class _FtControllerActorCls:
         self._ctrl = build_ft_controller(config=config, **kwargs)
 
     async def run(self) -> None:
+        await self._ctrl.run()
+
+    async def submit_and_run(self) -> None:
+        await self._ctrl.submit_initial_training()
         await self._ctrl.run()
 
     async def shutdown(self) -> None:
