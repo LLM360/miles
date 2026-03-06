@@ -20,10 +20,13 @@ from dataclasses import dataclass, field
 import pytest
 import ray
 
+from ray.job_submission import JobSubmissionClient
+
 from miles.utils.external_utils.command_utils import get_bool_env_var
 from miles.utils.ft.fault_injectors.fault_injector import deploy_fault_injector
 from miles.utils.ft.models import ControllerMode, ControllerStatus, RecoveryPhase
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
+from miles.utils.ft.platform.ray_training_job import stop_all_active_jobs
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 logger = logging.getLogger(__name__)
@@ -86,7 +89,7 @@ def ray_cluster(ray_address: str) -> Generator[None, None, None]:
 
 
 async def _cleanup_environment() -> None:
-    """Shut down any leftover FtController and uncordon K8s nodes."""
+    """Shut down any leftover FtController, stop all Ray jobs, and uncordon K8s nodes."""
     try:
         old_handle = ray.get_actor(ft_controller_actor_name(""))
         ray.get(old_handle.shutdown.remote(), timeout=60)
@@ -95,6 +98,14 @@ async def _cleanup_environment() -> None:
         pass
     except Exception:
         logger.warning("cleanup_shutdown_existing_controller_failed", exc_info=True)
+
+    ray_address = os.environ.get("RAY_ADDRESS", "").strip()
+    if ray_address:
+        try:
+            client = JobSubmissionClient(address=ray_address)
+            await stop_all_active_jobs(client)
+        except Exception:
+            logger.warning("cleanup_stop_all_jobs_failed", exc_info=True)
 
     node_mgr = K8sNodeManager()
     try:

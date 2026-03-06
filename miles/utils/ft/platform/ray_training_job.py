@@ -61,6 +61,61 @@ def _parse_ray_status(raw_status: Any) -> str:
     return str(raw_status).rsplit(".", maxsplit=1)[-1]
 
 
+async def _stop_job(
+    client: JobSubmissionClient,
+    job_id: str,
+    timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+    poll_interval: float = _DEFAULT_POLL_INTERVAL_SECONDS,
+) -> None:
+    """Stop a single Ray job and poll until it reaches terminal status."""
+    start = time.monotonic()
+    await asyncio.wait_for(
+        asyncio.to_thread(client.stop_job, job_id),
+        timeout=_STOP_JOB_TIMEOUT_SECONDS,
+    )
+    logger.info("stop_job_requested job_id=%s", job_id)
+
+    deadline = start + timeout_seconds
+    while True:
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Job {job_id} did not stop within {timeout_seconds}s")
+
+        raw_status = await asyncio.wait_for(
+            asyncio.to_thread(client.get_job_status, job_id),
+            timeout=_GET_STATUS_TIMEOUT_SECONDS,
+        )
+        if _parse_ray_status(raw_status) in _TERMINAL_STATUSES:
+            elapsed = time.monotonic() - start
+            logger.info(
+                "stop_job_completed job_id=%s elapsed_seconds=%.3f",
+                job_id,
+                elapsed,
+            )
+            return
+
+        await asyncio.sleep(poll_interval)
+
+
+async def stop_all_active_jobs(
+    client: JobSubmissionClient,
+    timeout_seconds: float = 60.0,
+) -> int:
+    """Stop all non-terminal Ray jobs. Returns count of jobs stopped."""
+    all_jobs = await asyncio.to_thread(client.list_jobs)
+    active = [j for j in all_jobs if _parse_ray_status(j.status) not in _TERMINAL_STATUSES]
+    if not active:
+        return 0
+
+    for job in active:
+        try:
+            await _stop_job(client, job.job_id, timeout_seconds=timeout_seconds)
+        except Exception:
+            logger.warning("stop_all_active_jobs_failed job_id=%s", job.job_id, exc_info=True)
+
+    logger.info("stop_all_active_jobs stopped=%d", len(active))
+    return len(active)
+
+
 class RayTrainingJob:
     """Manage training jobs via the Ray Job Submission API.
 
@@ -128,34 +183,12 @@ class RayTrainingJob:
             logger.warning("stop_training called with no active job")
             return
 
-        start = time.monotonic()
-        await asyncio.wait_for(
-            asyncio.to_thread(self._client.stop_job, self._job_id),
-            timeout=_STOP_JOB_TIMEOUT_SECONDS,
+        await _stop_job(
+            client=self._client,
+            job_id=self._job_id,
+            timeout_seconds=timeout_seconds,
+            poll_interval=self._poll_interval,
         )
-        logger.info("stop_training_requested job_id=%s", self._job_id)
-
-        deadline = start + timeout_seconds
-        while True:
-            if time.monotonic() >= deadline:
-                raise TimeoutError(f"Job {self._job_id} did not stop within {timeout_seconds}s")
-
-            raw_status = await asyncio.wait_for(
-                asyncio.to_thread(self._client.get_job_status, self._job_id),
-                timeout=_GET_STATUS_TIMEOUT_SECONDS,
-            )
-            status_str = _parse_ray_status(raw_status)
-            if status_str in _TERMINAL_STATUSES:
-                elapsed = time.monotonic() - start
-                logger.info(
-                    "stop_training_completed job_id=%s final_status=%s elapsed_seconds=%.3f",
-                    self._job_id,
-                    status_str,
-                    elapsed,
-                )
-                return
-
-            await asyncio.sleep(self._poll_interval)
 
     async def get_training_status(self) -> JobStatus:
         if self._job_id is None:

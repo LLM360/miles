@@ -6,7 +6,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from miles.utils.ft.protocols.platform import JobStatus
-from miles.utils.ft.platform.ray_training_job import RayTrainingJob, _parse_ray_status, resolve_to_ray_node_ids
+from miles.utils.ft.platform.ray_training_job import (
+    RayTrainingJob,
+    _parse_ray_status,
+    _stop_job,
+    resolve_to_ray_node_ids,
+    stop_all_active_jobs,
+)
 
 
 def _make_job(
@@ -285,3 +291,113 @@ class TestParseRayStatus:
             def __str__(self) -> str:
                 return "JobSubmissionStatus.SUCCEEDED"
         assert _parse_ray_status(FakeEnum()) == "SUCCEEDED"
+
+
+class TestStopJob:
+    @pytest.mark.anyio
+    async def test_polls_until_terminal(self) -> None:
+        mock_client = MagicMock()
+        mock_client.get_job_status.side_effect = ["RUNNING", "RUNNING", "STOPPED"]
+
+        await _stop_job(client=mock_client, job_id="job-1", timeout_seconds=10, poll_interval=0)
+
+        mock_client.stop_job.assert_called_once_with("job-1")
+        assert mock_client.get_job_status.call_count == 3
+
+    @pytest.mark.anyio
+    async def test_raises_timeout_when_job_stays_active(self) -> None:
+        mock_client = MagicMock()
+        mock_client.get_job_status.return_value = "RUNNING"
+
+        with patch("miles.utils.ft.platform.ray_training_job.time") as mock_time:
+            call_count = 0
+
+            def advancing_monotonic() -> float:
+                nonlocal call_count
+                call_count += 1
+                return float(call_count * 100)
+
+            mock_time.monotonic = advancing_monotonic
+
+            with pytest.raises(TimeoutError, match="did not stop within"):
+                await _stop_job(client=mock_client, job_id="job-1", timeout_seconds=5, poll_interval=0)
+
+    @pytest.mark.anyio
+    async def test_accepts_failed_as_terminal(self) -> None:
+        mock_client = MagicMock()
+        mock_client.get_job_status.return_value = "FAILED"
+
+        await _stop_job(client=mock_client, job_id="job-1", timeout_seconds=10, poll_interval=0)
+
+        mock_client.stop_job.assert_called_once_with("job-1")
+
+    @pytest.mark.anyio
+    async def test_accepts_succeeded_as_terminal(self) -> None:
+        mock_client = MagicMock()
+        mock_client.get_job_status.return_value = "SUCCEEDED"
+
+        await _stop_job(client=mock_client, job_id="job-1", timeout_seconds=10, poll_interval=0)
+
+        mock_client.stop_job.assert_called_once_with("job-1")
+
+
+class _FakeJobDetails:
+    """Minimal stand-in for ray.job_submission.JobDetails."""
+
+    def __init__(self, job_id: str, status: str) -> None:
+        self.job_id = job_id
+        self.status = status
+
+
+class TestStopAllActiveJobs:
+    @pytest.mark.anyio
+    async def test_stops_all_active_jobs(self) -> None:
+        mock_client = MagicMock()
+        mock_client.list_jobs.return_value = [
+            _FakeJobDetails("job-a", "RUNNING"),
+            _FakeJobDetails("job-b", "PENDING"),
+            _FakeJobDetails("job-c", "STOPPED"),
+        ]
+        mock_client.get_job_status.return_value = "STOPPED"
+
+        count = await stop_all_active_jobs(client=mock_client, timeout_seconds=10)
+
+        assert count == 2
+        stopped_ids = [call.args[0] for call in mock_client.stop_job.call_args_list]
+        assert "job-a" in stopped_ids
+        assert "job-b" in stopped_ids
+        assert "job-c" not in stopped_ids
+
+    @pytest.mark.anyio
+    async def test_returns_zero_when_no_active_jobs(self) -> None:
+        mock_client = MagicMock()
+        mock_client.list_jobs.return_value = [
+            _FakeJobDetails("job-x", "STOPPED"),
+            _FakeJobDetails("job-y", "FAILED"),
+        ]
+
+        count = await stop_all_active_jobs(client=mock_client, timeout_seconds=10)
+
+        assert count == 0
+        mock_client.stop_job.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_continues_on_individual_stop_failure(self) -> None:
+        """If stopping one job fails, other jobs should still be attempted."""
+        mock_client = MagicMock()
+        mock_client.list_jobs.return_value = [
+            _FakeJobDetails("job-ok", "RUNNING"),
+            _FakeJobDetails("job-fail", "RUNNING"),
+        ]
+
+        def side_effect_stop(job_id: str) -> None:
+            if job_id == "job-fail":
+                raise RuntimeError("connection lost")
+
+        mock_client.stop_job.side_effect = side_effect_stop
+        mock_client.get_job_status.return_value = "STOPPED"
+
+        count = await stop_all_active_jobs(client=mock_client, timeout_seconds=10)
+
+        assert count == 2
+        assert mock_client.stop_job.call_count == 2
