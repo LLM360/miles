@@ -201,8 +201,10 @@ class TestExporterModeGauge:
             controller_exporter=exporter,
         )
 
-        await harness.controller._tick()
         assert get_sample_value(registry, mn.CONTROLLER_MODE) == 0.0
+
+        await harness.controller._tick()
+        assert get_sample_value(registry, mn.CONTROLLER_MODE) == 1.0
 
         await harness.controller._tick()
         assert get_sample_value(registry, mn.CONTROLLER_MODE) == 1.0

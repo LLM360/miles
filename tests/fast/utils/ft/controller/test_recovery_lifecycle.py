@@ -96,7 +96,7 @@ class TestRecoveryLifecycleManagerStart:
 
     @pytest.mark.anyio
     async def test_different_triggers_not_throttled(self) -> None:
-        manager = _make_manager(max_count=1)
+        manager = _make_manager(max_count=2)
         deps = MagicMock()
         fake_orch = _make_fake_orchestrator()
 

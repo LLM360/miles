@@ -17,13 +17,16 @@ runner = CliRunner()
 
 @contextmanager
 def _patch_build_and_run() -> Generator[tuple[MagicMock, MagicMock], None, None]:
+    mock_actor_cls = MagicMock()
+    mock_actor_instance = MagicMock()
+    mock_actor_cls.options.return_value.remote.return_value = mock_actor_instance
+    mock_actor_instance.submit_and_run.remote.return_value = MagicMock()
+
     with (
-        patch("miles.utils.ft.launcher.build_ft_controller") as mock_build,
-        patch("miles.utils.ft.launcher.asyncio.run") as mock_asyncio_run,
-        patch("miles.utils.ft.controller.metrics.exporter.ControllerExporter.start"),
+        patch("miles.utils.ft.launcher.FtControllerActor", mock_actor_cls),
+        patch("miles.utils.ft.launcher.ray") as mock_ray,
     ):
-        mock_build.return_value = MagicMock()
-        yield mock_build, mock_asyncio_run
+        yield mock_actor_cls, mock_ray
 
 
 # ---------------------------------------------------------------------------
@@ -82,27 +85,27 @@ class TestBuildNotifier:
 
 class TestLauncherSubmitAndRun:
     def test_inline_mode_calls_submit_and_run(self) -> None:
-        with _patch_build_and_run() as (_, mock_asyncio_run):
+        with _patch_build_and_run() as (mock_actor_cls, mock_ray):
             result = runner.invoke(app, ["--platform", "stub", "--", "python3", "train.py"])
 
         assert result.exit_code == 0, result.output
-        mock_asyncio_run.assert_called_once()
+        mock_ray.get.assert_called_once()
 
     def test_entrypoint_passed_to_config(self) -> None:
-        with _patch_build_and_run() as (mock_build, _):
+        with _patch_build_and_run() as (mock_actor_cls, _):
             result = runner.invoke(app, [
                 "--platform", "stub",
                 "--", "python3", "train.py", "--lr", "0.001",
             ])
 
         assert result.exit_code == 0, result.output
-        config = mock_build.call_args.kwargs["config"]
+        config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
         assert "python3" in config.entrypoint
         assert "train.py" in config.entrypoint
         assert "--lr" in config.entrypoint
 
     def test_ft_id_and_label_suffix_passed_to_config(self) -> None:
-        with _patch_build_and_run() as (mock_build, _):
+        with _patch_build_and_run() as (mock_actor_cls, _):
             result = runner.invoke(app, [
                 "--platform", "stub",
                 "--ft-id", "myft",
@@ -111,13 +114,13 @@ class TestLauncherSubmitAndRun:
             ])
 
         assert result.exit_code == 0, result.output
-        config = mock_build.call_args.kwargs["config"]
+        config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
         assert config.ft_id == "myft"
         assert config.k8s_label_suffix == "sfx"
 
     def test_runtime_env_json_parsed_to_config(self) -> None:
         runtime_env = {"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}
-        with _patch_build_and_run() as (mock_build, _):
+        with _patch_build_and_run() as (mock_actor_cls, _):
             result = runner.invoke(app, [
                 "--platform", "stub",
                 "--runtime-env-json", '{"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}',
@@ -125,7 +128,7 @@ class TestLauncherSubmitAndRun:
             ])
 
         assert result.exit_code == 0, result.output
-        config = mock_build.call_args.kwargs["config"]
+        config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
         assert config.runtime_env == runtime_env
 
 
@@ -139,29 +142,22 @@ class TestLauncherInvalidInput:
         assert result.exit_code != 0
 
     def test_empty_entrypoint_produces_empty_string(self) -> None:
-        with _patch_build_and_run() as (mock_build, _):
+        with _patch_build_and_run() as (mock_actor_cls, _):
             result = runner.invoke(app, ["--platform", "stub"])
 
         assert result.exit_code == 0, result.output
-        config = mock_build.call_args.kwargs["config"]
+        config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
         assert config.entrypoint == ""
 
 
 class TestLauncherWiring:
-    def test_main_uses_build_detector_chain(self) -> None:
-        """Verify launcher wires build_detector_chain() into FtController."""
-        captured_kwargs: dict = {}
-
-        def fake_controller_init(self: object, **kwargs: object) -> None:
-            captured_kwargs.update(kwargs)
-
-        with patch("miles.utils.ft.launcher.FtController.__init__", fake_controller_init), \
-             patch("miles.utils.ft.launcher.FtController.submit_initial_training"), \
-             patch("miles.utils.ft.launcher.FtController.run"), \
-             patch("miles.utils.ft.controller.metrics.exporter.ControllerExporter.start"), \
-             patch("miles.utils.ft.launcher.asyncio.run"):
-            result = runner.invoke(app, ["--platform", "stub"])
+    def test_main_creates_actor_with_config(self) -> None:
+        """Verify launcher creates FtControllerActor with a valid config."""
+        with _patch_build_and_run() as (mock_actor_cls, _):
+            result = runner.invoke(app, ["--platform", "stub", "--", "python3", "train.py"])
 
         assert result.exit_code == 0, result.output
-        assert "detectors" in captured_kwargs
-        assert len(captured_kwargs["detectors"]) > 0
+        mock_actor_cls.options.assert_called_once()
+        config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
+        assert config.platform == "stub"
+        assert "python3" in config.entrypoint

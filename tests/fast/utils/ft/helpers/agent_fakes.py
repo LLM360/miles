@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from miles.utils.ft.agents._support.collectors.base import BaseCollector
+from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models import DiagnosticResult, MetricSample
 
 
