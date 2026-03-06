@@ -1,7 +1,7 @@
 import pytest
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.models import ActionType, Decision
+from miles.utils.ft.models.fault import ActionType, Decision
 
 
 class TestBaseFaultDetector:

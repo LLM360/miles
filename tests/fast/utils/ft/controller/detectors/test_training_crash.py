@@ -8,7 +8,7 @@ from tests.fast.utils.ft.helpers import (
 )
 
 from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDetector
-from miles.utils.ft.models import ActionType
+from miles.utils.ft.models.fault import ActionType
 from miles.utils.ft.protocols.platform import JobStatus
 
 

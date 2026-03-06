@@ -15,7 +15,8 @@ from miles.utils.ft.controller.detectors.hang import HangDetector
 from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector
 from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
 from miles.utils.ft.models.metric_names import NODE_NETWORK_UP, TRAINING_ITERATION
-from miles.utils.ft.models import ActionType, GaugeSample
+from miles.utils.ft.models.fault import ActionType
+from miles.utils.ft.models.metrics import GaugeSample
 from miles.utils.ft.protocols.platform import JobStatus
 
 _RANK_PLACEMENT: dict[int, str] = {0: "node-0", 1: "node-1"}

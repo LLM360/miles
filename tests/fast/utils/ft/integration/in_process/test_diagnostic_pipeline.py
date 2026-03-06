@@ -10,7 +10,7 @@ import pytest
 
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.recovery_orchestrator.orchestrator import RecoveryOrchestrator
-from miles.utils.ft.models import RecoveryPhase
+from miles.utils.ft.models.recovery import RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     ControllerTestHarness,

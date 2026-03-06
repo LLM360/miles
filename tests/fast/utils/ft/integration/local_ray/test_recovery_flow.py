@@ -8,13 +8,8 @@ import pytest
 import ray
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
-from miles.utils.ft.models import (
-    ActionType,
-    ControllerMode,
-    Decision,
-    RecoveryPhase,
-    TriggerType,
-)
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name

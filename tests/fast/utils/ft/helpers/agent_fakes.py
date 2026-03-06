@@ -6,7 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models import DiagnosticResult, MetricSample
+from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.metrics import MetricSample
 
 
 # ---------------------------------------------------------------------------

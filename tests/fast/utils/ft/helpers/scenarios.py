@@ -13,7 +13,7 @@ import time
 
 import ray
 
-from miles.utils.ft.models import ControllerMode, ControllerStatus, RecoveryPhase
+from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus, RecoveryPhase
 
 from tests.fast.utils.ft.helpers.fault_injection import FaultInjectionProtocol
 

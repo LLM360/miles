@@ -12,7 +12,7 @@ from prometheus_client import Gauge
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDetector
-from miles.utils.ft.models import ControllerMode
+from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.metric_names import TRAINING_ITERATION
 from miles.utils.ft.platform.controller_actor import FtControllerActor

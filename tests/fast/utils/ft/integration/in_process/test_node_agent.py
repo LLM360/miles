@@ -8,7 +8,7 @@ import pytest
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models import GaugeSample
+from miles.utils.ft.models.metrics import GaugeSample
 from tests.fast.utils.ft.conftest import TestCollector
 
 

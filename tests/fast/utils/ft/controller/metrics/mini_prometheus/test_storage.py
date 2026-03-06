@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models import GaugeSample
+from miles.utils.ft.models.metrics import GaugeSample
 from tests.fast.utils.ft.helpers.metric_injectors import make_fake_metric_store
 
 

@@ -2,7 +2,7 @@ import pytest
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.stub import StubCollector
-from miles.utils.ft.models import CollectorOutput
+from miles.utils.ft.models.metrics import CollectorOutput
 
 
 class TestStubCollector:

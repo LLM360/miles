@@ -8,7 +8,8 @@ import pytest
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.stub import StubCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.models import CollectorOutput, GaugeSample, UnknownDiagnosticError
+from miles.utils.ft.models.diagnostics import UnknownDiagnosticError
+from miles.utils.ft.models.metrics import CollectorOutput, GaugeSample
 from tests.fast.utils.ft.conftest import (
     SlowDiagnostic,
     StubDiagnostic,

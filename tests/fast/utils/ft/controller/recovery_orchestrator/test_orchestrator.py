@@ -10,12 +10,8 @@ from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb as MiniWandbC
 from miles.utils.ft.controller.recovery_orchestrator.context import RecoveryContext
 from miles.utils.ft.controller.recovery_orchestrator.orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models.metric_names import CONTROLLER_RECOVERY_PHASE
-from miles.utils.ft.models import (
-    ActionType,
-    Decision,
-    RECOVERY_PHASE_TO_INT,
-    RecoveryPhase,
-)
+from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.models.recovery import RECOVERY_PHASE_TO_INT, RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
     FakeDiagnosticOrchestrator,

@@ -1,17 +1,10 @@
 import pytest
 from pydantic import ValidationError
 
-from miles.utils.ft.models import (
-    ActionType,
-    CollectorOutput,
-    CounterSample,
-    Decision,
-    DiagnosticResult,
-    FtBaseModel,
-    GaugeSample,
-    NodeFault,
-    TriggerType,
-)
+from miles.utils.ft.models.base import FtBaseModel
+from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.fault import ActionType, Decision, NodeFault, TriggerType
+from miles.utils.ft.models.metrics import CollectorOutput, CounterSample, GaugeSample
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 

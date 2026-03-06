@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 import ray
 
-from miles.utils.ft.models import ControllerStatus
+from miles.utils.ft.models.recovery import ControllerStatus
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name

@@ -24,7 +24,7 @@ from ray.job_submission import JobSubmissionClient
 
 from miles.utils.external_utils.command_utils import get_bool_env_var
 from miles.utils.ft.fault_injectors.fault_injector import deploy_fault_injector
-from miles.utils.ft.models import ControllerMode, ControllerStatus
+from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.platform.ray_training_job import stop_all_active_jobs
 from miles.utils.ft.utils.polling import poll_until

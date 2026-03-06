@@ -12,7 +12,7 @@ import time
 
 import pytest
 import ray
-from miles.utils.ft.models import ControllerMode, RecoveryPhase
+from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
 from tests.e2e.ft.conftest import (
     E2eFaultInjector,
     FaultInjectorFactory,

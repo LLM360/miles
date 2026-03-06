@@ -23,7 +23,7 @@ import time
 
 import pytest
 import ray
-from miles.utils.ft.models import ControllerMode
+from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,

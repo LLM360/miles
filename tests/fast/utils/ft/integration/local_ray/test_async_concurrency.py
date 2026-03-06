@@ -6,7 +6,7 @@ import asyncio
 import pytest
 import ray
 
-from miles.utils.ft.models import ControllerMode
+from miles.utils.ft.models.recovery import ControllerMode
 
 from tests.fast.utils.ft.integration.local_ray.conftest import get_status
 

@@ -12,7 +12,7 @@ from tests.fast.utils.ft.helpers import (
 )
 
 from miles.utils.ft.controller.detectors.hardware import HighConfidenceHardwareDetector
-from miles.utils.ft.models import ActionType
+from miles.utils.ft.models.fault import ActionType
 
 
 class TestHighConfidenceHardwareDetector:

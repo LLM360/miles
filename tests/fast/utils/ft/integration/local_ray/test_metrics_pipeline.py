@@ -12,7 +12,7 @@ from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.nan_loss import NanLossDetector
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models import ControllerMode
+from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.metric_names import TRAINING_ITERATION

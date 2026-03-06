@@ -2,7 +2,7 @@
 
 import pytest
 
-from miles.utils.ft.models import ActionType
+from miles.utils.ft.models.fault import ActionType
 from tests.fast.utils.ft.conftest import AlwaysMarkBadDetector, make_test_controller
 
 

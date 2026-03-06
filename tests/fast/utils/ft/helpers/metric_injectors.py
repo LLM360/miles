@@ -16,7 +16,7 @@ from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.models import GaugeSample
+from miles.utils.ft.models.metrics import GaugeSample
 from miles.utils.ft.protocols.platform import JobStatus
 
 

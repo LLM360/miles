@@ -9,11 +9,8 @@ from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.controller.diagnostics.nccl.inter_machine import (
     InterMachineCommDiagnostic,
 )
-from miles.utils.ft.models import (
-    ActionType,
-    Decision,
-    DiagnosticResult,
-)
+from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.fault import ActionType, Decision
 
 
 # ---------------------------------------------------------------------------

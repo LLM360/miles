@@ -5,7 +5,7 @@ from collections.abc import Iterator
 import pytest
 
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
-from miles.utils.ft.models import CounterSample, GaugeSample
+from miles.utils.ft.models.metrics import CounterSample, GaugeSample
 from tests.fast.utils.ft.helpers.metric_injectors import get_sample_value as _scrape_value
 
 

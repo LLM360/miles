@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 import ray
 
-from miles.utils.ft.models import ControllerMode, ControllerStatus
+from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
