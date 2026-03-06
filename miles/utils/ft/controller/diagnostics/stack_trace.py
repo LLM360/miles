@@ -8,6 +8,7 @@ from collections.abc import Callable
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
+from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,7 @@ class StackTraceDiagnostic(BaseDiagnostic):
         self, node_id: str, timeout_seconds: int = 30,
     ) -> DiagnosticResult:
         if not self._pids:
-            return DiagnosticResult.fail_result(
-                diagnostic_type=self.diagnostic_type, node_id=node_id,
-                details="no PIDs provided",
-            )
+            return self._fail(node_id, "no PIDs provided")
 
         async def _collect_one(pid: int) -> tuple[str, bool]:
             try:
@@ -61,20 +59,11 @@ class StackTraceDiagnostic(BaseDiagnostic):
         )
 
     async def _dump_pid(self, pid: int, timeout_seconds: int) -> str:
-        proc = await asyncio.create_subprocess_exec(
-            "py-spy", "dump", "--pid", str(pid),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        stdout, stderr, returncode = await run_subprocess_with_timeout(
+            cmd=["py-spy", "dump", "--pid", str(pid)],
+            timeout_seconds=timeout_seconds,
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            raise
-        if proc.returncode != 0:
+        if returncode != 0:
             raise RuntimeError(f"py-spy failed: {stderr.decode()}")
         return stdout.decode()
 

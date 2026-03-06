@@ -7,6 +7,7 @@ from functools import partial
 from typing import Callable
 
 from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -81,35 +82,20 @@ async def run_nccl_test(
     )
 
     try:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            **({"env": env} if env is not None else {}),
+        stdout_bytes, stderr_bytes, returncode = await run_subprocess_with_timeout(
+            cmd=cmd, timeout_seconds=timeout_seconds, env=env,
         )
     except OSError:
         logger.warning(
             "%s_exec_failed node=%s binary=%s",
-            log_prefix,
-            node_id,
-            cmd[0],
+            log_prefix, node_id, cmd[0],
             exc_info=True,
         )
         return fail(details=f"failed to execute {cmd[0]}")
-
-    try:
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            process.communicate(),
-            timeout=timeout_seconds,
-        )
     except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
         logger.warning(
             "%s_timeout node=%s timeout=%s",
-            log_prefix,
-            node_id,
-            timeout_seconds,
+            log_prefix, node_id, timeout_seconds,
             exc_info=True,
         )
         return fail(details=f"timed out after {timeout_seconds}s")
@@ -120,7 +106,7 @@ async def run_nccl_test(
     return _interpret_nccl_output(
         stdout=stdout,
         stderr=stderr,
-        returncode=process.returncode,
+        returncode=returncode,
         node_id=node_id,
         diagnostic_type=diagnostic_type,
         expected_bandwidth_gbps=expected_bandwidth_gbps,

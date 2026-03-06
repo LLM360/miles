@@ -12,6 +12,7 @@ import sys
 
 from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -49,35 +50,23 @@ class GpuDiagnostic(BaseDiagnostic):
     async def _run_check_subprocess(
         self, node_id: str, timeout_seconds: int,
     ) -> tuple[bytes, bytes, int] | DiagnosticResult:
+        cmd = [
+            sys.executable, "-m",
+            "miles.utils.ft.controller.diagnostics.gpu_check_script",
+        ]
         try:
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m",
-                "miles.utils.ft.controller.diagnostics.gpu_check_script",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                process.communicate(),
-                timeout=timeout_seconds,
+            return await run_subprocess_with_timeout(
+                cmd=cmd, timeout_seconds=timeout_seconds,
             )
         except asyncio.TimeoutError:
             logger.warning(
                 "gpu_check_timeout node_id=%s timeout=%d",
                 node_id, timeout_seconds,
             )
-            try:
-                process.kill()
-                await process.wait()
-            except Exception:
-                logger.warning("gpu_check_kill_failed node_id=%s", node_id, exc_info=True)
             return self._fail(node_id, "gpu check timed out")
-        except Exception:
+        except OSError:
             logger.warning("gpu_check_launch_failed node_id=%s", node_id, exc_info=True)
             return self._fail(node_id, "gpu check process failed to launch")
-
-        assert process.returncode is not None
-        return stdout_bytes, stderr_bytes, process.returncode
 
     def _parse_gpu_results(
         self, stdout_bytes: bytes, node_id: str,
