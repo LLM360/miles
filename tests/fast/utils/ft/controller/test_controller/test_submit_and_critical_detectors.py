@@ -9,8 +9,8 @@ from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.models._recovery import RecoveryPhase
 from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
+    AlwaysEnterRecoveryDetector,
     CriticalFixedDecisionDetector,
-    FixedDecisionDetector,
     get_sample_value,
     make_test_controller,
     make_test_exporter,
@@ -55,11 +55,7 @@ class _CrashingCriticalDetector(BaseFaultDetector):
 class TestCriticalDetectorExceptionIsolation:
     @pytest.mark.anyio
     async def test_crashing_critical_detector_does_not_break_recovery(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
         crashing_critical = _CrashingCriticalDetector()
         harness = make_test_controller(detectors=[enter_recovery, crashing_critical])
 
@@ -73,11 +69,7 @@ class TestCriticalDetectorExceptionIsolation:
     @pytest.mark.anyio
     async def test_critical_detector_non_mark_bad_action_is_ignored(self) -> None:
         """A critical detector returning NOTIFY_HUMAN should be silently ignored."""
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
         critical_notify = CriticalFixedDecisionDetector(decision=Decision(
             action=ActionType.NOTIFY_HUMAN,
             reason="should be ignored during recovery",
@@ -95,11 +87,7 @@ class TestCriticalDetectorExceptionIsolation:
 
     @pytest.mark.anyio
     async def test_critical_detector_empty_bad_nodes_is_ignored(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
         critical_empty = CriticalFixedDecisionDetector(decision=Decision(
             action=ActionType.MARK_BAD_AND_RESTART,
             bad_node_ids=[],
@@ -125,11 +113,7 @@ class TestRecoveryCompletionMetrics:
     @pytest.mark.anyio
     async def test_observe_recovery_duration_called_on_completion(self) -> None:
         registry, exporter = make_test_exporter()
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        detector = AlwaysEnterRecoveryDetector(reason="test")
         harness = make_test_controller(
             detectors=[detector],
             controller_exporter=exporter,
@@ -152,11 +136,7 @@ class TestRecoveryCompletionMetrics:
 
     @pytest.mark.anyio
     async def test_phase_history_preserved_after_recovery_complete(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        detector = AlwaysEnterRecoveryDetector(reason="test")
         harness = make_test_controller(
             detectors=[detector],
             status_sequence=[JobStatus.RUNNING],

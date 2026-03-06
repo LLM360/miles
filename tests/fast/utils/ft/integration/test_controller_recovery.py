@@ -8,9 +8,10 @@ from __future__ import annotations
 import pytest
 
 import miles.utils.ft.metric_names as mn
-from miles.utils.ft.models import ActionType, Decision, RecoveryPhase
+from miles.utils.ft.models import ActionType, Decision, RecoveryPhase, TriggerType
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
+    AlwaysEnterRecoveryDetector,
     AlwaysNoneDetector,
     FixedDecisionDetector,
     get_sample_value,
@@ -54,11 +55,7 @@ class TestGpuLostDirectEviction:
 class TestCrashReattemptSuccess:
     @pytest.mark.anyio
     async def test_crash_reattempt_success(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="training process exited",
-        ))
+        enter_recovery = AlwaysEnterRecoveryDetector(reason="training process exited")
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.RUNNING],
@@ -92,11 +89,7 @@ class TestCrashReattemptSuccess:
 class TestCrashReattemptFailDiagnoseNotify:
     @pytest.mark.anyio
     async def test_crash_diagnose_notify(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="training process exited",
-        ))
+        enter_recovery = AlwaysEnterRecoveryDetector(reason="training process exited")
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.FAILED],
@@ -129,11 +122,10 @@ class TestCrashReattemptFailDiagnoseNotify:
 class TestGlobalTimeout:
     @pytest.mark.anyio
     async def test_global_timeout_triggers_notify(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="hang",
+        enter_recovery = AlwaysEnterRecoveryDetector(
+            trigger=TriggerType.HANG,
             reason="hang detected",
-        ))
+        )
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.PENDING] * 100,
@@ -165,11 +157,7 @@ class TestGlobalTimeout:
 class TestRecoveryCompleteBackToMonitoring:
     @pytest.mark.anyio
     async def test_back_to_monitoring_after_recovery(self) -> None:
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="training process exited",
-        ))
+        enter_recovery = AlwaysEnterRecoveryDetector(reason="training process exited")
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.RUNNING],
@@ -210,11 +198,7 @@ class TestExporterModeGauge:
     @pytest.mark.anyio
     async def test_mode_gauge_during_recovery(self) -> None:
         registry, exporter = make_test_exporter()
-        enter_recovery = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
         harness = make_test_controller(
             detectors=[enter_recovery],
             status_sequence=[JobStatus.RUNNING],

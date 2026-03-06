@@ -11,12 +11,12 @@ from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
 from miles.utils.ft.controller.metrics import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_registry import RankRegistry
-from miles.utils.ft.models import ActionType, ControllerMode, Decision, RecoveryPhase
+from miles.utils.ft.models import ControllerMode, RecoveryPhase
 from miles.utils.ft.platform.protocols import JobStatus
 from tests.fast.utils.ft.conftest import (
+    AlwaysEnterRecoveryDetector,
     FakeNodeManager,
     FakeTrainingJob,
-    FixedDecisionDetector,
     get_sample_value,
     make_fake_metric_store,
     make_test_controller,
@@ -104,11 +104,7 @@ class TestGetStatus:
 
     @pytest.mark.asyncio
     async def test_recovery_mode(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        detector = AlwaysEnterRecoveryDetector(reason="test")
         harness = make_test_controller(detectors=[detector])
 
         await harness.controller._tick()
@@ -136,11 +132,7 @@ class TestGetStatus:
 
     @pytest.mark.asyncio
     async def test_recovery_in_progress_true_during_recovery(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        detector = AlwaysEnterRecoveryDetector(reason="test")
         harness = make_test_controller(detectors=[detector])
 
         await harness.controller._tick()
@@ -152,11 +144,7 @@ class TestGetStatus:
     @pytest.mark.asyncio
     async def test_bad_nodes_confirmed_false_in_early_phases(self) -> None:
         """During REATTEMPTING/MONITORING/DIAGNOSING, bad_nodes_confirmed is False."""
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger="crash",
-            reason="test",
-        ))
+        detector = AlwaysEnterRecoveryDetector(reason="test")
         harness = make_test_controller(detectors=[detector])
 
         await harness.controller._tick()

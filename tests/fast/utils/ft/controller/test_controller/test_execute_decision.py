@@ -4,8 +4,9 @@ import logging
 
 import pytest
 
-from miles.utils.ft.models import ActionType, Decision, TriggerType
+from miles.utils.ft.models import ActionType, Decision
 from tests.fast.utils.ft.conftest import (
+    AlwaysEnterRecoveryDetector,
     AlwaysMarkBadDetector,
     AlwaysNoneDetector,
     CrashingDetector,
@@ -165,11 +166,7 @@ class TestExecuteDecision:
 
     @pytest.mark.anyio
     async def test_enter_recovery_does_not_raise(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger=TriggerType.CRASH,
-            reason="test recovery",
-        ))
+        detector = AlwaysEnterRecoveryDetector()
         harness = make_test_controller(detectors=[detector])
         await harness.controller._tick()
         assert harness.controller._tick_count == 1
@@ -219,11 +216,7 @@ class TestExecuteDecision:
 
     @pytest.mark.anyio
     async def test_enter_recovery_does_not_notify(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            trigger=TriggerType.CRASH,
-            reason="test recovery",
-        ))
+        detector = AlwaysEnterRecoveryDetector()
         harness = make_test_controller(detectors=[detector])
         await harness.controller._tick()
 
