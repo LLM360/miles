@@ -23,7 +23,7 @@ from tests.fast.utils.ft.conftest import (
 def _make_decision(
     bad_node_ids: list[str],
     action: ActionType = ActionType.MARK_BAD_AND_RESTART,
-    trigger: TriggerType | None = None,
+    trigger: TriggerType = TriggerType.NONE,
 ) -> Decision:
     return Decision(
         action=action,
