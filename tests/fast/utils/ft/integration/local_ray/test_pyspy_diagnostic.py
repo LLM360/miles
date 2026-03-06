@@ -155,3 +155,45 @@ class TestStackTraceAggregatorWithRealTraces:
         suspects = aggregator.aggregate(traces)
 
         assert suspects == []
+
+
+class TestSchedulerHangTraceFullChain:
+    """DiagnosticScheduler runs stack trace pre-step on hang trigger with real py-spy (PY4)."""
+
+    async def test_scheduler_hang_trigger_collects_real_traces(
+        self, local_ray: None,
+    ) -> None:
+        from miles.utils.ft.controller.diagnostics.scheduler import DiagnosticScheduler
+        from miles.utils.ft.models.fault import ActionType, TriggerType
+
+        worker_a = _BusyWorker.remote()
+        worker_b = _BusyWorker.remote()
+        worker_a.spin.remote()
+        worker_b.spin.remote()
+        await asyncio.sleep(0.5)
+
+        pid_a: int = ray.get(worker_a.get_pid.remote(), timeout=5)
+        pid_b: int = ray.get(worker_b.get_pid.remote(), timeout=5)
+
+        node_pids: dict[str, dict[int, int]] = {
+            "node-a": {0: pid_a},
+            "node-b": {0: pid_b},
+        }
+
+        def pids_provider(node_id: str) -> dict[int, int]:
+            return node_pids.get(node_id, {})
+
+        scheduler = DiagnosticScheduler(
+            agents={},
+            pipeline=[],
+            rank_pids_provider=pids_provider,
+        )
+
+        decision = await scheduler.run_diagnostic_pipeline(
+            trigger_reason=TriggerType.HANG,
+        )
+
+        ray.kill(worker_a, no_restart=True)
+        ray.kill(worker_b, no_restart=True)
+
+        assert decision.action == ActionType.NOTIFY_HUMAN

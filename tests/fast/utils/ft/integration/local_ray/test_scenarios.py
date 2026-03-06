@@ -3,21 +3,20 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from typing import Any
 
 import pytest
 import ray
 
 from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDetector
-from miles.utils.ft.models import ControllerMode, RecoveryPhase
+from miles.utils.ft.models import ControllerMode
 from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 from tests.fast.utils.ft.helpers.fault_injection import LocalRayFaultInjector
 from tests.fast.utils.ft.helpers.scenarios import (
-    assert_phase_path_contains,
     get_status,
     scenario_no_false_positive,
     scenario_transient_crash,
@@ -26,6 +25,7 @@ from tests.fast.utils.ft.helpers.training_simulator import (
     RemoteControlledTrainingJob,
     TrainingStateActor,
 )
+from tests.fast.utils.ft.integration.local_ray.conftest import poll_for_run_id
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -54,8 +54,6 @@ def simulated_env(
     )
 
     controller.submit_and_run.remote()
-
-    from tests.fast.utils.ft.integration.local_ray.conftest import poll_for_run_id
     run_id = poll_for_run_id(controller)
 
     ray.get(controller.register_training_rank.remote(

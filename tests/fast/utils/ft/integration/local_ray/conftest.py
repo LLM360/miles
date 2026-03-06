@@ -100,6 +100,21 @@ def get_status(handle: ray.actor.ActorHandle, timeout: float = 5) -> ControllerS
     return ray.get(handle.get_status.remote(), timeout=timeout)
 
 
+def poll_for_run_id(
+    handle: ray.actor.ActorHandle,
+    timeout: float = 10.0,
+    interval: float = 0.2,
+) -> str:
+    """Poll get_status until active_run_id is set, return it."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = get_status(handle)
+        if status.active_run_id is not None:
+            return status.active_run_id
+        time.sleep(interval)
+    raise TimeoutError("active_run_id not set within timeout")
+
+
 @pytest.fixture
 def running_controller(
     local_ray: None,
@@ -113,10 +128,8 @@ def running_controller(
         config=FtControllerConfig(platform="stub", tick_interval=0.05),
     )
     handle.submit_and_run.remote()
-    time.sleep(0.3)
-    status = ray.get(handle.get_status.remote(), timeout=5)
-    assert status.active_run_id is not None, "StubTrainingJob did not set run_id"
-    yield handle, status.active_run_id
+    run_id = poll_for_run_id(handle)
+    yield handle, run_id
     try:
         ray.get(handle.shutdown.remote(), timeout=10)
     except Exception:

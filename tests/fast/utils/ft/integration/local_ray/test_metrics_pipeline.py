@@ -5,7 +5,7 @@ import time
 
 import pytest
 import ray
-from prometheus_client import CollectorRegistry, Gauge
+from prometheus_client import Gauge
 
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig

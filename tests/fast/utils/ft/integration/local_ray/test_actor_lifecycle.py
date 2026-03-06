@@ -11,6 +11,8 @@ from miles.utils.ft.platform.controller_actor import FtControllerActor
 from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
+from tests.fast.utils.ft.integration.local_ray.conftest import poll_for_run_id
+
 pytestmark = [
     pytest.mark.local_ray,
 ]
@@ -53,21 +55,17 @@ class TestFtIdIsolation:
         try:
             handle_a.submit_and_run.remote()
             handle_b.submit_and_run.remote()
-            time.sleep(0.3)
 
-            status_a = ray.get(handle_a.get_status.remote(), timeout=5)
-            status_b = ray.get(handle_b.get_status.remote(), timeout=5)
-
-            assert status_a.active_run_id is not None
-            assert status_b.active_run_id is not None
-            assert status_a.active_run_id != status_b.active_run_id
+            run_id_a = poll_for_run_id(handle_a)
+            run_id_b = poll_for_run_id(handle_b)
+            assert run_id_a != run_id_b
 
             ray.get(handle_a.register_training_rank.remote(
-                run_id=status_a.active_run_id, rank=0, world_size=1,
+                run_id=run_id_a, rank=0, world_size=1,
                 node_id="n0", exporter_address="http://n0:9090",
             ), timeout=5)
             ray.get(handle_b.register_training_rank.remote(
-                run_id=status_b.active_run_id, rank=0, world_size=1,
+                run_id=run_id_b, rank=0, world_size=1,
                 node_id="n1", exporter_address="http://n1:9090",
             ), timeout=5)
         finally:
