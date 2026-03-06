@@ -408,6 +408,60 @@ class TestStepEvictAndRestart:
         assert node_manager.is_node_bad("node-A")
         assert node_manager.is_node_bad("node-B")
 
+    @pytest.mark.anyio
+    async def test_successful_eviction_sends_warning_notification(self) -> None:
+        ctx = _make_ctx()
+        ctx.bad_node_ids = ["node-bad"]
+        notifier = FakeNotifier()
+
+        result = await step_evict_and_restart(
+            ctx,
+            node_manager=FakeNodeManager(),
+            training_job=FakeTrainingJob(),
+            mini_wandb=MiniWandb(),
+            notifier=notifier,
+        )
+
+        assert result == RecoveryPhase.DONE
+        assert len(notifier.calls) == 1
+        title, _, severity = notifier.calls[0]
+        assert title == "Node Eviction Succeeded"
+        assert severity == "warning"
+
+    @pytest.mark.anyio
+    async def test_eviction_failure_does_not_send_success_notification(self) -> None:
+        ctx = _make_ctx()
+        ctx.bad_node_ids = ["node-bad"]
+        notifier = FakeNotifier()
+
+        result = await step_evict_and_restart(
+            ctx,
+            node_manager=make_failing_node_manager(),
+            training_job=FakeTrainingJob(),
+            mini_wandb=MiniWandb(),
+            notifier=notifier,
+        )
+
+        assert result == RecoveryPhase.NOTIFY
+        assert len(notifier.calls) == 0
+
+    @pytest.mark.anyio
+    async def test_restart_failure_does_not_send_success_notification(self) -> None:
+        ctx = _make_ctx()
+        ctx.bad_node_ids = ["node-bad"]
+        notifier = FakeNotifier()
+
+        result = await step_evict_and_restart(
+            ctx,
+            node_manager=FakeNodeManager(),
+            training_job=make_failing_training_job(fail_submit=True),
+            mini_wandb=MiniWandb(),
+            notifier=notifier,
+        )
+
+        assert result == RecoveryPhase.NOTIFY
+        assert len(notifier.calls) == 0
+
 
 # ===================================================================
 # step_notify

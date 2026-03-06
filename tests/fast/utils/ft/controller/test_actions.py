@@ -77,7 +77,8 @@ class TestMarkBadHappyPath:
         assert node_manager.is_node_bad("node-0")
         assert node_manager.is_node_bad("node-1")
         assert training_job._submitted
-        assert len(notifier.calls) == 0
+        assert len(notifier.calls) == 1
+        assert notifier.calls[0][0] == "Node Eviction Succeeded"
 
     @pytest.mark.anyio
     async def test_empty_bad_nodes_still_restarts(self) -> None:
@@ -124,10 +125,10 @@ class TestMarkBadPartialFailure:
             deps=deps,
         )
 
-        assert len(notifier.calls) == 0
-
         assert training_job._stopped
         assert training_job._submitted
+        assert len(notifier.calls) == 1
+        assert notifier.calls[0][0] == "Node Eviction Succeeded"
 
     @pytest.mark.anyio
     async def test_all_mark_bad_fail_still_restarts(self) -> None:
@@ -152,6 +153,8 @@ class TestMarkBadPartialFailure:
 
         assert all(c[0] != "Mark-Bad Failure" for c in notifier.calls)
         assert training_job._submitted
+        assert len(notifier.calls) == 1
+        assert notifier.calls[0][0] == "Node Eviction Succeeded"
 
 
 class TestRestartFailure:
@@ -174,8 +177,9 @@ class TestRestartFailure:
         )
 
         assert node_manager.is_node_bad("node-0")
-        restart_notifications = [c for c in notifier.calls if c[0] == "Restart Failure"]
-        assert len(restart_notifications) == 1
+        titles = [c[0] for c in notifier.calls]
+        assert "Restart Failure" in titles
+        assert "Node Eviction Succeeded" not in titles
 
     @pytest.mark.anyio
     async def test_double_failure_only_notifies_restart(self) -> None:

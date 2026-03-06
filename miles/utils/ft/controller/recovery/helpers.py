@@ -131,12 +131,13 @@ async def evict_and_notify(
     if not success:
         return False
 
-    await safe_notify(
-        notifier,
-        title="Node Eviction Succeeded",
-        content=f"Evicted nodes {bad_node_ids} reason={reason}",
-        severity="warning",
-    )
+    if bad_node_ids:
+        await safe_notify(
+            notifier,
+            title="Node Eviction Succeeded",
+            content=f"Evicted nodes {bad_node_ids} reason={reason}",
+            severity="warning",
+        )
     return True
 
 
