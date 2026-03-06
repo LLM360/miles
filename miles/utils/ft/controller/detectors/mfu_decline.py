@@ -122,11 +122,6 @@ class MfuDeclineDetector(BaseFaultDetector):
 
         return (now - timed_mfu[0].timestamp).total_seconds() / 60
 
-    def reset_baseline(self) -> None:
-        """Clear the locked baseline so the next evaluate() recomputes it."""
-        self._baseline_locked = False
-        self._locked_baseline = None
-
     def _get_baseline(self, mini_wandb: TrainingMetricStoreProtocol) -> float:
         if self._mfu_baseline > 0:
             return self._mfu_baseline

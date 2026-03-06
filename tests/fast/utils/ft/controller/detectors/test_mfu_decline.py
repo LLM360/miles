@@ -245,28 +245,6 @@ class TestMfuDeclineBaselineLocking:
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason
 
-    def test_reset_baseline_allows_recomputation(self) -> None:
-        wandb_healthy = _make_wandb_with_mfu([0.5] * 50 + [0.45] * 10)
-        detector = MfuDeclineDetector(
-            mfu_baseline=0.0,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-        )
-
-        detector.evaluate(make_detector_context(mini_wandb=wandb_healthy))
-        assert detector._baseline_locked is True
-
-        detector.reset_baseline()
-        assert detector._baseline_locked is False
-        assert detector._locked_baseline is None
-
-        wandb_new = _make_wandb_with_mfu([0.4] * 50 + [0.38] * 10)
-        detector.evaluate(make_detector_context(mini_wandb=wandb_new))
-
-        assert detector._baseline_locked is True
-        assert detector._locked_baseline is not None
-        assert abs(detector._locked_baseline - 0.4) < 1e-6
-
     def test_explicit_baseline_bypasses_locking(self) -> None:
         """When mfu_baseline is explicitly set, locking state is never touched."""
         detector = MfuDeclineDetector(

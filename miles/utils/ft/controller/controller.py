@@ -148,14 +148,6 @@ class FtController:
         logger.info("controller_shutdown_requested")
         self._shutting_down = True
 
-    def reset_test_state(self) -> None:
-        """Reset controller state that leaks across tests.
-
-        Only for use in E2E test fixtures — not part of the production API.
-        """
-        self._recovery_manager.cooldown.reset()
-        self._recovery_manager._last_phase_history = None
-
     def get_status(self) -> ControllerStatus:
         snap = self._recovery_manager.snapshot()
 

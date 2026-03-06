@@ -68,9 +68,6 @@ class _FtControllerActorCls:
     def get_status(self) -> object:
         return self._ctrl.get_status()
 
-    def reset_test_state(self) -> None:
-        self._ctrl.reset_test_state()
-
 
 FtControllerActor = ray.remote(
     num_gpus=0,
