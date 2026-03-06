@@ -1,10 +1,10 @@
-"""NVIDIA XID codes that require GPU reset, node reboot, or hardware replacement.
+"""NVIDIA XID codes that will NOT auto-recover — requires GPU reset, node reboot, or RMA.
 
 Auto-generated from Xid-Catalog.xlsx by converter.py.
 Source: https://docs.nvidia.com/deploy/xid-errors/Xid-Catalog.xlsx
 """
 
-FATAL_XIDS: frozenset[int] = frozenset({
+NON_AUTO_RECOVERABLE_XIDS: frozenset[int] = frozenset({
     1,  # ROBUST_CHANNEL_FIFO_ERROR_FIFO_METHOD, CONTACT_SUPPORT
     2,  # ROBUST_CHANNEL_FIFO_ERROR_SW_METHOD, CONTACT_SUPPORT
     3,  # ROBUST_CHANNEL_FIFO_ERROR_UNK_METHOD, CONTACT_SUPPORT
@@ -54,6 +54,7 @@ FATAL_XIDS: frozenset[int] = frozenset({
     65,  # ROBUST_CHANNEL_NVENC1_ERROR, CONTACT_SUPPORT
     73,  # ROBUST_CHANNEL_NVENC2_ERROR, CONTACT_SUPPORT
     74,  # NVLINK_ERROR, WORKFLOW_NVLINK_ERR
+    78,  # VGPU_START_ERROR, UPDATE_SWFW
     79,  # ROBUST_CHANNEL_GPU_HAS_FALLEN_OFF_THE_BUS, RESTART_BM
     81,  # ROBUST_CHANNEL_VGA_SUBSYSTEM_ERROR, CONTACT_SUPPORT
     87,  # NVTELEMETRY_DRIVER_REPORT, CONTACT_SUPPORT
