@@ -20,7 +20,6 @@ from miles.utils.ft.models._fault import ActionType, Decision
 from miles.utils.ft.models._recovery import (
     ControllerMode,
     ControllerStatus,
-    _BAD_NODES_CONFIRMED_PHASES,
 )
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol
 from miles.utils.ft.protocols.platform import (
@@ -150,31 +149,20 @@ class FtController:
         self._shutting_down = True
 
     def get_status(self) -> ControllerStatus:
-        rm = self._recovery_manager
-
-        if rm.in_progress:
-            mode = ControllerMode.RECOVERY
-            recovery_phase = rm.phase
-            phase_history: list | None = list(rm.orchestrator.phase_history) if rm.orchestrator else None
-            bad_nodes_confirmed = recovery_phase in _BAD_NODES_CONFIRMED_PHASES
-        else:
-            mode = ControllerMode.MONITORING
-            recovery_phase = None
-            phase_history = rm.last_phase_history
-            bad_nodes_confirmed = False
+        snap = self._recovery_manager.snapshot()
 
         iteration_val = self._mini_wandb.latest(metric_name="iteration")
         latest_iteration = int(iteration_val) if iteration_val is not None else None
 
         return ControllerStatus(
-            mode=mode,
-            recovery_phase=recovery_phase,
-            phase_history=phase_history,
+            mode=ControllerMode.RECOVERY if snap.in_progress else ControllerMode.MONITORING,
+            recovery_phase=snap.phase,
+            phase_history=snap.phase_history,
             tick_count=self._tick_count,
             active_run_id=self._rank_registry.active_run_id,
-            bad_nodes=sorted(rm.diagnosing_nodes),
-            recovery_in_progress=rm.in_progress,
-            bad_nodes_confirmed=bad_nodes_confirmed,
+            bad_nodes=snap.diagnosing_nodes,
+            recovery_in_progress=snap.in_progress,
+            bad_nodes_confirmed=snap.bad_nodes_confirmed,
             latest_iteration=latest_iteration,
         )
 

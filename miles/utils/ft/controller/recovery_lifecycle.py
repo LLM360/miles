@@ -8,7 +8,7 @@ from miles.utils.ft.controller.actions import PlatformDeps, handle_enter_recover
 from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
 from miles.utils.ft.controller.recovery_orchestrator import RecoveryOrchestrator
 from miles.utils.ft.models._fault import Decision
-from miles.utils.ft.models._recovery import RecoveryPhase
+from miles.utils.ft.models._recovery import RecoveryPhase, RecoverySnapshot, _BAD_NODES_CONFIRMED_PHASES
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,24 @@ class RecoveryLifecycleManager:
     @property
     def cooldown(self) -> RecoveryCooldown:
         return self._cooldown
+
+    def snapshot(self) -> RecoverySnapshot:
+        if self._orchestrator is not None:
+            phase = self._orchestrator.phase
+            phase_history = list(self._orchestrator.phase_history)
+            bad_nodes_confirmed = phase in _BAD_NODES_CONFIRMED_PHASES
+        else:
+            phase = None
+            phase_history = self._last_phase_history
+            bad_nodes_confirmed = False
+
+        return RecoverySnapshot(
+            in_progress=self.in_progress,
+            phase=phase,
+            phase_history=phase_history,
+            diagnosing_nodes=sorted(self._diagnosing_nodes),
+            bad_nodes_confirmed=bad_nodes_confirmed,
+        )
 
     # ------------------------------------------------------------------
     # Operations

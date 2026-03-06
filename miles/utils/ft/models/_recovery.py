@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum
 
 from miles.utils.ft.models._base import FtBaseModel
@@ -23,6 +24,15 @@ _BAD_NODES_CONFIRMED_PHASES: frozenset[RecoveryPhase] = frozenset({
     RecoveryPhase.NOTIFY,
     RecoveryPhase.DONE,
 })
+
+
+@dataclass(frozen=True)
+class RecoverySnapshot:
+    in_progress: bool
+    phase: RecoveryPhase | None
+    phase_history: list[RecoveryPhase] | None
+    diagnosing_nodes: list[str]
+    bad_nodes_confirmed: bool
 
 
 class ControllerStatus(FtBaseModel):

@@ -13,6 +13,7 @@ from miles.utils.ft.models._recovery import (
     ControllerMode,
     ControllerStatus,
     RecoveryPhase,
+    RecoverySnapshot,
     _BAD_NODES_CONFIRMED_PHASES,
 )
 
@@ -28,6 +29,7 @@ __all__ = [
     "NodeFault",
     "RECOVERY_PHASE_TO_INT",
     "RecoveryPhase",
+    "RecoverySnapshot",
     "TriggerType",
     "UnknownDiagnosticError",
     "_BAD_NODES_CONFIRMED_PHASES",
