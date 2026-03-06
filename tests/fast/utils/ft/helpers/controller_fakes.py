@@ -10,6 +10,7 @@ from miles.utils.ft.controller.detectors.base import BaseFaultDetector, Detector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_registry import RankRegistry
+from miles.utils.ft.controller.recovery_cooldown import RecoveryCooldown
 from miles.utils.ft.models import ActionType, Decision
 from miles.utils.ft.protocols.platform import (
     DiagnosticSchedulerProtocol,
@@ -155,6 +156,7 @@ class ControllerTestHarness(NamedTuple):
     mini_wandb: MiniWandb
     controller_exporter: ControllerExporter
     notifier: FakeNotifier | None
+    rank_registry: RankRegistry
 
 
 def make_test_controller(
@@ -192,6 +194,11 @@ def make_test_controller(
     if controller_exporter is None:
         controller_exporter = ControllerExporter(registry=CollectorRegistry())
 
+    recovery_cooldown = RecoveryCooldown(
+        window_minutes=recovery_cooldown_minutes,
+        max_count=recovery_cooldown_max_count,
+    )
+
     controller = FtController(
         node_manager=node_manager,
         training_job=training_job,
@@ -202,8 +209,7 @@ def make_test_controller(
         tick_interval=tick_interval,
         controller_exporter=controller_exporter,
         diagnostic_scheduler=diagnostic_scheduler,
-        recovery_cooldown_minutes=recovery_cooldown_minutes,
-        recovery_cooldown_max_count=recovery_cooldown_max_count,
+        recovery_cooldown=recovery_cooldown,
         registration_grace_ticks=registration_grace_ticks,
     )
 
@@ -218,4 +224,5 @@ def make_test_controller(
         mini_wandb=mini_wandb,
         controller_exporter=controller_exporter,
         notifier=real_notifier,
+        rank_registry=rank_registry,
     )
