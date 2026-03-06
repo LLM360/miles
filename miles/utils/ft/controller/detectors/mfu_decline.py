@@ -53,7 +53,7 @@ class MfuDeclineDetector(BaseFaultDetector):
     def evaluate(self, ctx: DetectorContext) -> Decision:
         recent_mfu = ctx.mini_wandb.query_last_n_steps("mfu", last_n=self._consecutive_steps)
         if len(recent_mfu) < self._consecutive_steps:
-            return Decision(action=ActionType.NONE, reason="insufficient MFU data")
+            return Decision.no_fault(reason="insufficient MFU data")
 
         mfu_values = [value for _, value in recent_mfu]
         avg_mfu = sum(mfu_values) / len(mfu_values)
@@ -66,13 +66,13 @@ class MfuDeclineDetector(BaseFaultDetector):
 
         baseline = self._get_baseline(ctx.mini_wandb)
         if baseline <= 0:
-            return Decision(action=ActionType.NONE, reason="no valid MFU baseline")
+            return Decision.no_fault(reason="no valid MFU baseline")
 
         threshold = baseline * self._mfu_threshold_ratio
         mfu_stats = f"{avg_mfu:.4f} < {threshold:.4f}"
 
         if avg_mfu >= threshold:
-            return Decision(action=ActionType.NONE, reason="MFU within acceptable range")
+            return Decision.no_fault(reason="MFU within acceptable range")
 
         high_temp_node = self._find_high_temperature_node(ctx.metric_store, ctx.rank_placement)
         if high_temp_node is not None:
@@ -90,8 +90,7 @@ class MfuDeclineDetector(BaseFaultDetector):
                 reason=f"MFU decline ({mfu_stats}) persisted for {elapsed_minutes:.1f}min without identifiable cause",
             )
 
-        return Decision(
-            action=ActionType.NONE,
+        return Decision.no_fault(
             reason=f"MFU declining ({mfu_stats}), monitoring ({elapsed_minutes:.1f}min)",
         )
 

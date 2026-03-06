@@ -17,4 +17,4 @@ class NanLossDetector(BaseFaultDetector):
                 trigger=TriggerType.NAN_LOSS,
             )
 
-        return Decision(action=ActionType.NONE, reason="loss is normal")
+        return Decision.no_fault(reason="loss is normal")

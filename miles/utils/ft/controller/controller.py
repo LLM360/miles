@@ -35,7 +35,7 @@ from miles.utils.ft.protocols.platform import (
 
 logger = logging.getLogger(__name__)
 
-_ALL_DETECTORS_PASSED = Decision(action=ActionType.NONE, reason="all detectors passed")
+_ALL_DETECTORS_PASSED = Decision.no_fault(reason="all detectors passed")
 
 
 class FtController:

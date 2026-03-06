@@ -11,7 +11,7 @@ from miles.utils.ft.protocols.platform import JobStatus
 class TrainingCrashDetector(BaseFaultDetector):
     def evaluate(self, ctx: DetectorContext) -> Decision:
         if ctx.job_status != JobStatus.FAILED:
-            return Decision(action=ActionType.NONE, reason="training job not failed")
+            return Decision.no_fault(reason="training job not failed")
 
         trigger = self._determine_trigger(ctx.mini_wandb)
 

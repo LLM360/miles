@@ -31,6 +31,10 @@ class Decision(FtBaseModel):
     trigger: TriggerType = TriggerType.NONE
 
     @classmethod
+    def no_fault(cls, reason: str) -> "Decision":
+        return cls(action=ActionType.NONE, reason=reason)
+
+    @classmethod
     def from_node_faults(
         cls,
         faults: "list[NodeFault]",

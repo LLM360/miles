@@ -27,7 +27,7 @@ class HangDetector(BaseFaultDetector):
 
     def evaluate(self, ctx: DetectorContext) -> Decision:
         if ctx.job_status != JobStatus.RUNNING:
-            return Decision(action=ActionType.NONE, reason="job not running, skipping hang check")
+            return Decision.no_fault(reason="job not running, skipping hang check")
 
         is_checkpoint_saving = self._is_checkpoint_saving(ctx.metric_store)
         timeout_minutes = (
@@ -38,7 +38,7 @@ class HangDetector(BaseFaultDetector):
 
         iteration_changes = self._get_iteration_changes(ctx.metric_store, window_minutes=timeout_minutes)
         if iteration_changes is None:
-            return Decision(action=ActionType.NONE, reason="no iteration data available")
+            return Decision.no_fault(reason="no iteration data available")
 
         if iteration_changes == 0:
             phase_info = "checkpoint_saving" if is_checkpoint_saving else "training"
@@ -48,7 +48,7 @@ class HangDetector(BaseFaultDetector):
                 trigger=TriggerType.HANG,
             )
 
-        return Decision(action=ActionType.NONE, reason="iteration progressing normally")
+        return Decision.no_fault(reason="iteration progressing normally")
 
     def _is_checkpoint_saving(self, metric_store: MetricQueryProtocol) -> bool:
         df = metric_store.query_latest(TRAINING_PHASE, label_filters={"rank": "0"})
