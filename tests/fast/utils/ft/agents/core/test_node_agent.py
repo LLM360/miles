@@ -1,4 +1,6 @@
 import asyncio
+from collections.abc import AsyncIterator, Callable
+from typing import Any
 
 import httpx
 import pytest
@@ -35,128 +37,128 @@ class _CountingCollector(BaseCollector):
         self.closed = True
 
 
+MakeNodeAgent = Callable[..., FtNodeAgent]
+
+
+@pytest.fixture
+async def make_node_agent() -> AsyncIterator[MakeNodeAgent]:
+    agents: list[FtNodeAgent] = []
+
+    def factory(**kwargs: Any) -> FtNodeAgent:
+        kwargs.setdefault("node_id", "test-node")
+        agent = FtNodeAgent(**kwargs)
+        agents.append(agent)
+        return agent
+
+    yield factory
+    for agent in agents:
+        await agent.stop()
+
+
 class TestFtNodeAgentExporter:
     @pytest.mark.anyio
-    async def test_exporter_returns_prometheus_format(self) -> None:
-        agent = FtNodeAgent(node_id="test-node-0")
-        try:
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+    async def test_exporter_returns_prometheus_format(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-node-0")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            assert response.status_code == 200
-            assert "text/plain" in response.headers.get("content-type", "")
-        finally:
-            await agent.stop()
+        assert response.status_code == 200
+        assert "text/plain" in response.headers.get("content-type", "")
 
     @pytest.mark.anyio
-    async def test_exporter_address_has_port(self) -> None:
-        agent = FtNodeAgent(node_id="test-node-0")
-        try:
-            address = agent.get_exporter_address()
-            assert address.startswith("http://localhost:")
-            port = int(address.split(":")[-1])
-            assert port > 0
-        finally:
-            await agent.stop()
+    async def test_exporter_address_has_port(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-node-0")
+        address = agent.get_exporter_address()
+        assert address.startswith("http://localhost:")
+        port = int(address.split(":")[-1])
+        assert port > 0
 
     @pytest.mark.anyio
-    async def test_stub_collector_no_custom_metrics(self) -> None:
-        agent = FtNodeAgent(
+    async def test_stub_collector_no_custom_metrics(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(
             node_id="test-node-stub",
             collectors=[StubCollector()],
         )
-        try:
-            agent._exporter.update_metrics([])
+        agent._exporter.update_metrics([])
 
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            assert response.status_code == 200
-            assert "miles_ft_" not in response.text
-        finally:
-            await agent.stop()
+        assert response.status_code == 200
+        assert "miles_ft_" not in response.text
 
     @pytest.mark.anyio
-    async def test_update_exporter_creates_gauges(self) -> None:
-        agent = FtNodeAgent(node_id="test-node-gauge")
-        try:
-            metrics = [
-                MetricSample(
-                    name="gpu_temperature_celsius",
-                    labels={"gpu": "0"},
-                    value=75.0,
-                ),
-                MetricSample(
-                    name="gpu_temperature_celsius",
-                    labels={"gpu": "1"},
-                    value=80.0,
-                ),
-            ]
-            agent._exporter.update_metrics(metrics)
+    async def test_update_exporter_creates_gauges(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-node-gauge")
+        metrics = [
+            MetricSample(
+                name="gpu_temperature_celsius",
+                labels={"gpu": "0"},
+                value=75.0,
+            ),
+            MetricSample(
+                name="gpu_temperature_celsius",
+                labels={"gpu": "1"},
+                value=80.0,
+            ),
+        ]
+        agent._exporter.update_metrics(metrics)
 
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            text = response.text
-            assert 'gpu_temperature_celsius{gpu="0"}' in text
-            assert 'gpu_temperature_celsius{gpu="1"}' in text
-            assert "75.0" in text
-            assert "80.0" in text
-        finally:
-            await agent.stop()
+        text = response.text
+        assert 'gpu_temperature_celsius{gpu="0"}' in text
+        assert 'gpu_temperature_celsius{gpu="1"}' in text
+        assert "75.0" in text
+        assert "80.0" in text
 
     @pytest.mark.anyio
-    async def test_update_exporter_unlabeled_metric(self) -> None:
-        agent = FtNodeAgent(node_id="test-node-unlabeled")
-        try:
-            metrics = [
-                MetricSample(name="uptime_seconds", labels={}, value=123.0),
-            ]
-            agent._exporter.update_metrics(metrics)
+    async def test_update_exporter_unlabeled_metric(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-node-unlabeled")
+        metrics = [
+            MetricSample(name="uptime_seconds", labels={}, value=123.0),
+        ]
+        agent._exporter.update_metrics(metrics)
 
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            assert "uptime_seconds" in response.text
-            assert "123.0" in response.text
-        finally:
-            await agent.stop()
+        assert "uptime_seconds" in response.text
+        assert "123.0" in response.text
 
     @pytest.mark.anyio
-    async def test_update_exporter_overwrites_value(self) -> None:
-        agent = FtNodeAgent(node_id="test-node-overwrite")
-        try:
-            agent._exporter.update_metrics([
-                MetricSample(
-                    name="gpu_temperature_celsius",
-                    labels={"gpu": "0"},
-                    value=60.0,
-                ),
-            ])
-            agent._exporter.update_metrics([
-                MetricSample(
-                    name="gpu_temperature_celsius",
-                    labels={"gpu": "0"},
-                    value=90.0,
-                ),
-            ])
+    async def test_update_exporter_overwrites_value(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-node-overwrite")
+        agent._exporter.update_metrics([
+            MetricSample(
+                name="gpu_temperature_celsius",
+                labels={"gpu": "0"},
+                value=60.0,
+            ),
+        ])
+        agent._exporter.update_metrics([
+            MetricSample(
+                name="gpu_temperature_celsius",
+                labels={"gpu": "0"},
+                value=90.0,
+            ),
+        ])
 
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            assert "90.0" in response.text
-        finally:
-            await agent.stop()
+        assert "90.0" in response.text
 
 
 class TestFtNodeAgentCollectionLoop:
     @pytest.mark.anyio
-    async def test_collection_loop_updates_exporter(self) -> None:
+    async def test_collection_loop_updates_exporter(self, make_node_agent: MakeNodeAgent) -> None:
         test_collector = TestCollector(
             metrics=[
                 MetricSample(
@@ -167,22 +169,19 @@ class TestFtNodeAgentCollectionLoop:
             ],
             collect_interval=0.05,
         )
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-node-loop",
             collectors=[test_collector],
         )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.3)
+        await agent.start()
+        await asyncio.sleep(0.3)
 
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            assert 'gpu_temperature_celsius{gpu="0"}' in response.text
-            assert "65.0" in response.text
-        finally:
-            await agent.stop()
+        assert 'gpu_temperature_celsius{gpu="0"}' in response.text
+        assert "65.0" in response.text
 
     @pytest.mark.anyio
     async def test_stop_cancels_tasks(self) -> None:
@@ -201,55 +200,49 @@ class TestFtNodeAgentCollectionLoop:
         assert len(agent._collection_loop.tasks) == 0
 
     @pytest.mark.anyio
-    async def test_failing_collector_does_not_crash_loop(self) -> None:
+    async def test_failing_collector_does_not_crash_loop(self, make_node_agent: MakeNodeAgent) -> None:
         good_collector = TestCollector(
             metrics=[MetricSample(name="good_metric", labels={}, value=42.0)],
             collect_interval=0.05,
         )
         failing = FailingCollector(collect_interval=0.05)
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-node-fail",
             collectors=[failing, good_collector],
         )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.3)
+        await agent.start()
+        await asyncio.sleep(0.3)
 
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            assert "good_metric" in response.text
-            assert "42.0" in response.text
-        finally:
-            await agent.stop()
+        assert "good_metric" in response.text
+        assert "42.0" in response.text
 
     @pytest.mark.anyio
-    async def test_all_collectors_failing_keeps_tasks_alive(self) -> None:
+    async def test_all_collectors_failing_keeps_tasks_alive(self, make_node_agent: MakeNodeAgent) -> None:
         failing1 = FailingCollector(collect_interval=0.05)
         failing2 = FailingCollector(collect_interval=0.05)
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-node-all-fail",
             collectors=[failing1, failing2],
         )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.3)
+        await agent.start()
+        await asyncio.sleep(0.3)
 
-            assert len(agent._collection_loop.tasks) == 2
-            assert all(not t.done() for t in agent._collection_loop.tasks)
+        assert len(agent._collection_loop.tasks) == 2
+        assert all(not t.done() for t in agent._collection_loop.tasks)
 
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            assert response.status_code == 200
-            assert "miles_ft_" not in response.text
-        finally:
-            await agent.stop()
+        assert response.status_code == 200
+        assert "miles_ft_" not in response.text
 
     @pytest.mark.anyio
-    async def test_multiple_metrics_exported(self) -> None:
+    async def test_multiple_metrics_exported(self, make_node_agent: MakeNodeAgent) -> None:
         test_collector = TestCollector(
             metrics=[
                 MetricSample(
@@ -265,75 +258,63 @@ class TestFtNodeAgentCollectionLoop:
             ],
             collect_interval=0.05,
         )
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-node-multi",
             collectors=[test_collector],
         )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.3)
+        await agent.start()
+        await asyncio.sleep(0.3)
 
-            address = agent.get_exporter_address()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{address}/metrics")
+        address = agent.get_exporter_address()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{address}/metrics")
 
-            assert "gpu_temperature_celsius" in response.text
-            assert "gpu_memory_used_bytes" in response.text
-        finally:
-            await agent.stop()
+        assert "gpu_temperature_celsius" in response.text
+        assert "gpu_memory_used_bytes" in response.text
 
     @pytest.mark.anyio
-    async def test_per_collector_independent_intervals(self) -> None:
+    async def test_per_collector_independent_intervals(self, make_node_agent: MakeNodeAgent) -> None:
         fast_collector = _CountingCollector(collect_interval=0.05)
         slow_collector = _CountingCollector(collect_interval=0.5)
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-node-intervals",
             collectors=[fast_collector, slow_collector],
         )
-        try:
-            await agent.start()
-            await asyncio.sleep(0.6)
+        await agent.start()
+        await asyncio.sleep(0.6)
 
-            assert fast_collector.call_count > slow_collector.call_count
-            assert fast_collector.call_count >= 5
-        finally:
-            await agent.stop()
+        assert fast_collector.call_count > slow_collector.call_count
+        assert fast_collector.call_count >= 5
 
     @pytest.mark.anyio
-    async def test_collect_interval_seconds_overrides_all(self) -> None:
+    async def test_collect_interval_seconds_overrides_all(self, make_node_agent: MakeNodeAgent) -> None:
         fast_collector = _CountingCollector(collect_interval=0.01)
         slow_collector = _CountingCollector(collect_interval=0.01)
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-node-override",
             collectors=[fast_collector, slow_collector],
             collect_interval_seconds=0.05,
         )
-        try:
-            assert fast_collector.collect_interval == 0.05
-            assert slow_collector.collect_interval == 0.05
-        finally:
-            await agent.stop()
+        assert fast_collector.collect_interval == 0.05
+        assert slow_collector.collect_interval == 0.05
 
 
 class TestFtNodeAgentLifecycle:
     @pytest.mark.anyio
-    async def test_start_twice_is_idempotent(self) -> None:
+    async def test_start_twice_is_idempotent(self, make_node_agent: MakeNodeAgent) -> None:
         test_collector = TestCollector(
             metrics=[MetricSample(name="dummy", labels={}, value=1.0)],
             collect_interval=0.05,
         )
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-node-double-start",
             collectors=[test_collector],
         )
-        try:
-            await agent.start()
-            first_tasks = list(agent._collection_loop.tasks)
-            await agent.start()
+        await agent.start()
+        first_tasks = list(agent._collection_loop.tasks)
+        await agent.start()
 
-            assert agent._collection_loop.tasks == first_tasks
-        finally:
-            await agent.stop()
+        assert agent._collection_loop.tasks == first_tasks
 
     @pytest.mark.anyio
     async def test_stop_without_start(self) -> None:
@@ -351,13 +332,10 @@ class TestFtNodeAgentLifecycle:
         await agent.stop()
 
     @pytest.mark.anyio
-    async def test_start_with_empty_collectors(self) -> None:
-        agent = FtNodeAgent(node_id="test-node-empty-collectors", collectors=[])
-        try:
-            await agent.start()
-            assert len(agent._collection_loop.tasks) == 0
-        finally:
-            await agent.stop()
+    async def test_start_with_empty_collectors(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-node-empty-collectors", collectors=[])
+        await agent.start()
+        assert len(agent._collection_loop.tasks) == 0
 
     @pytest.mark.anyio
     async def test_stop_calls_close_on_all_collectors(self) -> None:
@@ -391,142 +369,112 @@ class TestFtNodeAgentLifecycle:
 
 class TestFtNodeAgentDiagnostics:
     @pytest.mark.anyio
-    async def test_known_type_dispatches_correctly(self) -> None:
+    async def test_known_type_dispatches_correctly(self, make_node_agent: MakeNodeAgent) -> None:
         diag = StubDiagnostic(passed=True, details="all good")
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-diag-dispatch",
             diagnostics=[diag],
         )
-        try:
-            result = await agent.run_diagnostic("stub")
+        result = await agent.run_diagnostic("stub")
 
-            assert result.passed is True
-            assert result.node_id == "test-diag-dispatch"
-            assert result.diagnostic_type == "stub"
-            assert result.details == "all good"
-        finally:
-            await agent.stop()
+        assert result.passed is True
+        assert result.node_id == "test-diag-dispatch"
+        assert result.diagnostic_type == "stub"
+        assert result.details == "all good"
 
     @pytest.mark.anyio
-    async def test_unknown_type_raises(self) -> None:
-        agent = FtNodeAgent(node_id="test-diag-unknown")
-        try:
-            with pytest.raises(UnknownDiagnosticError, match="unknown diagnostic type"):
-                await agent.run_diagnostic("nonexistent")
-        finally:
-            await agent.stop()
+    async def test_unknown_type_raises(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-diag-unknown")
+        with pytest.raises(UnknownDiagnosticError, match="unknown diagnostic type"):
+            await agent.run_diagnostic("nonexistent")
 
     @pytest.mark.anyio
-    async def test_failing_diagnostic_returns_failure(self) -> None:
+    async def test_failing_diagnostic_returns_failure(self, make_node_agent: MakeNodeAgent) -> None:
         diag = StubDiagnostic(passed=False, details="gpu broken", diagnostic_type="failing")
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-diag-fail",
             diagnostics=[diag],
         )
-        try:
-            result = await agent.run_diagnostic("failing")
+        result = await agent.run_diagnostic("failing")
 
-            assert result.passed is False
-            assert result.details == "gpu broken"
-        finally:
-            await agent.stop()
+        assert result.passed is False
+        assert result.details == "gpu broken"
 
     @pytest.mark.anyio
-    async def test_timeout_returns_failed(self) -> None:
+    async def test_timeout_returns_failed(self, make_node_agent: MakeNodeAgent) -> None:
         diag = SlowDiagnostic(sleep_seconds=300.0)
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-diag-timeout",
             diagnostics=[diag],
         )
-        try:
-            result = await agent.run_diagnostic("slow", timeout_seconds=0)
+        result = await agent.run_diagnostic("slow", timeout_seconds=0)
 
-            assert result.passed is False
-            assert "timed out" in result.details
-        finally:
-            await agent.stop()
+        assert result.passed is False
+        assert "timed out" in result.details
 
     @pytest.mark.anyio
-    async def test_multiple_diagnostics_registered(self) -> None:
+    async def test_multiple_diagnostics_registered(self, make_node_agent: MakeNodeAgent) -> None:
         stub = StubDiagnostic(passed=True)
         failing = StubDiagnostic(passed=False, details="diagnostic failed", diagnostic_type="failing")
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-diag-multi",
             diagnostics=[stub, failing],
         )
-        try:
-            r1 = await agent.run_diagnostic("stub")
-            r2 = await agent.run_diagnostic("failing")
+        r1 = await agent.run_diagnostic("stub")
+        r2 = await agent.run_diagnostic("failing")
 
-            assert r1.passed is True
-            assert r2.passed is False
-        finally:
-            await agent.stop()
+        assert r1.passed is True
+        assert r2.passed is False
 
 
 class TestFtNodeAgentSetRemoveDiagnostic:
     @pytest.mark.anyio
-    async def test_set_diagnostic_makes_type_available(self) -> None:
-        agent = FtNodeAgent(node_id="test-set-diag")
-        try:
-            new_diag = StubDiagnostic(passed=True, details="dynamically added", diagnostic_type="dynamic")
-            agent.set_diagnostic(new_diag)
+    async def test_set_diagnostic_makes_type_available(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-set-diag")
+        new_diag = StubDiagnostic(passed=True, details="dynamically added", diagnostic_type="dynamic")
+        agent.set_diagnostic(new_diag)
 
-            result = await agent.run_diagnostic("dynamic")
-            assert result.passed is True
-            assert result.details == "dynamically added"
-        finally:
-            await agent.stop()
+        result = await agent.run_diagnostic("dynamic")
+        assert result.passed is True
+        assert result.details == "dynamically added"
 
     @pytest.mark.anyio
-    async def test_set_diagnostic_replaces_existing(self) -> None:
+    async def test_set_diagnostic_replaces_existing(self, make_node_agent: MakeNodeAgent) -> None:
         original = StubDiagnostic(passed=True, details="original")
-        agent = FtNodeAgent(node_id="test-replace-diag", diagnostics=[original])
-        try:
-            replacement = StubDiagnostic(passed=False, details="replaced")
-            agent.set_diagnostic(replacement)
+        agent = make_node_agent(node_id="test-replace-diag", diagnostics=[original])
+        replacement = StubDiagnostic(passed=False, details="replaced")
+        agent.set_diagnostic(replacement)
 
-            result = await agent.run_diagnostic("stub")
-            assert result.passed is False
-            assert result.details == "replaced"
-        finally:
-            await agent.stop()
+        result = await agent.run_diagnostic("stub")
+        assert result.passed is False
+        assert result.details == "replaced"
 
     @pytest.mark.anyio
-    async def test_remove_diagnostic_makes_type_unavailable(self) -> None:
+    async def test_remove_diagnostic_makes_type_unavailable(self, make_node_agent: MakeNodeAgent) -> None:
         diag = StubDiagnostic(passed=True)
-        agent = FtNodeAgent(node_id="test-remove-diag", diagnostics=[diag])
-        try:
-            agent.remove_diagnostic("stub")
+        agent = make_node_agent(node_id="test-remove-diag", diagnostics=[diag])
+        agent.remove_diagnostic("stub")
 
-            with pytest.raises(UnknownDiagnosticError):
-                await agent.run_diagnostic("stub")
-        finally:
-            await agent.stop()
+        with pytest.raises(UnknownDiagnosticError):
+            await agent.run_diagnostic("stub")
 
     @pytest.mark.anyio
-    async def test_remove_nonexistent_is_noop(self) -> None:
-        agent = FtNodeAgent(node_id="test-remove-noop")
-        try:
-            agent.remove_diagnostic("nonexistent")
-        finally:
-            await agent.stop()
+    async def test_remove_nonexistent_is_noop(self, make_node_agent: MakeNodeAgent) -> None:
+        agent = make_node_agent(node_id="test-remove-noop")
+        agent.remove_diagnostic("nonexistent")
 
     @pytest.mark.anyio
-    async def test_diagnostic_exception_returns_failed(self) -> None:
+    async def test_diagnostic_exception_returns_failed(self, make_node_agent: MakeNodeAgent) -> None:
         """Diagnostic that raises (not timeout) should return passed=False."""
 
         class _ExplodingDiagnostic(StubDiagnostic):
             async def run(self, node_id: str, timeout_seconds: int = 120) -> None:
                 raise RuntimeError("diagnostic exploded")
 
-        agent = FtNodeAgent(
+        agent = make_node_agent(
             node_id="test-diag-explode",
             diagnostics=[_ExplodingDiagnostic(passed=True)],
         )
-        try:
-            result = await agent.run_diagnostic("stub")
-            assert result.passed is False
-            assert "exception" in result.details
-        finally:
-            await agent.stop()
+        result = await agent.run_diagnostic("stub")
+        assert result.passed is False
+        assert "exception" in result.details

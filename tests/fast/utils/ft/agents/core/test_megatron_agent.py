@@ -6,6 +6,8 @@ Training metrics are forwarded separately by FtTrackingAgent via tracking_utils.
 """
 
 from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -171,27 +173,36 @@ class TestFtMegatronAgentSetPhase:
         assert phase == 0.0
 
 
+@contextmanager
+def _registered_agent(
+    mock_get_handle: MagicMock, **agent_kwargs: Any
+) -> Iterator[tuple[FtMegatronAgent, dict[str, Any]]]:
+    mock_controller = MagicMock()
+    mock_ray_get = MagicMock()
+    mock_get_handle.return_value = mock_controller
+    defaults: dict[str, Any] = {"rank": 0, "world_size": 4}
+    defaults.update(agent_kwargs)
+    with patch.dict(
+        "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
+    ), patch("ray.get", mock_ray_get):
+        agent = FtMegatronAgent(**defaults)
+        try:
+            call_kwargs = mock_controller.register_rank.remote.call_args[1]
+            yield agent, call_kwargs
+        finally:
+            agent.shutdown()
+
+
 class TestFtMegatronAgentRegisterRank:
     @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_calls_controller(
         self, mock_get_handle: MagicMock
     ) -> None:
-        mock_controller = MagicMock()
-        mock_ray_get = MagicMock()
-        mock_get_handle.return_value = mock_controller
-
-        with patch.dict(
-            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
-        ), patch("ray.get", mock_ray_get):
-            agent = FtMegatronAgent(rank=0, world_size=4)
-            try:
-                mock_controller.register_rank.remote.assert_called_once()
-                call_kwargs = mock_controller.register_rank.remote.call_args[1]
-                assert call_kwargs["run_id"] == "test-run-1"
-                assert call_kwargs["rank"] == 0
-                assert call_kwargs["world_size"] == 4
-            finally:
-                agent.shutdown()
+        with _registered_agent(mock_get_handle) as (agent, call_kwargs):
+            mock_get_handle.return_value.register_rank.remote.assert_called_once()
+            assert call_kwargs["run_id"] == "test-run-1"
+            assert call_kwargs["rank"] == 0
+            assert call_kwargs["world_size"] == 4
 
     @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_retries_on_failure(
@@ -202,7 +213,7 @@ class TestFtMegatronAgentRegisterRank:
 
         call_count = 0
 
-        def ray_get_side_effect(*args, **kwargs):
+        def ray_get_side_effect(*args: Any, **kwargs: Any) -> None:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -263,20 +274,9 @@ class TestFtMegatronAgentRegisterRank:
     def test_register_rank_asserts_node_id_and_exporter_address(
         self, mock_get_handle: MagicMock
     ) -> None:
-        mock_controller = MagicMock()
-        mock_ray_get = MagicMock()
-        mock_get_handle.return_value = mock_controller
-
-        with patch.dict(
-            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
-        ), patch("ray.get", mock_ray_get):
-            agent = FtMegatronAgent(rank=0, world_size=4)
-            try:
-                call_kwargs = mock_controller.register_rank.remote.call_args[1]
-                assert call_kwargs["node_id"] == agent._node_id
-                assert call_kwargs["exporter_address"] == agent.get_exporter_address()
-            finally:
-                agent.shutdown()
+        with _registered_agent(mock_get_handle) as (agent, call_kwargs):
+            assert call_kwargs["node_id"] == agent._node_id
+            assert call_kwargs["exporter_address"] == agent.get_exporter_address()
 
     @patch("miles.utils.ft.agents.core.megatron_agent.FtMegatronAgent._get_controller_handle")
     def test_register_rank_includes_pid(
@@ -284,19 +284,8 @@ class TestFtMegatronAgentRegisterRank:
     ) -> None:
         import os as _os
 
-        mock_controller = MagicMock()
-        mock_ray_get = MagicMock()
-        mock_get_handle.return_value = mock_controller
-
-        with patch.dict(
-            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
-        ), patch("ray.get", mock_ray_get):
-            agent = FtMegatronAgent(rank=0, world_size=4)
-            try:
-                call_kwargs = mock_controller.register_rank.remote.call_args[1]
-                assert call_kwargs["pid"] == _os.getpid()
-            finally:
-                agent.shutdown()
+        with _registered_agent(mock_get_handle) as (agent, call_kwargs):
+            assert call_kwargs["pid"] == _os.getpid()
 
 
 class TestFtMegatronAgentFaultTolerance:
