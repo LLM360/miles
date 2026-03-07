@@ -50,8 +50,8 @@ class StateMachineStepper(Generic[StateT, ContextT]):
             logger.info(
                 "%s %s -> %s",
                 type(self).__name__,
-                type(state).__name__,
-                type(result).__name__,
+                state,
+                result,
             )
         return result
 

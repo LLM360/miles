@@ -102,7 +102,9 @@ class TestStateMachineStepper:
         stepper = DummyStepper()
         with caplog.at_level("INFO"):
             await stepper(StateA(), None)
-        assert "DummyStepper StateA -> StateB" in caplog.text
+        assert "DummyStepper" in caplog.text
+        assert "StateA()" in caplog.text
+        assert "StateB(value=1)" in caplog.text
 
     @pytest.mark.asyncio
     async def test_same_type_transition_logs_when_data_changes(self, caplog: pytest.LogCaptureFixture) -> None:
@@ -110,7 +112,8 @@ class TestStateMachineStepper:
         stepper = DummyStepper()
         with caplog.at_level("INFO"):
             await stepper(StateB(value=1), None)
-        assert "DummyStepper StateB -> StateB" in caplog.text
+        assert "StateB(value=1)" in caplog.text
+        assert "StateB(value=2)" in caplog.text
 
     @pytest.mark.asyncio
     async def test_same_state_no_log(self, caplog: pytest.LogCaptureFixture) -> None:
