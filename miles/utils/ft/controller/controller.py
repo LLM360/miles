@@ -24,13 +24,16 @@ from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper import (
     EvictingAndRestarting,
     NotifyHumans,
+    RECOVERY_HANDLER_MAP,
     RECOVERY_STATE_TO_INT,
     RecoveryDone,
-    RecoveryStepper,
     RecoveryState,
+    recovery_timeout_check,
 )
-from miles.utils.ft.controller.recovery.restart_stepper import RestartStepper
-from miles.utils.ft.utils.state_machine import StateMachine
+from miles.utils.ft.controller.recovery.restart_stepper import (
+    RESTART_HANDLER_MAP,
+)
+from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
 from miles.utils.ft.models.recovery import (
     ControllerMode,
     ControllerStatus,
@@ -132,27 +135,20 @@ class FtController:
         duration_cb = resolved_exporter.observe_recovery_duration
         cooldown = recovery_cooldown or SlidingWindowThrottle(window_minutes=30.0, max_count=3)
 
-        restart_stepper = RestartStepper(
-            node_manager=node_manager,
-            training_job=training_job,
-            mini_wandb=mini_wandb,
-            notifier=notifier,
-            on_new_run=None,
-            monitoring_success_iterations=monitoring_success_iterations,
-            monitoring_timeout_seconds=monitoring_timeout_seconds,
-        )
-
-        recovery_stepper = RecoveryStepper(
-            alert_checker=AlertChecker(metric_store=metric_store),
-            diagnostic_orchestrator=resolved_orchestrator,
-            restart_stepper=restart_stepper,
-            notifier=notifier,
-            timeout_seconds=recovery_timeout_seconds,
+        restart_stepper = StateMachineStepper(handler_map=RESTART_HANDLER_MAP)
+        recovery_stepper = StateMachineStepper(
+            handler_map=RECOVERY_HANDLER_MAP,
+            pre_dispatch=recovery_timeout_check,
         )
 
         main_stepper = MainStepper(
             platform_deps=platform_deps,
             recovery_stepper=recovery_stepper,
+            restart_stepper=restart_stepper,
+            alert_checker=AlertChecker(metric_store=metric_store),
+            recovery_timeout_seconds=recovery_timeout_seconds,
+            monitoring_success_iterations=monitoring_success_iterations,
+            monitoring_timeout_seconds=monitoring_timeout_seconds,
             detectors=detectors or [],
             cooldown=cooldown,
             on_recovery_duration=duration_cb,
@@ -180,11 +176,6 @@ class FtController:
 
         platform_deps.on_new_run = instance._activate_run
         platform_deps.rank_pids_provider = lambda node_id: instance._rank_roster.get_rank_pids_for_node(node_id)
-
-        restart_stepper.set_on_new_run(instance._activate_run)
-        recovery_stepper.set_rank_pids_provider(
-            lambda node_id: instance._rank_roster.get_rank_pids_for_node(node_id),
-        )
 
         return instance
 
