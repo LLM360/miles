@@ -137,9 +137,9 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
     # -- Recovering -------------------------------------------------------
 
     async def _handle_recovering(self, state: Recovering, context: TickContext) -> MainState | None:
-        merged = await self._check_new_bad_nodes_during_recovering(state=state, context=context)
-        if merged is not None:
-            return merged
+        ret = await self._check_new_bad_nodes_during_recovering(state=state, context=context)
+        if ret is not None:
+            return ret
         return await self._advance_recovery(state=state)
 
     async def _check_new_bad_nodes_during_recovering(
