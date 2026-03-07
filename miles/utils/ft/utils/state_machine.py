@@ -25,7 +25,8 @@ class StateMachineStepper(Generic[StateT, ContextT]):
       stored on the stepper instance.
 
     Subclasses implement _build_handlers() -> {type: async handler(state, context)}.
-    Terminal state = type(state) not in registry -> __call__ returns None.
+    Every reachable state type MUST be registered. Terminal states should have
+    handlers that return None. Unregistered types raise TypeError.
     Subclasses may override __call__ to add pre-dispatch checks (e.g. timeout).
     """
 
@@ -40,7 +41,10 @@ class StateMachineStepper(Generic[StateT, ContextT]):
     async def __call__(self, state: StateT, context: ContextT) -> StateT | None:
         handler = self._handlers.get(type(state))
         if handler is None:
-            return None
+            raise TypeError(
+                f"{type(self).__name__} has no handler for state type "
+                f"{type(state).__name__}; register it in _build_handlers()"
+            )
         result = await handler(state, context)
         if result is not None and result != state:
             logger.info(

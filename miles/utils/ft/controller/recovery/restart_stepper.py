@@ -95,7 +95,12 @@ class RestartStepper(StateMachineStepper[RestartState, None]):
             Evicting: self._handle_evicting,
             StoppingAndRestarting: self._handle_stopping_and_restarting,
             MonitoringProgress: self._handle_monitoring_progress,
+            RestartDone: self._handle_terminal,
+            RestartFailed: self._handle_terminal,
         }
+
+    async def _handle_terminal(self, state: RestartState, _context: None) -> None:
+        return None
 
     async def _handle_evicting(self, state: Evicting, _context: None) -> RestartState:
         already_bad = await get_already_bad_nodes(self._node_manager)

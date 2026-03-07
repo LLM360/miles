@@ -120,7 +120,11 @@ class RecoveryStepper(StateMachineStepper[RecoveryState, RecoveryContext]):
             EvictingAndRestarting: self._handle_evicting_and_restarting,
             StopTimeDiagnostics: self._handle_stop_time_diagnostics,
             NotifyHumans: self._handle_notify_humans,
+            RecoveryDone: self._handle_terminal,
         }
+
+    async def _handle_terminal(self, state: RecoveryState, context: RecoveryContext) -> None:
+        return None
 
     async def __call__(self, state: RecoveryState, context: RecoveryContext) -> RecoveryState | None:
         elapsed = (datetime.now(timezone.utc) - context.recovery_start_time).total_seconds()

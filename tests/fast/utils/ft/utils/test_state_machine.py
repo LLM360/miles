@@ -30,6 +30,10 @@ class TerminalState(DummyState):
     pass
 
 
+class UnregisteredState(DummyState):
+    pass
+
+
 # -- Dummy stepper --------------------------------------------------------------
 
 
@@ -39,6 +43,7 @@ class DummyStepper(StateMachineStepper[DummyState, None]):
             StateA: self._handle_a,
             StateB: self._handle_b,
             StateC: self._handle_c,
+            TerminalState: self._handle_terminal,
         }
 
     async def _handle_a(self, state: StateA, _context: None) -> DummyState:
@@ -50,6 +55,9 @@ class DummyStepper(StateMachineStepper[DummyState, None]):
         return StateB(value=state.value + 1)
 
     async def _handle_c(self, state: StateC, _context: None) -> DummyState | None:
+        return None
+
+    async def _handle_terminal(self, state: TerminalState, _context: None) -> DummyState | None:
         return None
 
 
@@ -75,6 +83,12 @@ class TestStateMachineStepper:
         stepper = DummyStepper()
         result = await stepper(StateC(), None)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_unregistered_state_raises_type_error(self) -> None:
+        stepper = DummyStepper()
+        with pytest.raises(TypeError, match="has no handler for state type UnregisteredState"):
+            await stepper(UnregisteredState(), None)
 
     @pytest.mark.asyncio
     async def test_same_type_transition(self) -> None:
