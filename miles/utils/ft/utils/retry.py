@@ -1,5 +1,4 @@
 """Retry primitives for both async and sync callables."""
-
 from __future__ import annotations
 
 import asyncio
@@ -30,7 +29,7 @@ async def retry_async(
     func: Callable[[], Coroutine[Any, Any, _T]],
     description: str,
     max_retries: int = DEFAULT_MAX_RETRIES,
-    sleep_fn: Callable[[float], Coroutine[Any, Any, None]] = asyncio.sleep,
+    sleep_fn: Callable[[float], Coroutine[Any, Any, None]] | None = None,
     per_call_timeout: float | None = None,
     backoff_base: float = 1.0,
     max_backoff: float = _MAX_BACKOFF_SECONDS,
@@ -46,6 +45,7 @@ async def retry_async(
     ``asyncio.wait_for`` to prevent a single hung invocation from blocking
     the entire retry loop.
     """
+    _sleep = sleep_fn or asyncio.sleep
     last_exc: Exception | None = None
 
     for attempt in range(max_retries):
@@ -60,14 +60,12 @@ async def retry_async(
             last_exc = exc
             logger.warning(
                 "retry_failed description=%s attempt=%d/%d",
-                description,
-                attempt + 1,
-                max_retries,
+                description, attempt + 1, max_retries,
                 exc_info=True,
             )
             if attempt < max_retries - 1:
-                delay = min(backoff_base * (2**attempt), max_backoff)
-                await sleep_fn(delay)
+                delay = min(backoff_base * (2 ** attempt), max_backoff)
+                await _sleep(delay)
 
     logger.error("retry_exhausted description=%s", description)
     return RetryResult(ok=False, exception=last_exc)
@@ -121,13 +119,11 @@ def retry_sync(
             last_exc = exc
             logger.warning(
                 "retry_failed description=%s attempt=%d/%d",
-                description,
-                attempt + 1,
-                max_retries,
+                description, attempt + 1, max_retries,
                 exc_info=True,
             )
             if attempt < max_retries - 1:
-                delay = min(backoff_base * (2**attempt), max_backoff)
+                delay = min(backoff_base * (2 ** attempt), max_backoff)
                 time.sleep(delay)
 
     logger.error("retry_exhausted description=%s", description)

@@ -19,7 +19,6 @@ from tests.fast.utils.ft.helpers import (
 )
 
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
-from miles.utils.ft.models.fault import ActionType
 
 
 class TestHangWithStackTraceSuspect:
@@ -57,7 +56,7 @@ class TestHangWithStackTraceSuspect:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.ENTER_RECOVERY
+            assert len(decision.bad_node_ids) > 0
             assert decision.bad_node_ids == ["node-2"]
 
     async def test_hang_all_traces_same_runs_pipeline_on_all(self) -> None:
@@ -92,7 +91,7 @@ class TestHangWithStackTraceSuspect:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.NOTIFY_HUMAN
+            assert decision.bad_node_ids == []
 
 
 class TestCrashSkipsStackTrace:
@@ -112,9 +111,7 @@ class TestCrashSkipsStackTrace:
             }
         )
 
-        with patch(
-            "miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic"
-        ) as mock_diag_cls:
+        with patch("miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic") as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
@@ -125,7 +122,7 @@ class TestCrashSkipsStackTrace:
             )
 
             mock_diag_cls.assert_not_called()
-            assert decision.action == ActionType.ENTER_RECOVERY
+            assert len(decision.bad_node_ids) > 0
             assert decision.bad_node_ids == ["node-1"]
 
 
@@ -164,6 +161,6 @@ class TestHangWithCollectionFailure:
                 rank_pids_provider=pids_provider,
             )
 
-            assert decision.action == ActionType.ENTER_RECOVERY
+            assert len(decision.bad_node_ids) > 0
             assert "node-1" in decision.bad_node_ids
             assert "node-0" not in decision.bad_node_ids

@@ -45,8 +45,8 @@ class TestRetryAsyncEdgePaths:
 
         assert isinstance(result, RetryResult)
         assert result.ok is False
-        assert result.error is not None
-        assert "permanent error" in result.error
+        assert result.exception is not None
+        assert "permanent error" in str(result.exception)
 
     def test_preserves_return_value(self) -> None:
         async def returns_value() -> str:
@@ -247,12 +247,12 @@ class TestSlidingWindowThrottle:
         throttle.record(TriggerType.CRASH)
         assert throttle.is_throttled(TriggerType.CRASH)
 
-    def test_different_triggers_tracked_separately(self) -> None:
+    def test_all_triggers_counted_globally(self) -> None:
         throttle = SlidingWindowThrottle(window_minutes=30.0, max_count=2)
         throttle.record(TriggerType.CRASH)
         throttle.record(TriggerType.CRASH)
         assert throttle.is_throttled(TriggerType.CRASH)
-        assert not throttle.is_throttled(TriggerType.HANG)
+        assert throttle.is_throttled(TriggerType.HANG)
 
     def test_old_entries_outside_window_ignored(self) -> None:
         throttle = SlidingWindowThrottle(window_minutes=10.0, max_count=2)

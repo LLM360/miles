@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-    from miles.utils.ft.models.fault import TriggerType
+    from miles.utils.ft.models.fault import NodeFault, TriggerType
 
 
 class JobStatus(str, Enum):
@@ -34,8 +34,7 @@ class TrainingJobProtocol(Protocol):
     async def stop_training(self, timeout_seconds: int = STOP_TRAINING_TIMEOUT_SECONDS) -> None: ...
 
     async def submit_training(
-        self,
-        excluded_node_ids: list[str] | None = None,
+        self, excluded_node_ids: list[str] | None = None,
     ) -> str: ...
 
     async def get_training_status(self) -> JobStatus: ...
@@ -46,6 +45,11 @@ class NotificationProtocol(Protocol):
     async def send(self, title: str, content: str, severity: str) -> None: ...
 
     async def aclose(self) -> None: ...
+
+
+@runtime_checkable
+class AlertCheckerProtocol(Protocol):
+    def check_alerts(self) -> list[NodeFault]: ...
 
 
 @runtime_checkable
@@ -78,10 +82,7 @@ class ControllerClientProtocol(Protocol):
     ) -> None: ...
 
     def log_step(
-        self,
-        run_id: str,
-        step: int,
-        metrics: dict[str, float],
+        self, run_id: str, step: int, metrics: dict[str, float],
     ) -> None: ...
 
 
