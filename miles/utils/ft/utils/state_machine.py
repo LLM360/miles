@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import logging
-from abc import abstractmethod
 from collections import deque
 from collections.abc import Awaitable, Callable
-from typing import Generic, TypeVar
+from typing import Generic, Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -12,44 +11,61 @@ logger = logging.getLogger(__name__)
 
 StateT = TypeVar("StateT", bound=BaseModel)
 ContextT = TypeVar("ContextT")
+StateT_contra = TypeVar("StateT_contra", bound=BaseModel, contravariant=True)
+ContextT_contra = TypeVar("ContextT_contra", contravariant=True)
+
+
+@runtime_checkable
+class StateHandler(Protocol[StateT_contra, ContextT_contra]):
+    async def step(self, state: StateT_contra, context: ContextT_contra) -> BaseModel | None: ...
 
 
 class StateMachineStepper(Generic[StateT, ContextT]):
-    """Pure-function state machine stepper: dispatch type(state) -> handler.
+    """Dispatch type(state) -> handler.step().
 
-    Design contract:
-    - A stepper holds immutable dependencies (protocol refs, config constants)
-      and a handler registry. It must NOT accumulate evolving state across calls.
-    - All evolving data lives in the State objects passed to __call__.
-    - Per-call context is passed as an explicit parameter to __call__, never
-      stored on the stepper instance.
+    Usage:
+        stepper = StateMachineStepper(handler_map={
+            DetectingAnomaly: DetectingAnomalyHandler,
+            Recovering: RecoveringHandler,
+        })
 
-    Subclasses implement _build_handlers() -> {type: async handler(state, context)}.
-    Every reachable state type MUST be registered. Terminal states should have
-    handlers that return None. Unregistered types raise TypeError.
-    Subclasses may override __call__ to add pre-dispatch checks (e.g. timeout).
+    Each handler class is a stateless namespace with a ``step(state, ctx)``
+    method and optional private helpers. The class is instantiated once at
+    stepper creation time.
+
+    pre_dispatch: optional callback invoked before handler dispatch.
+    If it returns a non-None state, that state is returned immediately
+    (short-circuit). Use for cross-cutting concerns like timeout checks.
     """
 
-    def __init__(self) -> None:
-        self._handlers: dict[type, Callable[[StateT, ContextT], Awaitable[StateT | None]]] = (
-            self._build_handlers()
-        )
-
-    @abstractmethod
-    def _build_handlers(self) -> dict[type, Callable[[StateT, ContextT], Awaitable[StateT | None]]]: ...
+    def __init__(
+        self,
+        handler_map: dict[type, type],
+        *,
+        pre_dispatch: Callable[[StateT, ContextT], Awaitable[StateT | None]] | None = None,
+    ) -> None:
+        self._handlers: dict[type, Callable[[StateT, ContextT], Awaitable[StateT | None]]] = {
+            state_type: handler_cls().step
+            for state_type, handler_cls in handler_map.items()
+        }
+        self._pre_dispatch = pre_dispatch
 
     async def __call__(self, state: StateT, context: ContextT) -> StateT | None:
+        if self._pre_dispatch is not None:
+            result = await self._pre_dispatch(state, context)
+            if result is not None:
+                return result
+
         handler = self._handlers.get(type(state))
         if handler is None:
             raise TypeError(
-                f"{type(self).__name__} has no handler for state type "
-                f"{type(state).__name__}; register it in _build_handlers()"
+                f"StateMachineStepper has no handler for state type "
+                f"{type(state).__name__}; register it in handler_map"
             )
         result = await handler(state, context)
         if result is not None and result != state:
             logger.info(
-                "%s %s -> %s",
-                type(self).__name__,
+                "%s -> %s",
                 state,
                 result,
             )
