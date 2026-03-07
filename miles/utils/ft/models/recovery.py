@@ -6,12 +6,19 @@ from miles.utils.ft.models.base import FtBaseModel
 
 
 class RecoveryPhase(str, Enum):
+    # Entry point: inspect collected alerts for known hardware/network faults
     CHECK_ALERTS = "check_alerts"
+    # Restart training without evicting nodes (ephemeral or unknown fault)
     REATTEMPTING = "reattempting"
+    # Watch the reattempted run for iteration progress to confirm recovery
     MONITORING = "monitoring"
+    # Run diagnostic pipeline (GPU checks, NCCL tests, etc.) to locate bad nodes
     DIAGNOSING = "diagnosing"
+    # Evict confirmed bad nodes from the cluster and resubmit training
     EVICT_AND_RESTART = "evict_and_restart"
+    # Escalate to humans — automated recovery could not resolve the issue
     NOTIFY = "notify"
+    # Terminal state: recovery workflow complete
     DONE = "done"
 
 
