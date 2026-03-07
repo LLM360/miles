@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.controller.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.models.fault import ActionType

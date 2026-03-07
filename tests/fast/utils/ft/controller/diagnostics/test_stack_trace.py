@@ -5,8 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import patch
 
-from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
-from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
+from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator, StackTraceDiagnostic
 from tests.fast.utils.ft.helpers import (
     SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
     SAMPLE_PYSPY_OUTPUT_NORMAL,

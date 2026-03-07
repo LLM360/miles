@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.agents.diagnostics.gpu_diagnostic import GpuDiagnostic
-from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
-from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
+from miles.utils.ft.controller.diagnostics.gpu_diagnostic import GpuDiagnostic
+from miles.utils.ft.controller.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
+from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceDiagnostic
 from miles.utils.ft.protocols.agents import DiagnosticProtocol, NodeAgentProtocol
 
 

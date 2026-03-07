@@ -12,10 +12,10 @@ from unittest.mock import MagicMock, patch
 
 from tests.fast.utils.ft.helpers import make_mock_pynvml
 
-from miles.utils.ft.agents.diagnostics.gpu_check_script import GpuCheckResult, _check_nvml, _check_single_gpu, main
+from miles.utils.ft.controller.diagnostics.gpu_check_script import GpuCheckResult, _check_nvml, _check_single_gpu, main
 
 _MOCK_MATMUL_REF = (None, None, None)
-_GPU_SCRIPT = "miles.utils.ft.agents.diagnostics.gpu_check_script"
+_GPU_SCRIPT = "miles.utils.ft.controller.diagnostics.gpu_check_script"
 
 
 @contextmanager
