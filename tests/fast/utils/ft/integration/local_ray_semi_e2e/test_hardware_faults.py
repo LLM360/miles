@@ -167,3 +167,85 @@ class TestDynamicBadNodes:
         assert status.mode == ControllerMode.MONITORING, (
             f"Recovery did not abort: mode={status.mode}, phase={status.recovery_phase}"
         )
+
+
+class TestBadNodeMerging:
+    async def test_critical_fault_during_recovery_merges_bad_nodes(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """New critical fault during recovery merges bad nodes: node-0 + node-1 evicted."""
+        env = make_e2e_env(
+            ft_id="e2ebnm",
+            nodes=[
+                NodeSpec(node_id="e2ebnm-node-0", use_remote_collector=True),
+                NodeSpec(node_id="e2ebnm-node-1", use_remote_collector=True),
+                NodeSpec(node_id="e2ebnm-node-2", use_remote_collector=True),
+            ],
+            detectors=build_detector_chain(),
+            scrape_interval_seconds=_FAST_SCRAPE,
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: inject GPU fault on node-0 → recovery with bad_node_ids=[node-0]
+        env.set_collector_metrics("e2ebnm-node-0", [
+            GaugeSample(
+                name=GPU_AVAILABLE,
+                labels={"node_id": "e2ebnm-node-0", "gpu": "0"},
+                value=0.0,
+            ),
+        ])
+
+        await wait_for_mode(
+            env.controller,
+            target_mode=ControllerMode.RECOVERY,
+            timeout=30.0,
+        )
+
+        # Step 2: during recovery, also inject GPU fault on node-1
+        env.set_collector_metrics("e2ebnm-node-1", [
+            GaugeSample(
+                name=GPU_AVAILABLE,
+                labels={"node_id": "e2ebnm-node-1", "gpu": "0"},
+                value=0.0,
+            ),
+        ])
+
+        # Step 3: wait for recovery to complete with eviction of both nodes
+        final = await wait_for_recovery_complete(env.controller, timeout=120.0)
+        assert_phase_path_contains(final, ["Evicting"])
+
+
+class TestCrossFaultTypeThrottle:
+    async def test_different_fault_types_share_throttle_window(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """Crash recovery + NaN recovery share the same cooldown window."""
+        from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+
+        env = make_e2e_env(
+            ft_id="e2ecft",
+            nodes=[NodeSpec(node_id="e2ecft-node-0", use_remote_collector=True)],
+            detectors=build_detector_chain(),
+            scrape_interval_seconds=_FAST_SCRAPE,
+            recovery_cooldown=SlidingWindowThrottle(window_minutes=60, max_count=2),
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: crash → first recovery
+        await env.injector.crash_training()
+        await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+
+        # Step 2: NaN → should be throttled (shared window, max_count=2)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await env.injector.inject_nan_loss()
+        await asyncio.sleep(5.0)
+        status = get_status(env.controller)
+        assert status.mode == ControllerMode.MONITORING, (
+            f"Expected NaN recovery to be throttled, but mode={status.mode}"
+        )

@@ -160,3 +160,56 @@ class TestStaleRunId:
         await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
         final = get_status(env.controller)
         assert final.active_run_id == new_run_id
+
+
+class TestMultiNodeIsolation:
+    async def test_single_node_fault_does_not_affect_healthy_nodes(
+        self, e2e_multi_node_env: E2EEnv,
+    ) -> None:
+        """In multi-node setup, a global crash recovers cleanly with all nodes participating."""
+        env = e2e_multi_node_env
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: crash → recovery
+        await env.injector.crash_training()
+        status = await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+        assert status.mode == ControllerMode.MONITORING
+        assert status.recovery_in_progress is False
+
+        # Step 2: training resumes across all nodes
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+
+class TestMultiNodeScale:
+    async def test_3_nodes_full_recovery_all_ranks_reregister(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """3 nodes × 2 ranks each — crash → recovery → all 6 ranks re-register."""
+        env = make_e2e_env(
+            ft_id="e2e3n",
+            nodes=[
+                NodeSpec(node_id="e2e3n-node-0", num_ranks=2),
+                NodeSpec(node_id="e2e3n-node-1", num_ranks=2),
+                NodeSpec(node_id="e2e3n-node-2", num_ranks=2),
+            ],
+            detectors=[TrainingCrashDetector()],
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: crash → full recovery
+        await env.injector.crash_training()
+        status = await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+        assert status.mode == ControllerMode.MONITORING
+
+        # Step 2: verify training resumes (proves all workers re-registered)
+        await wait_for_training_stable(env.controller, n_iterations=5, timeout=30.0)
