@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from tests.fast.utils.ft.helpers import make_detector_context, make_fake_metric_store
 
-from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
+from miles.utils.ft.controller.detectors.network import NetworkAlertDetector, NetworkAlertDetectorConfig
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
 from miles.utils.ft.models.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.models.fault import ActionType
@@ -90,11 +90,11 @@ class TestNetworkAlertDetector:
 
 class TestNetworkAlertDetectorValidation:
     @pytest.mark.parametrize("kwargs,match", [
-        (dict(alert_window=timedelta(0)), "alert_window"),
-        (dict(alert_window=timedelta(minutes=-1)), "alert_window"),
-        (dict(alert_threshold=0), "alert_threshold"),
-        (dict(alert_threshold=-1), "alert_threshold"),
+        (dict(alert_window_minutes=0), "alert_window_minutes must be positive"),
+        (dict(alert_window_minutes=-1), "alert_window_minutes must be positive"),
+        (dict(alert_threshold=0), "alert_threshold must be >= 1"),
+        (dict(alert_threshold=-1), "alert_threshold must be >= 1"),
     ])
     def test_invalid_parameter_rejected(self, kwargs: dict, match: str) -> None:
         with pytest.raises(ValueError, match=match):
-            NetworkAlertDetector(**kwargs)
+            NetworkAlertDetectorConfig(**kwargs)

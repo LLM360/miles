@@ -9,7 +9,7 @@ from tests.fast.utils.ft.helpers import (
     make_fake_mini_wandb,
 )
 
-from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector
+from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.models.fault import ActionType
 
@@ -41,11 +41,11 @@ def _make_wandb_with_timed_mfu(
 class TestMfuDeclineDetector:
     def test_normal_mfu(self) -> None:
         wandb = _make_wandb_with_mfu([0.45] * 10)
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(
             mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
@@ -55,10 +55,10 @@ class TestMfuDeclineDetector:
 
     def test_insufficient_data(self) -> None:
         wandb = _make_wandb_with_mfu([0.1] * 5)
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             consecutive_steps=10,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(
             mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
@@ -73,12 +73,12 @@ class TestMfuDeclineDetector:
             inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=60.0)
             inject_gpu_temperature(store, node_id="node-1", gpu=str(i), celsius=105.0)
 
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
             temperature_delta_threshold=20.0,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(
             metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
@@ -94,11 +94,11 @@ class TestMfuDeclineDetector:
             inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
             inject_gpu_temperature(store, node_id="node-1", gpu=str(i), celsius=66.0)
 
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(
             metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
@@ -120,12 +120,12 @@ class TestMfuDeclineDetector:
             inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
             inject_gpu_temperature(store, node_id="node-1", gpu=str(i), celsius=66.0)
 
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
             decline_timeout_minutes=30.0,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(
             metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
@@ -145,12 +145,12 @@ class TestMfuDeclineDetector:
         for i in range(8):
             inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
 
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
             decline_timeout_minutes=30.0,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(
             metric_store=store, mini_wandb=wandb, rank_placement={0: "node-0"},
@@ -166,11 +166,11 @@ class TestMfuDeclineDetector:
         wandb = _make_wandb_with_mfu(all_steps)
         store = make_fake_metric_store()
 
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.0,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(
             metric_store=store, mini_wandb=wandb,
@@ -194,12 +194,12 @@ class TestMfuDeclineDetector:
         for i in range(8):
             inject_gpu_temperature(store, node_id="node-0", gpu=str(i), celsius=65.0)
 
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
             decline_timeout_minutes=30.0,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(
             metric_store=store, mini_wandb=wandb, rank_placement={0: "node-0"},
@@ -212,11 +212,11 @@ class TestMfuDeclineDetector:
 class TestMfuDeclineBaselineLocking:
     def test_baseline_locked_after_first_computation(self) -> None:
         wandb = _make_wandb_with_mfu([0.5] * 50 + [0.45] * 10)
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.0,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
-        )
+        ))
 
         detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -228,11 +228,11 @@ class TestMfuDeclineBaselineLocking:
         and let avg_mfu=0.30 pass. Locking keeps the original baseline=0.5,
         threshold=0.40, so the decline is detected."""
         wandb_healthy = _make_wandb_with_mfu([0.5] * 50 + [0.45] * 10)
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.0,
             mfu_threshold_ratio=0.8,
             consecutive_steps=10,
-        )
+        ))
 
         detector.evaluate(make_detector_context(mini_wandb=wandb_healthy))
         original_baseline = detector._locked_baseline
@@ -246,10 +246,10 @@ class TestMfuDeclineBaselineLocking:
 
     def test_explicit_baseline_bypasses_locking(self) -> None:
         """When mfu_baseline is explicitly set, locking state is never touched."""
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             consecutive_steps=10,
-        )
+        ))
 
         wandb = _make_wandb_with_mfu([0.45] * 10)
         detector.evaluate(make_detector_context(mini_wandb=wandb))
@@ -260,11 +260,11 @@ class TestMfuDeclineBaselineLocking:
 class TestMfuAbsoluteMinimum:
     def test_triggers_when_below_floor(self) -> None:
         wandb = _make_wandb_with_mfu([0.05] * 10)
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_absolute_minimum=0.1,
             consecutive_steps=10,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -273,10 +273,10 @@ class TestMfuAbsoluteMinimum:
 
     def test_disabled_by_default(self) -> None:
         wandb = _make_wandb_with_mfu([0.05] * 10)
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             consecutive_steps=10,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -284,11 +284,11 @@ class TestMfuAbsoluteMinimum:
 
     def test_no_trigger_when_above_floor(self) -> None:
         wandb = _make_wandb_with_mfu([0.45] * 10)
-        detector = MfuDeclineDetector(
+        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=0.5,
             mfu_absolute_minimum=0.1,
             consecutive_steps=10,
-        )
+        ))
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -300,12 +300,12 @@ class TestMfuDeclineDetectorValidation:
         (dict(mfu_threshold_ratio=0.0), "mfu_threshold_ratio"),
         (dict(mfu_threshold_ratio=-0.5), "mfu_threshold_ratio"),
         (dict(mfu_threshold_ratio=1.5), "mfu_threshold_ratio"),
-        (dict(consecutive_steps=0), "consecutive_steps"),
-        (dict(decline_timeout_minutes=0.0), "decline_timeout_minutes"),
-        (dict(baseline_steps=0), "baseline_steps"),
-        (dict(temperature_delta_threshold=0.0), "temperature_delta_threshold"),
+        (dict(consecutive_steps=0), "must be >= 1"),
+        (dict(decline_timeout_minutes=0.0), "must be > 0"),
+        (dict(baseline_steps=0), "must be >= 1"),
+        (dict(temperature_delta_threshold=0.0), "must be > 0"),
         (dict(mfu_absolute_minimum=-0.1), "mfu_absolute_minimum"),
     ])
     def test_invalid_parameter_rejected(self, kwargs: dict, match: str) -> None:
         with pytest.raises(ValueError, match=match):
-            MfuDeclineDetector(**kwargs)
+            MfuDeclineDetectorConfig(**kwargs)

@@ -8,7 +8,7 @@ from tests.fast.utils.ft.helpers import (
     make_fake_mini_wandb,
 )
 
-from miles.utils.ft.controller.detectors.hang import HangDetector
+from miles.utils.ft.controller.detectors.hang import HangDetector, HangDetectorConfig
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
 from miles.utils.ft.models.metric_names import TRAINING_ITERATION, TRAINING_PHASE
 from miles.utils.ft.models.fault import ActionType
@@ -46,7 +46,7 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_iteration(store, value=110.0, timestamp=now - timedelta(minutes=1))
-        detector = HangDetector(training_timeout_minutes=10)
+        detector = HangDetector(config=HangDetectorConfig(training_timeout_minutes=10))
         ctx = make_detector_context(
             metric_store=store,
             mini_wandb=make_fake_mini_wandb(),
@@ -63,7 +63,7 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=1))
-        detector = HangDetector(training_timeout_minutes=10)
+        detector = HangDetector(config=HangDetectorConfig(training_timeout_minutes=10))
         ctx = make_detector_context(
             metric_store=store,
             mini_wandb=make_fake_mini_wandb(),
@@ -84,10 +84,10 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=1))
-        detector = HangDetector(
+        detector = HangDetector(config=HangDetectorConfig(
             training_timeout_minutes=10,
             checkpoint_saving_timeout_minutes=30,
-        )
+        ))
         ctx = make_detector_context(
             metric_store=store,
             mini_wandb=make_fake_mini_wandb(),
@@ -108,10 +108,10 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=20))
         _inject_iteration(store, value=101.0, timestamp=now - timedelta(minutes=15))
-        detector = HangDetector(
+        detector = HangDetector(config=HangDetectorConfig(
             training_timeout_minutes=10,
             checkpoint_saving_timeout_minutes=30,
-        )
+        ))
         ctx = make_detector_context(
             metric_store=store,
             mini_wandb=make_fake_mini_wandb(),
@@ -130,10 +130,10 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=25))
         _inject_iteration(store, value=100.0, timestamp=now - timedelta(minutes=10))
-        detector = HangDetector(
+        detector = HangDetector(config=HangDetectorConfig(
             training_timeout_minutes=10,
             checkpoint_saving_timeout_minutes=30,
-        )
+        ))
         ctx = make_detector_context(
             metric_store=store,
             mini_wandb=make_fake_mini_wandb(),
@@ -178,11 +178,11 @@ class TestHangDetector:
 
 class TestHangDetectorValidation:
     @pytest.mark.parametrize("kwargs,match", [
-        (dict(training_timeout_minutes=0), "training_timeout_minutes"),
-        (dict(training_timeout_minutes=-5), "training_timeout_minutes"),
-        (dict(checkpoint_saving_timeout_minutes=0), "checkpoint_saving_timeout_minutes"),
-        (dict(checkpoint_saving_timeout_minutes=-10), "checkpoint_saving_timeout_minutes"),
+        (dict(training_timeout_minutes=0), "must be >= 1"),
+        (dict(training_timeout_minutes=-5), "must be >= 1"),
+        (dict(checkpoint_saving_timeout_minutes=0), "must be >= 1"),
+        (dict(checkpoint_saving_timeout_minutes=-10), "must be >= 1"),
     ])
     def test_invalid_parameter_rejected(self, kwargs: dict, match: str) -> None:
         with pytest.raises(ValueError, match=match):
-            HangDetector(**kwargs)
+            HangDetectorConfig(**kwargs)

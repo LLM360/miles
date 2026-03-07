@@ -2,6 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from pydantic import ValidationError
+
 from tests.fast.utils.ft.helpers import (
     inject_gpu_unavailable,
     inject_healthy_node,
@@ -10,10 +13,10 @@ from tests.fast.utils.ft.helpers import (
     make_fake_mini_wandb,
 )
 
-from miles.utils.ft.controller.detectors.chain import build_detector_chain
-from miles.utils.ft.controller.detectors.hang import HangDetector
-from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector
-from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
+from miles.utils.ft.controller.detectors.chain import DetectorChainConfig, build_detector_chain
+from miles.utils.ft.controller.detectors.hang import HangDetector, HangDetectorConfig
+from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
+from miles.utils.ft.controller.detectors.network import NetworkAlertDetector, NetworkAlertDetectorConfig
 from miles.utils.ft.models.metric_names import NODE_NETWORK_UP, TRAINING_ITERATION
 from miles.utils.ft.models.fault import ActionType
 from miles.utils.ft.models.metrics import GaugeSample
@@ -160,49 +163,57 @@ class TestBuildDetectorChainConfig:
     def test_default_config_uses_defaults(self) -> None:
         chain = build_detector_chain()
         hang = next(d for d in chain if isinstance(d, HangDetector))
-        assert hang._training_timeout_minutes == 10
+        assert hang._config.training_timeout_minutes == 10
 
     def test_none_config_uses_defaults(self) -> None:
         chain = build_detector_chain(config=None)
         hang = next(d for d in chain if isinstance(d, HangDetector))
-        assert hang._training_timeout_minutes == 10
+        assert hang._config.training_timeout_minutes == 10
 
     def test_hang_timeout_minutes(self) -> None:
-        chain = build_detector_chain(config={"hang": {"training_timeout_minutes": 20}})
+        chain = build_detector_chain(config=DetectorChainConfig(
+            hang=HangDetectorConfig(training_timeout_minutes=20),
+        ))
         hang = next(d for d in chain if isinstance(d, HangDetector))
-        assert hang._training_timeout_minutes == 20
+        assert hang._config.training_timeout_minutes == 20
 
     def test_mfu_threshold_ratio(self) -> None:
-        chain = build_detector_chain(config={"mfu": {"mfu_threshold_ratio": 0.5}})
+        chain = build_detector_chain(config=DetectorChainConfig(
+            mfu=MfuDeclineDetectorConfig(mfu_threshold_ratio=0.5),
+        ))
         mfu = next(d for d in chain if isinstance(d, MfuDeclineDetector))
         assert mfu._mfu_threshold_ratio == 0.5
 
     def test_network_alert_window_minutes(self) -> None:
-        chain = build_detector_chain(config={"network": {"alert_window_minutes": 10}})
+        chain = build_detector_chain(config=DetectorChainConfig(
+            network=NetworkAlertDetectorConfig(alert_window_minutes=10),
+        ))
         net = next(d for d in chain if isinstance(d, NetworkAlertDetector))
         assert net._alert_window == timedelta(minutes=10)
 
     def test_network_alert_threshold(self) -> None:
-        chain = build_detector_chain(config={"network": {"alert_threshold": 5}})
+        chain = build_detector_chain(config=DetectorChainConfig(
+            network=NetworkAlertDetectorConfig(alert_threshold=5),
+        ))
         net = next(d for d in chain if isinstance(d, NetworkAlertDetector))
         assert net._alert_threshold == 5
 
     def test_multiple_config_keys(self) -> None:
-        chain = build_detector_chain(config={
-            "hang": {"training_timeout_minutes": 30},
-            "mfu": {"mfu_threshold_ratio": 0.6},
-            "network": {"alert_window_minutes": 15, "alert_threshold": 3},
-        })
+        chain = build_detector_chain(config=DetectorChainConfig(
+            hang=HangDetectorConfig(training_timeout_minutes=30),
+            mfu=MfuDeclineDetectorConfig(mfu_threshold_ratio=0.6),
+            network=NetworkAlertDetectorConfig(alert_window_minutes=15, alert_threshold=3),
+        ))
 
         hang = next(d for d in chain if isinstance(d, HangDetector))
         mfu = next(d for d in chain if isinstance(d, MfuDeclineDetector))
         net = next(d for d in chain if isinstance(d, NetworkAlertDetector))
 
-        assert hang._training_timeout_minutes == 30
+        assert hang._config.training_timeout_minutes == 30
         assert mfu._mfu_threshold_ratio == 0.6
         assert net._alert_window == timedelta(minutes=15)
         assert net._alert_threshold == 3
 
-    def test_unknown_config_keys_ignored(self) -> None:
-        chain = build_detector_chain(config={"unknown_key": 42})
-        assert len(chain) == 6
+    def test_unknown_config_keys_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            DetectorChainConfig(**{"unknown_key": 42})  # type: ignore[arg-type]
