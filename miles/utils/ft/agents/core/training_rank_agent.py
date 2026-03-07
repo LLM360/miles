@@ -3,12 +3,14 @@ from __future__ import annotations
 import logging
 import os
 import socket
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Literal
 
-from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
 from miles.utils.ft.agents.utils.training_rank_metric_exporter import TrainingRankMetricExporter
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import retry_sync
+
+if TYPE_CHECKING:
+    from miles.utils.ft.protocols.platform import ControllerClientProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +26,15 @@ class FtTrainingRankAgent:
     FtTrackingAgent, which hooks into tracking_utils.log().
     """
 
-    def __init__(self, rank: int, world_size: int) -> None:
-        self._ft_id: str = os.environ.get("MILES_FT_ID", "")
-        self._controller_handle: Any | None = None
+    def __init__(
+        self,
+        rank: int,
+        world_size: int,
+        controller_client: ControllerClientProtocol | None = None,
+    ) -> None:
         self._rank = rank
         self._world_size = world_size
+        self._controller_client = controller_client
         self._run_id: str = os.environ.get("MILES_FT_TRAINING_RUN_ID", "")
         self._node_id: str = socket.gethostname()
 
@@ -47,10 +53,11 @@ class FtTrainingRankAgent:
         rank: int,
         world_size: int,
         enabled: bool = True,
+        controller_client: ControllerClientProtocol | None = None,
     ) -> FtTrainingRankAgent | None:
         if not enabled:
             return None
-        return cls(rank=rank, world_size=world_size)
+        return cls(rank=rank, world_size=world_size, controller_client=controller_client)
 
     # ------------------------------------------------------------------
     # Public API — delegated to TrainingRankMetricExporter
@@ -83,26 +90,18 @@ class FtTrainingRankAgent:
             logger.info("No MILES_FT_TRAINING_RUN_ID set, skipping rank registration")
             return
 
-        if self._controller_handle is None:
-            self._controller_handle = get_controller_handle(self._ft_id)
-        controller = self._controller_handle
-        if controller is None:
-            logger.warning("Cannot register rank: controller not available")
+        if self._controller_client is None:
+            logger.warning("Cannot register rank: no controller client provided")
             return
 
-        import ray
-
         def _do_register() -> None:
-            ray.get(
-                controller.register_training_rank.remote(
-                    run_id=self._run_id,
-                    rank=self._rank,
-                    world_size=self._world_size,
-                    node_id=self._node_id,
-                    exporter_address=self.get_exporter_address(),
-                    pid=os.getpid(),
-                ),
-                timeout=10,
+            self._controller_client.register_training_rank(  # type: ignore[union-attr]
+                run_id=self._run_id,
+                rank=self._rank,
+                world_size=self._world_size,
+                node_id=self._node_id,
+                exporter_address=self.get_exporter_address(),
+                pid=os.getpid(),
             )
 
         result = retry_sync(
