@@ -39,14 +39,14 @@ class _NvmlCheckResult:
 @dataclass
 class GpuCheckResult:
     gpu_index: int
-    nvml_passed: bool
-    ecc_errors_uncorrectable: int
-    retired_pages_count: int
-    power_state_abnormal: bool
-    row_remap_failure: bool
-    compute_hash: str
-    compute_error: str
-    details: str
+    nvml_passed: bool = False
+    ecc_errors_uncorrectable: int = 0
+    retired_pages_count: int = 0
+    power_state_abnormal: bool = False
+    row_remap_failure: bool = False
+    compute_hash: str = ""
+    compute_error: str = ""
+    details: str = ""
 
 
 _ABNORMAL_POWER_STATES = frozenset({8, 15})
@@ -83,17 +83,8 @@ def main() -> None:
                     gpu_index=i, handle=handle, model_and_input=model_and_input,
                 )
             except Exception as exc:
-                result = GpuCheckResult(
-                    gpu_index=i,
-                    nvml_passed=False,
-                    ecc_errors_uncorrectable=0,
-                    retired_pages_count=0,
-                    power_state_abnormal=False,
-                    row_remap_failure=False,
-                    compute_hash="",
-                    compute_error=f"check failed: {exc}",
-                    details=f"check failed: {exc}",
-                )
+                msg = f"check failed: {exc}"
+                result = GpuCheckResult(gpu_index=i, compute_error=msg, details=msg)
             results.append(result)
     finally:
         pynvml.nvmlShutdown()
@@ -135,10 +126,7 @@ def _check_single_gpu(
     return GpuCheckResult(
         gpu_index=gpu_index,
         nvml_passed=nvml_passed,
-        ecc_errors_uncorrectable=nvml.ecc_errors_uncorrectable,
-        retired_pages_count=nvml.retired_pages_count,
-        power_state_abnormal=nvml.power_state_abnormal,
-        row_remap_failure=nvml.row_remap_failure,
+        **asdict(nvml),
         compute_hash=compute_hash,
         compute_error=compute_error,
         details=details,
