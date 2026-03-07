@@ -8,6 +8,11 @@ from typing import Any, Callable, TypeVar, overload
 
 _T = TypeVar("_T")
 
+
+class FaultInjectionError(RuntimeError):
+    """Raised by fault injection hooks during testing. Not caught by graceful_degrade."""
+
+
 _ARG_REPR_LIMIT = 200
 _SKIP_PARAMS = frozenset({"self", "cls"})
 
@@ -77,6 +82,8 @@ def graceful_degrade(
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
                     return await func(*args, **kwargs)
+                except FaultInjectionError:
+                    raise
                 except Exception:
                     full_msg = base_msg + _format_call_args(sig, args, kwargs)
                     func_logger.log(log_level, full_msg, exc_info=True)
@@ -88,6 +95,8 @@ def graceful_degrade(
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
+            except FaultInjectionError:
+                raise
             except Exception:
                 full_msg = base_msg + _format_call_args(sig, args, kwargs)
                 func_logger.log(log_level, full_msg, exc_info=True)
