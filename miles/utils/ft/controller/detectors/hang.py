@@ -49,7 +49,7 @@ class HangDetector(BaseFaultDetector):
             return Decision.no_fault(reason="job not running, skipping hang check")
 
         phase = self._get_current_phase(ctx.metric_store)
-        timeout_attr = _PHASE_TIMEOUT_ATTR.get(phase, "training_timeout_minutes")
+        timeout_attr = _PHASE_TIMEOUT_ATTR[phase]
         timeout_minutes: int = getattr(self._config, timeout_attr)
 
         heartbeat_changes = self._get_heartbeat_changes(ctx.metric_store, window_minutes=timeout_minutes)
@@ -57,7 +57,7 @@ class HangDetector(BaseFaultDetector):
             return Decision.no_fault(reason="no heartbeat data available")
 
         if heartbeat_changes == 0:
-            phase_label = _PHASE_LABEL.get(phase, "training")
+            phase_label = _PHASE_LABEL[phase]
             return Decision(
                 action=ActionType.ENTER_RECOVERY,
                 reason=f"heartbeat stalled for {timeout_minutes}min during {phase_label}",
