@@ -10,7 +10,8 @@ from miles.utils.ft.agents.collectors.kmsg import KmsgCollector
 from miles.utils.ft.agents.collectors.network import NetworkCollector
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.agents.utils.controller_handle import get_controller_handle
+from miles.utils.ft.protocols.platform import ft_controller_actor_name
+from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.agents.diagnostics.gpu_diagnostic import GpuDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.inter_machine import (
     InterMachineCommDiagnostic,
@@ -94,14 +95,9 @@ class _FtNodeAgentActorCls:
     def get_exporter_address(self) -> str:
         return self._agent.get_exporter_address()
 
+    @graceful_degrade(msg="Failed to register node agent with controller")
     def _register_with_controller(self) -> None:
-        controller = get_controller_handle(self._ft_id)
-        if controller is None:
-            logger.warning(
-                "Cannot register node agent: controller not available node_id=%s",
-                self._node_id,
-            )
-            return
+        controller = ray.get_actor(ft_controller_actor_name(self._ft_id))
 
         self_handle = ray.get_runtime_context().current_actor
         exporter_address = self._agent.get_exporter_address()
