@@ -9,7 +9,6 @@ from miles.utils.ft.models.base import FtBaseModel
 
 class ActionType(str, Enum):
     NONE = "none"
-    MARK_BAD_AND_RESTART = "mark_bad_and_restart"
     ENTER_RECOVERY = "enter_recovery"
     NOTIFY_HUMAN = "notify_human"
 
@@ -59,7 +58,7 @@ class Decision(FtBaseModel):
             return cls(action=ActionType.NONE, reason=fallback_reason)
 
         return cls(
-            action=ActionType.MARK_BAD_AND_RESTART,
+            action=ActionType.ENTER_RECOVERY,
             bad_node_ids=sorted(unique_node_ids(faults)),
             reason="; ".join(f.reason for f in faults),
             trigger=trigger,

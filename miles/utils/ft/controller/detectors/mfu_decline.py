@@ -95,7 +95,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         high_temp_node = self._find_high_temperature_node(ctx.metric_store, ctx.rank_placement)
         if high_temp_node is not None:
             return Decision(
-                action=ActionType.MARK_BAD_AND_RESTART,
+                action=ActionType.ENTER_RECOVERY,
                 bad_node_ids=[high_temp_node],
                 reason=f"MFU decline ({mfu_stats}) correlated with high temperature on {high_temp_node}",
                 trigger=TriggerType.HARDWARE,

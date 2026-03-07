@@ -202,7 +202,7 @@ class MainStepper(StateMachineStepper[MainState]):
             return set()
         bad_nodes: set[str] = set()
         for decision in self._run_detectors_raw(ctx.detector_context, critical_only=True):
-            if decision.action in (ActionType.MARK_BAD_AND_RESTART, ActionType.ENTER_RECOVERY) and decision.bad_node_ids:
+            if decision.action == ActionType.ENTER_RECOVERY and decision.bad_node_ids:
                 bad_nodes.update(decision.bad_node_ids)
         return bad_nodes
 
