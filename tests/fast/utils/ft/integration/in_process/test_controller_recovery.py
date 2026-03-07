@@ -15,7 +15,6 @@ from miles.utils.ft.controller.main_state_machine import (
     Recovering,
 )
 from miles.utils.ft.controller.recovery.recovery_stepper import (
-    DirectlyRestarting,
     EvictingAndRestarting,
 )
 from miles.utils.ft.controller.recovery.restart_stepper import MonitoringProgress
@@ -34,7 +33,7 @@ def _is_monitoring_progress(state: object) -> bool:
     if not isinstance(state, Recovering):
         return False
     recovery = state.recovery
-    if isinstance(recovery, (EvictingAndRestarting, DirectlyRestarting)):
+    if isinstance(recovery, EvictingAndRestarting):
         return isinstance(recovery.restart, MonitoringProgress)
     return False
 
