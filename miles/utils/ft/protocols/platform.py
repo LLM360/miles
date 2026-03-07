@@ -52,6 +52,30 @@ class DiagnosticOrchestratorProtocol(Protocol):
     ) -> Decision: ...
 
 
+@runtime_checkable
+class ControllerClientProtocol(Protocol):
+    """Agent-side interface for communicating with the FtController.
+
+    Implementations hide the transport (Ray, in-process, stub) so that
+    agent code never imports ray or calls .remote().
+    """
+
+    def register_training_rank(
+        self,
+        run_id: str,
+        rank: int,
+        world_size: int,
+        node_id: str,
+        exporter_address: str,
+        pid: int,
+        timeout: float = 10,
+    ) -> None: ...
+
+    def log_step(
+        self, run_id: str, step: int, metrics: dict[str, float],
+    ) -> None: ...
+
+
 def ft_controller_actor_name(ft_id: str) -> str:
     if not ft_id:
         return "ft_controller"
