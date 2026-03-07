@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-from miles.utils.ft.platform.ray_controller_client import RayControllerClient
+from miles.utils.ft.platform.ray_wrappers.controller_client import RayControllerClient
 from miles.utils.ft.utils.env import get_ft_id
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 

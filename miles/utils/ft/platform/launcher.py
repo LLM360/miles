@@ -14,8 +14,8 @@ from miles.utils.ft.controller.detectors.hang import HangDetectorConfig
 from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetectorConfig
 from miles.utils.ft.controller.detectors.network import NetworkAlertDetectorConfig
 from miles.utils.ft.controller.detectors.thermal_throttling import ThermalThrottlingDetectorConfig
-from miles.utils.ft.platform.controller_actor import FtControllerActor
-from miles.utils.ft.platform.controller_factory import FtControllerConfig
+from miles.utils.ft.platform.config import FtControllerConfig
+from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
 from miles.utils.logging_utils import configure_logger
 

@@ -31,7 +31,7 @@ from miles.utils.ft.protocols.platform import (
 
 if TYPE_CHECKING:
     from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
-    from miles.utils.ft.platform.ray_training_job import RayTrainingJob
+    from miles.utils.ft.platform.ray_wrappers.training_job import RayTrainingJob
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +148,7 @@ def _build_platform_components(
 
     if platform == "k8s-ray":
         from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
-        from miles.utils.ft.platform.ray_training_job import RayTrainingJob
+        from miles.utils.ft.platform.ray_wrappers.training_job import RayTrainingJob
         from ray.job_submission import JobSubmissionClient
 
         node_manager = K8sNodeManager(label_prefix=k8s_label_prefix)
