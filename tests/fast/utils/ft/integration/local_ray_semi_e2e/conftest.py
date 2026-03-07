@@ -31,7 +31,9 @@ from tests.fast.utils.ft.helpers.diagnostic_fakes import StubDiagnostic
 from tests.fast.utils.ft.helpers.fault_injection import LocalRayFaultInjector
 from tests.fast.utils.ft.helpers.training_simulator import (
     CollectorStateActor,
+    NotifierStateActor,
     RemoteControlledCollector,
+    RemoteControlledNotifier,
     RemoteControlledTrainingJob,
     TrainingStateActor,
     TrainingWorkerActor,
@@ -70,6 +72,7 @@ class E2EEnv:
     node_agents: dict[str, ray.actor.ActorHandle] = field(default_factory=dict)
     workers: list[ray.actor.ActorHandle] = field(default_factory=list)
     collector_states: dict[str, ray.actor.ActorHandle] = field(default_factory=dict)
+    notifier_state: ray.actor.ActorHandle | None = None
     _cleanup_names: list[str] = field(default_factory=list)
     _cleanup_handles: list[ray.actor.ActorHandle] = field(default_factory=list)
 
@@ -80,6 +83,11 @@ class E2EEnv:
         if state is None:
             raise KeyError(f"No collector state for node {node_id}")
         ray.get(state.set_metrics.remote(metrics), timeout=5)
+
+    def get_notifier_calls(self) -> list[tuple[str, str, str]]:
+        if self.notifier_state is None:
+            raise RuntimeError("No notifier configured; pass use_notifier=True to _build_e2e_env")
+        return ray.get(self.notifier_state.get_calls.remote(), timeout=5)
 
     def cleanup(self) -> None:
         for worker in self.workers:
@@ -187,6 +195,7 @@ def _build_e2e_env(
     recovery_cooldown: SlidingWindowThrottle | None = None,
     registration_grace_ticks: int | None = None,
     notifier_override: Any = None,
+    use_notifier: bool = False,
     wait_for_iteration: bool = True,
     max_simultaneous_bad_nodes: int | None = None,
     recovery_timeout_seconds: int | None = None,
@@ -202,6 +211,12 @@ def _build_e2e_env(
     state_actor = TrainingStateActor.remote()
     training_job = RemoteControlledTrainingJob(state_actor=state_actor)
 
+    notifier_state_actor: ray.actor.ActorHandle | None = None
+    resolved_notifier = notifier_override
+    if use_notifier and notifier_override is None:
+        notifier_state_actor = NotifierStateActor.remote()
+        resolved_notifier = RemoteControlledNotifier(state_actor=notifier_state_actor)
+
     controller_kwargs: dict[str, Any] = dict(
         config=FtControllerConfig(
             platform="stub",
@@ -211,7 +226,7 @@ def _build_e2e_env(
         ),
         training_job_override=training_job,
         node_manager_override=FakeNodeManager(),
-        notifier_override=notifier_override,
+        notifier_override=resolved_notifier,
         detectors_override=detectors,
         start_exporter=True,
     )
@@ -238,9 +253,12 @@ def _build_e2e_env(
         state_actor=state_actor,
         injector=LocalRayFaultInjector(state_actor=state_actor),
         ft_id=ft_id,
+        notifier_state=notifier_state_actor,
     )
     env._cleanup_names.append(controller_name)
     env._cleanup_handles.append(state_actor)
+    if notifier_state_actor is not None:
+        env._cleanup_handles.append(notifier_state_actor)
 
     # Step: start node agents
     rank_offset = 0

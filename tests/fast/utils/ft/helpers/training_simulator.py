@@ -265,3 +265,42 @@ class RemoteControlledCollector(BaseCollector):
 
     def _collect_sync(self) -> list[MetricSample]:
         return ray.get(self._state.get_metrics.remote())
+
+
+@ray.remote(num_cpus=0, num_gpus=0)
+class NotifierStateActor:
+    """Stores notification records across Ray actor boundaries.
+
+    The controller actor runs in a separate process, so a plain FakeNotifier's
+    calls list is inaccessible from the test driver. This actor holds the
+    records so both sides can access them via Ray RPCs.
+    """
+
+    def __init__(self) -> None:
+        self._calls: list[tuple[str, str, str]] = []
+
+    def record(self, title: str, content: str, severity: str) -> None:
+        self._calls.append((title, content, severity))
+
+    def get_calls(self) -> list[tuple[str, str, str]]:
+        return list(self._calls)
+
+    def clear(self) -> None:
+        self._calls.clear()
+
+
+class RemoteControlledNotifier:
+    """NotificationProtocol that delegates to a NotifierStateActor.
+
+    Serialized into FtControllerActor via cloudpickle. All send() calls
+    are forwarded to the shared actor so the test driver can read them back.
+    """
+
+    def __init__(self, state_actor: ray.actor.ActorHandle) -> None:
+        self._state = state_actor
+
+    async def send(self, title: str, content: str, severity: str) -> None:
+        await self._state.record.remote(title, content, severity)
+
+    async def aclose(self) -> None:
+        pass

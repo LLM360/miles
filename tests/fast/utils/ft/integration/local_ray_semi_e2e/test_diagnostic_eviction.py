@@ -1,9 +1,12 @@
 """Semi-E2E: diagnostic eviction — bad node eviction, excluded nodes, partial, all-evicted."""
 from __future__ import annotations
 
+import asyncio
+import time
 from collections.abc import Callable
 
 from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDetector
+from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.models.recovery import ControllerMode
 
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
@@ -13,6 +16,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
 )
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
+    get_status,
     wait_for_recovery_complete,
     wait_for_recovery_phase,
     wait_for_training_stable,
@@ -167,3 +171,84 @@ class TestAllNodesEvicted:
             "Evicting",
             "RecoveryDone",
         ])
+
+
+class TestEvictionNotification:
+    async def test_notifier_receives_eviction_notification(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """During eviction flow, notifier receives at least one notification."""
+        env = make_e2e_env(
+            ft_id="e2enev",
+            nodes=[
+                NodeSpec(node_id="e2enev-node-0", num_ranks=1, diagnostic_pass=False),
+                NodeSpec(node_id="e2enev-node-1", num_ranks=1, diagnostic_pass=True),
+            ],
+            detectors=[TrainingCrashDetector()],
+            step_interval=_SLOW_STEP,
+            use_notifier=True,
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=1, timeout=30.0)
+
+        # Step 1: crash → MONITORING phase
+        await env.injector.crash_training()
+        await wait_for_recovery_phase(
+            env.controller, phase="MonitoringProgress", timeout=30.0,
+        )
+
+        # Step 2: crash during MONITORING → DIAGNOSING → eviction
+        await env.injector.crash_training()
+        final = await wait_for_recovery_complete(env.controller, timeout=90.0)
+        assert_phase_path_contains(final, ["Evicting"])
+
+        # Step 3: verify notifier received calls
+        calls = env.get_notifier_calls()
+        assert len(calls) > 0, "Notifier should have received eviction notification"
+
+
+class TestEvictionEscalation:
+    async def test_eviction_final_attempt_restart_fails_notifies_humans(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """Diagnostic eviction with is_final_attempt=True + restart fails → NotifyHumans."""
+        env = make_e2e_env(
+            ft_id="e2eesc",
+            nodes=[
+                NodeSpec(node_id="e2eesc-node-0", num_ranks=1, diagnostic_pass=False),
+                NodeSpec(node_id="e2eesc-node-1", num_ranks=1, diagnostic_pass=True),
+            ],
+            detectors=[TrainingCrashDetector()],
+            step_interval=_SLOW_STEP,
+            recovery_cooldown=SlidingWindowThrottle(window_minutes=1.0, max_count=10),
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=1, timeout=30.0)
+
+        # Step 1: crash → wait for MONITORING phase
+        await env.injector.crash_training()
+        await wait_for_recovery_phase(
+            env.controller, phase="MonitoringProgress", timeout=30.0,
+        )
+
+        # Step 2: crash during MONITORING → DIAGNOSING → eviction (is_final_attempt=True)
+        await env.injector.crash_training()
+        await wait_for_recovery_phase(
+            env.controller, phase="MonitoringProgress", timeout=90.0,
+        )
+
+        # Step 3: crash during post-eviction MONITORING → should go to NotifyHumans
+        await env.injector.crash_training()
+
+        deadline = time.monotonic() + 90.0
+        while time.monotonic() < deadline:
+            status = get_status(env.controller)
+            if status.phase_history and "NotifyHumans" in status.phase_history:
+                break
+            if status.mode == ControllerMode.MONITORING and not status.recovery_in_progress:
+                break
+            await asyncio.sleep(0.5)
+
+        status = get_status(env.controller)
+        assert status.phase_history is not None
+        assert_phase_path_contains(status, ["NotifyHumans"])

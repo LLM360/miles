@@ -409,3 +409,36 @@ class TestConcurrentDetectors:
             timeout=90.0,
         )
         assert final.mode == ControllerMode.MONITORING
+
+
+class TestNotification:
+    async def test_notifier_receives_throttle_notification(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """When recovery is throttled, the notifier receives a notification."""
+        env = make_e2e_env(
+            ft_id="e2entt",
+            nodes=[NodeSpec(node_id="e2entt-node-0")],
+            detectors=[TrainingCrashDetector()],
+            recovery_cooldown=SlidingWindowThrottle(window_minutes=60, max_count=2),
+            use_notifier=True,
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: first crash → recovery
+        await env.injector.crash_training()
+        await wait_for_mode_transition(
+            env.controller,
+            target_mode=ControllerMode.MONITORING,
+            timeout=60.0,
+        )
+
+        # Step 2: second crash → throttled
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await env.injector.crash_training()
+        await asyncio.sleep(5.0)
+
+        # Step 3: verify notifier received calls
+        calls = env.get_notifier_calls()
+        assert len(calls) > 0, "Notifier should have received at least one call"
