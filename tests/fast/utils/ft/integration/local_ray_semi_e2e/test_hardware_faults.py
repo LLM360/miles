@@ -389,3 +389,73 @@ class TestMfuAbsoluteMinimum:
 
         calls = env.get_notifier_calls()
         assert len(calls) > 0, "Notifier should have received MFU alert"
+
+
+class TestNonCriticalSuppressed:
+    async def test_non_critical_detectors_suppressed_during_recovery(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """During recovery, DiskSpaceLow (non-critical) does not interrupt the recovery flow."""
+        env = make_e2e_env(
+            ft_id="e2encs",
+            nodes=[NodeSpec(node_id="e2encs-node-0", use_remote_collector=True)],
+            detectors=build_detector_chain(),
+            scrape_interval_seconds=_FAST_SCRAPE,
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: crash → enters recovery
+        await env.injector.crash_training()
+        await wait_for_mode(
+            env.controller,
+            target_mode=ControllerMode.RECOVERY,
+            timeout=30.0,
+        )
+
+        # Step 2: while in recovery, inject disk space fault
+        env.set_collector_metrics("e2encs-node-0", [
+            GaugeSample(
+                name=NODE_FILESYSTEM_AVAIL_BYTES,
+                labels={"node_id": "e2encs-node-0", "mountpoint": "/data"},
+                value=100_000_000.0,
+            ),
+        ])
+
+        # Step 3: recovery should complete normally (disk alert ignored)
+        final = await wait_for_recovery_complete(env.controller, timeout=90.0)
+        assert final.mode == ControllerMode.MONITORING
+
+
+class TestRealtimeChecksDiscovery:
+    async def test_crash_plus_hardware_alert_found_in_realtime_checks(
+        self, make_e2e_env: Callable[..., E2EEnv],
+    ) -> None:
+        """Pure crash (no pre-identified bad nodes) + GPU fault metric → RealtimeChecks discovers → Evicting."""
+        env = make_e2e_env(
+            ft_id="e2ertc",
+            nodes=[NodeSpec(node_id="e2ertc-node-0", use_remote_collector=True)],
+            detectors=[TrainingCrashDetector()],
+            scrape_interval_seconds=_FAST_SCRAPE,
+        )
+
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+
+        # Step 1: inject GPU fault metric (but only TrainingCrashDetector is in chain,
+        # so the detector won't pre-identify the bad node)
+        env.set_collector_metrics("e2ertc-node-0", [
+            GaugeSample(
+                name=GPU_AVAILABLE,
+                labels={"node_id": "e2ertc-node-0", "gpu": "0"},
+                value=0.0,
+            ),
+        ])
+        await asyncio.sleep(_FAST_SCRAPE * 3)
+
+        # Step 2: crash → TrainingCrashDetector fires with empty bad_node_ids
+        # → RealtimeChecks → check_alerts() finds GPU fault → Evicting
+        await env.injector.crash_training()
+
+        final = await wait_for_recovery_complete(env.controller, timeout=90.0)
+        assert final.mode == ControllerMode.MONITORING
+        assert_phase_path_contains(final, ["Evicting"])
