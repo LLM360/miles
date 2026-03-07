@@ -1,5 +1,6 @@
 import logging
 from abc import abstractmethod
+from collections import deque
 from typing import Awaitable, Callable, Generic, TypeVar
 
 from pydantic import BaseModel
@@ -59,17 +60,19 @@ class StateMachine(Generic[StateT]):
     this tick). Each new state is recorded in state_history for debug/metrics.
     """
 
+    _MAX_HISTORY = 128
+
     def __init__(self, *, initial_state: StateT, stepper: StateMachineStepper[StateT]) -> None:
         self._state = initial_state
         self._stepper = stepper
-        self._state_history: list[StateT] = []
+        self._state_history: deque[StateT] = deque(maxlen=self._MAX_HISTORY)
 
     @property
     def state(self) -> StateT:
         return self._state
 
     @property
-    def state_history(self) -> list[StateT]:
+    def state_history(self) -> deque[StateT]:
         return self._state_history
 
     @property

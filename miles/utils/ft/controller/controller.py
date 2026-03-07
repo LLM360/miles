@@ -3,23 +3,29 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Iterator
 
-from miles.utils.ft.controller.actions import (
-    PlatformDeps,
-    handle_enter_recovery,
-    handle_mark_bad_and_restart,
-    handle_notify_human,
-)
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.actions import PlatformDeps, handle_notify_human
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
+from miles.utils.ft.controller.main_state_machine import (
+    DetectingAnomaly,
+    MainStepper,
+    MainState,
+    Recovering,
+)
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
+from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
-from miles.utils.ft.controller.recovery.lifecycle_manager import RecoveryLifecycleManager
-from miles.utils.ft.models.fault import ActionType, Decision
+from miles.utils.ft.controller.recovery.recovery_stepper import (
+    BAD_NODES_CONFIRMED_TYPES,
+    RECOVERY_STATE_TO_INT,
+    RecoveryStepper,
+)
+from miles.utils.ft.controller.recovery.restart_stepper import RestartStepper
+from miles.utils.ft.controller.state_machine import StateMachine
 from miles.utils.ft.models.recovery import (
     ControllerMode,
     ControllerStatus,
@@ -36,15 +42,13 @@ from miles.utils.ft.protocols.platform import (
 
 logger = logging.getLogger(__name__)
 
-_ALL_DETECTORS_PASSED = Decision.no_fault(reason="all detectors passed")
-
 
 class FtController:
     def __init__(
         self,
         *,
         platform_deps: PlatformDeps,
-        recovery_manager: RecoveryLifecycleManager,
+        machine: StateMachine[MainState],
         rank_roster: RankRoster,
         mini_wandb: MiniWandb,
         scrape_target_manager: ScrapeTargetManagerProtocol | None,
@@ -66,7 +70,7 @@ class FtController:
         self._controller_exporter = controller_exporter or NullControllerExporter()
         self._registration_grace_ticks = registration_grace_ticks
         self._platform_deps = platform_deps
-        self._recovery_manager = recovery_manager
+        self._machine = machine
 
         self._shutting_down: bool = False
         self._tick_count: int = 0
@@ -111,14 +115,44 @@ class FtController:
 
         resolved_exporter = controller_exporter or NullControllerExporter()
         duration_cb = resolved_exporter.observe_recovery_duration
-        recovery_manager = RecoveryLifecycleManager(
-            cooldown=recovery_cooldown or SlidingWindowThrottle(window_minutes=30.0, max_count=3),
+        cooldown = recovery_cooldown or SlidingWindowThrottle(window_minutes=30.0, max_count=3)
+
+        restart_stepper = RestartStepper(
+            node_manager=node_manager,
+            training_job=training_job,
+            mini_wandb=mini_wandb,
+            notifier=notifier,
+            on_new_run=None,
+            monitoring_success_iterations=10,
+            monitoring_timeout_seconds=600,
+        )
+
+        recovery_stepper = RecoveryStepper(
+            alert_checker=AlertChecker(metric_store=metric_store),
+            diagnostic_orchestrator=resolved_orchestrator,
+            restart_stepper=restart_stepper,
+            notifier=notifier,
+            timeout_seconds=1800,
+        )
+
+        main_stepper = MainStepper(
+            platform_deps=platform_deps,
+            restart_stepper=restart_stepper,
+            recovery_stepper=recovery_stepper,
+            detectors=detectors or [],
+            cooldown=cooldown,
+            controller_exporter=controller_exporter,
             on_recovery_duration=duration_cb,
+        )
+
+        machine: StateMachine[MainState] = StateMachine(
+            initial_state=DetectingAnomaly(),
+            stepper=main_stepper,
         )
 
         instance = cls(
             platform_deps=platform_deps,
-            recovery_manager=recovery_manager,
+            machine=machine,
             rank_roster=rank_roster,
             mini_wandb=mini_wandb,
             scrape_target_manager=scrape_target_manager,
@@ -132,6 +166,9 @@ class FtController:
 
         platform_deps.on_new_run = instance._activate_run
         platform_deps.rank_pids_provider = lambda node_id: instance._rank_roster.get_rank_pids_for_node(node_id)
+
+        restart_stepper._on_new_run = instance._activate_run
+
         return instance
 
     # ------------------------------------------------------------------
@@ -178,20 +215,32 @@ class FtController:
         self._shutting_down = True
 
     def get_status(self) -> ControllerStatus:
-        snap = self._recovery_manager.snapshot()
-
+        state = self._machine.state
+        main_stepper: MainStepper = self._machine.stepper  # type: ignore[assignment]
         iteration_val = self._mini_wandb.latest(metric_name="iteration")
         latest_iteration = int(iteration_val) if iteration_val is not None else None
 
+        if isinstance(state, Recovering):
+            recovery = state.recovery
+            mode = ControllerMode.RECOVERY
+            recovery_phase_str = type(recovery).__name__
+            bad_nodes = sorted(main_stepper._get_known_bad_nodes(recovery))
+            bad_nodes_confirmed = type(recovery) in BAD_NODES_CONFIRMED_TYPES
+        else:
+            mode = ControllerMode.MONITORING
+            recovery_phase_str = None
+            bad_nodes = []
+            bad_nodes_confirmed = False
+
         return ControllerStatus(
-            mode=ControllerMode.RECOVERY if snap.in_progress else ControllerMode.MONITORING,
-            recovery_phase=snap.phase,
-            phase_history=snap.phase_history,
+            mode=mode,
+            recovery_phase=recovery_phase_str,
+            phase_history=None,
             tick_count=self._tick_count,
             active_run_id=self._rank_roster.run_id,
-            bad_nodes=snap.diagnosing_nodes,
-            recovery_in_progress=snap.in_progress,
-            bad_nodes_confirmed=snap.bad_nodes_confirmed,
+            bad_nodes=bad_nodes,
+            recovery_in_progress=isinstance(state, Recovering),
+            bad_nodes_confirmed=bad_nodes_confirmed,
             latest_iteration=latest_iteration,
         )
 
@@ -217,36 +266,23 @@ class FtController:
             self._rank_roster.warn_if_incomplete()
             job_status = await self._training_job.get_training_status()
 
-            if self._recovery_manager.in_progress:
-                await self._tick_mode_recovery(job_status)
-            else:
-                await self._tick_mode_monitoring(job_status)
+            should_run = self._should_run_detectors()
+            detector_ctx = self._build_detector_context(job_status) if should_run else None
+
+            main_stepper: MainStepper = self._machine.stepper  # type: ignore[assignment]
+            main_stepper.set_tick_context(
+                job_status=job_status,
+                tick_count=self._tick_count,
+                should_run_detectors=should_run,
+                detector_context=detector_ctx,
+            )
+
+            await self._machine.step()
         except Exception:
             logger.error("tick_failed tick=%d", self._tick_count, exc_info=True)
         finally:
             tick_duration = time.monotonic() - t0
             self._update_exporter_metrics(job_status, tick_duration=tick_duration)
-
-    async def _tick_mode_recovery(self, job_status: JobStatus) -> None:
-        new_bad_nodes = self._collect_critical_bad_nodes(job_status)
-        self._recovery_manager.add_bad_nodes(new_bad_nodes)
-
-        await self._recovery_manager.step()
-
-    async def _tick_mode_monitoring(self, job_status: JobStatus) -> None:
-        if not self._should_run_detectors():
-            return
-
-        ctx = self._build_detector_context(job_status)
-        decision = self._run_detectors(ctx)
-
-        logger.info(
-            "loop_tick tick=%d active_run_id=%s decision_action=%s decision_reason=%s",
-            self._tick_count, self._rank_roster.run_id,
-            decision.action.value, decision.reason,
-        )
-
-        await self._execute_decision(decision)
 
     def _should_run_detectors(self) -> bool:
         if len(self._rank_roster.rank_placement) == 0:
@@ -262,89 +298,14 @@ class FtController:
 
         return True
 
-    # ------------------------------------------------------------------
-    # Detectors
-    # ------------------------------------------------------------------
-
-    def _build_detector_context(self, job_status: JobStatus) -> DetectorContext:
+    def _build_detector_context(self, job_status: JobStatus):
+        from miles.utils.ft.controller.detectors.base import DetectorContext
         return DetectorContext(
             metric_store=self._metric_store,
             mini_wandb=self._mini_wandb,
             rank_placement=dict(self._rank_roster.rank_placement),
             job_status=job_status,
         )
-
-    def _run_detectors(self, ctx: DetectorContext) -> Decision:
-        for decision in self._run_detectors_raw(ctx):
-            if decision.action != ActionType.NONE:
-                return decision
-
-        return _ALL_DETECTORS_PASSED
-
-    def _collect_critical_bad_nodes(self, job_status: JobStatus) -> set[str]:
-        """Run is_critical detectors and return any newly discovered bad node ids."""
-        ctx = self._build_detector_context(job_status)
-        bad_nodes: set[str] = set()
-
-        for decision in self._run_detectors_raw(ctx, critical_only=True):
-            if decision.action == ActionType.MARK_BAD_AND_RESTART and decision.bad_node_ids:
-                bad_nodes.update(decision.bad_node_ids)
-
-        return bad_nodes
-
-    def _run_detectors_raw(
-        self,
-        ctx: DetectorContext,
-        *,
-        critical_only: bool = False,
-    ) -> Iterator[Decision]:
-        for detector in self._detectors:
-            if critical_only and not detector.is_critical:
-                continue
-            try:
-                yield detector.evaluate(ctx)
-            except Exception:
-                logger.error(
-                    "detector_evaluate_failed detector=%s",
-                    type(detector).__name__,
-                    exc_info=True,
-                )
-
-    # ------------------------------------------------------------------
-    # Decision execution
-    # ------------------------------------------------------------------
-
-    async def _execute_decision(self, decision: Decision) -> None:
-        if decision.action == ActionType.NONE:
-            return
-
-        trigger_str = decision.trigger.value if decision.trigger else "unknown"
-        logger.info(
-            "decision_event decision_action=%s trigger=%s bad_node_ids=%s run_id=%s tick=%d",
-            decision.action.value, trigger_str, decision.bad_node_ids,
-            self._rank_roster.run_id, self._tick_count,
-        )
-        self._controller_exporter.record_decision(
-            action=decision.action.value, trigger=trigger_str,
-        )
-
-        if decision.action == ActionType.MARK_BAD_AND_RESTART:
-            await handle_mark_bad_and_restart(decision=decision, deps=self._platform_deps)
-
-        elif decision.action == ActionType.ENTER_RECOVERY:
-            await handle_enter_recovery(
-                decision=decision,
-                deps=self._platform_deps,
-                recovery_manager=self._recovery_manager,
-            )
-
-        elif decision.action == ActionType.NOTIFY_HUMAN:
-            await handle_notify_human(
-                decision=decision, notifier=self._platform_deps.notifier,
-            )
-
-        else:
-            raise ValueError(f"Unknown action type: {decision.action}")
 
     # ------------------------------------------------------------------
     # Exporter metrics
@@ -357,11 +318,17 @@ class FtController:
         if job_status is None:
             return
 
-        is_recovery = self._recovery_manager.in_progress
+        is_recovery = isinstance(self._machine.state, Recovering)
+        phase_int = 0
+        if is_recovery:
+            state = self._machine.state
+            if isinstance(state, Recovering):
+                phase_int = RECOVERY_STATE_TO_INT.get(type(state.recovery), 0)
+
         self._controller_exporter.update_from_state(
             job_status=job_status,
             mode=ControllerMode.RECOVERY if is_recovery else ControllerMode.MONITORING,
-            recovery_phase=self._recovery_manager.phase if is_recovery else None,
+            recovery_phase_int=phase_int,
             latest_loss=self._mini_wandb.latest(metric_name="loss"),
             latest_mfu=self._mini_wandb.latest(metric_name="mfu"),
         )

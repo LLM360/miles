@@ -1,4 +1,4 @@
-"""Shared recovery primitives used by both FtController and RecoveryOrchestrator."""
+"""Shared recovery primitives used by FtController and recovery steppers."""
 from __future__ import annotations
 
 import asyncio
