@@ -16,6 +16,7 @@ import logging
 import sys
 
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.agents.diagnostics.gpu_check_script import GpuCheckResult
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
 
@@ -75,11 +76,12 @@ class GpuDiagnostic(BaseDiagnostic):
 
     def _parse_gpu_results(
         self, stdout_bytes: bytes, node_id: str,
-    ) -> list[dict[str, object]] | DiagnosticResult:
+    ) -> list[GpuCheckResult] | DiagnosticResult:
         stdout_text = stdout_bytes.decode(errors="replace")
         try:
-            return json.loads(stdout_text)
-        except json.JSONDecodeError:
+            raw = json.loads(stdout_text)
+            return [GpuCheckResult(**item) for item in raw]
+        except (json.JSONDecodeError, TypeError):
             logger.warning(
                 "gpu_check_invalid_json node_id=%s output=%s",
                 node_id, stdout_text[:200],
@@ -87,7 +89,7 @@ class GpuDiagnostic(BaseDiagnostic):
             return self._fail(node_id, "invalid output from gpu check")
 
     def _collect_results(
-        self, gpu_results: list[dict[str, object]], node_id: str,
+        self, gpu_results: list[GpuCheckResult], node_id: str,
     ) -> DiagnosticResult:
         if not gpu_results:
             logger.warning("gpu_check_empty_results node_id=%s", node_id)
@@ -96,20 +98,17 @@ class GpuDiagnostic(BaseDiagnostic):
         failed_gpus: list[str] = []
         compute_hashes: dict[str, str] = {}
 
-        for gpu_result in gpu_results:
-            gpu_index = str(gpu_result.get("gpu_index", "?"))
+        for r in gpu_results:
+            idx = str(r.gpu_index)
 
-            if not gpu_result.get("nvml_passed", False):
-                details = gpu_result.get("details", "unknown failure")
-                failed_gpus.append(f"GPU {gpu_index}: {details}")
+            if not r.nvml_passed:
+                failed_gpus.append(f"GPU {idx}: {r.details}")
 
-            compute_error = gpu_result.get("compute_error", "")
-            if compute_error:
-                failed_gpus.append(f"GPU {gpu_index}: compute error: {compute_error}")
+            if r.compute_error:
+                failed_gpus.append(f"GPU {idx}: compute error: {r.compute_error}")
 
-            compute_hash = gpu_result.get("compute_hash", "")
-            if compute_hash:
-                compute_hashes[gpu_index] = compute_hash
+            if r.compute_hash:
+                compute_hashes[idx] = r.compute_hash
 
         metadata = {"compute_hashes": compute_hashes} if compute_hashes else None
 
