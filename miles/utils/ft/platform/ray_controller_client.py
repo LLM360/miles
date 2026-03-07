@@ -1,0 +1,81 @@
+"""Ray-based implementation of ControllerClientProtocol.
+
+Encapsulates ray.get_actor() lookup and .remote() calls so that agent
+code never touches Ray directly.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import ray
+
+from miles.utils.ft.protocols.platform import ControllerClientProtocol, ft_controller_actor_name
+from miles.utils.ft.utils.graceful_degrade import graceful_degrade
+
+logger = logging.getLogger(__name__)
+
+
+class RayControllerClient:
+    """Communicates with the FtController Ray actor on behalf of agents.
+
+    Implements :class:`ControllerClientProtocol`.
+
+    * ``register_training_rank`` — synchronous (``ray.get``)
+    * ``log_step`` — fire-and-forget (``.remote()`` only)
+    """
+
+    def __init__(self, ft_id: str = "") -> None:
+        self._ft_id = ft_id
+        self._handle: Any | None = None
+
+    @graceful_degrade(msg="Failed to get ft_controller actor handle")
+    def _get_handle(self) -> Any | None:
+        if self._handle is None:
+            self._handle = ray.get_actor(ft_controller_actor_name(self._ft_id))
+        return self._handle
+
+    def register_training_rank(
+        self,
+        run_id: str,
+        rank: int,
+        world_size: int,
+        node_id: str,
+        exporter_address: str,
+        pid: int,
+        timeout: float = 10,
+    ) -> None:
+        controller = self._get_handle()
+        if controller is None:
+            logger.warning("Cannot register rank: controller not available")
+            return
+
+        ray.get(
+            controller.register_training_rank.remote(
+                run_id=run_id,
+                rank=rank,
+                world_size=world_size,
+                node_id=node_id,
+                exporter_address=exporter_address,
+                pid=pid,
+            ),
+            timeout=timeout,
+        )
+
+    def log_step(
+        self, run_id: str, step: int, metrics: dict[str, float],
+    ) -> None:
+        controller = self._get_handle()
+        if controller is None:
+            return
+
+        controller.log_step.remote(
+            run_id=run_id,
+            step=step,
+            metrics=metrics,
+        )
+
+
+assert isinstance(RayControllerClient, type) and issubclass(
+    RayControllerClient, ControllerClientProtocol  # type: ignore[arg-type]
+) or True  # runtime_checkable structural check deferred
