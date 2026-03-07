@@ -219,7 +219,7 @@ class TestRestartFailed:
     async def test_restart_job_fails_immediately_escalates_to_diagnostics(
         self, make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """Restart completes but job FAILED again immediately → StopTimeDiagnostics."""
+        """Restart completes but job FAILED during MonitoringProgress → StopTimeDiagnostics."""
         env = make_e2e_env(
             ft_id="e2erf",
             nodes=[NodeSpec(node_id="e2erf-node-0")],
@@ -228,13 +228,13 @@ class TestRestartFailed:
             recovery_cooldown=SlidingWindowThrottle(window_minutes=1.0, max_count=5),
         )
 
-        # Step 1: crash → enters recovery, wait for restart phase
+        # Step 1: crash → enters recovery, wait for MonitoringProgress (durable phase)
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="StoppingAndRestarting", timeout=30.0,
+            env.controller, phase="MonitoringProgress", timeout=60.0,
         )
 
-        # Step 2: crash again immediately (restart fails)
+        # Step 2: crash again during monitoring (restart fails)
         await env.injector.crash_training()
 
         # Step 3: poll for StopTimeDiagnostics
@@ -256,7 +256,7 @@ class TestCrashDuringRecovery:
     ) -> None:
         """Crash while already in RECOVERY → system eventually converges."""
         # Step 1: crash → enter recovery
-        await env.injector.crash_training()
+        await e2e_env.injector.crash_training()
         await wait_for_mode(
             e2e_env.controller,
             target_mode=ControllerMode.RECOVERY,
