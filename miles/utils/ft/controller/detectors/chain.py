@@ -9,6 +9,10 @@ from miles.utils.ft.controller.detectors.hardware import HighConfidenceHardwareD
 from miles.utils.ft.controller.detectors.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
 from miles.utils.ft.controller.detectors.nan_loss import NanLossDetector
 from miles.utils.ft.controller.detectors.network import NetworkAlertDetector, NetworkAlertDetectorConfig
+from miles.utils.ft.controller.detectors.thermal_throttling import (
+    ThermalThrottlingDetector,
+    ThermalThrottlingDetectorConfig,
+)
 from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDetector
 from miles.utils.ft.models.base import FtBaseModel
 
@@ -18,6 +22,7 @@ class DetectorChainConfig(FtBaseModel):
 
     hang: HangDetectorConfig = Field(default_factory=HangDetectorConfig)
     network: NetworkAlertDetectorConfig = Field(default_factory=NetworkAlertDetectorConfig)
+    thermal: ThermalThrottlingDetectorConfig = Field(default_factory=ThermalThrottlingDetectorConfig)
     mfu: MfuDeclineDetectorConfig = Field(default_factory=MfuDeclineDetectorConfig)
 
 
@@ -29,6 +34,7 @@ def build_detector_chain(
     return [
         HighConfidenceHardwareDetector(),
         DiskSpaceLowDetector(),
+        ThermalThrottlingDetector(config=cfg.thermal),
         NetworkAlertDetector(config=cfg.network),
         TrainingCrashDetector(),
         HangDetector(config=cfg.hang),
