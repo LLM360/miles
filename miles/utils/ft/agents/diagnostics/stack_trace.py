@@ -40,7 +40,9 @@ class StackTraceDiagnostic(BaseDiagnostic):
         self._pids = pids or []
 
     async def run(
-        self, node_id: str, timeout_seconds: int = 30,
+        self,
+        node_id: str,
+        timeout_seconds: int = 30,
     ) -> DiagnosticResult:
         if not self._pids:
             return self._fail(node_id, "no PIDs provided")
@@ -52,7 +54,8 @@ class StackTraceDiagnostic(BaseDiagnostic):
             except Exception:
                 logger.warning(
                     "stack_trace_dump_failed pid=%d node=%s",
-                    pid, node_id,
+                    pid,
+                    node_id,
                     exc_info=True,
                 )
                 return [], False

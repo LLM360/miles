@@ -1,11 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
-import miles.utils.ft.models.metric_names as mn
-from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     CriticalFixedDecisionDetector,
@@ -13,6 +8,10 @@ from tests.fast.utils.ft.conftest import (
     make_test_controller,
     make_test_exporter,
 )
+
+import miles.utils.ft.models.metric_names as mn
+from miles.utils.ft.controller.main_state_machine import Recovering
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
 
 class TestEnterRecovery:
@@ -40,12 +39,14 @@ class TestEnterRecovery:
     @pytest.mark.anyio
     async def test_critical_detector_runs_during_recovery(self) -> None:
         enter_recovery = AlwaysEnterRecoveryDetector()
-        critical = CriticalFixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-new-bad"],
-            reason="critical hw fault during recovery",
-            trigger=TriggerType.HARDWARE,
-        ))
+        critical = CriticalFixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-new-bad"],
+                reason="critical hw fault during recovery",
+                trigger=TriggerType.HARDWARE,
+            )
+        )
         harness = make_test_controller(detectors=[enter_recovery, critical])
 
         await harness.controller._tick()
@@ -58,6 +59,7 @@ class TestEnterRecovery:
         state = harness.controller._state_machine.state
         assert isinstance(state, Recovering)
         from miles.utils.ft.controller.recovery.recovery_stepper import RealtimeChecks
+
         assert isinstance(state.recovery, RealtimeChecks)
         assert "node-new-bad" in state.recovery.pre_identified_bad_nodes
 

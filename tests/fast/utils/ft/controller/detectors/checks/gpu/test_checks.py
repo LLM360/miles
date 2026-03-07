@@ -1,10 +1,10 @@
 """Tests for GPU-specific fault checks (gpu_lost, non-auto-recoverable XID)."""
-from miles.utils.ft.controller.detectors.checks.gpu.checks import (
-    _check_non_auto_recoverable_xid,
-)
+
+from tests.fast.utils.ft.conftest import make_fake_metric_store
+
+from miles.utils.ft.controller.detectors.checks.gpu.checks import _check_non_auto_recoverable_xid
 from miles.utils.ft.models.metric_names import XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL
 from miles.utils.ft.models.metrics import CounterSample
-from tests.fast.utils.ft.conftest import make_fake_metric_store
 
 
 class TestCheckNonAutoRecoverableXid:
@@ -17,9 +17,12 @@ class TestCheckNonAutoRecoverableXid:
 
     def test_zero_counter_returns_empty(self) -> None:
         store = make_fake_metric_store()
-        store.ingest_samples(target_id="node-0", samples=[
-            CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=0.0),
-        ])
+        store.ingest_samples(
+            target_id="node-0",
+            samples=[
+                CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=0.0),
+            ],
+        )
 
         result = _check_non_auto_recoverable_xid(store)
 
@@ -27,9 +30,12 @@ class TestCheckNonAutoRecoverableXid:
 
     def test_positive_counter_returns_fault(self) -> None:
         store = make_fake_metric_store()
-        store.ingest_samples(target_id="node-0", samples=[
-            CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=1.0),
-        ])
+        store.ingest_samples(
+            target_id="node-0",
+            samples=[
+                CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=1.0),
+            ],
+        )
 
         result = _check_non_auto_recoverable_xid(store)
 
@@ -39,12 +45,18 @@ class TestCheckNonAutoRecoverableXid:
 
     def test_multiple_nodes_with_faults(self) -> None:
         store = make_fake_metric_store()
-        store.ingest_samples(target_id="node-0", samples=[
-            CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=1.0),
-        ])
-        store.ingest_samples(target_id="node-1", samples=[
-            CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=3.0),
-        ])
+        store.ingest_samples(
+            target_id="node-0",
+            samples=[
+                CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=1.0),
+            ],
+        )
+        store.ingest_samples(
+            target_id="node-1",
+            samples=[
+                CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=3.0),
+            ],
+        )
 
         result = _check_non_auto_recoverable_xid(store)
 
@@ -53,12 +65,18 @@ class TestCheckNonAutoRecoverableXid:
 
     def test_mixed_nodes_only_positive_faults(self) -> None:
         store = make_fake_metric_store()
-        store.ingest_samples(target_id="node-0", samples=[
-            CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=1.0),
-        ])
-        store.ingest_samples(target_id="node-1", samples=[
-            CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=0.0),
-        ])
+        store.ingest_samples(
+            target_id="node-0",
+            samples=[
+                CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=1.0),
+            ],
+        )
+        store.ingest_samples(
+            target_id="node-1",
+            samples=[
+                CounterSample(name=XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL, labels={}, delta=0.0),
+            ],
+        )
 
         result = _check_non_auto_recoverable_xid(store)
 

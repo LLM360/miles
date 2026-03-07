@@ -1,4 +1,5 @@
 """Local Ray: Failure resilience — controller death, stale handles, agent graceful degradation."""
+
 from __future__ import annotations
 
 import time
@@ -6,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 import ray
+from tests.fast.utils.ft.integration.conftest import get_status
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
@@ -14,7 +16,6 @@ from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.platform.ray_wrappers.controller_client import RayControllerClient
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
-from tests.fast.utils.ft.integration.conftest import get_status
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -54,7 +55,8 @@ class TestStaleHandleAfterKill:
     should be discoverable again."""
 
     def test_restarted_actor_has_fresh_state(
-        self, controller_actor: ray.actor.ActorHandle,
+        self,
+        controller_actor: ray.actor.ActorHandle,
     ) -> None:
         ray.kill(controller_actor, no_restart=False)
         time.sleep(2.0)
@@ -147,14 +149,17 @@ class TestApplicationExceptionNotRetried:
         error_count = 0
         for _ in range(3):
             try:
-                ray.get(handle.register_training_rank.remote(
-                    run_id=run_id,
-                    rank=0,
-                    world_size=1,
-                    node_id="",
-                    exporter_address="",
-                    pid=1000,
-                ), timeout=5)
+                ray.get(
+                    handle.register_training_rank.remote(
+                        run_id=run_id,
+                        rank=0,
+                        world_size=1,
+                        node_id="",
+                        exporter_address="",
+                        pid=1000,
+                    ),
+                    timeout=5,
+                )
             except ray.exceptions.RayTaskError:
                 error_count += 1
 

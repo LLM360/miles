@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 import pytest
+from tests.fast.utils.ft.conftest import FixedDecisionDetector, make_test_controller
 
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from tests.fast.utils.ft.conftest import (
-    FixedDecisionDetector,
-    make_test_controller,
-)
 
 
 class TestRegistrationGuardNoRanks:
     @pytest.mark.anyio
     async def test_detectors_skipped_when_no_ranks_registered(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-0"],
-            reason="should not fire",
-            trigger=TriggerType.CRASH,
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-0"],
+                reason="should not fire",
+                trigger=TriggerType.CRASH,
+            )
+        )
         harness = make_test_controller(
             detectors=[detector],
             registration_grace_ticks=0,
@@ -31,20 +30,25 @@ class TestRegistrationGuardNoRanks:
 
     @pytest.mark.anyio
     async def test_detectors_run_when_ranks_registered(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-0"],
-            reason="fault",
-            trigger=TriggerType.CRASH,
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-0"],
+                reason="fault",
+                trigger=TriggerType.CRASH,
+            )
+        )
         harness = make_test_controller(
             detectors=[detector],
             registration_grace_ticks=0,
         )
         harness.controller._activate_run("run-1")
         harness.controller._rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=1,
-            node_id="node-0", exporter_address="http://node-0:9100",
+            run_id="run-1",
+            rank=0,
+            world_size=1,
+            node_id="node-0",
+            exporter_address="http://node-0:9100",
             pid=1,
         )
 
@@ -56,20 +60,25 @@ class TestRegistrationGuardNoRanks:
 class TestRegistrationGraceTicks:
     @pytest.mark.anyio
     async def test_detectors_skipped_during_grace_period(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-0"],
-            reason="fault",
-            trigger=TriggerType.CRASH,
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-0"],
+                reason="fault",
+                trigger=TriggerType.CRASH,
+            )
+        )
         harness = make_test_controller(
             detectors=[detector],
             registration_grace_ticks=3,
         )
         harness.controller._activate_run("run-1")
         harness.controller._rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=1,
-            node_id="node-0", exporter_address="http://node-0:9100",
+            run_id="run-1",
+            rank=0,
+            world_size=1,
+            node_id="node-0",
+            exporter_address="http://node-0:9100",
             pid=1,
         )
 
@@ -80,20 +89,25 @@ class TestRegistrationGraceTicks:
 
     @pytest.mark.anyio
     async def test_detectors_run_after_grace_period(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-0"],
-            reason="fault",
-            trigger=TriggerType.CRASH,
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-0"],
+                reason="fault",
+                trigger=TriggerType.CRASH,
+            )
+        )
         harness = make_test_controller(
             detectors=[detector],
             registration_grace_ticks=2,
         )
         harness.controller._activate_run("run-1")
         harness.controller._rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=1,
-            node_id="node-0", exporter_address="http://node-0:9100",
+            run_id="run-1",
+            rank=0,
+            world_size=1,
+            node_id="node-0",
+            exporter_address="http://node-0:9100",
             pid=1,
         )
 

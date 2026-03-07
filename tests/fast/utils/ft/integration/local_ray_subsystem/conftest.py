@@ -5,16 +5,11 @@ from typing import Any
 
 import pytest
 import ray
+from tests.fast.utils.ft.integration.conftest import _kill_named_actor, poll_for_run_id
 
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
-
-from tests.fast.utils.ft.integration.conftest import (
-    _kill_named_actor,
-    get_status,
-    poll_for_run_id,
-)
 
 pytestmark = [
     pytest.mark.local_ray,

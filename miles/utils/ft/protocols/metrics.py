@@ -54,7 +54,6 @@ class MetricQueryProtocol(Protocol):
     ) -> pl.DataFrame: ...
 
 
-
 @runtime_checkable
 class MetricStoreLifecycle(Protocol):
     async def start(self) -> None: ...
@@ -63,8 +62,7 @@ class MetricStoreLifecycle(Protocol):
 
 
 @runtime_checkable
-class MetricStoreProtocol(MetricQueryProtocol, MetricStoreLifecycle, Protocol):
-    ...
+class MetricStoreProtocol(MetricQueryProtocol, MetricStoreLifecycle, Protocol): ...
 
 
 @runtime_checkable
@@ -79,9 +77,13 @@ class TrainingMetricStoreProtocol(Protocol):
     def latest(self, metric_name: str) -> float | None: ...
 
     def query_last_n_steps(
-        self, metric_name: str, last_n: int,
+        self,
+        metric_name: str,
+        last_n: int,
     ) -> list[StepValue]: ...
 
     def query_time_window(
-        self, metric_name: str, window: timedelta,
+        self,
+        metric_name: str,
+        window: timedelta,
     ) -> list[TimedStepValue]: ...

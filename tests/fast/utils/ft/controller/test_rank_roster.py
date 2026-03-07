@@ -1,4 +1,5 @@
 """Tests for RankRoster."""
+
 from __future__ import annotations
 
 import pytest
@@ -122,18 +123,25 @@ class TestRegisterTrainingRankHappyPath:
         registry = _make_registry()
 
         registry.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090", pid=10,
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
+            pid=10,
         )
         registry.register_training_rank(
-            run_id="run-1", rank=1, world_size=2,
-            node_id="node-1", exporter_address="http://node-1:9090", pid=20,
+            run_id="run-1",
+            rank=1,
+            world_size=2,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
+            pid=20,
         )
 
         assert registry.rank_placement == {0: "node-0", 1: "node-1"}
         assert registry.rank_pids == {0: 10, 1: 20}
         assert registry.expected_world_size == 2
-
 
 
 # ===================================================================
@@ -159,12 +167,20 @@ class TestScrapeTargetManager:
         registry = _make_registry(scrape_target_manager=stm)
 
         registry.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090", pid=10,
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
+            pid=10,
         )
         registry.register_training_rank(
-            run_id="run-1", rank=1, world_size=2,
-            node_id="node-1", exporter_address="http://node-1:9090", pid=20,
+            run_id="run-1",
+            rank=1,
+            world_size=2,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
+            pid=20,
         )
         assert len(stm.targets) == 2
 
@@ -187,16 +203,28 @@ class TestGetRankPidsForNode:
     def test_returns_matching_ranks(self) -> None:
         registry = _make_registry()
         registry.register_training_rank(
-            run_id="run-1", rank=0, world_size=4,
-            node_id="node-A", exporter_address="addr", pid=10,
+            run_id="run-1",
+            rank=0,
+            world_size=4,
+            node_id="node-A",
+            exporter_address="addr",
+            pid=10,
         )
         registry.register_training_rank(
-            run_id="run-1", rank=1, world_size=4,
-            node_id="node-A", exporter_address="addr", pid=20,
+            run_id="run-1",
+            rank=1,
+            world_size=4,
+            node_id="node-A",
+            exporter_address="addr",
+            pid=20,
         )
         registry.register_training_rank(
-            run_id="run-1", rank=2, world_size=4,
-            node_id="node-B", exporter_address="addr", pid=30,
+            run_id="run-1",
+            rank=2,
+            world_size=4,
+            node_id="node-B",
+            exporter_address="addr",
+            pid=30,
         )
 
         result = registry.get_rank_pids_for_node("node-A")
@@ -207,4 +235,3 @@ class TestGetRankPidsForNode:
         registry = _make_registry()
 
         assert registry.get_rank_pids_for_node("node-X") == {}
-

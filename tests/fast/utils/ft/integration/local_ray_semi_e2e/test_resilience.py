@@ -1,4 +1,5 @@
 """Semi-E2E: resilience — agent without controller, fire-and-forget, detector faults."""
+
 from __future__ import annotations
 
 import asyncio
@@ -8,25 +9,19 @@ from collections.abc import Callable
 from unittest.mock import patch
 
 import ray
-
-from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.models.recovery import ControllerMode
-from miles.utils.ft.protocols.platform import ft_controller_actor_name
-
 from tests.fast.utils.ft.helpers.controller_fakes import CrashingDetector
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
-    E2EEnv,
-    NodeSpec,
-    _SLOW_STEP,
-)
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
     get_status,
-    wait_for_mode,
     wait_for_mode_transition,
     wait_for_recovery_phase,
     wait_for_training_stable,
 )
+
+from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
+from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 
 class TestAgentWithoutController:
@@ -46,7 +41,8 @@ class TestAgentWithoutController:
 
 class TestFireAndForget:
     async def test_log_step_after_controller_death(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Kill controller → worker continues log_step → doesn't crash/block."""
         env = make_e2e_env(
@@ -79,7 +75,8 @@ class TestFireAndForget:
 
 class TestRestartStepperException:
     async def test_restart_stepper_exception_forces_notify_humans(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Exception inside recovery stepper → RecoveringHandler catches → NotifyHumans."""
         env = make_e2e_env(
@@ -94,7 +91,9 @@ class TestRestartStepperException:
         # Step 1: crash → enter recovery
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="StoppingAndRestarting", timeout=30.0,
+            env.controller,
+            phase="StoppingAndRestarting",
+            timeout=30.0,
         )
 
         # Step 2: kill state_actor → training job RPCs will raise RayActorError
@@ -126,7 +125,8 @@ class _CrashingNotifier:
 
 class TestNotifierResilience:
     async def test_notifier_send_exception_does_not_break_recovery(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Notifier raises on send() → safe_notify catches → recovery completes."""
         from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
@@ -161,7 +161,8 @@ class TestNotifierResilience:
 
 class TestDetectorResilience:
     async def test_detector_exception_does_not_crash_controller(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """A crashing detector is skipped; subsequent detectors still fire normally."""
         env = make_e2e_env(

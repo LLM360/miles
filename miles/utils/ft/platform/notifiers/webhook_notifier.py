@@ -39,5 +39,4 @@ class WebhookNotifier(NotificationProtocol, abc.ABC):
         )
 
     @abc.abstractmethod
-    def _build_payload(self, title: str, content: str, severity: str) -> dict[str, Any]:
-        ...
+    def _build_payload(self, title: str, content: str, severity: str) -> dict[str, Any]: ...

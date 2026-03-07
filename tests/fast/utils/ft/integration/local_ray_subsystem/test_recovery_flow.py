@@ -1,20 +1,19 @@
 """Local Ray: Recovery flow — trigger recovery via injected detector, observe state transitions."""
+
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 import ray
+from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import ControllerMode
-from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
-
-from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -85,14 +84,17 @@ class TestRecoveryTriggeredByDetector:
         handle.submit_and_run.remote()
         run_id = poll_for_run_id(handle)
 
-        ray.get(handle.register_training_rank.remote(
-            run_id=run_id,
-            rank=0,
-            world_size=1,
-            node_id="n0",
-            exporter_address="http://n0:9090",
-            pid=1000,
-        ), timeout=5)
+        ray.get(
+            handle.register_training_rank.remote(
+                run_id=run_id,
+                rank=0,
+                world_size=1,
+                node_id="n0",
+                exporter_address="http://n0:9090",
+                pid=1000,
+            ),
+            timeout=5,
+        )
 
         def _in_recovery() -> bool:
             s = get_status(handle)
@@ -119,11 +121,17 @@ class TestRecoveryPhaseHistoryRecorded:
         handle.submit_and_run.remote()
         run_id = poll_for_run_id(handle)
 
-        ray.get(handle.register_training_rank.remote(
-            run_id=run_id, rank=0, world_size=1,
-            node_id="n0", exporter_address="http://n0:9090",
-            pid=1000,
-        ), timeout=5)
+        ray.get(
+            handle.register_training_rank.remote(
+                run_id=run_id,
+                rank=0,
+                world_size=1,
+                node_id="n0",
+                exporter_address="http://n0:9090",
+                pid=1000,
+            ),
+            timeout=5,
+        )
 
         def _recovery_done_or_monitoring() -> bool:
             s = get_status(handle)
@@ -154,11 +162,17 @@ class TestStatusDuringRecovery:
         handle.submit_and_run.remote()
         run_id = poll_for_run_id(handle)
 
-        ray.get(handle.register_training_rank.remote(
-            run_id=run_id, rank=0, world_size=1,
-            node_id="n0", exporter_address="http://n0:9090",
-            pid=1000,
-        ), timeout=5)
+        ray.get(
+            handle.register_training_rank.remote(
+                run_id=run_id,
+                rank=0,
+                world_size=1,
+                node_id="n0",
+                exporter_address="http://n0:9090",
+                pid=1000,
+            ),
+            timeout=5,
+        )
 
         def _has_recovery_phase() -> bool:
             s = get_status(handle)
@@ -184,11 +198,17 @@ class TestControllerKilledDuringRecovery:
         handle.submit_and_run.remote()
         run_id = poll_for_run_id(handle)
 
-        ray.get(handle.register_training_rank.remote(
-            run_id=run_id, rank=0, world_size=1,
-            node_id="n0", exporter_address="http://n0:9090",
-            pid=1000,
-        ), timeout=5)
+        ray.get(
+            handle.register_training_rank.remote(
+                run_id=run_id,
+                rank=0,
+                world_size=1,
+                node_id="n0",
+                exporter_address="http://n0:9090",
+                pid=1000,
+            ),
+            timeout=5,
+        )
 
         def _in_recovery() -> bool:
             s = get_status(handle)

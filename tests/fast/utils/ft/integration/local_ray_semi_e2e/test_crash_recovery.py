@@ -1,22 +1,12 @@
 """Semi-E2E: crash recovery — transient, repeated, throttle, reset, exception, concurrent."""
+
 from __future__ import annotations
 
 import asyncio
 import time
 from collections.abc import Callable
 
-import pytest
-
-from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
-from miles.utils.ft.models.recovery import ControllerMode
-
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
-    E2EEnv,
-    NodeSpec,
-    _FastHangDetector,
-    _SLOW_STEP,
-)
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec, _FastHangDetector
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
     get_status,
@@ -26,6 +16,10 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     wait_for_recovery_phase,
     wait_for_training_stable,
 )
+
+from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
+from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+from miles.utils.ft.models.recovery import ControllerMode
 
 
 class TestTransientCrash:
@@ -42,7 +36,8 @@ class TestTransientCrash:
 
 class TestRecoveryThrottle:
     async def test_third_crash_throttled(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """3 crashes with max_count=3 → third is throttled (stays in MONITORING).
 
@@ -85,7 +80,8 @@ class TestRecoveryThrottle:
 
 class TestRecoveryReset:
     async def test_state_clean_after_recovery_completes(
-        self, e2e_env: E2EEnv,
+        self,
+        e2e_env: E2EEnv,
     ) -> None:
         """Recovery DONE → mode=MONITORING, phase=None → new crash is a fresh cycle."""
         env = e2e_env
@@ -115,7 +111,8 @@ class TestRecoveryReset:
 
 class TestExceptionInRecovery:
     async def test_stop_training_exception_forces_notify(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """stop_training raises → recovery forces NOTIFY → actor survives.
 
@@ -180,7 +177,8 @@ class TestRepeatedCrash:
 
 class TestConcurrentFaults:
     async def test_simultaneous_nan_and_crash(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """NaN + FAILED simultaneously → detector priority chain triggers 1 recovery."""
         from miles.utils.ft.controller.detectors.chain import build_detector_chain
@@ -217,7 +215,8 @@ class TestConcurrentFaults:
 
 class TestRestartFailed:
     async def test_restart_job_fails_immediately_escalates_to_diagnostics(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Restart completes but job FAILED during MonitoringProgress → StopTimeDiagnostics."""
         env = make_e2e_env(
@@ -231,7 +230,9 @@ class TestRestartFailed:
         # Step 1: crash → enters recovery, wait for MonitoringProgress (durable phase)
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="MonitoringProgress", timeout=60.0,
+            env.controller,
+            phase="MonitoringProgress",
+            timeout=60.0,
         )
 
         # Step 2: crash again during monitoring (restart fails)
@@ -252,7 +253,8 @@ class TestRestartFailed:
 
 class TestCrashDuringRecovery:
     async def test_crash_during_early_recovery_converges(
-        self, e2e_env: E2EEnv,
+        self,
+        e2e_env: E2EEnv,
     ) -> None:
         """Crash while already in RECOVERY → system eventually converges."""
         # Step 1: crash → enter recovery
@@ -280,7 +282,8 @@ class TestCrashDuringRecovery:
         ), f"Recovery did not converge: mode={status.mode}, phase={status.recovery_phase}"
 
     async def test_fault_during_monitoring_progress_serialized(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """New fault during MonitoringProgress is handled without nested recovery."""
         env = make_e2e_env(
@@ -294,7 +297,9 @@ class TestCrashDuringRecovery:
         # Step 1: crash → wait for MonitoringProgress
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="MonitoringProgress", timeout=60.0,
+            env.controller,
+            phase="MonitoringProgress",
+            timeout=60.0,
         )
 
         # Step 2: inject another crash during MonitoringProgress
@@ -309,14 +314,15 @@ class TestCrashDuringRecovery:
             await asyncio.sleep(0.5)
 
         status = get_status(env.controller)
-        assert status.mode == ControllerMode.MONITORING, (
-            f"Did not converge: mode={status.mode}, phase={status.recovery_phase}"
-        )
+        assert (
+            status.mode == ControllerMode.MONITORING
+        ), f"Did not converge: mode={status.mode}, phase={status.recovery_phase}"
 
 
 class TestSequentialRecovery:
     async def test_three_sequential_recovery_cycles_no_state_drift(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Three crash-recover cycles with distinct run_ids and clean state each time."""
         env = make_e2e_env(
@@ -351,7 +357,8 @@ class TestSequentialRecovery:
 
 class TestCooldownBoundary:
     async def test_recovery_cooldown_boundary_exact_count(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """max_count=2 allows 1 recovery; the second crash is throttled.
 
@@ -379,14 +386,13 @@ class TestCooldownBoundary:
         await env.injector.crash_training()
         await asyncio.sleep(5.0)
         status = get_status(env.controller)
-        assert status.mode == ControllerMode.MONITORING, (
-            f"Expected throttle, but mode={status.mode}"
-        )
+        assert status.mode == ControllerMode.MONITORING, f"Expected throttle, but mode={status.mode}"
 
 
 class TestConcurrentDetectors:
     async def test_concurrent_crash_and_hang_priority_deterministic(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Hang + crash conditions both true → exactly one recovery cycle triggered."""
         env = make_e2e_env(
@@ -413,7 +419,8 @@ class TestConcurrentDetectors:
 
 class TestNotification:
     async def test_notifier_receives_throttle_notification(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """When recovery is throttled, the notifier receives a notification."""
         env = make_e2e_env(
@@ -446,7 +453,8 @@ class TestNotification:
 
 class TestRecoveryOverallTimeout:
     async def test_recovery_overall_timeout_escalates_to_notify_humans(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """recovery_timeout_seconds fires when MonitoringProgress stalls → NotifyHumans."""
         env = make_e2e_env(
@@ -477,7 +485,8 @@ class TestRecoveryOverallTimeout:
 
 class TestCooldownExpiry:
     async def test_cooldown_window_expired_allows_recovery_again(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """After cooldown window expires, a new crash triggers recovery normally."""
         window_seconds = 2
@@ -521,7 +530,8 @@ class TestCooldownExpiry:
 
 class TestFalsePositiveGuard:
     async def test_too_many_bad_nodes_treated_as_false_positive(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """When >= max_simultaneous_bad_nodes report faults, no recovery is triggered."""
         from miles.utils.ft.controller.detectors.chain import build_detector_chain
@@ -530,10 +540,7 @@ class TestFalsePositiveGuard:
 
         env = make_e2e_env(
             ft_id="e2efpg",
-            nodes=[
-                NodeSpec(node_id=f"e2efpg-node-{i}", use_remote_collector=True)
-                for i in range(4)
-            ],
+            nodes=[NodeSpec(node_id=f"e2efpg-node-{i}", use_remote_collector=True) for i in range(4)],
             detectors=build_detector_chain(),
             scrape_interval_seconds=0.5,
             max_simultaneous_bad_nodes=3,
@@ -545,17 +552,18 @@ class TestFalsePositiveGuard:
         # Step 1: inject GPU_AVAILABLE=0 on 3 nodes simultaneously
         for i in range(3):
             node_id = f"e2efpg-node-{i}"
-            env.set_collector_metrics(node_id, [
-                GaugeSample(
-                    name=GPU_AVAILABLE,
-                    labels={"node_id": node_id, "gpu": "0"},
-                    value=0.0,
-                ),
-            ])
+            env.set_collector_metrics(
+                node_id,
+                [
+                    GaugeSample(
+                        name=GPU_AVAILABLE,
+                        labels={"node_id": node_id, "gpu": "0"},
+                        value=0.0,
+                    ),
+                ],
+            )
 
         # Step 2: wait for scrape cycles, then verify no recovery
         await asyncio.sleep(5.0)
         status = get_status(env.controller)
-        assert status.mode == ControllerMode.MONITORING, (
-            f"Expected false positive guard, but mode={status.mode}"
-        )
+        assert status.mode == ControllerMode.MONITORING, f"Expected false positive guard, but mode={status.mode}"

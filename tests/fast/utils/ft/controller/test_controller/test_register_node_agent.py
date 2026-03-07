@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import pytest
+from tests.fast.utils.ft.conftest import StubDiagnostic, make_test_controller
 
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
-from tests.fast.utils.ft.conftest import StubDiagnostic, make_test_controller
 
 
 class TestRegisterNodeAgentScrapeTarget:
@@ -15,7 +14,10 @@ class TestRegisterNodeAgentScrapeTarget:
 
         class _FakeAgent:
             async def run_diagnostic(
-                self, diagnostic_type: str, timeout_seconds: int = 120, **kwargs: object,
+                self,
+                diagnostic_type: str,
+                timeout_seconds: int = 120,
+                **kwargs: object,
             ):
                 return await stub.run(node_id="node-0", timeout_seconds=timeout_seconds)
 
@@ -35,7 +37,10 @@ class TestRegisterNodeAgentScrapeTarget:
 
         class _FakeAgent:
             async def run_diagnostic(
-                self, diagnostic_type: str, timeout_seconds: int = 120, **kwargs: object,
+                self,
+                diagnostic_type: str,
+                timeout_seconds: int = 120,
+                **kwargs: object,
             ):
                 pass
 
@@ -52,7 +57,10 @@ class TestRegisterNodeAgentScrapeTarget:
 
         class _FakeAgent:
             async def run_diagnostic(
-                self, diagnostic_type: str, timeout_seconds: int = 120, **kwargs: object,
+                self,
+                diagnostic_type: str,
+                timeout_seconds: int = 120,
+                **kwargs: object,
             ):
                 pass
 

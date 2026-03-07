@@ -3,6 +3,7 @@
 Extracted from node_agent_actor.py so that the actor wrapper stays thin
 and the agent assembly logic is independently testable.
 """
+
 from __future__ import annotations
 
 import socket
@@ -45,7 +46,9 @@ def build_node_agent(
 ) -> FtNodeAgent:
     resolved_node_id = node_id or socket.gethostname()
     collectors = collectors_override if collectors_override is not None else build_default_collectors()
-    diagnostics = diagnostics_override if diagnostics_override is not None else build_default_diagnostics(num_gpus=num_gpus)
+    diagnostics = (
+        diagnostics_override if diagnostics_override is not None else build_default_diagnostics(num_gpus=num_gpus)
+    )
     return FtNodeAgent(
         node_id=resolved_node_id,
         collectors=collectors,

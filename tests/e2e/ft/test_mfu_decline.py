@@ -23,14 +23,15 @@ import time
 
 import pytest
 import ray
-from miles.utils.ft.models.recovery import ControllerMode
-from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from tests.e2e.ft.conftest import (
     FaultInjectorFactory,
     get_status,
     wait_for_recovery_complete,
     wait_for_training_stable,
 )
+
+from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +76,7 @@ async def test_mfu_decline_detection(
 
         if evicted:
             logger.info(
-                "mfu_decline_path=ENTER_RECOVERY node=%s "
-                "(temperature correlated eviction)",
+                "mfu_decline_path=ENTER_RECOVERY node=%s " "(temperature correlated eviction)",
                 target_node,
             )
             await wait_for_training_stable(
@@ -102,9 +102,7 @@ async def test_mfu_decline_detection(
 
         else:
             status = get_status(ft_controller_handle)
-            assert status.mode == ControllerMode.MONITORING, (
-                f"Expected MONITORING after timeout, got {status.mode}"
-            )
+            assert status.mode == ControllerMode.MONITORING, f"Expected MONITORING after timeout, got {status.mode}"
             logger.info(
                 "mfu_decline_path=NOTIFY_OR_MONITORING node=%s "
                 "(NOTIFY_HUMAN sent, or decline_timeout_minutes not yet elapsed, "

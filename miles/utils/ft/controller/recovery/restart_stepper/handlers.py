@@ -23,12 +23,7 @@ from miles.utils.ft.controller.recovery.restart_stepper.states import (
     StoppingAndRestarting,
 )
 from miles.utils.ft.models.base import FtBaseModel
-from miles.utils.ft.protocols.platform import (
-    JobStatus,
-    NodeManagerProtocol,
-    NotificationProtocol,
-    TrainingJobProtocol,
-)
+from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotificationProtocol, TrainingJobProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +61,8 @@ def iteration_progress(state: MonitoringProgress, mini_wandb: MiniWandb) -> int:
     if raw < 0:
         logger.warning(
             "iteration_progress_negative current=%d base=%d",
-            int(current_iteration), state.base_iteration,
+            int(current_iteration),
+            state.base_iteration,
         )
         return 0
     return raw
@@ -84,7 +80,9 @@ class EvictingHandler:
 
         for node_id in nodes_to_mark:
             result = await retry_mark_node_bad(
-                ctx.node_manager, node_id=node_id, reason="recovery eviction",
+                ctx.node_manager,
+                node_id=node_id,
+                reason="recovery eviction",
             )
             if not result.ok:
                 return RestartFailed(bad_node_ids=state.bad_node_ids)
@@ -100,14 +98,19 @@ class EvictingHandler:
 
 class StoppingAndRestartingHandler:
     async def step(
-        self, state: StoppingAndRestarting, ctx: RestartContext,
+        self,
+        state: StoppingAndRestarting,
+        ctx: RestartContext,
     ) -> RestartState | None:
         if not state.submitted:
             return await self._submit(state=state, ctx=ctx)
         return await self._poll(state=state, ctx=ctx)
 
     async def _submit(
-        self, *, state: StoppingAndRestarting, ctx: RestartContext,
+        self,
+        *,
+        state: StoppingAndRestarting,
+        ctx: RestartContext,
     ) -> RestartState | None:
         excluded = state.bad_node_ids or None
         success = await stop_and_submit(
@@ -125,15 +128,16 @@ class StoppingAndRestartingHandler:
         )
 
     async def _poll(
-        self, *, state: StoppingAndRestarting, ctx: RestartContext,
+        self,
+        *,
+        state: StoppingAndRestarting,
+        ctx: RestartContext,
     ) -> RestartState | None:
         status = await ctx.training_job.get_training_status()
 
         if status == JobStatus.RUNNING:
             current_iter = ctx.mini_wandb.latest(metric_name=_WANDB_ITERATION_METRIC)
-            base = (
-                int(current_iter) if current_iter is not None and math.isfinite(current_iter) else 0
-            )
+            base = int(current_iter) if current_iter is not None and math.isfinite(current_iter) else 0
             return MonitoringProgress(
                 bad_node_ids=state.bad_node_ids,
                 start_time=datetime.now(timezone.utc),
@@ -155,7 +159,9 @@ class StoppingAndRestartingHandler:
 
 class MonitoringProgressHandler:
     async def step(
-        self, state: MonitoringProgress, ctx: RestartContext,
+        self,
+        state: MonitoringProgress,
+        ctx: RestartContext,
     ) -> RestartState | None:
         status = await ctx.training_job.get_training_status()
 
@@ -168,7 +174,8 @@ class MonitoringProgressHandler:
         if status == JobStatus.RUNNING and progress >= ctx.monitoring_success_iterations:
             logger.info(
                 "monitoring_success progress_iterations=%d threshold=%d",
-                progress, ctx.monitoring_success_iterations,
+                progress,
+                ctx.monitoring_success_iterations,
             )
             return RestartDone(bad_node_ids=state.bad_node_ids)
 

@@ -112,7 +112,9 @@ class TestCrashSkipsStackTrace:
             }
         )
 
-        with patch("miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic") as mock_diag_cls:
+        with patch(
+            "miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic"
+        ) as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],

@@ -52,10 +52,7 @@ class ThermalThrottlingDetector(BaseFaultDetector):
         return Decision(
             action=ActionType.ENTER_RECOVERY,
             bad_node_ids=[hot_node_id],
-            reason=(
-                f"thermal throttling on {hot_node_id}: "
-                f"MFU decline ({mfu.avg_mfu:.4f} < {mfu.threshold:.4f})"
-            ),
+            reason=(f"thermal throttling on {hot_node_id}: " f"MFU decline ({mfu.avg_mfu:.4f} < {mfu.threshold:.4f})"),
             trigger=TriggerType.HARDWARE,
         )
 

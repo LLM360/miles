@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime
 
 from miles.utils.ft.controller.actions import PlatformDeps
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
@@ -16,33 +16,26 @@ from miles.utils.ft.controller.main_state_machine import (
     Recovering,
     get_known_bad_nodes,
 )
-from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
+from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
 from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper import (
-    EvictingAndRestarting,
-    NotifyHumans,
     RECOVERY_HANDLER_MAP,
     RECOVERY_STATE_TO_INT,
     RECOVERY_TIMEOUT_SECONDS,
+    EvictingAndRestarting,
+    NotifyHumans,
     RecoveryContext,
     RecoveryDone,
     RecoveryState,
     recovery_timeout_check,
 )
-from miles.utils.ft.controller.recovery.restart_stepper import (
-    RESTART_HANDLER_MAP,
-    RestartContext,
-)
-from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
+from miles.utils.ft.controller.recovery.restart_stepper import RESTART_HANDLER_MAP, RestartContext
 from miles.utils.ft.models.fault import TriggerType
-from miles.utils.ft.models.recovery import (
-    ControllerMode,
-    ControllerStatus,
-)
+from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
 from miles.utils.ft.protocols.platform import (
@@ -52,6 +45,7 @@ from miles.utils.ft.protocols.platform import (
     NotificationProtocol,
     TrainingJobProtocol,
 )
+from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
 
 logger = logging.getLogger(__name__)
 
@@ -142,12 +136,9 @@ class FtController:
         agents: dict[str, NodeAgentProtocol] = {}
         rank_roster = RankRoster(scrape_target_manager=scrape_target_manager)
 
-        resolved_orchestrator: DiagnosticOrchestratorProtocol = (
-            diagnostic_orchestrator
-            or DiagnosticOrchestrator(
-                agents=agents,
-                pipeline=["gpu"],
-            )
+        resolved_orchestrator: DiagnosticOrchestratorProtocol = diagnostic_orchestrator or DiagnosticOrchestrator(
+            agents=agents,
+            pipeline=["gpu"],
         )
 
         platform_deps = PlatformDeps(
@@ -221,7 +212,9 @@ class FtController:
     # ------------------------------------------------------------------
 
     def _build_recovery_context(
-        self, trigger: TriggerType, recovery_start_time: datetime,
+        self,
+        trigger: TriggerType,
+        recovery_start_time: datetime,
     ) -> RecoveryContext:
         return RecoveryContext(
             trigger=trigger,
@@ -269,12 +262,16 @@ class FtController:
         return self._mini_wandb
 
     def register_node_agent(
-        self, node_id: str, agent: NodeAgentProtocol, exporter_address: str = "",
+        self,
+        node_id: str,
+        agent: NodeAgentProtocol,
+        exporter_address: str = "",
     ) -> None:
         self._agents[node_id] = agent
         if exporter_address and self._scrape_target_manager is not None:
             self._scrape_target_manager.add_scrape_target(
-                target_id=node_id, address=exporter_address,
+                target_id=node_id,
+                address=exporter_address,
             )
         logger.info("agent_registered node_id=%s exporter=%s", node_id, exporter_address)
 
@@ -385,7 +382,8 @@ class FtController:
         if self._tick_count <= self._registration_grace_ticks:
             logger.info(
                 "skip_detectors_grace_period tick=%d grace_ticks=%d",
-                self._tick_count, self._registration_grace_ticks,
+                self._tick_count,
+                self._registration_grace_ticks,
             )
             return False
 

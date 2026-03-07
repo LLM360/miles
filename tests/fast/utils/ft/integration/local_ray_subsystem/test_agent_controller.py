@@ -1,4 +1,5 @@
 """Local Ray: Agent ↔ Controller — rank registration, tracking."""
+
 from __future__ import annotations
 
 import os
@@ -9,15 +10,14 @@ from unittest.mock import patch
 
 import pytest
 import ray
+from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
-from miles.utils.ft.platform.ray_wrappers.controller_client import RayControllerClient
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import ControllerMode
-
-from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
+from miles.utils.ft.platform.ray_wrappers.controller_client import RayControllerClient
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -44,7 +44,8 @@ class _OneShotCrashDetector(BaseFaultDetector):
 
 class TestRayControllerClient:
     def test_finds_controller_actor(
-        self, controller_actor: ray.actor.ActorHandle,
+        self,
+        controller_actor: ray.actor.ActorHandle,
     ) -> None:
         client = RayControllerClient(ft_id="")
         handle = client._get_handle()
@@ -175,15 +176,26 @@ class TestRunIdSwitch:
         handle.submit_and_run.remote()
         first_run_id = poll_for_run_id(handle)
 
-        ray.get(handle.register_training_rank.remote(
-            run_id=first_run_id, rank=0, world_size=1,
-            node_id="n0", exporter_address="http://n0:9090",
-            pid=1000,
-        ), timeout=5)
+        ray.get(
+            handle.register_training_rank.remote(
+                run_id=first_run_id,
+                rank=0,
+                world_size=1,
+                node_id="n0",
+                exporter_address="http://n0:9090",
+                pid=1000,
+            ),
+            timeout=5,
+        )
 
-        ray.get(handle.log_step.remote(
-            run_id=first_run_id, step=5, metrics={"iteration": 5},
-        ), timeout=5)
+        ray.get(
+            handle.log_step.remote(
+                run_id=first_run_id,
+                step=5,
+                metrics={"iteration": 5},
+            ),
+            timeout=5,
+        )
 
         deadline = time.monotonic() + 20.0
         new_run_id: str | None = None
@@ -212,15 +224,23 @@ class TestInFlightMessagesDuringRunSwitch:
         handle.submit_and_run.remote()
         first_run_id = poll_for_run_id(handle)
 
-        ray.get(handle.register_training_rank.remote(
-            run_id=first_run_id, rank=0, world_size=1,
-            node_id="n0", exporter_address="http://n0:9090",
-            pid=1000,
-        ), timeout=5)
+        ray.get(
+            handle.register_training_rank.remote(
+                run_id=first_run_id,
+                rank=0,
+                world_size=1,
+                node_id="n0",
+                exporter_address="http://n0:9090",
+                pid=1000,
+            ),
+            timeout=5,
+        )
 
         for i in range(200):
             handle.log_step.remote(
-                run_id=first_run_id, step=i, metrics={"loss": float(i)},
+                run_id=first_run_id,
+                step=i,
+                metrics={"loss": float(i)},
             )
 
         deadline = time.monotonic() + 20.0

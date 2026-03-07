@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import pytest
+from tests.fast.utils.ft.conftest import AlwaysEnterRecoveryDetector, make_test_controller
 
 from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from tests.fast.utils.ft.conftest import (
-    AlwaysEnterRecoveryDetector,
-    make_test_controller,
-)
 
 
 def _force_recovery_complete(harness) -> None:

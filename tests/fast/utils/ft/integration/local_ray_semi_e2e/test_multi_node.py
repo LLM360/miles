@@ -1,4 +1,5 @@
 """Semi-E2E: multi-node — registration, parallel ranks, grace period, stale run_id."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,30 +7,25 @@ import time
 from collections.abc import Callable
 
 import ray
-
-from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
-from miles.utils.ft.models.recovery import ControllerMode
-
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
-    E2EEnv,
-    NodeSpec,
-    _SLOW_STEP,
-)
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
     get_status,
     wait_for_mode,
     wait_for_mode_transition,
-    wait_for_recovery_complete,
     wait_for_recovery_phase,
     wait_for_training_stable,
 )
 
+from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
+from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+from miles.utils.ft.models.recovery import ControllerMode
+
 
 class TestMultiNode:
     async def test_multi_rank_registration_and_targeted_eviction(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """4 ranks across 2 nodes register correctly; crash during MONITORING → DIAGNOSING."""
         env = make_e2e_env(
@@ -77,7 +73,8 @@ class TestMultiNode:
 
 class TestConcurrentRegistration:
     async def test_parallel_rank_registration(
-        self, e2e_multi_node_env: E2EEnv,
+        self,
+        e2e_multi_node_env: E2EEnv,
     ) -> None:
         """4 workers register in parallel → all ranks visible in controller status."""
         env = e2e_multi_node_env
@@ -91,7 +88,8 @@ class TestConcurrentRegistration:
 
 class TestRegistrationGrace:
     async def test_detectors_suppressed_during_grace_period(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """With grace_ticks=10, detectors don't fire during the grace period."""
         env = make_e2e_env(
@@ -106,9 +104,9 @@ class TestRegistrationGrace:
         await asyncio.sleep(0.5)
         status = get_status(env.controller)
         if status.tick_count <= 10:
-            assert status.mode == ControllerMode.MONITORING, (
-                f"Recovery triggered during grace period at tick {status.tick_count}"
-            )
+            assert (
+                status.mode == ControllerMode.MONITORING
+            ), f"Recovery triggered during grace period at tick {status.tick_count}"
 
         # Step 2: wait for grace period to end
         deadline = time.monotonic() + 15.0
@@ -132,7 +130,8 @@ class TestRegistrationGrace:
 
 class TestStaleRunId:
     async def test_stale_run_id_registration_rejected(
-        self, e2e_env: E2EEnv,
+        self,
+        e2e_env: E2EEnv,
     ) -> None:
         """Registration with old run_id after recovery is silently rejected."""
         env = e2e_env
@@ -150,11 +149,17 @@ class TestStaleRunId:
         assert new_run_id != old_run_id
 
         # Step 2: attempt registration with stale run_id
-        ray.get(env.controller.register_training_rank.remote(
-            run_id=old_run_id, rank=99, world_size=1,
-            node_id="stale-node", exporter_address="http://stale:9090",
-            pid=9999,
-        ), timeout=5)
+        ray.get(
+            env.controller.register_training_rank.remote(
+                run_id=old_run_id,
+                rank=99,
+                world_size=1,
+                node_id="stale-node",
+                exporter_address="http://stale:9090",
+                pid=9999,
+            ),
+            timeout=5,
+        )
 
         # Step 3: training continues normally under new run
         await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
@@ -164,7 +169,8 @@ class TestStaleRunId:
 
 class TestMultiNodeIsolation:
     async def test_single_node_fault_does_not_affect_healthy_nodes(
-        self, e2e_multi_node_env: E2EEnv,
+        self,
+        e2e_multi_node_env: E2EEnv,
     ) -> None:
         """In multi-node setup, a global crash recovers cleanly with all nodes participating."""
         env = e2e_multi_node_env
@@ -187,7 +193,8 @@ class TestMultiNodeIsolation:
 
 class TestMultiNodeScale:
     async def test_3_nodes_full_recovery_all_ranks_reregister(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """3 nodes × 2 ranks each — crash → recovery → all 6 ranks re-register."""
         env = make_e2e_env(
@@ -217,7 +224,8 @@ class TestMultiNodeScale:
 
 class TestGracePeriod:
     async def test_no_workers_registered_crash_does_not_trigger_recovery(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Crash before any worker registers → detectors skipped (rank_placement empty)."""
         env = make_e2e_env(
@@ -234,6 +242,6 @@ class TestGracePeriod:
 
         # Step 2: mode should still be MONITORING (detectors not run)
         status = get_status(env.controller)
-        assert status.mode == ControllerMode.MONITORING, (
-            f"Expected no recovery with empty rank_placement, but mode={status.mode}"
-        )
+        assert (
+            status.mode == ControllerMode.MONITORING
+        ), f"Expected no recovery with empty rank_placement, but mode={status.mode}"

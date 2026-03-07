@@ -17,17 +17,10 @@ from miles.utils.ft.controller.recovery.recovery_stepper.states import (
     StopTimeDiagnostics,
 )
 from miles.utils.ft.controller.recovery.restart_stepper.handlers import RestartContext
-from miles.utils.ft.controller.recovery.restart_stepper.states import (
-    RestartDone,
-    RestartFailed,
-    RestartState,
-)
+from miles.utils.ft.controller.recovery.restart_stepper.states import RestartDone, RestartFailed, RestartState
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import TriggerType, unique_node_ids
-from miles.utils.ft.protocols.platform import (
-    DiagnosticOrchestratorProtocol,
-    NotificationProtocol,
-)
+from miles.utils.ft.protocols.platform import DiagnosticOrchestratorProtocol, NotificationProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +53,8 @@ class RecoveryContext(FtBaseModel):
 
 
 async def recovery_timeout_check(
-    state: RecoveryState, ctx: RecoveryContext,
+    state: RecoveryState,
+    ctx: RecoveryContext,
 ) -> RecoveryState | None:
     elapsed = (datetime.now(timezone.utc) - ctx.recovery_start_time).total_seconds()
     if elapsed > ctx.timeout_seconds and not isinstance(state, (NotifyHumans, RecoveryDone)):
@@ -97,7 +91,9 @@ class RealtimeChecksHandler:
 
 class EvictingAndRestartingHandler:
     async def step(
-        self, state: EvictingAndRestarting, ctx: RecoveryContext,
+        self,
+        state: EvictingAndRestarting,
+        ctx: RecoveryContext,
     ) -> RecoveryState | None:
         new_restart = await ctx.restart_stepper(state.restart, ctx.restart_context)
         if new_restart is None:
@@ -115,7 +111,9 @@ class EvictingAndRestartingHandler:
 
 class StopTimeDiagnosticsHandler:
     async def step(
-        self, state: StopTimeDiagnostics, ctx: RecoveryContext,
+        self,
+        state: StopTimeDiagnostics,
+        ctx: RecoveryContext,
     ) -> RecoveryState:
         result = await ctx.diagnostic_orchestrator.run_diagnostic_pipeline(
             trigger_reason=ctx.trigger,
@@ -135,9 +133,7 @@ class StopTimeDiagnosticsHandler:
 class NotifyHumansHandler:
     async def step(self, state: NotifyHumans, ctx: RecoveryContext) -> RecoveryState:
         message = (
-            f"Recovery requires human intervention. "
-            f"trigger={ctx.trigger} "
-            f"state_before={state.state_before}"
+            f"Recovery requires human intervention. " f"trigger={ctx.trigger} " f"state_before={state.state_before}"
         )
         logger.warning("recovery_notify reason=%s", message)
         await safe_notify(ctx.notifier, title="Recovery Alert", content=message)

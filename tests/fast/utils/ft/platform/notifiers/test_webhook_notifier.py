@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from tests.fast.utils.ft.platform.notifiers.conftest import make_error_response, make_ok_response
 
 from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
-from tests.fast.utils.ft.platform.notifiers.conftest import make_error_response, make_ok_response
 
 _SLEEP_PATCH = "miles.utils.ft.utils.retry.asyncio.sleep"
 
@@ -26,10 +26,13 @@ class TestWebhookNotifierRetry:
 
     @pytest.mark.anyio
     async def test_http_error_raises_after_retries(
-        self, notifier: LarkWebhookNotifier, caplog: pytest.LogCaptureFixture,
+        self,
+        notifier: LarkWebhookNotifier,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=make_error_response()), \
-             patch(_SLEEP_PATCH, new_callable=AsyncMock):
+        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=make_error_response()), patch(
+            _SLEEP_PATCH, new_callable=AsyncMock
+        ):
             with caplog.at_level(logging.WARNING), pytest.raises(httpx.HTTPStatusError):
                 await notifier.send(title="Fault Alert", content="test error", severity="critical")
 
@@ -37,10 +40,13 @@ class TestWebhookNotifierRetry:
 
     @pytest.mark.anyio
     async def test_connect_error_raises_after_retries(
-        self, notifier: LarkWebhookNotifier, caplog: pytest.LogCaptureFixture,
+        self,
+        notifier: LarkWebhookNotifier,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         with patch.object(
-            notifier._client, "post",
+            notifier._client,
+            "post",
             new_callable=AsyncMock,
             side_effect=httpx.ConnectError("connection refused"),
         ), patch(_SLEEP_PATCH, new_callable=AsyncMock):
@@ -51,10 +57,12 @@ class TestWebhookNotifierRetry:
 
     @pytest.mark.anyio
     async def test_retry_succeeds_on_second_attempt(
-        self, notifier: LarkWebhookNotifier,
+        self,
+        notifier: LarkWebhookNotifier,
     ) -> None:
         with patch.object(
-            notifier._client, "post",
+            notifier._client,
+            "post",
             new_callable=AsyncMock,
             side_effect=[make_error_response(), make_ok_response()],
         ) as mock_post, patch(_SLEEP_PATCH, new_callable=AsyncMock):
@@ -64,10 +72,13 @@ class TestWebhookNotifierRetry:
 
     @pytest.mark.anyio
     async def test_retry_exhausts_all_attempts(
-        self, notifier: LarkWebhookNotifier, caplog: pytest.LogCaptureFixture,
+        self,
+        notifier: LarkWebhookNotifier,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         with patch.object(
-            notifier._client, "post",
+            notifier._client,
+            "post",
             new_callable=AsyncMock,
             return_value=make_error_response(),
         ) as mock_post, patch(_SLEEP_PATCH, new_callable=AsyncMock):
@@ -79,16 +90,19 @@ class TestWebhookNotifierRetry:
 
     @pytest.mark.anyio
     async def test_retry_uses_exponential_backoff(
-        self, notifier: LarkWebhookNotifier,
+        self,
+        notifier: LarkWebhookNotifier,
     ) -> None:
         err = httpx.ConnectError("refused")
 
         with patch.object(
-            notifier._client, "post",
+            notifier._client,
+            "post",
             new_callable=AsyncMock,
             side_effect=err,
-        ), patch(_SLEEP_PATCH, new_callable=AsyncMock) as mock_sleep, \
-                pytest.raises(httpx.ConnectError):
+        ), patch(
+            _SLEEP_PATCH, new_callable=AsyncMock
+        ) as mock_sleep, pytest.raises(httpx.ConnectError):
             await notifier.send(title="Alert", content="backoff", severity="critical")
 
         assert mock_sleep.call_count == 2

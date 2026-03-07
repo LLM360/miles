@@ -1,4 +1,5 @@
 """Tests for FtController.run() cleanup paths."""
+
 from __future__ import annotations
 
 import asyncio
@@ -93,5 +94,3 @@ class TestRunLoopSurviveTickFailure:
         await run_controller_briefly(harness)
 
         assert stop_called
-
-

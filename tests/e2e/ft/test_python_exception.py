@@ -11,8 +11,6 @@ from __future__ import annotations
 import time
 
 import ray
-
-from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
 from tests.e2e.ft.conftest import (
     E2eFaultInjector,
     FaultInjectorFactory,
@@ -21,6 +19,8 @@ from tests.e2e.ft.conftest import (
     wait_for_mode_transition,
     wait_for_training_stable,
 )
+
+from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
 
 
 async def test_python_exception_auto_recovery(
@@ -36,7 +36,9 @@ async def test_python_exception_auto_recovery(
 
     # Step 2: Wait for training to be stable
     await wait_for_training_stable(
-        ft_controller_handle, n_iterations=3, timeout=180.0,
+        ft_controller_handle,
+        n_iterations=3,
+        timeout=180.0,
     )
 
     # Step 3: Inject Python exception via flag file
@@ -54,16 +56,21 @@ async def test_python_exception_auto_recovery(
 
     # Step 5: Verify training resumes after recovery
     await wait_for_training_stable(
-        ft_controller_handle, n_iterations=5, timeout=300.0,
+        ft_controller_handle,
+        n_iterations=5,
+        timeout=300.0,
     )
 
     # Step 6: Verify recovery went through expected phases
     final = get_status(ft_controller_handle)
-    assert_phase_path_contains(final, [
-        RecoveryPhase.CHECK_ALERTS,
-        RecoveryPhase.REATTEMPTING,
-        RecoveryPhase.MONITORING,
-        RecoveryPhase.DONE,
-    ])
+    assert_phase_path_contains(
+        final,
+        [
+            RecoveryPhase.CHECK_ALERTS,
+            RecoveryPhase.REATTEMPTING,
+            RecoveryPhase.MONITORING,
+            RecoveryPhase.DONE,
+        ],
+    )
 
     assert time.monotonic() - t0 < 300.0

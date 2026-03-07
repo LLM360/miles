@@ -1,6 +1,7 @@
 """Notifier factory: builds the appropriate WebhookNotifier subclass
 from explicit configuration parameters.
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,8 +51,5 @@ def _get_notifier_class(notify_platform: str) -> type[WebhookNotifier]:
     }
     cls = registry.get(notify_platform)
     if cls is None:
-        raise ValueError(
-            f"Unknown notify platform: {notify_platform!r}. "
-            f"Supported: {sorted(registry)}"
-        )
+        raise ValueError(f"Unknown notify platform: {notify_platform!r}. " f"Supported: {sorted(registry)}")
     return cls

@@ -1,5 +1,3 @@
-import pytest
-
 from tests.fast.utils.ft.helpers import (
     inject_critical_xid,
     inject_gpu_unavailable,

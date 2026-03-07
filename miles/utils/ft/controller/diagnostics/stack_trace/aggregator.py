@@ -23,12 +23,7 @@ class StackTraceAggregator:
             return []
 
         majority_size = max(len(nodes) for nodes in fp_to_nodes.values())
-        return sorted(
-            nid
-            for nodes in fp_to_nodes.values()
-            if len(nodes) < majority_size
-            for nid in nodes
-        )
+        return sorted(nid for nodes in fp_to_nodes.values() if len(nodes) < majority_size for nid in nodes)
 
     @staticmethod
     def _extract_fingerprint(threads: list[PySpyThread]) -> str:

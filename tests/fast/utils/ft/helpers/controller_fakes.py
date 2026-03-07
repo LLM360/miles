@@ -6,19 +6,13 @@ from typing import NamedTuple
 from prometheus_client import CollectorRegistry
 
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import (
-    DiagnosticOrchestratorProtocol,
-    JobStatus,
-    NodeManagerProtocol,
-    TrainingJobProtocol,
-)
-
+from miles.utils.ft.protocols.platform import JobStatus
 
 # ---------------------------------------------------------------------------
 # Platform fakes
@@ -130,11 +124,13 @@ def AlwaysEnterRecoveryDetector(
     trigger: TriggerType = TriggerType.CRASH,
     reason: str = "test recovery",
 ) -> FixedDecisionDetector:
-    return FixedDecisionDetector(decision=Decision(
-        action=ActionType.ENTER_RECOVERY,
-        trigger=trigger,
-        reason=reason,
-    ))
+    return FixedDecisionDetector(
+        decision=Decision(
+            action=ActionType.ENTER_RECOVERY,
+            trigger=trigger,
+            reason=reason,
+        )
+    )
 
 
 class CrashingDetector(BaseFaultDetector):

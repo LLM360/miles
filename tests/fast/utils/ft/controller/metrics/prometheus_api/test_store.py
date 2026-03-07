@@ -9,7 +9,6 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
-import polars as pl
 import pytest
 
 from miles.utils.ft.controller.metrics.prometheus_api.store import (
@@ -554,6 +553,7 @@ class TestNanAndInfValues:
 
         assert df.shape[0] == 1
         import math
+
         assert math.isnan(df["value"][0])
 
     def test_positive_inf_value_parsed(self) -> None:
@@ -613,6 +613,7 @@ class TestNanAndInfValues:
 
         assert df.shape[0] == 3
         import math
+
         assert df["value"][0] == 1.0
         assert math.isnan(df["value"][1])
         assert df["value"][2] == 3.0
@@ -722,7 +723,9 @@ class TestAvgOverTimePromQL:
         with patch.object(httpx.Client, "get", return_value=_make_response(json_data)) as mock_get:
             client = PrometheusClient(url="http://fake:9090")
             client.avg_over_time(
-                "cpu", window=timedelta(hours=1), label_filters={"node_id": "node-0"},
+                "cpu",
+                window=timedelta(hours=1),
+                label_filters={"node_id": "node-0"},
             )
 
             call_args = mock_get.call_args

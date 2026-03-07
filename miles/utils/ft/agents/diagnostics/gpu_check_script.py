@@ -80,7 +80,9 @@ def main() -> None:
             try:
                 handle = pynvml.nvmlDeviceGetHandleByIndex(i)
                 result = _check_single_gpu(
-                    gpu_index=i, handle=handle, model_and_input=model_and_input,
+                    gpu_index=i,
+                    handle=handle,
+                    model_and_input=model_and_input,
                 )
             except Exception as exc:
                 msg = f"check failed: {exc}"
@@ -197,7 +199,10 @@ def _build_deterministic_model_and_input() -> tuple[Any, Any, Any]:
 
 
 def _compute_fingerprint(
-    gpu_index: int, model: Any, x: Any, causal_mask: Any,
+    gpu_index: int,
+    model: Any,
+    x: Any,
+    causal_mask: Any,
 ) -> str:
     """Run deterministic forward pass on a single GPU and return SHA256 hash.
 

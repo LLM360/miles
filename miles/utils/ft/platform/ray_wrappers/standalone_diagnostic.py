@@ -3,6 +3,7 @@
 Provides high-level async functions that handle Ray actor lifecycle
 internally, so callers only need a live Ray cluster with GPU nodes.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -30,6 +31,7 @@ _MIN_INTER_MACHINE_NODES = 2
 # Public API
 # ---------------------------------------------------------------------------
 
+
 async def run_intra_machine_diagnostics(
     node_ids: list[str] | None = None,
     timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
@@ -54,7 +56,9 @@ async def run_intra_machine_diagnostics(
             result: DiagnosticResult = ray.get(ref, timeout=timeout_seconds + 60)
             logger.info(
                 "intra_machine node=%s passed=%s details=%s",
-                node_id, result.passed, result.details,
+                node_id,
+                result.passed,
+                result.details,
             )
             results.append(result)
 
@@ -74,7 +78,8 @@ async def run_inter_machine_diagnostics(
     if len(nodes) < _MIN_INTER_MACHINE_NODES:
         logger.info(
             "inter_machine_skip — fewer than %d GPU nodes (%d found)",
-            _MIN_INTER_MACHINE_NODES, len(nodes),
+            _MIN_INTER_MACHINE_NODES,
+            len(nodes),
         )
         return []
 
@@ -94,6 +99,7 @@ async def run_inter_machine_diagnostics(
 # ---------------------------------------------------------------------------
 # Agent lifecycle
 # ---------------------------------------------------------------------------
+
 
 @ray.remote(num_gpus=0)
 class _StandaloneDiagnosticAgent:
@@ -131,7 +137,8 @@ def _deploy_agents(
         num_gpus = int(node["Resources"]["GPU"])
         actor = _StandaloneDiagnosticAgent.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node_id, soft=False,
+                node_id=node_id,
+                soft=False,
             ),
         ).remote(node_id=node_id, num_gpus=num_gpus)
         agents[node_id] = actor

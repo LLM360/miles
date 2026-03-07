@@ -5,13 +5,8 @@ import json
 import logging
 from collections.abc import Callable
 
-from miles.utils.ft.agents.diagnostics.stack_trace import (
-    PySpyThread,
-    StackTraceDiagnostic,
-)
-from miles.utils.ft.controller.diagnostics.stack_trace.aggregator import (
-    StackTraceAggregator,
-)
+from miles.utils.ft.agents.diagnostics.stack_trace import PySpyThread, StackTraceDiagnostic
+from miles.utils.ft.controller.diagnostics.stack_trace.aggregator import StackTraceAggregator
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
@@ -49,16 +44,14 @@ async def collect_stack_trace_suspects(
                 timeout_seconds=default_timeout_seconds,
             )
             if result.passed:
-                threads = [
-                    PySpyThread.model_validate(t)
-                    for t in json.loads(result.details)
-                ]
+                threads = [PySpyThread.model_validate(t) for t in json.loads(result.details)]
                 traces[node_id] = threads
             else:
                 suspect_from_failures.append(node_id)
                 logger.info(
                     "stack_trace_collection_failed node=%s details=%s",
-                    node_id, result.details,
+                    node_id,
+                    result.details,
                 )
         except Exception:
             suspect_from_failures.append(node_id)
@@ -75,6 +68,8 @@ async def collect_stack_trace_suspects(
 
     logger.info(
         "collect_stack_trace_suspects_done traces_collected=%d suspect_from_failures=%s suspect_from_aggregation=%s",
-        len(traces), suspect_from_failures, suspect_from_aggregation,
+        len(traces),
+        suspect_from_failures,
+        suspect_from_aggregation,
     )
     return all_suspects

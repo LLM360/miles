@@ -64,7 +64,9 @@ class MfuDeclineDetector(BaseFaultDetector):
         )
 
     def _compute_decline_duration_minutes(
-        self, mini_wandb: TrainingMetricStoreProtocol, threshold: float,
+        self,
+        mini_wandb: TrainingMetricStoreProtocol,
+        threshold: float,
     ) -> float:
         """Derive how long MFU has been below *threshold* from time-series data.
 

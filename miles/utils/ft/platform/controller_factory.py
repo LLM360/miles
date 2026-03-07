@@ -4,6 +4,7 @@ Assembles the controller with all concrete implementations (K8sNodeManager,
 RayTrainingJob, notifiers, metric stores, detectors). Analogous to
 node_agent_factory.py for the node agent side.
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,8 +13,8 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
@@ -21,7 +22,7 @@ from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusCli
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.notifiers.factory import build_notifier
-from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
+from miles.utils.ft.platform.stubs import StubNodeManager, StubTrainingJob
 from miles.utils.ft.protocols.platform import (
     DiagnosticOrchestratorProtocol,
     NodeManagerProtocol,
@@ -65,16 +66,13 @@ def build_ft_controller(
     """
     if config is not None and kwargs:
         raise ValueError(
-            "Cannot provide both 'config' and keyword arguments to build_ft_controller; "
-            "use one or the other"
+            "Cannot provide both 'config' and keyword arguments to build_ft_controller; " "use one or the other"
         )
 
     _has_nm = node_manager_override is not None
     _has_tj = training_job_override is not None
     if _has_nm != _has_tj:
-        raise ValueError(
-            "node_manager_override and training_job_override must be provided together"
-        )
+        raise ValueError("node_manager_override and training_job_override must be provided together")
 
     if config is None:
         config = FtControllerConfig(**kwargs)  # type: ignore[arg-type]
@@ -112,15 +110,16 @@ def build_ft_controller(
         )
 
     detectors = (
-        detectors_override
-        if detectors_override is not None
-        else build_detector_chain(config=config.detector_config)
+        detectors_override if detectors_override is not None else build_detector_chain(config=config.detector_config)
     )
 
     logger.info(
         "build_ft_controller ft_id=%s platform=%s backend=%s exporter_port=%d k8s_label_prefix=%s",
-        ft_id, config.platform, config.metric_store_backend,
-        config.controller_exporter_port, config.k8s_label_prefix or "(none)",
+        ft_id,
+        config.platform,
+        config.metric_store_backend,
+        config.controller_exporter_port,
+        config.k8s_label_prefix or "(none)",
     )
 
     create_kwargs: dict[str, Any] = dict(
@@ -163,9 +162,10 @@ def _build_platform_components(
         return StubNodeManager(), StubTrainingJob()
 
     if platform == "k8s-ray":
+        from ray.job_submission import JobSubmissionClient
+
         from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
         from miles.utils.ft.platform.ray_wrappers.training_job import RayTrainingJob
-        from ray.job_submission import JobSubmissionClient
 
         node_manager = K8sNodeManager(label_prefix=k8s_label_prefix)
         training_job = RayTrainingJob(
@@ -186,9 +186,11 @@ def _build_metric_store(
 ) -> tuple[MiniPrometheus | PrometheusClient, MiniPrometheus | None]:
     """Return (metric_store, scrape_target_manager) based on config backend."""
     if config.metric_store_backend == "mini":
-        mini_prom = MiniPrometheus(config=MiniPrometheusConfig(
-            scrape_interval=timedelta(seconds=config.scrape_interval_seconds),
-        ))
+        mini_prom = MiniPrometheus(
+            config=MiniPrometheusConfig(
+                scrape_interval=timedelta(seconds=config.scrape_interval_seconds),
+            )
+        )
         mini_prom.add_scrape_target(
             target_id="controller",
             address=controller_exporter.address,

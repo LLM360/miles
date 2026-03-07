@@ -60,4 +60,3 @@ class FtNodeAgent(NodeAgentProtocol):
             timeout_seconds=timeout_seconds,
             **kwargs,
         )
-

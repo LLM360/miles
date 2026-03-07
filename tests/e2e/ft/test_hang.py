@@ -9,14 +9,8 @@ from __future__ import annotations
 
 import pytest
 import ray
-from tests.e2e.ft.conftest import (
-    E2eFaultInjector,
-    FaultInjectorFactory,
-    wait_for_training_stable,
-)
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
-    scenario_hang_detection_and_recovery,
-)
+from tests.e2e.ft.conftest import E2eFaultInjector, FaultInjectorFactory, wait_for_training_stable
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import scenario_hang_detection_and_recovery
 
 _HANG_TIMEOUT_MINUTES = 10
 _DETECTION_BUFFER_SECONDS = 60

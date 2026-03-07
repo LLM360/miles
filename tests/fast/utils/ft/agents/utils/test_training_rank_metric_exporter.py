@@ -36,9 +36,7 @@ def metric_exporter() -> Iterator[TrainingRankMetricExporter]:
 
 class TestTrainingRankMetricExporterExporter:
     @pytest.mark.anyio
-    async def test_exporter_returns_prometheus_format(
-        self, metric_exporter: TrainingRankMetricExporter
-    ) -> None:
+    async def test_exporter_returns_prometheus_format(self, metric_exporter: TrainingRankMetricExporter) -> None:
         address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
@@ -47,18 +45,14 @@ class TestTrainingRankMetricExporterExporter:
         assert "text/plain" in response.headers.get("content-type", "")
 
     @pytest.mark.anyio
-    async def test_exporter_address_has_port(
-        self, metric_exporter: TrainingRankMetricExporter
-    ) -> None:
+    async def test_exporter_address_has_port(self, metric_exporter: TrainingRankMetricExporter) -> None:
         address = metric_exporter.get_exporter_address()
         assert address.startswith("http://localhost:")
         port = int(address.split(":")[-1])
         assert port > 0
 
     @pytest.mark.anyio
-    async def test_initial_gauge_values(
-        self, metric_exporter: TrainingRankMetricExporter
-    ) -> None:
+    async def test_initial_gauge_values(self, metric_exporter: TrainingRankMetricExporter) -> None:
         address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
@@ -71,9 +65,7 @@ class TestTrainingRankMetricExporterExporter:
 
 class TestTrainingRankMetricExporterStep:
     @pytest.mark.anyio
-    async def test_step_increments_heartbeat(
-        self, metric_exporter: TrainingRankMetricExporter
-    ) -> None:
+    async def test_step_increments_heartbeat(self, metric_exporter: TrainingRankMetricExporter) -> None:
         metric_exporter.step()
         metric_exporter.step()
         metric_exporter.step()
@@ -87,9 +79,7 @@ class TestTrainingRankMetricExporterStep:
         assert heartbeat == 3.0
 
     @pytest.mark.anyio
-    async def test_step_heartbeat_monotonic_across_phases(
-        self, metric_exporter: TrainingRankMetricExporter
-    ) -> None:
+    async def test_step_heartbeat_monotonic_across_phases(self, metric_exporter: TrainingRankMetricExporter) -> None:
         """Simulate a full rollout cycle with split set_phase/step API."""
         address = metric_exporter.get_exporter_address()
         labels = {"rank": "0"}
@@ -118,22 +108,16 @@ class TestTrainingRankMetricExporterStep:
         phase = _parse_gauge(resp.text, "miles_ft_training_phase", labels)
         assert phase == 0.0
 
-    def test_step_exception_does_not_propagate(
-        self, metric_exporter: TrainingRankMetricExporter
-    ) -> None:
+    def test_step_exception_does_not_propagate(self, metric_exporter: TrainingRankMetricExporter) -> None:
         from unittest.mock import patch
 
-        with patch.object(
-            metric_exporter, "_heartbeat_child", **{"set.side_effect": RuntimeError("boom")}
-        ):
+        with patch.object(metric_exporter, "_heartbeat_child", **{"set.side_effect": RuntimeError("boom")}):
             metric_exporter.step()
 
 
 class TestTrainingRankMetricExporterSetPhase:
     @pytest.mark.anyio
-    async def test_set_phase_updates_phase_gauge(
-        self, metric_exporter: TrainingRankMetricExporter
-    ) -> None:
+    async def test_set_phase_updates_phase_gauge(self, metric_exporter: TrainingRankMetricExporter) -> None:
         metric_exporter.set_phase("checkpoint_saving")
 
         address = metric_exporter.get_exporter_address()
@@ -145,9 +129,7 @@ class TestTrainingRankMetricExporterSetPhase:
         assert phase == 2.0
 
     @pytest.mark.anyio
-    async def test_set_phase_also_bumps_heartbeat(
-        self, metric_exporter: TrainingRankMetricExporter
-    ) -> None:
+    async def test_set_phase_also_bumps_heartbeat(self, metric_exporter: TrainingRankMetricExporter) -> None:
         metric_exporter.set_phase("training")
         metric_exporter.set_phase("idle")
 

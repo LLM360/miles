@@ -3,10 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from miles.utils.ft.controller.detectors.checks.hardware import (
-    check_all_hardware_faults,
-    check_nic_down_in_window,
-)
+from miles.utils.ft.controller.detectors.checks.hardware import check_all_hardware_faults, check_nic_down_in_window
 from miles.utils.ft.models.fault import NodeFault
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 
@@ -30,9 +27,11 @@ class AlertChecker:
     def check_alerts(self) -> list[NodeFault]:
         """Return all detected faults (hardware + network)."""
         faults = check_all_hardware_faults(self._metric_store)
-        faults.extend(check_nic_down_in_window(
-            self._metric_store,
-            window=self._network_alert_window,
-            threshold=self._network_alert_threshold,
-        ))
+        faults.extend(
+            check_nic_down_in_window(
+                self._metric_store,
+                window=self._network_alert_window,
+                threshold=self._network_alert_threshold,
+            )
+        )
         return faults

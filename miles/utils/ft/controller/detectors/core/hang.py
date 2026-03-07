@@ -2,15 +2,10 @@ from datetime import timedelta
 
 from pydantic import ConfigDict, field_validator
 
-from miles.utils.ft.models.metric_names import (
-    AGENT_HEARTBEAT,
-    PHASE_CHECKPOINT_SAVING,
-    PHASE_TRAINING,
-    TRAINING_PHASE,
-)
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT, PHASE_CHECKPOINT_SAVING, PHASE_TRAINING, TRAINING_PHASE
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 from miles.utils.ft.protocols.platform import JobStatus
 
@@ -76,7 +71,9 @@ class HangDetector(BaseFaultDetector):
         return df.row(0, named=True)["value"]
 
     def _get_heartbeat_changes(
-        self, metric_store: MetricQueryProtocol, window_minutes: int,
+        self,
+        metric_store: MetricQueryProtocol,
+        window_minutes: int,
     ) -> float | None:
         df = metric_store.changes(
             AGENT_HEARTBEAT,

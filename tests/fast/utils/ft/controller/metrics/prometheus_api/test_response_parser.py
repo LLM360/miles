@@ -1,4 +1,5 @@
 """Tests for prometheus_api/response_parser.py error and edge-case paths."""
+
 from __future__ import annotations
 
 from miles.utils.ft.controller.metrics.mini_prometheus.query import EMPTY_INSTANT, EMPTY_RANGE

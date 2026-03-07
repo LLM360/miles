@@ -3,6 +3,7 @@
 Provides async helpers to wait for controller state transitions,
 training progress, and recovery phases.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -24,7 +25,7 @@ async def wait_for_training_stable(
     poll_interval: float = 0.5,
 ) -> None:
     """Poll controller until latest_iteration advances by n_iterations."""
-    baseline = (get_status(handle).latest_iteration or 0)
+    baseline = get_status(handle).latest_iteration or 0
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         current = get_status(handle).latest_iteration or 0
@@ -32,8 +33,7 @@ async def wait_for_training_stable(
             return
         await asyncio.sleep(poll_interval)
     raise TimeoutError(
-        f"Training not stable: needed {n_iterations} iterations from baseline={baseline}, "
-        f"timeout={timeout}s"
+        f"Training not stable: needed {n_iterations} iterations from baseline={baseline}, " f"timeout={timeout}s"
     )
 
 
@@ -124,7 +124,4 @@ def assert_phase_path_contains(
         if idx < len(required) and phase == required[idx]:
             idx += 1
 
-    assert idx == len(required), (
-        f"Expected phase path to contain {required} in order, "
-        f"but got history {history}"
-    )
+    assert idx == len(required), f"Expected phase path to contain {required} in order, " f"but got history {history}"

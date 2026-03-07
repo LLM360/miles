@@ -3,6 +3,7 @@
 Provides a protocol that both local_ray and E2E tests can implement,
 so scenario functions in scenarios.py can inject faults generically.
 """
+
 from __future__ import annotations
 
 from typing import Protocol

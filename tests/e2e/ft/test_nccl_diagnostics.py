@@ -28,14 +28,10 @@ async def test_intra_machine_all_pass(ray_cluster: None) -> None:
     """Every GPU node should pass intra-machine all_reduce_perf."""
     results = await run_intra_machine_diagnostics(timeout_seconds=120)
     failed = [r for r in results if not r.passed]
-    assert not failed, (
-        f"Intra-machine NCCL diagnostic failed on: {[r.node_id for r in failed]}"
-    )
+    assert not failed, f"Intra-machine NCCL diagnostic failed on: {[r.node_id for r in failed]}"
 
 
 async def test_inter_machine_all_pass(ray_cluster: None) -> None:
     """All node pairs should pass inter-machine all_gather_perf."""
     bad_nodes = await run_inter_machine_diagnostics(timeout_seconds=180)
-    assert bad_nodes == [], (
-        f"Inter-machine NCCL diagnostic identified bad nodes: {bad_nodes}"
-    )
+    assert bad_nodes == [], f"Inter-machine NCCL diagnostic identified bad nodes: {bad_nodes}"

@@ -1,4 +1,5 @@
 """Tests for StateMachineStepper and StateMachine base classes."""
+
 from __future__ import annotations
 
 import pytest
@@ -135,6 +136,7 @@ class TestStateMachineStepper:
     @pytest.mark.asyncio
     async def test_pre_dispatch_short_circuits(self) -> None:
         """pre_dispatch returning non-None skips handler dispatch."""
+
         async def always_terminal(state: DummyState, ctx: None) -> DummyState | None:
             return TerminalState()
 
@@ -145,6 +147,7 @@ class TestStateMachineStepper:
     @pytest.mark.asyncio
     async def test_pre_dispatch_none_falls_through(self) -> None:
         """pre_dispatch returning None continues to normal handler dispatch."""
+
         async def pass_through(state: DummyState, ctx: None) -> DummyState | None:
             return None
 

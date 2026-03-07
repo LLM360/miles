@@ -8,24 +8,6 @@ from typing import Any
 
 import pytest
 import ray
-
-from miles.utils.ft.agents.collectors.stub import StubCollector
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.detectors.chain import build_detector_chain
-from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
-from miles.utils.ft.models.metrics import GaugeSample
-from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
-from miles.utils.ft.platform.ray_wrappers.node_agent_actor import FtNodeAgentActor
-from miles.utils.ft.protocols.platform import (
-    JobStatus,
-    ft_controller_actor_name,
-    ft_node_agent_actor_name,
-)
-
 from tests.fast.utils.ft.helpers.controller_fakes import FakeNodeManager
 from tests.fast.utils.ft.helpers.diagnostic_fakes import StubDiagnostic
 from tests.fast.utils.ft.helpers.fault_injection import LocalRayFaultInjector
@@ -38,10 +20,20 @@ from tests.fast.utils.ft.helpers.training_simulator import (
     TrainingStateActor,
     TrainingWorkerActor,
 )
-from tests.fast.utils.ft.integration.conftest import (
-    _kill_named_actor,
-    poll_for_run_id,
-)
+from tests.fast.utils.ft.integration.conftest import _kill_named_actor, poll_for_run_id
+
+from miles.utils.ft.agents.collectors.stub import StubCollector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.detectors.chain import build_detector_chain
+from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
+from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
+from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.platform.config import FtControllerConfig
+from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
+from miles.utils.ft.platform.ray_wrappers.node_agent_actor import FtNodeAgentActor
+from miles.utils.ft.protocols.platform import JobStatus, ft_controller_actor_name, ft_node_agent_actor_name
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -77,7 +69,9 @@ class E2EEnv:
     _cleanup_handles: list[ray.actor.ActorHandle] = field(default_factory=list)
 
     def set_collector_metrics(
-        self, node_id: str, metrics: list[GaugeSample],
+        self,
+        node_id: str,
+        metrics: list[GaugeSample],
     ) -> None:
         state = self.collector_states.get(node_id)
         if state is None:
@@ -268,10 +262,12 @@ def _build_e2e_env(
             collector_state = CollectorStateActor.remote()
             env.collector_states[node_spec.node_id] = collector_state
             env._cleanup_handles.append(collector_state)
-            collectors: list[Any] = [RemoteControlledCollector(
-                state_actor=collector_state,
-                collect_interval=0.3,
-            )]
+            collectors: list[Any] = [
+                RemoteControlledCollector(
+                    state_actor=collector_state,
+                    collect_interval=0.3,
+                )
+            ]
         else:
             collectors = [StubCollector()]
 
@@ -363,10 +359,12 @@ def e2e_full_detector_env(local_ray: None) -> Generator[E2EEnv, None, None]:
     """Full detector chain + RemoteControlledCollector + fast scrape."""
     env = _build_e2e_env(
         ft_id="e2efd",
-        nodes=[NodeSpec(
-            node_id="e2efd-node-0",
-            use_remote_collector=True,
-        )],
+        nodes=[
+            NodeSpec(
+                node_id="e2efd-node-0",
+                use_remote_collector=True,
+            )
+        ],
         detectors=build_detector_chain(),
         scrape_interval_seconds=_FAST_SCRAPE,
     )

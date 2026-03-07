@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from miles.utils.ft.agents.diagnostics.stack_trace import PySpyFrame, PySpyThread
-from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
 from tests.fast.utils.ft.helpers import (
     SAMPLE_PYSPY_THREADS_DIFFERENT_STUCK,
     SAMPLE_PYSPY_THREADS_NORMAL,
     SAMPLE_PYSPY_THREADS_STUCK,
 )
+
+from miles.utils.ft.agents.diagnostics.stack_trace import PySpyFrame, PySpyThread
+from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
 
 
 class TestStackTraceAggregatorBasic:
@@ -84,7 +85,9 @@ class TestStackTraceAggregatorFingerprint:
         agg = StackTraceAggregator()
         threads_a = [
             PySpyThread(
-                thread_name="MainThread", active=True, owns_gil=False,
+                thread_name="MainThread",
+                active=True,
+                owns_gil=False,
                 frames=[
                     PySpyFrame(name="func_a", filename="file.py", line=10),
                     PySpyFrame(name="func_b", filename="file.py", line=20),
@@ -93,7 +96,9 @@ class TestStackTraceAggregatorFingerprint:
         ]
         threads_b = [
             PySpyThread(
-                thread_name="MainThread", active=True, owns_gil=False,
+                thread_name="MainThread",
+                active=True,
+                owns_gil=False,
                 frames=[
                     PySpyFrame(name="func_a", filename="file.py", line=99),
                     PySpyFrame(name="func_b", filename="file.py", line=88),
@@ -106,13 +111,17 @@ class TestStackTraceAggregatorFingerprint:
         agg = StackTraceAggregator()
         threads_a = [
             PySpyThread(
-                thread_name="MainThread", active=True, owns_gil=False,
+                thread_name="MainThread",
+                active=True,
+                owns_gil=False,
                 frames=[PySpyFrame(name="func_a", filename="file.py", line=10)],
             ),
         ]
         threads_b = [
             PySpyThread(
-                thread_name="MainThread", active=True, owns_gil=False,
+                thread_name="MainThread",
+                active=True,
+                owns_gil=False,
                 frames=[PySpyFrame(name="func_DIFFERENT", filename="file.py", line=10)],
             ),
         ]
@@ -122,7 +131,9 @@ class TestStackTraceAggregatorFingerprint:
         agg = StackTraceAggregator()
         threads = [
             PySpyThread(
-                thread_name="MainThread", active=True, owns_gil=False,
+                thread_name="MainThread",
+                active=True,
+                owns_gil=False,
                 frames=[
                     PySpyFrame(name="innermost_func", filename="inner.py", line=1),
                     PySpyFrame(name="middle_func", filename="mid.py", line=2),
@@ -138,7 +149,9 @@ class TestStackTraceAggregatorFingerprint:
         agg = StackTraceAggregator()
         threads = [
             PySpyThread(
-                thread_name="EmptyThread", active=False, owns_gil=False,
+                thread_name="EmptyThread",
+                active=False,
+                owns_gil=False,
                 frames=[],
             ),
         ]

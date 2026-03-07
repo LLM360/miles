@@ -4,10 +4,9 @@ import asyncio
 import time
 
 import ray
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios.polling import get_status
 
 from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
-
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios.polling import get_status
 
 
 async def scenario_no_false_positive(
@@ -24,9 +23,9 @@ async def scenario_no_false_positive(
     Exactly one of observation_iterations (E2E) or observation_ticks (local_ray)
     must be provided.
     """
-    assert (observation_iterations is None) != (observation_ticks is None), (
-        "Exactly one of observation_iterations or observation_ticks must be provided"
-    )
+    assert (observation_iterations is None) != (
+        observation_ticks is None
+    ), "Exactly one of observation_iterations or observation_ticks must be provided"
 
     initial = get_status(handle)
 
@@ -35,6 +34,7 @@ async def scenario_no_false_positive(
 
         def _reached(s: ControllerStatus) -> bool:
             return (s.latest_iteration or 0) - baseline >= observation_iterations
+
     else:
         assert observation_ticks is not None
         target_ticks = initial.tick_count + observation_ticks
@@ -46,13 +46,11 @@ async def scenario_no_false_positive(
 
     while time.monotonic() < deadline:
         status = get_status(handle)
-        assert status.mode == ControllerMode.MONITORING, (
-            f"Unexpected mode transition to {status.mode} at tick {status.tick_count}"
-        )
+        assert (
+            status.mode == ControllerMode.MONITORING
+        ), f"Unexpected mode transition to {status.mode} at tick {status.tick_count}"
         if _reached(status):
             return status
         await asyncio.sleep(poll_interval)
 
-    raise TimeoutError(
-        f"Controller did not reach observation target within {timeout}s"
-    )
+    raise TimeoutError(f"Controller did not reach observation target within {timeout}s")

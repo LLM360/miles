@@ -8,22 +8,19 @@ especially the float timestamp (vs MiniPrometheus's datetime).
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
 
 import httpx
-import pytest
 
 from miles.utils.ft.controller.detectors.base import DetectorContext
-from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
 from miles.utils.ft.controller.detectors.checks.hardware import (
     _check_disk_fault,
     _check_majority_nic_down,
     check_nic_down_in_window,
 )
+from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.models.fault import ActionType
@@ -107,16 +104,18 @@ class _ResponseRouter:
 
 class TestHangDetectorWithPrometheusClient:
     def test_hang_detected_when_heartbeat_stalled(self) -> None:
-        router = _ResponseRouter({
-            TRAINING_PHASE: _vector_json(
-                TRAINING_PHASE,
-                [_vector_item(TRAINING_PHASE, PHASE_TRAINING, labels={"rank": "0"})],
-            ),
-            AGENT_HEARTBEAT: _vector_json(
-                AGENT_HEARTBEAT,
-                [_vector_item(AGENT_HEARTBEAT, 0.0, labels={"rank": "0"})],
-            ),
-        })
+        router = _ResponseRouter(
+            {
+                TRAINING_PHASE: _vector_json(
+                    TRAINING_PHASE,
+                    [_vector_item(TRAINING_PHASE, PHASE_TRAINING, labels={"rank": "0"})],
+                ),
+                AGENT_HEARTBEAT: _vector_json(
+                    AGENT_HEARTBEAT,
+                    [_vector_item(AGENT_HEARTBEAT, 0.0, labels={"rank": "0"})],
+                ),
+            }
+        )
 
         with patch.object(httpx.Client, "get", side_effect=router):
             client = PrometheusClient(url="http://fake:9090")
@@ -133,16 +132,18 @@ class TestHangDetectorWithPrometheusClient:
         assert decision.action == ActionType.ENTER_RECOVERY
 
     def test_no_hang_when_heartbeat_progressing(self) -> None:
-        router = _ResponseRouter({
-            TRAINING_PHASE: _vector_json(
-                TRAINING_PHASE,
-                [_vector_item(TRAINING_PHASE, PHASE_TRAINING, labels={"rank": "0"})],
-            ),
-            AGENT_HEARTBEAT: _vector_json(
-                AGENT_HEARTBEAT,
-                [_vector_item(AGENT_HEARTBEAT, 5.0, labels={"rank": "0"})],
-            ),
-        })
+        router = _ResponseRouter(
+            {
+                TRAINING_PHASE: _vector_json(
+                    TRAINING_PHASE,
+                    [_vector_item(TRAINING_PHASE, PHASE_TRAINING, labels={"rank": "0"})],
+                ),
+                AGENT_HEARTBEAT: _vector_json(
+                    AGENT_HEARTBEAT,
+                    [_vector_item(AGENT_HEARTBEAT, 5.0, labels={"rank": "0"})],
+                ),
+            }
+        )
 
         with patch.object(httpx.Client, "get", side_effect=router):
             client = PrometheusClient(url="http://fake:9090")
@@ -163,18 +164,20 @@ class TestNicDownDetectionWithPrometheusClient:
     def test_nic_down_transitions_detected(self) -> None:
         """NIC goes up→down: check_nic_down_in_window returns a fault."""
         now = time.time()
-        matrix_result = _matrix_json([
-            _matrix_item(
-                NODE_NETWORK_UP,
-                values=[
-                    (now - 30, 1.0),
-                    (now - 20, 0.0),
-                    (now - 10, 1.0),
-                    (now, 0.0),
-                ],
-                labels={"node_id": "node-0", "device": "ib0"},
-            ),
-        ])
+        matrix_result = _matrix_json(
+            [
+                _matrix_item(
+                    NODE_NETWORK_UP,
+                    values=[
+                        (now - 30, 1.0),
+                        (now - 20, 0.0),
+                        (now - 10, 1.0),
+                        (now, 0.0),
+                    ],
+                    labels={"node_id": "node-0", "device": "ib0"},
+                ),
+            ]
+        )
 
         with patch.object(httpx.Client, "get", return_value=_make_response(matrix_result)):
             client = PrometheusClient(url="http://fake:9090")
@@ -189,13 +192,15 @@ class TestNicDownDetectionWithPrometheusClient:
 
     def test_no_nic_fault_when_stable(self) -> None:
         now = time.time()
-        matrix_result = _matrix_json([
-            _matrix_item(
-                NODE_NETWORK_UP,
-                values=[(now - 30, 1.0), (now - 20, 1.0), (now - 10, 1.0), (now, 1.0)],
-                labels={"node_id": "node-0", "device": "ib0"},
-            ),
-        ])
+        matrix_result = _matrix_json(
+            [
+                _matrix_item(
+                    NODE_NETWORK_UP,
+                    values=[(now - 30, 1.0), (now - 20, 1.0), (now - 10, 1.0), (now, 1.0)],
+                    labels={"node_id": "node-0", "device": "ib0"},
+                ),
+            ]
+        )
 
         with patch.object(httpx.Client, "get", return_value=_make_response(matrix_result)):
             client = PrometheusClient(url="http://fake:9090")

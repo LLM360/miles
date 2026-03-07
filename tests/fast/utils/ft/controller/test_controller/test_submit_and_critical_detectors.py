@@ -1,14 +1,8 @@
 """Tests for FtController: submit_initial_training and critical detector edge cases."""
+
 from __future__ import annotations
 
 import pytest
-
-import miles.utils.ft.models.metric_names as mn
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
-from miles.utils.ft.controller.recovery.recovery_stepper import RecoveryDone
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     CriticalFixedDecisionDetector,
@@ -17,6 +11,12 @@ from tests.fast.utils.ft.conftest import (
     make_test_exporter,
 )
 
+import miles.utils.ft.models.metric_names as mn
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
+from miles.utils.ft.controller.recovery.recovery_stepper import RecoveryDone
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.protocols.platform import JobStatus
 
 # ===================================================================
 # submit_initial_training
@@ -71,11 +71,13 @@ class TestCriticalDetectorExceptionIsolation:
     async def test_critical_detector_non_mark_bad_action_is_ignored(self) -> None:
         """A critical detector returning NOTIFY_HUMAN should be silently ignored."""
         enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
-        critical_notify = CriticalFixedDecisionDetector(decision=Decision(
-            action=ActionType.NOTIFY_HUMAN,
-            reason="should be ignored during recovery",
-            trigger=TriggerType.MISC,
-        ))
+        critical_notify = CriticalFixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason="should be ignored during recovery",
+                trigger=TriggerType.MISC,
+            )
+        )
         harness = make_test_controller(detectors=[enter_recovery, critical_notify])
 
         await harness.controller._tick()
@@ -88,12 +90,14 @@ class TestCriticalDetectorExceptionIsolation:
     @pytest.mark.anyio
     async def test_critical_detector_empty_bad_nodes_is_ignored(self) -> None:
         enter_recovery = AlwaysEnterRecoveryDetector(reason="test")
-        critical_empty = CriticalFixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=[],
-            reason="no bad nodes",
-            trigger=TriggerType.CRASH,
-        ))
+        critical_empty = CriticalFixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=[],
+                reason="no bad nodes",
+                trigger=TriggerType.CRASH,
+            )
+        )
         harness = make_test_controller(detectors=[enter_recovery, critical_empty])
 
         await harness.controller._tick()
@@ -123,6 +127,7 @@ class TestRecoveryCompletionMetrics:
         assert isinstance(harness.controller._state_machine.state, Recovering)
 
         from datetime import datetime, timezone
+
         harness.controller._state_machine._state = Recovering(
             recovery=RecoveryDone(),
             trigger=TriggerType.CRASH.value,

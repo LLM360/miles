@@ -1,10 +1,12 @@
 """Decorator for graceful degradation: catch Exception, log, return default."""
+
 from __future__ import annotations
 
 import functools
 import inspect
 import logging
-from typing import Any, Callable, TypeVar, overload
+from collections.abc import Callable
+from typing import Any, TypeVar, overload
 
 _T = TypeVar("_T")
 

@@ -79,7 +79,8 @@ class DmesgSubprocessReader:
         else:
             logger.warning(
                 "dmesg returned non-zero returncode=%d stderr=%s",
-                result.returncode, result.stderr[:500] if result.stderr else "",
+                result.returncode,
+                result.stderr[:500] if result.stderr else "",
             )
 
         return []

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import timedelta
 
 import polars as pl
-import pytest
 
 from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
@@ -64,30 +62,43 @@ class _QueryOnlyStore:
     """Minimal implementation satisfying only MetricQueryProtocol."""
 
     def query_latest(
-        self, metric_name: str, label_filters: dict[str, str] | None = None,
+        self,
+        metric_name: str,
+        label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return pl.DataFrame()
 
     def query_range(
-        self, metric_name: str, window: timedelta, label_filters: dict[str, str] | None = None,
+        self,
+        metric_name: str,
+        window: timedelta,
+        label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return pl.DataFrame()
 
     def changes(
-        self, metric_name: str, window: timedelta, label_filters: dict[str, str] | None = None,
+        self,
+        metric_name: str,
+        window: timedelta,
+        label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return pl.DataFrame()
 
     def count_over_time(
-        self, metric_name: str, window: timedelta, label_filters: dict[str, str] | None = None,
+        self,
+        metric_name: str,
+        window: timedelta,
+        label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return pl.DataFrame()
 
     def avg_over_time(
-        self, metric_name: str, window: timedelta, label_filters: dict[str, str] | None = None,
+        self,
+        metric_name: str,
+        window: timedelta,
+        label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame:
         return pl.DataFrame()
-
 
 
 class _FakeMiniWandb:

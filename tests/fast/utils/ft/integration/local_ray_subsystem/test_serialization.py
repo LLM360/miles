@@ -1,4 +1,5 @@
 """Local Ray: Serialization boundary — enum fidelity, NaN/Inf, exceptions, config."""
+
 from __future__ import annotations
 
 import pytest
@@ -23,10 +24,12 @@ def _kill_actor(name: str) -> None:
 
 class TestControllerStatusSerialization:
     def test_enum_types_preserved_across_ray_boundary(
-        self, controller_actor: ray.actor.ActorHandle,
+        self,
+        controller_actor: ray.actor.ActorHandle,
     ) -> None:
         status: ControllerStatus = ray.get(
-            controller_actor.get_status.remote(), timeout=5,
+            controller_actor.get_status.remote(),
+            timeout=5,
         )
         assert type(status.mode) is ControllerMode
         assert status.mode == ControllerMode.MONITORING
@@ -39,26 +42,36 @@ class TestNanInfSerialization:
     ) -> None:
         handle, run_id = running_controller
 
-        ray.get(handle.register_training_rank.remote(
-            run_id=run_id, rank=0, world_size=1,
-            node_id="n0", exporter_address="http://n0:9090",
-            pid=1000,
-        ), timeout=5)
+        ray.get(
+            handle.register_training_rank.remote(
+                run_id=run_id,
+                rank=0,
+                world_size=1,
+                node_id="n0",
+                exporter_address="http://n0:9090",
+                pid=1000,
+            ),
+            timeout=5,
+        )
 
-        ray.get(handle.log_step.remote(
-            run_id=run_id,
-            step=1,
-            metrics={
-                "loss": float("nan"),
-                "grad_norm": float("inf"),
-                "neg_inf": float("-inf"),
-            },
-        ), timeout=5)
+        ray.get(
+            handle.log_step.remote(
+                run_id=run_id,
+                step=1,
+                metrics={
+                    "loss": float("nan"),
+                    "grad_norm": float("inf"),
+                    "neg_inf": float("-inf"),
+                },
+            ),
+            timeout=5,
+        )
 
 
 class TestConfigSerialization:
     def test_frozen_pydantic_config_survives_cloudpickle(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         name = ft_controller_actor_name("config-test")
         config = FtControllerConfig(
@@ -83,14 +96,17 @@ class TestExceptionSerialization:
         handle, run_id = running_controller
 
         try:
-            ray.get(handle.register_training_rank.remote(
-                run_id=run_id,
-                rank=-1,
-                world_size=0,
-                node_id="",
-                exporter_address="",
-                pid=1000,
-            ), timeout=5)
+            ray.get(
+                handle.register_training_rank.remote(
+                    run_id=run_id,
+                    rank=-1,
+                    world_size=0,
+                    node_id="",
+                    exporter_address="",
+                    pid=1000,
+                ),
+                timeout=5,
+            )
         except ray.exceptions.RayTaskError:
             pass
 
@@ -106,6 +122,11 @@ class TestLargeDictSerialization:
         handle, run_id = running_controller
 
         large_metrics = {f"metric_{i}": float(i) for i in range(1000)}
-        ray.get(handle.log_step.remote(
-            run_id=run_id, step=1, metrics=large_metrics,
-        ), timeout=10)
+        ray.get(
+            handle.log_step.remote(
+                run_id=run_id,
+                step=1,
+                metrics=large_metrics,
+            ),
+            timeout=10,
+        )

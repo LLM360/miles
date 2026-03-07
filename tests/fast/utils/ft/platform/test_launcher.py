@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -37,20 +37,23 @@ def _patch_build_and_run() -> Generator[tuple[MagicMock, MagicMock], None, None]
 
 
 class TestLauncherCli:
-    @pytest.mark.parametrize("expected_text", [
-        "tick-interval",
-        "FT Controller",
-        "--platform",
-        "--ray-address",
-        "--metric-store-backe",
-        "--prometheus-url",
-        "--controller-exporte",
-        "--runtime-env-json",
-        "--ft-id",
-        "--k8s-label-prefix",
-        "--notify-webhook-url",
-        "--notify-platform",
-    ])
+    @pytest.mark.parametrize(
+        "expected_text",
+        [
+            "tick-interval",
+            "FT Controller",
+            "--platform",
+            "--ray-address",
+            "--metric-store-backe",
+            "--prometheus-url",
+            "--controller-exporte",
+            "--runtime-env-json",
+            "--ft-id",
+            "--k8s-label-prefix",
+            "--notify-webhook-url",
+            "--notify-platform",
+        ],
+    )
     def test_help_includes_option(self, expected_text: str) -> None:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
@@ -64,19 +67,25 @@ class TestBuildNotifier:
 
     def test_webhook_url_with_explicit_lark_platform(self) -> None:
         notifier = build_notifier(
-            platform="stub", notify_webhook_url="https://hook.example.com", notify_platform="lark",
+            platform="stub",
+            notify_webhook_url="https://hook.example.com",
+            notify_platform="lark",
         )
         assert isinstance(notifier, LarkWebhookNotifier)
 
     def test_webhook_url_with_slack_platform(self) -> None:
         notifier = build_notifier(
-            platform="stub", notify_webhook_url="https://hooks.slack.com/services/T/B/X", notify_platform="slack",
+            platform="stub",
+            notify_webhook_url="https://hooks.slack.com/services/T/B/X",
+            notify_platform="slack",
         )
         assert isinstance(notifier, SlackWebhookNotifier)
 
     def test_webhook_url_with_discord_platform(self) -> None:
         notifier = build_notifier(
-            platform="stub", notify_webhook_url="https://discord.com/api/webhooks/1/abc", notify_platform="discord",
+            platform="stub",
+            notify_webhook_url="https://discord.com/api/webhooks/1/abc",
+            notify_platform="discord",
         )
         assert isinstance(notifier, DiscordWebhookNotifier)
 
@@ -104,12 +113,16 @@ class TestBuildNotifier:
     def test_unknown_platform_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Unknown notify platform.*'xmpp'"):
             build_notifier(
-                platform="stub", notify_webhook_url="https://example.com", notify_platform="xmpp",
+                platform="stub",
+                notify_webhook_url="https://example.com",
+                notify_platform="xmpp",
             )
 
     def test_notify_platform_is_case_insensitive(self) -> None:
         notifier = build_notifier(
-            platform="stub", notify_webhook_url="https://example.com", notify_platform="SLACK",
+            platform="stub",
+            notify_webhook_url="https://example.com",
+            notify_platform="SLACK",
         )
         assert isinstance(notifier, SlackWebhookNotifier)
 
@@ -124,10 +137,18 @@ class TestLauncherSubmitAndRun:
 
     def test_entrypoint_passed_to_config(self) -> None:
         with _patch_build_and_run() as (mock_actor_cls, _):
-            result = runner.invoke(app, [
-                "--platform", "stub",
-                "--", "python3", "train.py", "--lr", "0.001",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "--platform",
+                    "stub",
+                    "--",
+                    "python3",
+                    "train.py",
+                    "--lr",
+                    "0.001",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
@@ -137,12 +158,20 @@ class TestLauncherSubmitAndRun:
 
     def test_ft_id_and_label_prefix_passed_to_config(self) -> None:
         with _patch_build_and_run() as (mock_actor_cls, _):
-            result = runner.invoke(app, [
-                "--platform", "stub",
-                "--ft-id", "myft",
-                "--k8s-label-prefix", "pfx",
-                "--", "python3", "train.py",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "--platform",
+                    "stub",
+                    "--ft-id",
+                    "myft",
+                    "--k8s-label-prefix",
+                    "pfx",
+                    "--",
+                    "python3",
+                    "train.py",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
@@ -151,12 +180,20 @@ class TestLauncherSubmitAndRun:
 
     def test_notify_args_passed_to_config(self) -> None:
         with _patch_build_and_run() as (mock_actor_cls, _):
-            result = runner.invoke(app, [
-                "--platform", "stub",
-                "--notify-webhook-url", "https://hook.example.com",
-                "--notify-platform", "slack",
-                "--", "python3", "train.py",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "--platform",
+                    "stub",
+                    "--notify-webhook-url",
+                    "https://hook.example.com",
+                    "--notify-platform",
+                    "slack",
+                    "--",
+                    "python3",
+                    "train.py",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
@@ -166,11 +203,18 @@ class TestLauncherSubmitAndRun:
     def test_runtime_env_json_parsed_to_config(self) -> None:
         runtime_env = {"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}
         with _patch_build_and_run() as (mock_actor_cls, _):
-            result = runner.invoke(app, [
-                "--platform", "stub",
-                "--runtime-env-json", '{"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}',
-                "--", "python3", "train.py",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "--platform",
+                    "stub",
+                    "--runtime-env-json",
+                    '{"env_vars": {"PYTHONPATH": "/root/Megatron-LM"}}',
+                    "--",
+                    "python3",
+                    "train.py",
+                ],
+            )
 
         assert result.exit_code == 0, result.output
         config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
@@ -179,11 +223,18 @@ class TestLauncherSubmitAndRun:
 
 class TestLauncherInvalidInput:
     def test_invalid_runtime_env_json_fails(self) -> None:
-        result = runner.invoke(app, [
-            "--platform", "stub",
-            "--runtime-env-json", "not-valid-json",
-            "--", "python3", "train.py",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "--platform",
+                "stub",
+                "--runtime-env-json",
+                "not-valid-json",
+                "--",
+                "python3",
+                "train.py",
+            ],
+        )
         assert result.exit_code != 0
 
     def test_empty_entrypoint_produces_empty_string(self) -> None:

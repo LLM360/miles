@@ -6,7 +6,6 @@ import time
 from typing import Any
 from uuid import uuid4
 
-import ray
 from ray.job_submission import JobSubmissionClient
 
 from miles.utils.ft.platform.ray_wrappers.node_discovery import resolve_to_ray_node_ids
@@ -84,12 +83,12 @@ class RayTrainingJob(TrainingJobProtocol):
         return self._job_id
 
     async def submit_training(
-        self, excluded_node_ids: list[str] | None = None,
+        self,
+        excluded_node_ids: list[str] | None = None,
     ) -> str:
         if self._job_id is not None:
             raise RuntimeError(
-                f"Cannot submit: previous job {self._job_id} still tracked. "
-                "Call stop_training() first."
+                f"Cannot submit: previous job {self._job_id} still tracked. " "Call stop_training() first."
             )
 
         run_id = uuid4().hex[:8]
@@ -194,9 +193,7 @@ async def _stop_job(
 
     remaining = timeout_seconds - (time.monotonic() - start)
     if remaining <= 0:
-        raise TimeoutError(
-            f"stop_job({job_id}): no time left for polling after stop_job RPC"
-        )
+        raise TimeoutError(f"stop_job({job_id}): no time left for polling after stop_job RPC")
 
     await poll_until(
         probe=_probe,

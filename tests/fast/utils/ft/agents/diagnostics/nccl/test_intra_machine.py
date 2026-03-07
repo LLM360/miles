@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
+from tests.fast.utils.ft.helpers import make_mock_subprocess
 
 from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.utils import parse_avg_bus_bandwidth
-from tests.fast.utils.ft.helpers import make_mock_subprocess
 
 # ---------------------------------------------------------------------------
 # Sample nccl-tests output fixtures

@@ -5,6 +5,7 @@ import os
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.utils import build_nccl_test_cmd, run_nccl_test
 from miles.utils.ft.models.diagnostics import DiagnosticResult
+
 DEFAULT_NCCL_MASTER_PORT: int = 29500
 _DEFAULT_NUM_GPUS: int = 8
 

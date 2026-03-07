@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.fast.utils.ft.conftest import FakeKmsgReader, create_sysfs_interface, make_mock_pynvml
 
 from miles.utils.ft.agents.collectors.disk import DiskCollector
 from miles.utils.ft.agents.collectors.gpu import GpuCollector
@@ -12,11 +13,6 @@ from miles.utils.ft.agents.collectors.kmsg import KmsgCollector
 from miles.utils.ft.agents.collectors.network import NetworkCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
-from tests.fast.utils.ft.conftest import (
-    FakeKmsgReader,
-    create_sysfs_interface,
-    make_mock_pynvml,
-)
 
 
 def _create_sysfs(tmp_path: Path) -> Path:
@@ -38,9 +34,11 @@ class TestNodeAgentAllCollectorsIntegration:
 
             kmsg_collector = KmsgCollector(kmsg_path=Path("/dev/null"))
             kmsg_collector.collect_interval = 0.05
-            kmsg_collector._reader = FakeKmsgReader([
-                "NVRM: Xid (PCI:0000:3b:00): 48, pid=1234",
-            ])
+            kmsg_collector._reader = FakeKmsgReader(
+                [
+                    "NVRM: Xid (PCI:0000:3b:00): 48, pid=1234",
+                ]
+            )
 
             disk_collector = DiskCollector(disk_mounts=[tmp_path])
             disk_collector.collect_interval = 0.05

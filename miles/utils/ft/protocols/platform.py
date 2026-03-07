@@ -34,7 +34,8 @@ class TrainingJobProtocol(Protocol):
     async def stop_training(self, timeout_seconds: int = STOP_TRAINING_TIMEOUT_SECONDS) -> None: ...
 
     async def submit_training(
-        self, excluded_node_ids: list[str] | None = None,
+        self,
+        excluded_node_ids: list[str] | None = None,
     ) -> str: ...
 
     async def get_training_status(self) -> JobStatus: ...
@@ -77,7 +78,10 @@ class ControllerClientProtocol(Protocol):
     ) -> None: ...
 
     def log_step(
-        self, run_id: str, step: int, metrics: dict[str, float],
+        self,
+        run_id: str,
+        step: int,
+        metrics: dict[str, float],
     ) -> None: ...
 
 

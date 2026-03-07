@@ -4,18 +4,14 @@ from typing import Any
 
 import httpx
 import pytest
+from tests.fast.utils.ft.conftest import SlowDiagnostic, StubDiagnostic, TestCollector
+from tests.fast.utils.ft.helpers import FailingCloseCollector, FailingCollector
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.stub import StubCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.models.metrics import CollectorOutput, GaugeSample
-from tests.fast.utils.ft.conftest import (
-    SlowDiagnostic,
-    StubDiagnostic,
-    TestCollector,
-)
-from tests.fast.utils.ft.helpers import FailingCloseCollector, FailingCollector
 
 
 class _CountingCollector(BaseCollector):
@@ -30,9 +26,11 @@ class _CountingCollector(BaseCollector):
 
     async def collect(self) -> CollectorOutput:
         self.call_count += 1
-        return CollectorOutput(metrics=[
-            GaugeSample(name="count", labels={}, value=float(self.call_count)),
-        ])
+        return CollectorOutput(
+            metrics=[
+                GaugeSample(name="count", labels={}, value=float(self.call_count)),
+            ]
+        )
 
     async def close(self) -> None:
         self.closed = True
@@ -135,20 +133,24 @@ class TestFtNodeAgentExporter:
     @pytest.mark.anyio
     async def test_update_exporter_overwrites_value(self, make_node_agent: MakeNodeAgent) -> None:
         agent = make_node_agent(node_id="test-node-overwrite")
-        agent._exporter.update_metrics([
-            GaugeSample(
-                name="gpu_temperature_celsius",
-                labels={"gpu": "0"},
-                value=60.0,
-            ),
-        ])
-        agent._exporter.update_metrics([
-            GaugeSample(
-                name="gpu_temperature_celsius",
-                labels={"gpu": "0"},
-                value=90.0,
-            ),
-        ])
+        agent._exporter.update_metrics(
+            [
+                GaugeSample(
+                    name="gpu_temperature_celsius",
+                    labels={"gpu": "0"},
+                    value=60.0,
+                ),
+            ]
+        )
+        agent._exporter.update_metrics(
+            [
+                GaugeSample(
+                    name="gpu_temperature_celsius",
+                    labels={"gpu": "0"},
+                    value=90.0,
+                ),
+            ]
+        )
 
         address = agent.get_exporter_address()
         async with httpx.AsyncClient() as client:
@@ -436,7 +438,10 @@ class TestFtNodeAgentKwargsPassthrough:
 
         class _CapturingDiagnostic(StubDiagnostic):
             async def run(
-                self, node_id: str, timeout_seconds: int = 120, **kwargs: object,
+                self,
+                node_id: str,
+                timeout_seconds: int = 120,
+                **kwargs: object,
             ) -> DiagnosticResult:
                 received_kwargs.update(kwargs)
                 return await super().run(node_id=node_id, timeout_seconds=timeout_seconds)

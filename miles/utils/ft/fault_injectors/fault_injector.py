@@ -34,11 +34,13 @@ class FaultInjectorActor:
                 cmdline_str = " ".join(cmdline).lower()
 
                 if any(pattern in cmdline_str for pattern in _TRAINING_CMDLINE_PATTERNS):
-                    results.append({
-                        "pid": proc.info["pid"],
-                        "name": proc.info.get("name", ""),
-                        "cmdline": cmdline,
-                    })
+                    results.append(
+                        {
+                            "pid": proc.info["pid"],
+                            "name": proc.info.get("name", ""),
+                            "cmdline": cmdline,
+                        }
+                    )
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return results
@@ -135,7 +137,9 @@ class FaultInjectorActor:
     def cleanup_all(self) -> None:
         logger.info(
             "cleanup_all stress_pids=%s filled_paths=%s exception_flag_paths=%s",
-            self._stress_pids, self._filled_paths, self._exception_flag_paths,
+            self._stress_pids,
+            self._filled_paths,
+            self._exception_flag_paths,
         )
         for pid in list(self._stress_pids):
             _kill_if_exists(pid)

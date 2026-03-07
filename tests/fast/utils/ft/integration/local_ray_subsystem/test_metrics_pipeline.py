@@ -1,4 +1,5 @@
 """Local Ray: Metrics pipeline — exporter→scrape→detection, log_step→MiniWandb."""
+
 from __future__ import annotations
 
 import time
@@ -7,22 +8,21 @@ from datetime import timedelta
 import pytest
 import ray
 from prometheus_client import Gauge
+from tests.fast.utils.ft.helpers.controller_fakes import FakeNodeManager
+from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.core.nan_loss import NanLossDetector
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
+from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.platform.stubs import StubTrainingJob
 from miles.utils.ft.protocols.platform import JobStatus, ft_controller_actor_name
-
-from tests.fast.utils.ft.helpers.controller_fakes import FakeNodeManager
-from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -63,9 +63,14 @@ class TestLogStepArrivesInMiniWandb:
     ) -> None:
         handle, run_id = running_controller
 
-        ray.get(handle.log_step.remote(
-            run_id=run_id, step=42, metrics={"loss": 0.1, "iteration": 42},
-        ), timeout=5)
+        ray.get(
+            handle.log_step.remote(
+                run_id=run_id,
+                step=42,
+                metrics={"loss": 0.1, "iteration": 42},
+            ),
+            timeout=5,
+        )
 
         status = get_status(handle)
         assert status.latest_iteration == 42
@@ -77,9 +82,14 @@ class TestLogStepArrivesInMiniWandb:
         handle, run_id = running_controller
 
         for step in [10, 20, 30]:
-            ray.get(handle.log_step.remote(
-                run_id=run_id, step=step, metrics={"iteration": step},
-            ), timeout=5)
+            ray.get(
+                handle.log_step.remote(
+                    run_id=run_id,
+                    step=step,
+                    metrics={"iteration": step},
+                ),
+                timeout=5,
+            )
 
         status = get_status(handle)
         assert status.latest_iteration == 30
@@ -94,7 +104,8 @@ class TestExporterScrapeByMiniPrometheus:
 
     @pytest.mark.anyio
     async def test_mini_prometheus_scrapes_exporter_gauges(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         exporter = PrometheusExporter()
         gauge = Gauge(
@@ -143,14 +154,17 @@ class TestRankExporterRegisteredAsScrapeTarget:
         gauge.labels(rank="0", node_id="n0").set(55.0)
 
         try:
-            ray.get(handle.register_training_rank.remote(
-                run_id=run_id,
-                rank=0,
-                world_size=1,
-                node_id="n0",
-                exporter_address=exporter.get_address(),
-                pid=1000,
-            ), timeout=5)
+            ray.get(
+                handle.register_training_rank.remote(
+                    run_id=run_id,
+                    rank=0,
+                    world_size=1,
+                    node_id="n0",
+                    exporter_address=exporter.get_address(),
+                    pid=1000,
+                ),
+                timeout=5,
+            )
 
             time.sleep(0.3)
         finally:
@@ -161,7 +175,8 @@ class TestNanLossTriggersRecovery:
     """NaN loss sent via log_step → NanLossDetector → ENTER_RECOVERY (M4)."""
 
     def test_nan_loss_triggers_recovery_via_detector(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         name = ft_controller_actor_name("nan-det")
         handle = FtControllerActor.options(name=name).remote(
@@ -176,15 +191,26 @@ class TestNanLossTriggersRecovery:
             handle.submit_and_run.remote()
             run_id = poll_for_run_id(handle)
 
-            ray.get(handle.register_training_rank.remote(
-                run_id=run_id, rank=0, world_size=1,
-                node_id="nan-node", exporter_address="http://nan-node:9090",
-                pid=1000,
-            ), timeout=5)
+            ray.get(
+                handle.register_training_rank.remote(
+                    run_id=run_id,
+                    rank=0,
+                    world_size=1,
+                    node_id="nan-node",
+                    exporter_address="http://nan-node:9090",
+                    pid=1000,
+                ),
+                timeout=5,
+            )
 
-            ray.get(handle.log_step.remote(
-                run_id=run_id, step=1, metrics={"loss": float("nan")},
-            ), timeout=5)
+            ray.get(
+                handle.log_step.remote(
+                    run_id=run_id,
+                    step=1,
+                    metrics={"loss": float("nan")},
+                ),
+                timeout=5,
+            )
 
             deadline = time.monotonic() + 15.0
             entered_recovery = False
@@ -211,7 +237,8 @@ class TestHangDetectionFullPath:
     """Exporter reports stale iteration → HangDetector triggers recovery (M3)."""
 
     def test_stale_iteration_triggers_hang_recovery(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         name = ft_controller_actor_name("hang-det")
         handle = FtControllerActor.options(name=name).remote(
@@ -236,11 +263,17 @@ class TestHangDetectionFullPath:
             gauge.labels(rank="0", node_id="hang-node").set(42.0)
 
             try:
-                ray.get(handle.register_training_rank.remote(
-                    run_id=run_id, rank=0, world_size=1,
-                    node_id="hang-node", exporter_address=exporter.get_address(),
-                    pid=1000,
-                ), timeout=5)
+                ray.get(
+                    handle.register_training_rank.remote(
+                        run_id=run_id,
+                        rank=0,
+                        world_size=1,
+                        node_id="hang-node",
+                        exporter_address=exporter.get_address(),
+                        pid=1000,
+                    ),
+                    timeout=5,
+                )
 
                 deadline = time.monotonic() + 20.0
                 entered_recovery = False
@@ -269,12 +302,15 @@ class TestRegisterNodeAgentSerialization:
     """register_node_agent.remote() serializes a Python object via cloudpickle (M5)."""
 
     def test_node_agent_survives_cloudpickle_serialization(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
 
         class _FakeNodeAgent:
             async def run_diagnostic(
-                self, diagnostic_type: str, timeout_seconds: int = 120,
+                self,
+                diagnostic_type: str,
+                timeout_seconds: int = 120,
                 **kwargs: object,
             ) -> DiagnosticResult:
                 return DiagnosticResult(
@@ -293,10 +329,13 @@ class TestRegisterNodeAgentSerialization:
             handle.submit_and_run.remote()
             run_id = poll_for_run_id(handle)
 
-            ray.get(handle.register_node_agent.remote(
-                node_id="fake-node",
-                agent=_FakeNodeAgent(),
-            ), timeout=5)
+            ray.get(
+                handle.register_node_agent.remote(
+                    node_id="fake-node",
+                    agent=_FakeNodeAgent(),
+                ),
+                timeout=5,
+            )
 
             status = get_status(handle)
             assert status.mode == ControllerMode.MONITORING

@@ -3,6 +3,7 @@ from __future__ import annotations
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.utils import build_nccl_test_cmd, run_nccl_test
 from miles.utils.ft.models.diagnostics import DiagnosticResult
+
 _DEFAULT_NUM_GPUS: int = 8
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
 
@@ -27,7 +28,9 @@ class IntraMachineCommDiagnostic(BaseDiagnostic):
         self._nccl_test_binary = nccl_test_binary
 
     async def run(
-        self, node_id: str, timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
+        self,
+        node_id: str,
+        timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
     ) -> DiagnosticResult:
         return await run_nccl_test(
             cmd=build_nccl_test_cmd(binary=self._nccl_test_binary, num_gpus=self._num_gpus),

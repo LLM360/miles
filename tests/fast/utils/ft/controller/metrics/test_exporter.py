@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from prometheus_client import CollectorRegistry
+from tests.fast.utils.ft.conftest import get_sample_value, make_test_exporter
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.protocols.platform import JobStatus
-from tests.fast.utils.ft.conftest import get_sample_value, make_test_exporter
 
 
 class TestControllerExporterGauges:
@@ -100,24 +100,36 @@ class TestControllerExporterDecisionCounter:
         exporter.record_decision(action="enter_recovery", trigger="training_crash")
         exporter.record_decision(action="mark_bad_and_restart", trigger="hardware")
 
-        assert get_sample_value(
-            registry, mn.CONTROLLER_DECISION_TOTAL,
-            labels={"action": "enter_recovery", "trigger": "training_crash"},
-        ) == 2.0
-        assert get_sample_value(
-            registry, mn.CONTROLLER_DECISION_TOTAL,
-            labels={"action": "mark_bad_and_restart", "trigger": "hardware"},
-        ) == 1.0
+        assert (
+            get_sample_value(
+                registry,
+                mn.CONTROLLER_DECISION_TOTAL,
+                labels={"action": "enter_recovery", "trigger": "training_crash"},
+            )
+            == 2.0
+        )
+        assert (
+            get_sample_value(
+                registry,
+                mn.CONTROLLER_DECISION_TOTAL,
+                labels={"action": "mark_bad_and_restart", "trigger": "hardware"},
+            )
+            == 1.0
+        )
 
     def test_record_decision_unknown_trigger(self) -> None:
         registry, exporter = make_test_exporter()
 
         exporter.record_decision(action="enter_recovery", trigger="unknown")
 
-        assert get_sample_value(
-            registry, mn.CONTROLLER_DECISION_TOTAL,
-            labels={"action": "enter_recovery", "trigger": "unknown"},
-        ) == 1.0
+        assert (
+            get_sample_value(
+                registry,
+                mn.CONTROLLER_DECISION_TOTAL,
+                labels={"action": "enter_recovery", "trigger": "unknown"},
+            )
+            == 1.0
+        )
 
 
 class TestControllerExporterRecoveryDuration:
@@ -127,12 +139,14 @@ class TestControllerExporterRecoveryDuration:
         exporter.observe_recovery_duration(45.3)
 
         count = get_sample_value(
-            registry, mn.CONTROLLER_RECOVERY_DURATION_SECONDS + "_count",
+            registry,
+            mn.CONTROLLER_RECOVERY_DURATION_SECONDS + "_count",
         )
         assert count == 1.0
 
         total = get_sample_value(
-            registry, mn.CONTROLLER_RECOVERY_DURATION_SECONDS + "_sum",
+            registry,
+            mn.CONTROLLER_RECOVERY_DURATION_SECONDS + "_sum",
         )
         assert total == 45.3
 
@@ -142,6 +156,7 @@ class TestControllerExporterLifecycle:
         _, exporter = make_test_exporter()
 
         import socket
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("", 0))
         port = sock.getsockname()[1]

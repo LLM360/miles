@@ -4,12 +4,12 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 
 import pytest
+from tests.fast.utils.ft.conftest import TestCollector
 
-from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.collectors.base import BaseCollector
+from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.models.metrics import GaugeSample
-from tests.fast.utils.ft.conftest import TestCollector
 
 
 @asynccontextmanager
@@ -67,13 +67,15 @@ class TestNodeAgentMiniPrometheusIntegration:
             df1 = prom.query_latest("gpu_temperature_celsius")
             assert 60.0 in df1["value"].to_list()
 
-            test_collector.set_metrics([
-                GaugeSample(
-                    name="gpu_temperature_celsius",
-                    labels={"gpu": "0"},
-                    value=85.0,
-                ),
-            ])
+            test_collector.set_metrics(
+                [
+                    GaugeSample(
+                        name="gpu_temperature_celsius",
+                        labels={"gpu": "0"},
+                        value=85.0,
+                    ),
+                ]
+            )
             await asyncio.sleep(0.3)
             await prom.scrape_once()
 

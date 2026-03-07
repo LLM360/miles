@@ -5,12 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from miles.utils.ft.platform.k8s_node_manager import (
-    LABEL_KEY,
-    K8sNodeManager,
-    REASON_LABEL_KEY,
-    _build_label_keys,
-)
+from miles.utils.ft.platform.k8s_node_manager import LABEL_KEY, REASON_LABEL_KEY, K8sNodeManager, _build_label_keys
 
 
 def _make_manager_with_mock_api(
@@ -78,9 +73,7 @@ class TestGetBadNodes:
 
         mock_node_1 = SimpleNamespace(metadata=SimpleNamespace(name="node-a"))
         mock_node_2 = SimpleNamespace(metadata=SimpleNamespace(name="node-b"))
-        mock_core_v1.list_node.return_value = SimpleNamespace(
-            items=[mock_node_1, mock_node_2]
-        )
+        mock_core_v1.list_node.return_value = SimpleNamespace(items=[mock_node_1, mock_node_2])
 
         result = await manager.get_bad_nodes()
 
@@ -102,10 +95,7 @@ class TestGetBadNodes:
     async def test_returns_multiple_bad_nodes(self) -> None:
         manager, mock_core_v1 = _make_manager_with_mock_api()
 
-        nodes = [
-            SimpleNamespace(metadata=SimpleNamespace(name=f"node-{i}"))
-            for i in range(5)
-        ]
+        nodes = [SimpleNamespace(metadata=SimpleNamespace(name=f"node-{i}")) for i in range(5)]
         mock_core_v1.list_node.return_value = SimpleNamespace(items=nodes)
 
         result = await manager.get_bad_nodes()

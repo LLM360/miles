@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 from unittest.mock import patch
 
 import pytest
@@ -35,7 +35,9 @@ class TestDiskCollector:
         assert samples == []
 
     def test_statvfs_failure_logs_warning_and_continues(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         good_mount = tmp_path / "good"
         good_mount.mkdir()

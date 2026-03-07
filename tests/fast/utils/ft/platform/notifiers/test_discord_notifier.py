@@ -1,9 +1,9 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from tests.fast.utils.ft.platform.notifiers.conftest import make_ok_response
 
 from miles.utils.ft.platform.notifiers.discord_notifier import DiscordWebhookNotifier
-from tests.fast.utils.ft.platform.notifiers.conftest import make_ok_response
 
 
 class TestDiscordWebhookNotifierPayload:
@@ -17,7 +17,9 @@ class TestDiscordWebhookNotifierPayload:
 
     @pytest.mark.anyio
     async def test_send_posts_embed_payload(self, notifier: DiscordWebhookNotifier) -> None:
-        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=make_ok_response()) as mock_post:
+        with patch.object(
+            notifier._client, "post", new_callable=AsyncMock, return_value=make_ok_response()
+        ) as mock_post:
             await notifier.send(title="GPU OOM", content="Node-3 ran out of memory", severity="critical")
 
             mock_post.assert_called_once()
@@ -38,9 +40,14 @@ class TestDiscordWebhookNotifierPayload:
         [("critical", 0xE74C3C), ("warning", 0xF1C40F), ("info", 0x3498DB)],
     )
     async def test_severity_color_mapping(
-        self, notifier: DiscordWebhookNotifier, severity: str, expected_color: int,
+        self,
+        notifier: DiscordWebhookNotifier,
+        severity: str,
+        expected_color: int,
     ) -> None:
-        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=make_ok_response()) as mock_post:
+        with patch.object(
+            notifier._client, "post", new_callable=AsyncMock, return_value=make_ok_response()
+        ) as mock_post:
             await notifier.send(title="Alert", content="test", severity=severity)
 
             payload = mock_post.call_args[1]["json"]
@@ -48,7 +55,9 @@ class TestDiscordWebhookNotifierPayload:
 
     @pytest.mark.anyio
     async def test_unknown_severity_uses_default_color(self, notifier: DiscordWebhookNotifier) -> None:
-        with patch.object(notifier._client, "post", new_callable=AsyncMock, return_value=make_ok_response()) as mock_post:
+        with patch.object(
+            notifier._client, "post", new_callable=AsyncMock, return_value=make_ok_response()
+        ) as mock_post:
             await notifier.send(title="Alert", content="test", severity="unknown")
 
             payload = mock_post.call_args[1]["json"]

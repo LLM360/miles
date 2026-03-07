@@ -11,13 +11,13 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from tests.fast.utils.ft.conftest import FakeNodeManager, FakeTrainingJob, get_sample_value, make_test_exporter
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.protocols.platform import JobStatus
-from tests.fast.utils.ft.conftest import FakeNodeManager, FakeTrainingJob, get_sample_value, make_test_exporter
 
 
 def _make_prom_response(
@@ -74,8 +74,11 @@ class TestControllerPrometheusMode:
 
         controller._activate_run("run-1")
         controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
 
@@ -96,12 +99,16 @@ class TestControllerPrometheusMode:
 
         controller._activate_run("run-1")
         controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=1,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=1,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         controller.mini_wandb.log_step(
-            run_id="run-1", step=1,
+            run_id="run-1",
+            step=1,
             metrics={"loss": 2.5, "mfu": 0.42},
         )
 

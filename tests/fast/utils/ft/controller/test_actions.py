@@ -1,21 +1,13 @@
 """Tests for controller/actions.py."""
+
 from __future__ import annotations
 
 import pytest
+from tests.fast.utils.ft.conftest import FakeDiagnosticOrchestrator, FakeNodeManager, FakeNotifier, FakeTrainingJob
 
-from miles.utils.ft.controller.actions import (
-    PlatformDeps,
-    handle_notify_human,
-)
+from miles.utils.ft.controller.actions import PlatformDeps, handle_notify_human
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from tests.fast.utils.ft.conftest import (
-    FakeDiagnosticOrchestrator,
-    FakeNodeManager,
-    FakeNotifier,
-    FakeTrainingJob,
-)
 
 
 def _make_deps(

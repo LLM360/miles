@@ -102,5 +102,6 @@ class TestBuildFtControllerNotifier:
 class TestBuildPlatformComponentsUnknown:
     def test_unknown_platform_raises_value_error(self) -> None:
         from miles.utils.ft.platform.controller_factory import _build_platform_components
+
         with pytest.raises(ValueError, match="Unknown platform"):
             _build_platform_components(platform="docker", ray_address="", entrypoint="")

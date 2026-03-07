@@ -1,7 +1,7 @@
 """Tests for miles.utils.ft.utils.polling (poll_until)."""
+
 from __future__ import annotations
 
-import asyncio
 import logging
 
 import pytest
@@ -117,6 +117,7 @@ class TestPollUntilEdgeCases:
     @pytest.mark.anyio
     async def test_probe_exception_propagates(self) -> None:
         """Exceptions from probe should not be swallowed."""
+
         def exploding_probe() -> int:
             raise ConnectionError("network down")
 

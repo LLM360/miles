@@ -1,4 +1,5 @@
 """Direct unit tests for mini_prometheus/query.py functions."""
+
 from __future__ import annotations
 
 from collections import deque
@@ -51,10 +52,12 @@ def _build_series(
 
         dq: deque[TimeSeriesSample] = deque()
         for offset_seconds, value in sorted(samples_raw, key=lambda x: x[0]):
-            dq.append(TimeSeriesSample(
-                timestamp=now + timedelta(seconds=offset_seconds),
-                value=value,
-            ))
+            dq.append(
+                TimeSeriesSample(
+                    timestamp=now + timedelta(seconds=offset_seconds),
+                    value=value,
+                )
+            )
         series[key] = dq
 
     return series, label_maps, name_index
@@ -90,9 +93,11 @@ class TestLabelsMatch:
 class TestQueryLatest:
     def test_returns_latest_value(self) -> None:
         key = _key("metric_a", node="n1")
-        series, lm, ni = _build_series([
-            (key, [(-10, 1.0), (-5, 2.0), (-1, 3.0)]),
-        ])
+        series, lm, ni = _build_series(
+            [
+                (key, [(-10, 1.0), (-5, 2.0), (-1, 3.0)]),
+            ]
+        )
 
         df = query_latest(series, lm, ni, metric_name="metric_a")
 
@@ -109,10 +114,12 @@ class TestQueryLatest:
     def test_label_filter_narrows_results(self) -> None:
         k1 = _key("m", node="n1")
         k2 = _key("m", node="n2")
-        series, lm, ni = _build_series([
-            (k1, [(-1, 10.0)]),
-            (k2, [(-1, 20.0)]),
-        ])
+        series, lm, ni = _build_series(
+            [
+                (k1, [(-1, 10.0)]),
+                (k2, [(-1, 20.0)]),
+            ]
+        )
 
         df = query_latest(series, lm, ni, metric_name="m", label_filters={"node": "n2"})
 
@@ -138,9 +145,11 @@ class TestQueryLatest:
 class TestQueryRange:
     def test_returns_samples_within_window(self) -> None:
         key = _key("m", node="n1")
-        series, lm, ni = _build_series([
-            (key, [(-120, 0.5), (-30, 1.0), (-5, 2.0)]),
-        ])
+        series, lm, ni = _build_series(
+            [
+                (key, [(-120, 0.5), (-30, 1.0), (-5, 2.0)]),
+            ]
+        )
 
         df = query_range(series, lm, ni, metric_name="m", window=timedelta(minutes=1))
 
@@ -150,9 +159,11 @@ class TestQueryRange:
 
     def test_future_timestamp_samples_are_skipped(self) -> None:
         key = _key("m", node="n1")
-        series, lm, ni = _build_series([
-            (key, [(-5, 1.0), (60, 99.0)]),
-        ])
+        series, lm, ni = _build_series(
+            [
+                (key, [(-5, 1.0), (60, 99.0)]),
+            ]
+        )
 
         df = query_range(series, lm, ni, metric_name="m", window=timedelta(minutes=5))
 
@@ -161,9 +172,11 @@ class TestQueryRange:
 
     def test_empty_window_returns_empty(self) -> None:
         key = _key("m", node="n1")
-        series, lm, ni = _build_series([
-            (key, [(-600, 1.0)]),
-        ])
+        series, lm, ni = _build_series(
+            [
+                (key, [(-600, 1.0)]),
+            ]
+        )
 
         df = query_range(series, lm, ni, metric_name="m", window=timedelta(seconds=1))
 
@@ -181,10 +194,7 @@ class TestComputeAggregate:
         assert _compute_aggregate("count_over_time", samples) == 3.0
 
     def test_changes_with_multiple_values(self) -> None:
-        samples = [
-            TimeSeriesSample(timestamp=_now(), value=v)
-            for v in [1.0, 1.0, 2.0, 2.0, 3.0]
-        ]
+        samples = [TimeSeriesSample(timestamp=_now(), value=v) for v in [1.0, 1.0, 2.0, 2.0, 3.0]]
         assert _compute_aggregate("changes", samples) == 2.0
 
     def test_changes_with_single_sample_returns_zero(self) -> None:
@@ -209,12 +219,16 @@ class TestComputeAggregate:
 class TestRangeAggregate:
     def test_avg_over_time_via_range_aggregate(self) -> None:
         key = _key("m", node="n1")
-        series, lm, ni = _build_series([
-            (key, [(-10, 2.0), (-5, 4.0), (-1, 6.0)]),
-        ])
+        series, lm, ni = _build_series(
+            [
+                (key, [(-10, 2.0), (-5, 4.0), (-1, 6.0)]),
+            ]
+        )
 
         df = range_aggregate(
-            series, lm, ni,
+            series,
+            lm,
+            ni,
             func_name="avg_over_time",
             metric_name="m",
             window=timedelta(minutes=1),
@@ -226,12 +240,16 @@ class TestRangeAggregate:
 
     def test_no_samples_in_window_returns_empty(self) -> None:
         key = _key("m", node="n1")
-        series, lm, ni = _build_series([
-            (key, [(-600, 1.0)]),
-        ])
+        series, lm, ni = _build_series(
+            [
+                (key, [(-600, 1.0)]),
+            ]
+        )
 
         df = range_aggregate(
-            series, lm, ni,
+            series,
+            lm,
+            ni,
             func_name="count_over_time",
             metric_name="m",
             window=timedelta(seconds=1),

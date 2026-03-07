@@ -8,8 +8,11 @@ class TestCheckMfuHealth:
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.5} for i in range(1, 6)})
 
         result = check_mfu_health(
-            wandb, consecutive_steps=10, threshold_ratio=0.8,
-            baseline=0.5, baseline_steps=50,
+            wandb,
+            consecutive_steps=10,
+            threshold_ratio=0.8,
+            baseline=0.5,
+            baseline_steps=50,
         )
 
         assert result is None
@@ -18,8 +21,11 @@ class TestCheckMfuHealth:
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.45} for i in range(1, 11)})
 
         result = check_mfu_health(
-            wandb, consecutive_steps=10, threshold_ratio=0.8,
-            baseline=0.5, baseline_steps=50,
+            wandb,
+            consecutive_steps=10,
+            threshold_ratio=0.8,
+            baseline=0.5,
+            baseline_steps=50,
         )
 
         assert result is not None
@@ -32,8 +38,11 @@ class TestCheckMfuHealth:
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.3} for i in range(1, 11)})
 
         result = check_mfu_health(
-            wandb, consecutive_steps=10, threshold_ratio=0.8,
-            baseline=0.5, baseline_steps=50,
+            wandb,
+            consecutive_steps=10,
+            threshold_ratio=0.8,
+            baseline=0.5,
+            baseline_steps=50,
         )
 
         assert result is not None
@@ -45,8 +54,11 @@ class TestCheckMfuHealth:
         wandb = make_fake_mini_wandb(steps=steps)
 
         result = check_mfu_health(
-            wandb, consecutive_steps=10, threshold_ratio=0.8,
-            baseline=None, baseline_steps=50,
+            wandb,
+            consecutive_steps=10,
+            threshold_ratio=0.8,
+            baseline=None,
+            baseline_steps=50,
         )
 
         assert result is not None
@@ -58,8 +70,11 @@ class TestCheckMfuHealth:
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.3} for i in range(1, 11)})
 
         result = check_mfu_health(
-            wandb, consecutive_steps=10, threshold_ratio=0.8,
-            baseline=None, baseline_steps=50,
+            wandb,
+            consecutive_steps=10,
+            threshold_ratio=0.8,
+            baseline=None,
+            baseline_steps=50,
         )
 
         assert result is None

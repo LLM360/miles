@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
 from tests.fast.utils.ft.helpers import make_mock_subprocess
+
+from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
 
 SAMPLE_NCCL_OUTPUT_HIGH_BW = """\
 # nThread 1 nGpus 8 minBytes 1048576 maxBytes 1073741824 step: 2(factor) warmup iters: 5 iters: 20 agg iters: 1 validation: 1 graph: 0

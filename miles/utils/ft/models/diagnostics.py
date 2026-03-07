@@ -20,8 +20,11 @@ class DiagnosticResult(FtBaseModel):
         metadata: dict[str, Any] | None = None,
     ) -> "DiagnosticResult":
         return cls(
-            diagnostic_type=diagnostic_type, node_id=node_id,
-            passed=True, details=details, metadata=metadata,
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
+            passed=True,
+            details=details,
+            metadata=metadata,
         )
 
     @classmethod
@@ -34,8 +37,11 @@ class DiagnosticResult(FtBaseModel):
         metadata: dict[str, Any] | None = None,
     ) -> "DiagnosticResult":
         return cls(
-            diagnostic_type=diagnostic_type, node_id=node_id,
-            passed=False, details=details, metadata=metadata,
+            diagnostic_type=diagnostic_type,
+            node_id=node_id,
+            passed=False,
+            details=details,
+            metadata=metadata,
         )
 
 

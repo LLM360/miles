@@ -6,7 +6,11 @@ import ray
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.platform.node_agent_factory import DEFAULT_COLLECT_INTERVAL_SECONDS, DEFAULT_NUM_GPUS, build_node_agent
+from miles.utils.ft.platform.node_agent_factory import (
+    DEFAULT_COLLECT_INTERVAL_SECONDS,
+    DEFAULT_NUM_GPUS,
+    build_node_agent,
+)
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticProtocol
 from miles.utils.ft.protocols.platform import REGISTER_TIMEOUT_SECONDS, ft_controller_actor_name
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
@@ -95,8 +99,10 @@ class _FtNodeAgentActorCls:
         if result.ok:
             logger.info(
                 "Node agent registered node_id=%s exporter=%s",
-                node_id, exporter_address,
+                node_id,
+                exporter_address,
             )
+
 
 FtNodeAgentActor = ray.remote(
     num_gpus=0,

@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 from functools import partial
-from typing import Callable
 
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
@@ -23,10 +23,14 @@ _NCCL_TEST_SIZE_FACTOR = "2"
 def build_nccl_test_cmd(binary: str, num_gpus: int) -> list[str]:
     return [
         binary,
-        "-b", _NCCL_TEST_MIN_BYTES,
-        "-e", _NCCL_TEST_MAX_BYTES,
-        "-f", _NCCL_TEST_SIZE_FACTOR,
-        "-g", str(num_gpus),
+        "-b",
+        _NCCL_TEST_MIN_BYTES,
+        "-e",
+        _NCCL_TEST_MAX_BYTES,
+        "-f",
+        _NCCL_TEST_SIZE_FACTOR,
+        "-g",
+        str(num_gpus),
     ]
 
 
@@ -78,24 +82,32 @@ async def run_nccl_test(
     and InterMachineCommDiagnostic.
     """
     fail: Callable[[str], DiagnosticResult] = partial(
-        DiagnosticResult.fail_result, diagnostic_type=diagnostic_type, node_id=node_id,
+        DiagnosticResult.fail_result,
+        diagnostic_type=diagnostic_type,
+        node_id=node_id,
     )
 
     try:
         stdout_bytes, stderr_bytes, returncode = await run_subprocess_with_timeout(
-            cmd=cmd, timeout_seconds=timeout_seconds, env=env,
+            cmd=cmd,
+            timeout_seconds=timeout_seconds,
+            env=env,
         )
     except OSError:
         logger.warning(
             "%s_exec_failed node=%s binary=%s",
-            log_prefix, node_id, cmd[0],
+            log_prefix,
+            node_id,
+            cmd[0],
             exc_info=True,
         )
         return fail(details=f"failed to execute {cmd[0]}")
     except asyncio.TimeoutError:
         logger.warning(
             "%s_timeout node=%s timeout=%s",
-            log_prefix, node_id, timeout_seconds,
+            log_prefix,
+            node_id,
+            timeout_seconds,
             exc_info=True,
         )
         return fail(details=f"timed out after {timeout_seconds}s")
@@ -125,7 +137,9 @@ def _interpret_nccl_output(
     log_prefix: str,
 ) -> DiagnosticResult:
     fail: Callable[[str], DiagnosticResult] = partial(
-        DiagnosticResult.fail_result, diagnostic_type=diagnostic_type, node_id=node_id,
+        DiagnosticResult.fail_result,
+        diagnostic_type=diagnostic_type,
+        node_id=node_id,
     )
 
     if returncode != 0:

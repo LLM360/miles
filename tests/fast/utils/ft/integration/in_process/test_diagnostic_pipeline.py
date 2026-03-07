@@ -3,21 +3,18 @@
 Tests the full diagnostic pipeline through the Controller's recovery flow
 by injecting StopTimeDiagnostics state directly into the state machine.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
 import pytest
+from tests.fast.utils.ft.conftest import ControllerTestHarness, make_fake_agents, make_test_controller
 
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.main_state_machine import Recovering
 from miles.utils.ft.controller.recovery.recovery_stepper import StopTimeDiagnostics
 from miles.utils.ft.protocols.platform import JobStatus
-from tests.fast.utils.ft.conftest import (
-    ControllerTestHarness,
-    make_fake_agents,
-    make_test_controller,
-)
 
 
 def _make_diagnostic_test_env(

@@ -8,6 +8,7 @@ TrainingWorkerActor simulates a training process hosting a real
 FtTrainingRankAgent — it self-registers with the controller, advances
 iteration metrics, and reacts to crash/recovery state transitions.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -107,7 +108,8 @@ class RemoteControlledTrainingJob:
         await self._state.stop.remote()
 
     async def submit_training(
-        self, excluded_node_ids: list[str] | None = None,
+        self,
+        excluded_node_ids: list[str] | None = None,
     ) -> str:
         run_id: str = await self._state.submit.remote(excluded_node_ids)
         return run_id

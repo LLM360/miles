@@ -22,9 +22,13 @@ class TestThermalThrottlingDetector:
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.45} for i in range(1, 11)})
         detector = ThermalThrottlingDetector()
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.NONE
 
@@ -37,9 +41,13 @@ class TestThermalThrottlingDetector:
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.3} for i in range(1, 11)})
         detector = ThermalThrottlingDetector()
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.NONE
 
@@ -50,16 +58,22 @@ class TestThermalThrottlingDetector:
             inject_gpu_temperature(store, node_id="node-1", gpu=str(i), celsius=105.0)
 
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.3} for i in range(1, 61)})
-        detector = ThermalThrottlingDetector(config=ThermalThrottlingDetectorConfig(
-            temperature_delta_threshold=20.0,
-            mfu_decline_threshold_ratio=0.9,
-            mfu_baseline=0.5,
-            mfu_consecutive_steps=10,
-        ))
+        detector = ThermalThrottlingDetector(
+            config=ThermalThrottlingDetectorConfig(
+                temperature_delta_threshold=20.0,
+                mfu_decline_threshold_ratio=0.9,
+                mfu_baseline=0.5,
+                mfu_consecutive_steps=10,
+            )
+        )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert decision.trigger == TriggerType.HARDWARE
@@ -74,16 +88,22 @@ class TestThermalThrottlingDetector:
             inject_gpu_temperature(store, node_id="node-1", gpu=str(i), celsius=105.0)
 
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.48} for i in range(1, 61)})
-        detector = ThermalThrottlingDetector(config=ThermalThrottlingDetectorConfig(
-            temperature_delta_threshold=20.0,
-            mfu_decline_threshold_ratio=0.9,
-            mfu_baseline=0.5,
-            mfu_consecutive_steps=10,
-        ))
+        detector = ThermalThrottlingDetector(
+            config=ThermalThrottlingDetectorConfig(
+                temperature_delta_threshold=20.0,
+                mfu_decline_threshold_ratio=0.9,
+                mfu_baseline=0.5,
+                mfu_consecutive_steps=10,
+            )
+        )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=_RANK_PLACEMENT,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement=_RANK_PLACEMENT,
+            )
+        )
 
         assert decision.action == ActionType.NONE
         assert "MFU is healthy" in decision.reason
@@ -93,9 +113,13 @@ class TestThermalThrottlingDetector:
         wandb = make_fake_mini_wandb()
         detector = ThermalThrottlingDetector()
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement={},
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement={},
+            )
+        )
 
         assert decision.action == ActionType.NONE
 
@@ -109,29 +133,38 @@ class TestThermalThrottlingDetector:
             inject_gpu_temperature(store, node_id="node-2", gpu=str(i), celsius=110.0)
 
         wandb = make_fake_mini_wandb(steps={i: {"mfu": 0.3} for i in range(1, 61)})
-        detector = ThermalThrottlingDetector(config=ThermalThrottlingDetectorConfig(
-            temperature_delta_threshold=5.0,
-            mfu_baseline=0.5,
-            mfu_consecutive_steps=10,
-        ))
+        detector = ThermalThrottlingDetector(
+            config=ThermalThrottlingDetectorConfig(
+                temperature_delta_threshold=5.0,
+                mfu_baseline=0.5,
+                mfu_consecutive_steps=10,
+            )
+        )
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb, rank_placement=rank_placement,
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                mini_wandb=wandb,
+                rank_placement=rank_placement,
+            )
+        )
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert decision.bad_node_ids == ["node-2"]
 
 
 class TestThermalThrottlingDetectorValidation:
-    @pytest.mark.parametrize("kwargs,match", [
-        (dict(temperature_delta_threshold=0.0), "temperature_delta_threshold"),
-        (dict(temperature_delta_threshold=-1.0), "temperature_delta_threshold"),
-        (dict(mfu_decline_threshold_ratio=0.0), "mfu_decline_threshold_ratio"),
-        (dict(mfu_decline_threshold_ratio=1.5), "mfu_decline_threshold_ratio"),
-        (dict(mfu_consecutive_steps=0), "mfu_consecutive_steps"),
-        (dict(mfu_baseline_steps=0), "mfu_baseline_steps"),
-    ])
+    @pytest.mark.parametrize(
+        "kwargs,match",
+        [
+            (dict(temperature_delta_threshold=0.0), "temperature_delta_threshold"),
+            (dict(temperature_delta_threshold=-1.0), "temperature_delta_threshold"),
+            (dict(mfu_decline_threshold_ratio=0.0), "mfu_decline_threshold_ratio"),
+            (dict(mfu_decline_threshold_ratio=1.5), "mfu_decline_threshold_ratio"),
+            (dict(mfu_consecutive_steps=0), "mfu_consecutive_steps"),
+            (dict(mfu_baseline_steps=0), "mfu_baseline_steps"),
+        ],
+    )
     def test_invalid_parameter_rejected(self, kwargs: dict, match: str) -> None:
         with pytest.raises(ValueError, match=match):
             ThermalThrottlingDetectorConfig(**kwargs)

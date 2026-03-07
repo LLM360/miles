@@ -1,15 +1,16 @@
 """Tests for InterMachineOrchestrator and _cross_compare."""
+
 from __future__ import annotations
 
 import pytest
+from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
 
 from miles.utils.ft.controller.diagnostics.nccl.orchestrator import (
     InterMachineOrchestrator,
-    _PairResult,
     _cross_compare,
+    _PairResult,
 )
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
 
 
 def _make_inter_machine_agent(node_id: str, *, passed: bool = True) -> FakeNodeAgent:
@@ -126,8 +127,11 @@ class TestRunSinglePairMissingAgent:
         orch = InterMachineOrchestrator(node_agents=agents)
 
         result = await orch._run_single_pair(
-            master_id="master", worker_id="worker",
-            master_addr="10.0.0.1", port=29500, timeout_seconds=30,
+            master_id="master",
+            worker_id="worker",
+            master_addr="10.0.0.1",
+            port=29500,
+            timeout_seconds=30,
         )
 
         assert result.passed is False
@@ -139,8 +143,11 @@ class TestRunSinglePairMissingAgent:
         orch = InterMachineOrchestrator(node_agents=agents)
 
         result = await orch._run_single_pair(
-            master_id="master", worker_id="worker",
-            master_addr="10.0.0.1", port=29500, timeout_seconds=30,
+            master_id="master",
+            worker_id="worker",
+            master_addr="10.0.0.1",
+            port=29500,
+            timeout_seconds=30,
         )
 
         assert result.passed is False
@@ -150,8 +157,11 @@ class TestRunSinglePairMissingAgent:
         orch = InterMachineOrchestrator(node_agents={})
 
         result = await orch._run_single_pair(
-            master_id="A", worker_id="B",
-            master_addr="10.0.0.1", port=29500, timeout_seconds=30,
+            master_id="A",
+            worker_id="B",
+            master_addr="10.0.0.1",
+            port=29500,
+            timeout_seconds=30,
         )
 
         assert result.passed is False
@@ -209,8 +219,11 @@ class TestRunSinglePairAgentHang:
         orch = InterMachineOrchestrator(node_agents=agents)
 
         result = await orch._run_single_pair(
-            master_id="master", worker_id="worker",
-            master_addr="10.0.0.1", port=29500, timeout_seconds=0,
+            master_id="master",
+            worker_id="worker",
+            master_addr="10.0.0.1",
+            port=29500,
+            timeout_seconds=0,
         )
 
         assert result.passed is False
@@ -226,8 +239,11 @@ class TestRunSinglePairAgentHang:
         orch = InterMachineOrchestrator(node_agents=agents)
 
         result = await orch._run_single_pair(
-            master_id="master", worker_id="worker",
-            master_addr="10.0.0.1", port=29500, timeout_seconds=0,
+            master_id="master",
+            worker_id="worker",
+            master_addr="10.0.0.1",
+            port=29500,
+            timeout_seconds=0,
         )
 
         assert result.passed is False
@@ -241,8 +257,11 @@ class TestRunSinglePairAgentHang:
         orch = InterMachineOrchestrator(node_agents=agents)
 
         result = await orch._run_single_pair(
-            master_id="A", worker_id="B",
-            master_addr="10.0.0.1", port=29500, timeout_seconds=0,
+            master_id="A",
+            worker_id="B",
+            master_addr="10.0.0.1",
+            port=29500,
+            timeout_seconds=0,
         )
 
         assert result.passed is False

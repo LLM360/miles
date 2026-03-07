@@ -6,20 +6,23 @@ import asyncio
 import json
 from unittest.mock import patch
 
-from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
 from tests.fast.utils.ft.helpers import make_mock_subprocess
 
-SAMPLE_PYSPY_JSON = json.dumps([
-    {
-        "thread_name": "MainThread",
-        "thread_id": "0x7F1234",
-        "active": True,
-        "owns_gil": False,
-        "frames": [
-            {"name": "func_a", "filename": "file.py", "module": "mod", "line": 10, "locals": []},
-        ],
-    },
-]).encode()
+from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
+
+SAMPLE_PYSPY_JSON = json.dumps(
+    [
+        {
+            "thread_name": "MainThread",
+            "thread_id": "0x7F1234",
+            "active": True,
+            "owns_gil": False,
+            "frames": [
+                {"name": "func_a", "filename": "file.py", "module": "mod", "line": 10, "locals": []},
+            ],
+        },
+    ]
+).encode()
 
 
 class TestStackTraceDiagnosticEmptyPids:

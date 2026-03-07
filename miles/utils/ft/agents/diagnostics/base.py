@@ -21,29 +21,37 @@ class BaseDiagnostic(DiagnosticProtocol, ABC):
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
         if not getattr(cls, "__abstractmethods__", None) and not hasattr(cls, "diagnostic_type"):
-            raise TypeError(
-                f"{cls.__name__} must define a 'diagnostic_type' class attribute"
-            )
+            raise TypeError(f"{cls.__name__} must define a 'diagnostic_type' class attribute")
 
     def _fail(
-        self, node_id: str, details: str,
+        self,
+        node_id: str,
+        details: str,
         metadata: dict[str, Any] | None = None,
     ) -> DiagnosticResult:
         return DiagnosticResult.fail_result(
-            diagnostic_type=self.diagnostic_type, node_id=node_id,
-            details=details, metadata=metadata,
+            diagnostic_type=self.diagnostic_type,
+            node_id=node_id,
+            details=details,
+            metadata=metadata,
         )
 
     def _pass(
-        self, node_id: str, details: str,
+        self,
+        node_id: str,
+        details: str,
         metadata: dict[str, Any] | None = None,
     ) -> DiagnosticResult:
         return DiagnosticResult.pass_result(
-            diagnostic_type=self.diagnostic_type, node_id=node_id,
-            details=details, metadata=metadata,
+            diagnostic_type=self.diagnostic_type,
+            node_id=node_id,
+            details=details,
+            metadata=metadata,
         )
 
     @abstractmethod
     async def run(
-        self, node_id: str, timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
+        self,
+        node_id: str,
+        timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
     ) -> DiagnosticResult: ...

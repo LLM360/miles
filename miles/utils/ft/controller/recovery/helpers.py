@@ -1,4 +1,5 @@
 """Shared recovery primitives used by FtController and recovery steppers."""
+
 from __future__ import annotations
 
 import logging

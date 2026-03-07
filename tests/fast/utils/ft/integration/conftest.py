@@ -8,7 +8,6 @@ import pytest
 import ray
 
 from miles.utils.ft.models.recovery import ControllerStatus
-from miles.utils.ft.protocols.platform import ft_controller_actor_name
 
 logger = logging.getLogger(__name__)
 

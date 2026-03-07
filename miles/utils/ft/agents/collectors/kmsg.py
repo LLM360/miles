@@ -8,11 +8,7 @@ from pathlib import Path
 
 import miles.utils.ft.models.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.agents.collectors.kernel_log_reader import (
-    DmesgSubprocessReader,
-    KernelLogReader,
-    KmsgFileReader,
-)
+from miles.utils.ft.agents.collectors.kernel_log_reader import DmesgSubprocessReader, KernelLogReader, KmsgFileReader
 from miles.utils.ft.controller.detectors.checks.gpu.xid_catalog.info import NON_AUTO_RECOVERABLE_XIDS
 from miles.utils.ft.models.metrics import CounterSample, GaugeSample
 
@@ -57,22 +53,28 @@ def _build_xid_samples(
     ]
 
     for gone_code in prev_codes - current_codes:
-        samples.append(GaugeSample(
-            name=mn.XID_CODE_RECENT,
-            labels={"xid": str(gone_code)},
-            value=0.0,
-        ))
+        samples.append(
+            GaugeSample(
+                name=mn.XID_CODE_RECENT,
+                labels={"xid": str(gone_code)},
+                value=0.0,
+            )
+        )
 
-    samples.append(CounterSample(
-        name=mn.XID_COUNT_TOTAL,
-        labels={},
-        delta=float(new_count),
-    ))
-    samples.append(CounterSample(
-        name=mn.XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL,
-        labels={},
-        delta=float(non_auto_recoverable_count),
-    ))
+    samples.append(
+        CounterSample(
+            name=mn.XID_COUNT_TOTAL,
+            labels={},
+            delta=float(new_count),
+        )
+    )
+    samples.append(
+        CounterSample(
+            name=mn.XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL,
+            labels={},
+            delta=float(non_auto_recoverable_count),
+        )
+    )
     return samples
 
 
@@ -86,11 +88,13 @@ def _count_kernel_events(lines: list[str]) -> int:
 
 
 def _kernel_event_samples(count: int) -> list[CounterSample]:
-    return [CounterSample(
-        name=mn.KERNEL_EVENT_COUNT,
-        labels={},
-        delta=float(count),
-    )]
+    return [
+        CounterSample(
+            name=mn.KERNEL_EVENT_COUNT,
+            labels={},
+            delta=float(count),
+        )
+    ]
 
 
 def _create_reader(kmsg_path: Path) -> KernelLogReader:
@@ -135,13 +139,14 @@ class KmsgCollector(BaseCollector):
             now,
         )
 
-        non_auto_recoverable_count = sum(
-            1 for code in new_xids if code in NON_AUTO_RECOVERABLE_XIDS
-        )
+        non_auto_recoverable_count = sum(1 for code in new_xids if code in NON_AUTO_RECOVERABLE_XIDS)
 
         current_codes = {code for _, code in self._xid_events}
         samples = _build_xid_samples(
-            current_codes, self._prev_xid_codes, len(new_xids), non_auto_recoverable_count,
+            current_codes,
+            self._prev_xid_codes,
+            len(new_xids),
+            non_auto_recoverable_count,
         )
         self._prev_xid_codes = current_codes
 

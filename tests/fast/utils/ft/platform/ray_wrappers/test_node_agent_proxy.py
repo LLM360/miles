@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,7 +18,10 @@ class TestRayNodeAgentProxy:
     @pytest.mark.anyio
     async def test_run_diagnostic_delegates_to_remote(self) -> None:
         expected = DiagnosticResult(
-            diagnostic_type="gpu", node_id="node-0", passed=True, details="ok",
+            diagnostic_type="gpu",
+            node_id="node-0",
+            passed=True,
+            details="ok",
         )
 
         handle = MagicMock()
@@ -30,15 +33,18 @@ class TestRayNodeAgentProxy:
         result = await proxy.run_diagnostic(diagnostic_type="gpu", timeout_seconds=60)
 
         handle.run_diagnostic.remote.assert_called_once_with(
-            diagnostic_type="gpu", timeout_seconds=60,
+            diagnostic_type="gpu",
+            timeout_seconds=60,
         )
         assert result == expected
 
     @pytest.mark.anyio
     async def test_kwargs_forwarded_to_remote(self) -> None:
         expected = DiagnosticResult(
-            diagnostic_type="inter_machine", node_id="node-0",
-            passed=True, details="ok",
+            diagnostic_type="inter_machine",
+            node_id="node-0",
+            passed=True,
+            details="ok",
         )
 
         handle = MagicMock()

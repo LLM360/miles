@@ -1,19 +1,12 @@
 """Semi-E2E: diagnostic eviction — bad node eviction, excluded nodes, partial, all-evicted."""
+
 from __future__ import annotations
 
 import asyncio
 import time
 from collections.abc import Callable
 
-from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
-from miles.utils.ft.models.recovery import ControllerMode
-
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
-    E2EEnv,
-    NodeSpec,
-    _SLOW_STEP,
-)
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
     get_status,
@@ -22,10 +15,15 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     wait_for_training_stable,
 )
 
+from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
+from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+from miles.utils.ft.models.recovery import ControllerMode
+
 
 class TestDiagnosticEviction:
     async def test_diagnostic_failure_evicts_bad_node(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """node-0 diagnostic fails, node-1 passes → only node-0 evicted.
 
@@ -58,15 +56,19 @@ class TestDiagnosticEviction:
         final = await wait_for_recovery_complete(env.controller, timeout=60.0)
 
         assert final.mode == ControllerMode.MONITORING
-        assert_phase_path_contains(final, [
-            "StopTimeDiagnostics",
-            "Evicting",
-        ])
+        assert_phase_path_contains(
+            final,
+            [
+                "StopTimeDiagnostics",
+                "Evicting",
+            ],
+        )
 
 
 class TestEvictionExcludedNodes:
     async def test_multi_node_eviction_passes_correct_excluded_ids(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """2 bad nodes out of 3 → excluded_node_ids contains both."""
         env = make_e2e_env(
@@ -99,7 +101,8 @@ class TestEvictionExcludedNodes:
 
 class TestPartialDiagnostic:
     async def test_unreachable_node_agent_treated_as_bad(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """During DIAGNOSING, kill node agent → RayActorError → treated as bad node."""
         import ray
@@ -139,7 +142,8 @@ class TestPartialDiagnostic:
 
 class TestAllNodesEvicted:
     async def test_all_diagnostics_fail_notifies_human(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """All nodes fail diagnostic → all evicted → NOTIFY."""
         env = make_e2e_env(
@@ -165,15 +169,19 @@ class TestAllNodesEvicted:
         # Step 2: crash during MONITORING → DIAGNOSING (fast) → recovery completes
         await env.injector.crash_training()
         final = await wait_for_recovery_complete(env.controller, timeout=90.0)
-        assert_phase_path_contains(final, [
-            "StopTimeDiagnostics",
-            "Evicting",
-        ])
+        assert_phase_path_contains(
+            final,
+            [
+                "StopTimeDiagnostics",
+                "Evicting",
+            ],
+        )
 
 
 class TestEvictionNotification:
     async def test_notifier_receives_eviction_notification(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """During eviction flow, notifier receives at least one notification."""
         env = make_e2e_env(
@@ -192,7 +200,9 @@ class TestEvictionNotification:
         # Step 1: crash → MONITORING phase
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="MonitoringProgress", timeout=30.0,
+            env.controller,
+            phase="MonitoringProgress",
+            timeout=30.0,
         )
 
         # Step 2: crash during MONITORING → DIAGNOSING → eviction
@@ -207,7 +217,8 @@ class TestEvictionNotification:
 
 class TestEvictionEscalation:
     async def test_eviction_final_attempt_restart_fails_notifies_humans(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Diagnostic eviction with notify-on-fail + restart fails → NotifyHumans."""
         env = make_e2e_env(
@@ -226,13 +237,17 @@ class TestEvictionEscalation:
         # Step 1: crash → wait for MONITORING phase
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="MonitoringProgress", timeout=30.0,
+            env.controller,
+            phase="MonitoringProgress",
+            timeout=30.0,
         )
 
         # Step 2: crash during MONITORING → DIAGNOSING → eviction (notify on fail)
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="MonitoringProgress", timeout=90.0,
+            env.controller,
+            phase="MonitoringProgress",
+            timeout=90.0,
         )
 
         # Step 3: crash during post-eviction MONITORING → should go to NotifyHumans
@@ -254,7 +269,8 @@ class TestEvictionEscalation:
 
 class TestAllDiagnosticsPass:
     async def test_all_diagnostics_pass_escalates_to_notify_humans(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """All nodes pass diagnostics (no root cause found) → NotifyHumans."""
         env = make_e2e_env(
@@ -273,7 +289,9 @@ class TestAllDiagnosticsPass:
         # Step 1: crash → wait for MonitoringProgress
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="MonitoringProgress", timeout=30.0,
+            env.controller,
+            phase="MonitoringProgress",
+            timeout=30.0,
         )
 
         # Step 2: crash during MonitoringProgress → StopTimeDiagnostics
@@ -298,7 +316,8 @@ class TestAllDiagnosticsPass:
 
 class TestNotificationContent:
     async def test_notify_humans_notification_contains_trigger_and_context(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """NotifyHumans notification includes trigger= and state_before= for operator actionability."""
         env = make_e2e_env(
@@ -317,7 +336,9 @@ class TestNotificationContent:
         # Step 1: crash → MonitoringProgress → crash → StopTimeDiagnostics → all pass → NotifyHumans
         await env.injector.crash_training()
         await wait_for_recovery_phase(
-            env.controller, phase="MonitoringProgress", timeout=30.0,
+            env.controller,
+            phase="MonitoringProgress",
+            timeout=30.0,
         )
         await env.injector.crash_training()
 

@@ -31,12 +31,8 @@ class ScriptArgs(ExecuteTrainConfig):
 
 def prepare() -> None:
     U.exec_command_all_ray_node("mkdir -p /root/models /root/datasets")
-    U.exec_command_all_ray_node(
-        f"huggingface-cli download Qwen/{MODEL_NAME} --local-dir /root/models/{MODEL_NAME}"
-    )
-    U.exec_command_all_ray_node(
-        "hf download --repo-type dataset zhuzilin/gsm8k --local-dir /root/datasets/gsm8k"
-    )
+    U.exec_command_all_ray_node(f"huggingface-cli download Qwen/{MODEL_NAME} --local-dir /root/models/{MODEL_NAME}")
+    U.exec_command_all_ray_node("hf download --repo-type dataset zhuzilin/gsm8k --local-dir /root/datasets/gsm8k")
 
 
 def execute(args: ScriptArgs) -> None:

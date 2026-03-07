@@ -1,11 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
-from tests.fast.utils.ft.helpers import (
-    make_detector_context,
-    make_fake_mini_wandb,
-)
+from tests.fast.utils.ft.helpers import make_detector_context, make_fake_mini_wandb
 
 from miles.utils.ft.controller.detectors.core.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
@@ -28,8 +24,10 @@ def _make_wandb_with_timed_mfu(
     wandb = MiniWandb(active_run_id=run_id)
     for i, (value, timestamp) in enumerate(entries):
         wandb.log_step(
-            run_id=run_id, step=i + 1,
-            metrics={"mfu": value}, receive_time=timestamp,
+            run_id=run_id,
+            step=i + 1,
+            metrics={"mfu": value},
+            receive_time=timestamp,
         )
     return wandb
 
@@ -37,11 +35,13 @@ def _make_wandb_with_timed_mfu(
 class TestMfuDeclineDetector:
     def test_normal_mfu(self) -> None:
         wandb = _make_wandb_with_mfu([0.45] * 10)
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                mfu_threshold_ratio=0.8,
+                consecutive_steps=10,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -49,10 +49,12 @@ class TestMfuDeclineDetector:
 
     def test_insufficient_data(self) -> None:
         wandb = _make_wandb_with_mfu([0.1] * 5)
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            consecutive_steps=10,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                consecutive_steps=10,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -60,11 +62,13 @@ class TestMfuDeclineDetector:
 
     def test_decline_monitoring(self) -> None:
         wandb = _make_wandb_with_mfu([0.3] * 10)
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                mfu_threshold_ratio=0.8,
+                consecutive_steps=10,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -74,17 +78,18 @@ class TestMfuDeclineDetector:
     def test_decline_timeout_notify_human(self) -> None:
         now = datetime.now(timezone.utc)
         low_mfu_entries: list[tuple[float, datetime]] = [
-            (0.3, now - timedelta(minutes=40) + timedelta(minutes=i))
-            for i in range(41)
+            (0.3, now - timedelta(minutes=40) + timedelta(minutes=i)) for i in range(41)
         ]
         wandb = _make_wandb_with_timed_mfu(low_mfu_entries)
 
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-            decline_timeout_minutes=30.0,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                mfu_threshold_ratio=0.8,
+                consecutive_steps=10,
+                decline_timeout_minutes=30.0,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -93,17 +98,18 @@ class TestMfuDeclineDetector:
     def test_decline_timeout_not_yet_reached(self) -> None:
         now = datetime.now(timezone.utc)
         low_mfu_entries: list[tuple[float, datetime]] = [
-            (0.3, now - timedelta(minutes=10) + timedelta(minutes=i))
-            for i in range(11)
+            (0.3, now - timedelta(minutes=10) + timedelta(minutes=i)) for i in range(11)
         ]
         wandb = _make_wandb_with_timed_mfu(low_mfu_entries)
 
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-            decline_timeout_minutes=30.0,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                mfu_threshold_ratio=0.8,
+                consecutive_steps=10,
+                decline_timeout_minutes=30.0,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -113,11 +119,13 @@ class TestMfuDeclineDetector:
     def test_dynamic_baseline(self) -> None:
         wandb = _make_wandb_with_mfu([0.5] * 50 + [0.3] * 10)
 
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=None,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=None,
+                mfu_threshold_ratio=0.8,
+                consecutive_steps=10,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -135,12 +143,14 @@ class TestMfuDeclineDetector:
         ]
         wandb = _make_wandb_with_timed_mfu(entries)
 
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            mfu_threshold_ratio=0.8,
-            consecutive_steps=10,
-            decline_timeout_minutes=30.0,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                mfu_threshold_ratio=0.8,
+                consecutive_steps=10,
+                decline_timeout_minutes=30.0,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -151,11 +161,13 @@ class TestMfuDeclineDetector:
 class TestMfuAbsoluteMinimum:
     def test_triggers_when_below_floor(self) -> None:
         wandb = _make_wandb_with_mfu([0.05] * 10)
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            mfu_absolute_minimum=0.1,
-            consecutive_steps=10,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                mfu_absolute_minimum=0.1,
+                consecutive_steps=10,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -164,10 +176,12 @@ class TestMfuAbsoluteMinimum:
 
     def test_disabled_by_default(self) -> None:
         wandb = _make_wandb_with_mfu([0.05] * 10)
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            consecutive_steps=10,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                consecutive_steps=10,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -175,11 +189,13 @@ class TestMfuAbsoluteMinimum:
 
     def test_no_trigger_when_above_floor(self) -> None:
         wandb = _make_wandb_with_mfu([0.45] * 10)
-        detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
-            mfu_baseline=0.5,
-            mfu_absolute_minimum=0.1,
-            consecutive_steps=10,
-        ))
+        detector = MfuDeclineDetector(
+            config=MfuDeclineDetectorConfig(
+                mfu_baseline=0.5,
+                mfu_absolute_minimum=0.1,
+                consecutive_steps=10,
+            )
+        )
 
         decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
@@ -187,15 +203,18 @@ class TestMfuAbsoluteMinimum:
 
 
 class TestMfuDeclineDetectorValidation:
-    @pytest.mark.parametrize("kwargs,match", [
-        (dict(mfu_threshold_ratio=0.0), "mfu_threshold_ratio"),
-        (dict(mfu_threshold_ratio=-0.5), "mfu_threshold_ratio"),
-        (dict(mfu_threshold_ratio=1.5), "mfu_threshold_ratio"),
-        (dict(consecutive_steps=0), "consecutive_steps"),
-        (dict(decline_timeout_minutes=0.0), "decline_timeout_minutes"),
-        (dict(baseline_steps=0), "baseline_steps"),
-        (dict(mfu_absolute_minimum=-0.1), "mfu_absolute_minimum"),
-    ])
+    @pytest.mark.parametrize(
+        "kwargs,match",
+        [
+            (dict(mfu_threshold_ratio=0.0), "mfu_threshold_ratio"),
+            (dict(mfu_threshold_ratio=-0.5), "mfu_threshold_ratio"),
+            (dict(mfu_threshold_ratio=1.5), "mfu_threshold_ratio"),
+            (dict(consecutive_steps=0), "consecutive_steps"),
+            (dict(decline_timeout_minutes=0.0), "decline_timeout_minutes"),
+            (dict(baseline_steps=0), "baseline_steps"),
+            (dict(mfu_absolute_minimum=-0.1), "mfu_absolute_minimum"),
+        ],
+    )
     def test_invalid_parameter_rejected(self, kwargs: dict, match: str) -> None:
         with pytest.raises(ValueError, match=match):
             MfuDeclineDetectorConfig(**kwargs)

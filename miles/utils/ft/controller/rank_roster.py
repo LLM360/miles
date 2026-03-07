@@ -33,7 +33,8 @@ class RankRoster:
         if run_id != self.run_id:
             logger.warning(
                 "rejected_register_training_rank run_id=%s expected=%s",
-                run_id, self.run_id,
+                run_id,
+                self.run_id,
             )
             return
         _validate_rank(rank=rank, world_size=world_size, node_id=node_id)
@@ -42,7 +43,10 @@ class RankRoster:
         self.rank_pids[rank] = pid
         logger.info(
             "rank_registered run_id=%s rank=%d world_size=%d node_id=%s",
-            run_id, rank, world_size, node_id,
+            run_id,
+            rank,
+            world_size,
+            node_id,
         )
         if self._scrape_target_manager is not None:
             self._scrape_target_manager.add_scrape_target(
@@ -51,17 +55,10 @@ class RankRoster:
             )
 
     def get_rank_pids_for_node(self, node_id: str) -> dict[int, int]:
-        return {
-            rank: self.rank_pids[rank]
-            for rank, nid in self.rank_placement.items()
-            if nid == node_id
-        }
+        return {rank: self.rank_pids[rank] for rank, nid in self.rank_placement.items() if nid == node_id}
 
     def warn_if_incomplete(self) -> None:
-        if (
-            self.expected_world_size is not None
-            and len(self.rank_placement) < self.expected_world_size
-        ):
+        if self.expected_world_size is not None and len(self.rank_placement) < self.expected_world_size:
             logger.warning(
                 "incomplete_rank_registration registered=%d expected=%d run_id=%s",
                 len(self.rank_placement),

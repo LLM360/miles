@@ -1,5 +1,5 @@
-from miles.utils.ft.protocols.platform import JobStatus
 from miles.utils.ft.platform.stubs import StubNodeManager, StubTrainingJob
+from miles.utils.ft.protocols.platform import JobStatus
 
 
 class TestStubNodeManager:

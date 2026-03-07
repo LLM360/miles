@@ -2,10 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 import polars as pl
 import pytest
+from tests.fast.utils.ft.helpers.metric_injectors import make_fake_metric_store
 
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.models.metrics import GaugeSample
-from tests.fast.utils.ft.helpers.metric_injectors import make_fake_metric_store
 
 
 class TestMiniPrometheusQueryLatest:
@@ -400,10 +400,13 @@ class TestMiniPrometheusScrapeTargets:
 
 
 class TestMiniPrometheusRangeFunctionEdgeCases:
-    @pytest.mark.parametrize("method_name,expected_value", [
-        ("count_over_time", 1.0),
-        ("changes", 0.0),
-    ])
+    @pytest.mark.parametrize(
+        "method_name,expected_value",
+        [
+            ("count_over_time", 1.0),
+            ("changes", 0.0),
+        ],
+    )
     def test_single_sample_method(self, method_name: str, expected_value: float) -> None:
         store = make_fake_metric_store()
         now = datetime.now(timezone.utc)

@@ -1,7 +1,7 @@
 import logging
 from uuid import uuid4
 
-from miles.utils.ft.protocols.platform import JobStatus, STOP_TRAINING_TIMEOUT_SECONDS
+from miles.utils.ft.protocols.platform import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,8 @@ class StubTrainingJob:
         logger.info("stub_stop_training timeout_seconds=%d", timeout_seconds)
 
     async def submit_training(
-        self, excluded_node_ids: list[str] | None = None,
+        self,
+        excluded_node_ids: list[str] | None = None,
     ) -> str:
         run_id = uuid4().hex[:8]
         logger.info("stub_submit_training run_id=%s excluded_node_ids=%s", run_id, excluded_node_ids)
@@ -42,7 +43,9 @@ class StubNotifier:
     async def send(self, title: str, content: str, severity: str) -> None:
         logger.info(
             "stub_send_notification title=%s severity=%s content=%s",
-            title, severity, content,
+            title,
+            severity,
+            content,
         )
 
     async def aclose(self) -> None:

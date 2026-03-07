@@ -8,12 +8,12 @@ import polars as pl
 
 from miles.utils.ft.controller.metrics.aggregation_mixin import RangeAggregationMixin
 from miles.utils.ft.controller.metrics.mini_prometheus.query import SeriesKey, TimeSeriesSample
-from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
 from miles.utils.ft.controller.metrics.mini_prometheus.query import query_latest as _query_latest
 from miles.utils.ft.controller.metrics.mini_prometheus.query import query_range as _query_range
 from miles.utils.ft.controller.metrics.mini_prometheus.query import range_aggregate as _range_aggregate
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
-from miles.utils.ft.models.metrics import CounterSample, GaugeSample, MetricSample
+from miles.utils.ft.models.metrics import GaugeSample, MetricSample
+from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
 
 
 @dataclass

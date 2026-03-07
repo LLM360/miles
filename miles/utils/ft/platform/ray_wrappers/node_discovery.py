@@ -3,6 +3,7 @@
 Centralises ray.nodes() traversal logic used by both RayTrainingJob
 (node-id resolution) and standalone NCCL diagnostics (GPU node discovery).
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,10 +21,7 @@ def get_alive_gpu_nodes(
 
     If *node_ids* is given, only return nodes whose NodeID is in the list.
     """
-    nodes = [
-        n for n in ray.nodes()
-        if n.get("Alive") and n.get("Resources", {}).get("GPU", 0) > 0
-    ]
+    nodes = [n for n in ray.nodes() if n.get("Alive") and n.get("Resources", {}).get("GPU", 0) > 0]
 
     if node_ids is not None:
         allowed = set(node_ids)
@@ -64,8 +62,4 @@ def resolve_to_ray_node_ids(identifiers: list[str]) -> list[str]:
 
 def build_node_address_map(nodes: list[dict[str, Any]]) -> dict[str, str]:
     """Build a mapping from NodeID to NodeManagerAddress."""
-    return {
-        node["NodeID"]: addr
-        for node in nodes
-        if (addr := node.get("NodeManagerAddress", ""))
-    }
+    return {node["NodeID"]: addr for node in nodes if (addr := node.get("NodeManagerAddress", ""))}

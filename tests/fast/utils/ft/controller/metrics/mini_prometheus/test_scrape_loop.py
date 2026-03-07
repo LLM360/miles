@@ -1,4 +1,5 @@
 """Tests for ScrapeLoop — target management, client lifecycle, stop edge cases."""
+
 from __future__ import annotations
 
 import pytest

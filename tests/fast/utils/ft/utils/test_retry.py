@@ -1,4 +1,5 @@
 """Tests for miles.utils.ft.utils.retry (retry_sync, retry_async, retry_async_or_raise)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -150,8 +151,7 @@ class TestRetrySyncBackoff:
 
 class TestRetrySyncLogging:
     def test_logs_warning_per_failure(self, caplog: pytest.LogCaptureFixture) -> None:
-        with patch(_SLEEP_PATCH), \
-             caplog.at_level(logging.WARNING, logger="miles.utils.ft.utils.retry"):
+        with patch(_SLEEP_PATCH), caplog.at_level(logging.WARNING, logger="miles.utils.ft.utils.retry"):
             retry_sync(
                 func=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
                 description="log_check",
@@ -162,8 +162,7 @@ class TestRetrySyncLogging:
         assert len(warnings) == 3
 
     def test_logs_error_on_exhaustion(self, caplog: pytest.LogCaptureFixture) -> None:
-        with patch(_SLEEP_PATCH), \
-             caplog.at_level(logging.ERROR, logger="miles.utils.ft.utils.retry"):
+        with patch(_SLEEP_PATCH), caplog.at_level(logging.ERROR, logger="miles.utils.ft.utils.retry"):
             retry_sync(
                 func=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
                 description="exhaust_check",
@@ -188,7 +187,10 @@ class TestRetryAsyncPerCallTimeout:
             return "never"
 
         result = await retry_async(
-            func=hang, description="hung", max_retries=1, per_call_timeout=0.01,
+            func=hang,
+            description="hung",
+            max_retries=1,
+            per_call_timeout=0.01,
         )
         assert result.ok is False
         assert result.exception is not None
@@ -205,8 +207,10 @@ class TestRetryAsyncPerCallTimeout:
             return "ok"
 
         result = await retry_async(
-            func=slow_then_fast, description="recover",
-            max_retries=2, per_call_timeout=0.01,
+            func=slow_then_fast,
+            description="recover",
+            max_retries=2,
+            per_call_timeout=0.01,
         )
         assert result.ok is True
         assert result.value == "ok"
@@ -239,7 +243,9 @@ class TestRetryAsyncOrRaiseHappyPath:
             return "recovered"
 
         result = await retry_async_or_raise(
-            func=flaky, description="flaky", max_retries=3,
+            func=flaky,
+            description="flaky",
+            max_retries=3,
         )
         assert result == "recovered"
         assert call_count == 3
@@ -265,7 +271,9 @@ class TestRetryAsyncOrRaiseFailure:
 
         with pytest.raises(ValueError, match="permanent"):
             await retry_async_or_raise(
-                func=always_fail, description="fail", max_retries=2,
+                func=always_fail,
+                description="fail",
+                max_retries=2,
             )
 
     @pytest.mark.anyio
@@ -281,7 +289,9 @@ class TestRetryAsyncOrRaiseFailure:
 
         with pytest.raises(TypeError, match="second"):
             await retry_async_or_raise(
-                func=varying_error, description="varying", max_retries=2,
+                func=varying_error,
+                description="varying",
+                max_retries=2,
             )
 
     @pytest.mark.anyio
@@ -291,8 +301,7 @@ class TestRetryAsyncOrRaiseFailure:
         async def fail() -> str:
             raise RuntimeError("once")
 
-        with patch(_ASYNC_SLEEP_PATCH, mock_sleep), \
-             pytest.raises(RuntimeError, match="once"):
+        with patch(_ASYNC_SLEEP_PATCH, mock_sleep), pytest.raises(RuntimeError, match="once"):
             await retry_async_or_raise(func=fail, description="single", max_retries=1)
 
         mock_sleep.assert_not_called()
@@ -307,11 +316,13 @@ class TestRetryAsyncOrRaiseBackoff:
         async def fail() -> str:
             raise RuntimeError("fail")
 
-        with patch(_ASYNC_SLEEP_PATCH, mock_sleep), \
-             pytest.raises(RuntimeError):
+        with patch(_ASYNC_SLEEP_PATCH, mock_sleep), pytest.raises(RuntimeError):
             await retry_async_or_raise(
-                func=fail, description="backoff",
-                max_retries=4, backoff_base=1.0, max_backoff=30.0,
+                func=fail,
+                description="backoff",
+                max_retries=4,
+                backoff_base=1.0,
+                max_backoff=30.0,
             )
 
         assert sleep_calls == [1.0, 2.0, 4.0]
@@ -324,11 +335,13 @@ class TestRetryAsyncOrRaiseBackoff:
         async def fail() -> str:
             raise RuntimeError("fail")
 
-        with patch(_ASYNC_SLEEP_PATCH, mock_sleep), \
-             pytest.raises(RuntimeError):
+        with patch(_ASYNC_SLEEP_PATCH, mock_sleep), pytest.raises(RuntimeError):
             await retry_async_or_raise(
-                func=fail, description="cap",
-                max_retries=6, backoff_base=2.0, max_backoff=10.0,
+                func=fail,
+                description="cap",
+                max_retries=6,
+                backoff_base=2.0,
+                max_backoff=10.0,
             )
 
         assert all(d <= 10.0 for d in sleep_calls)
@@ -362,8 +375,10 @@ class TestRetryAsyncOrRaisePerCallTimeout:
             return "ok"
 
         result = await retry_async_or_raise(
-            func=slow_then_fast, description="timeout_recover",
-            max_retries=2, per_call_timeout=0.01,
+            func=slow_then_fast,
+            description="timeout_recover",
+            max_retries=2,
+            per_call_timeout=0.01,
         )
         assert result == "ok"
         assert call_count == 2

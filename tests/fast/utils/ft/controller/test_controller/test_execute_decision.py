@@ -3,10 +3,6 @@ from __future__ import annotations
 import logging
 
 import pytest
-
-from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
-from miles.utils.ft.controller.main_state_machine.helpers import run_detectors
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     AlwaysMarkBadDetector,
@@ -16,6 +12,10 @@ from tests.fast.utils.ft.conftest import (
     make_detector_context,
     make_test_controller,
 )
+
+from miles.utils.ft.controller.main_state_machine import Recovering
+from miles.utils.ft.controller.main_state_machine.helpers import run_detectors
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
 
 async def _raise_runtime_error(*_args: object, **_kwargs: object) -> None:
@@ -157,11 +157,13 @@ class TestExecuteDecision:
 
     @pytest.mark.anyio
     async def test_notify_human_sends_notification(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.NOTIFY_HUMAN,
-            reason="test notify",
-            trigger=TriggerType.MISC,
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason="test notify",
+                trigger=TriggerType.MISC,
+            )
+        )
         harness = make_test_controller(detectors=[detector])
         await harness.controller._tick()
 
@@ -175,11 +177,13 @@ class TestExecuteDecision:
 
     @pytest.mark.anyio
     async def test_notify_human_without_notifier(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.NOTIFY_HUMAN,
-            reason="test notify no notifier",
-            trigger=TriggerType.MISC,
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason="test notify no notifier",
+                trigger=TriggerType.MISC,
+            )
+        )
         harness = make_test_controller(detectors=[detector], notifier=None)
         await harness.controller._tick()
         assert harness.controller._tick_count == 1
@@ -215,11 +219,15 @@ class TestExecuteDecision:
     @pytest.mark.anyio
     async def test_notify_human_notifier_exception_does_not_crash(self) -> None:
         harness = make_test_controller(
-            detectors=[FixedDecisionDetector(decision=Decision(
-                action=ActionType.NOTIFY_HUMAN,
-                reason="test with broken notifier",
-                trigger=TriggerType.MISC,
-            ))],
+            detectors=[
+                FixedDecisionDetector(
+                    decision=Decision(
+                        action=ActionType.NOTIFY_HUMAN,
+                        reason="test with broken notifier",
+                        trigger=TriggerType.MISC,
+                    )
+                )
+            ],
         )
         assert harness.notifier is not None
         harness.notifier.send = _raise_runtime_error
@@ -228,11 +236,13 @@ class TestExecuteDecision:
 
     @pytest.mark.anyio
     async def test_notify_human_sends_on_every_tick(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.NOTIFY_HUMAN,
-            reason="persistent fault",
-            trigger=TriggerType.MISC,
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason="persistent fault",
+                trigger=TriggerType.MISC,
+            )
+        )
         harness = make_test_controller(detectors=[detector])
 
         await harness.controller._tick()
@@ -262,7 +272,9 @@ class TestMarkBadAndRestartReal:
     async def test_new_run_isolates_mini_wandb_from_old_data(self) -> None:
         harness = make_test_controller(detectors=[AlwaysMarkBadDetector()])
         harness.mini_wandb.log_step(
-            run_id="dummy-run", step=1, metrics={"loss": 1.0},
+            run_id="dummy-run",
+            step=1,
+            metrics={"loss": 1.0},
         )
         assert harness.mini_wandb.latest(metric_name="loss") == 1.0
 

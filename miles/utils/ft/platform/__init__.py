@@ -8,6 +8,7 @@ Usage::
     from miles.utils.ft.platform import FtControllerConfig, build_ft_controller
     from miles.utils.ft.platform import FtControllerActor  # lazy, requires ray
 """
+
 from __future__ import annotations
 
 from miles.utils.ft.platform.config import FtControllerConfig
@@ -28,6 +29,7 @@ def __getattr__(name: str) -> object:
     if name in _LAZY_IMPORTS:
         module_path, attr = _LAZY_IMPORTS[name]
         import importlib
+
         mod = importlib.import_module(module_path)
         return getattr(mod, attr)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

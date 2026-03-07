@@ -1,4 +1,4 @@
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -21,7 +21,7 @@ class CounterSample(_MetricSampleBase):
 
 
 MetricSample = Annotated[
-    Union[GaugeSample, CounterSample],
+    GaugeSample | CounterSample,
     Field(discriminator="metric_type"),
 ]
 

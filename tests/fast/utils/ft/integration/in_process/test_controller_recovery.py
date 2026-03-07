@@ -3,23 +3,12 @@
 Each test drives the Controller through multiple ticks to verify
 complete decision → recovery → monitoring lifecycle.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
-import miles.utils.ft.models.metric_names as mn
-from miles.utils.ft.controller.main_state_machine import (
-    DetectingAnomaly,
-    Recovering,
-)
-from miles.utils.ft.controller.recovery.recovery_stepper import (
-    EvictingAndRestarting,
-)
-from miles.utils.ft.controller.recovery.restart_stepper import MonitoringProgress
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     FixedDecisionDetector,
@@ -27,6 +16,13 @@ from tests.fast.utils.ft.conftest import (
     make_test_controller,
     make_test_exporter,
 )
+
+import miles.utils.ft.models.metric_names as mn
+from miles.utils.ft.controller.main_state_machine import Recovering
+from miles.utils.ft.controller.recovery.recovery_stepper import EvictingAndRestarting
+from miles.utils.ft.controller.recovery.restart_stepper import MonitoringProgress
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.protocols.platform import JobStatus
 
 
 def _is_monitoring_progress(state: object) -> bool:
@@ -46,7 +42,8 @@ def _inject_iteration_data(harness: object, count: int = 10) -> None:
     active_run_id = harness.controller._rank_roster.run_id
     for i in range(1, count + 1):
         harness.mini_wandb.log_step(
-            run_id=active_run_id, step=i,
+            run_id=active_run_id,
+            step=i,
             metrics={"iteration": float(i)},
         )
 
@@ -59,12 +56,14 @@ def _inject_iteration_data(harness: object, count: int = 10) -> None:
 class TestGpuLostDirectEviction:
     @pytest.mark.anyio
     async def test_gpu_lost_marks_bad_and_restarts(self) -> None:
-        detector = FixedDecisionDetector(decision=Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-0"],
-            reason="GPU unavailable",
-            trigger=TriggerType.HARDWARE,
-        ))
+        detector = FixedDecisionDetector(
+            decision=Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-0"],
+                reason="GPU unavailable",
+                trigger=TriggerType.HARDWARE,
+            )
+        )
         harness = make_test_controller(
             detectors=[detector],
             status_sequence=[JobStatus.RUNNING],

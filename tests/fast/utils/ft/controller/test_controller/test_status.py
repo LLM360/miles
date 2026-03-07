@@ -5,23 +5,6 @@ import logging
 from datetime import datetime, timezone
 
 import pytest
-
-import miles.utils.ft.models.metric_names as mn
-from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
-from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, Recovering
-from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
-from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery.recovery_stepper import (
-    EvictingAndRestarting,
-    NotifyHumans,
-    RealtimeChecks,
-    RecoveryDone,
-    StopTimeDiagnostics,
-)
-from miles.utils.ft.controller.recovery.restart_stepper import Evicting
-from miles.utils.ft.models.recovery import ControllerMode
-from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     AlwaysEnterRecoveryDetector,
     FakeNodeManager,
@@ -33,17 +16,37 @@ from tests.fast.utils.ft.conftest import (
     run_controller_briefly,
 )
 
+import miles.utils.ft.models.metric_names as mn
+from miles.utils.ft.controller.controller import FtController
+from miles.utils.ft.controller.main_state_machine import Recovering
+from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.recovery.recovery_stepper import (
+    EvictingAndRestarting,
+    NotifyHumans,
+    RecoveryDone,
+    StopTimeDiagnostics,
+)
+from miles.utils.ft.controller.recovery.restart_stepper import Evicting
+from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.protocols.platform import JobStatus
+
 
 class TestTrainingJobStatusExporter:
-    @pytest.mark.parametrize("status_sequence,expected_value", [
-        ([JobStatus.RUNNING], 1.0),
-        ([JobStatus.FAILED], -1.0),
-        ([JobStatus.STOPPED], 0.0),
-        ([JobStatus.PENDING], 2.0),
-    ])
+    @pytest.mark.parametrize(
+        "status_sequence,expected_value",
+        [
+            ([JobStatus.RUNNING], 1.0),
+            ([JobStatus.FAILED], -1.0),
+            ([JobStatus.STOPPED], 0.0),
+            ([JobStatus.PENDING], 2.0),
+        ],
+    )
     @pytest.mark.asyncio
     async def test_status_maps_to_gauge_value(
-        self, status_sequence: list[JobStatus], expected_value: float,
+        self,
+        status_sequence: list[JobStatus],
+        expected_value: float,
     ) -> None:
         registry, exporter = make_test_exporter()
         harness = make_test_controller(
@@ -102,8 +105,11 @@ class TestGetStatus:
         harness = make_test_controller()
         harness.controller._activate_run("run-42")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-42", rank=0, world_size=1,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-42",
+            rank=0,
+            world_size=1,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         status = harness.controller.get_status()

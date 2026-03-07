@@ -177,7 +177,9 @@ class TestDiagnosticOrchestratorProtocol:
     def test_conforming_class_passes_isinstance(self) -> None:
         class _Conforming:
             async def run_diagnostic_pipeline(
-                self, trigger_reason: object, suspect_node_ids: list[str] | None = None,
+                self,
+                trigger_reason: object,
+                suspect_node_ids: list[str] | None = None,
             ) -> object:
                 return None
 

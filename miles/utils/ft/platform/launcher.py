@@ -37,35 +37,26 @@ def main(
         str, typer.Option(help="FT instance ID for multi-instance isolation (auto-generated if empty)")
     ] = "",
     k8s_label_prefix: Annotated[
-        str, typer.Option(help="K8s label prefix for label isolation (empty = no prefix)", envvar="MILES_FT_K8S_LABEL_PREFIX")
+        str,
+        typer.Option(
+            help="K8s label prefix for label isolation (empty = no prefix)", envvar="MILES_FT_K8S_LABEL_PREFIX"
+        ),
     ] = "",
-    tick_interval: Annotated[
-        float, typer.Option(help="Controller main loop interval (seconds)")
-    ] = 30.0,
-    platform: Annotated[
-        str, typer.Option(help="Platform mode: 'stub' or 'k8s-ray'")
-    ] = "k8s-ray",
-    ray_address: Annotated[
-        str, typer.Option(help="Ray dashboard address (k8s-ray mode)")
-    ] = "http://127.0.0.1:8265",
-    metric_store_backend: Annotated[
-        str, typer.Option(help="Metric store backend: 'mini' or 'prometheus'")
-    ] = "mini",
+    tick_interval: Annotated[float, typer.Option(help="Controller main loop interval (seconds)")] = 30.0,
+    platform: Annotated[str, typer.Option(help="Platform mode: 'stub' or 'k8s-ray'")] = "k8s-ray",
+    ray_address: Annotated[str, typer.Option(help="Ray dashboard address (k8s-ray mode)")] = "http://127.0.0.1:8265",
+    metric_store_backend: Annotated[str, typer.Option(help="Metric store backend: 'mini' or 'prometheus'")] = "mini",
     prometheus_url: Annotated[
         str, typer.Option(help="Prometheus server URL (prometheus mode)")
     ] = "http://prometheus:9090",
     controller_exporter_port: Annotated[
         int, typer.Option(help="Controller Prometheus exporter HTTP port (0 = auto)")
     ] = 0,
-    runtime_env_json: Annotated[
-        str, typer.Option(help="Runtime env JSON for the training Ray job")
-    ] = "{}",
+    runtime_env_json: Annotated[str, typer.Option(help="Runtime env JSON for the training Ray job")] = "{}",
     notify_webhook_url: Annotated[
         str, typer.Option(help="Webhook URL for notifications (empty = no webhook notifications)")
     ] = "",
-    notify_platform: Annotated[
-        str, typer.Option(help="Notification platform: 'lark', 'slack', or 'discord'")
-    ] = "",
+    notify_platform: Annotated[str, typer.Option(help="Notification platform: 'lark', 'slack', or 'discord'")] = "",
     detector_config_json: Annotated[
         str, typer.Option(help="Detector config JSON string or @filepath (default: all detectors with defaults)")
     ] = "",
@@ -85,11 +76,7 @@ def main(
 
     ft_id = ft_id or uuid4().hex[:8]
 
-    detector_config = (
-        _parse_detector_config(detector_config_json)
-        if detector_config_json
-        else DetectorChainConfig()
-    )
+    detector_config = _parse_detector_config(detector_config_json) if detector_config_json else DetectorChainConfig()
 
     config = FtControllerConfig(
         ft_id=ft_id,

@@ -11,7 +11,6 @@ from contextlib import contextmanager
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
 
@@ -23,9 +22,7 @@ def _registered_agent(
     mock_client = MagicMock()
     defaults: dict[str, Any] = {"rank": 0, "world_size": 4, "controller_client": mock_client}
     defaults.update(agent_kwargs)
-    with patch.dict(
-        "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
-    ):
+    with patch.dict("os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}):
         agent = FtTrainingRankAgent(**defaults)
         try:
             yield agent, mock_client
@@ -54,9 +51,7 @@ class TestFtTrainingRankAgentRegisterRank:
 
         mock_client.register_training_rank.side_effect = register_side_effect
 
-        with patch.dict(
-            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
-        ), patch("time.sleep"):
+        with patch.dict("os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}), patch("time.sleep"):
             agent = FtTrainingRankAgent(rank=0, world_size=4, controller_client=mock_client)
             try:
                 assert call_count == 3
@@ -68,9 +63,7 @@ class TestFtTrainingRankAgentRegisterRank:
         mock_client = MagicMock()
         mock_client.register_training_rank.side_effect = RuntimeError("always fails")
 
-        with patch.dict(
-            "os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}
-        ), patch("time.sleep"):
+        with patch.dict("os.environ", {"MILES_FT_TRAINING_RUN_ID": "test-run-1"}), patch("time.sleep"):
             agent = FtTrainingRankAgent(rank=2, world_size=4, controller_client=mock_client)
             try:
                 assert mock_client.register_training_rank.call_count == 3
@@ -121,9 +114,7 @@ class TestFtTrainingRankAgentFaultTolerance:
         assert agent is None
 
     def test_maybe_create_returns_none_on_init_error(self) -> None:
-        with patch.object(
-            FtTrainingRankAgent, "__init__", side_effect=RuntimeError("init failed")
-        ):
+        with patch.object(FtTrainingRankAgent, "__init__", side_effect=RuntimeError("init failed")):
             agent = FtTrainingRankAgent.maybe_create(rank=0, world_size=4)
             assert agent is None
 

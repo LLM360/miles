@@ -10,8 +10,8 @@ from tests.fast.utils.ft.helpers import (
 
 from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
 from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
-from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT, TRAINING_PHASE
 from miles.utils.ft.models.fault import ActionType
+from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT, TRAINING_PHASE
 from miles.utils.ft.models.metrics import GaugeSample
 from miles.utils.ft.protocols.platform import JobStatus
 
@@ -84,10 +84,12 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_heartbeat(store, value=100.0, timestamp=now - timedelta(minutes=5))
         _inject_heartbeat(store, value=100.0, timestamp=now - timedelta(minutes=1))
-        detector = HangDetector(config=HangDetectorConfig(
-            training_timeout_minutes=10,
-            checkpoint_saving_timeout_minutes=30,
-        ))
+        detector = HangDetector(
+            config=HangDetectorConfig(
+                training_timeout_minutes=10,
+                checkpoint_saving_timeout_minutes=30,
+            )
+        )
         ctx = make_detector_context(
             metric_store=store,
             mini_wandb=make_fake_mini_wandb(),
@@ -108,10 +110,12 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_heartbeat(store, value=100.0, timestamp=now - timedelta(minutes=20))
         _inject_heartbeat(store, value=101.0, timestamp=now - timedelta(minutes=15))
-        detector = HangDetector(config=HangDetectorConfig(
-            training_timeout_minutes=10,
-            checkpoint_saving_timeout_minutes=30,
-        ))
+        detector = HangDetector(
+            config=HangDetectorConfig(
+                training_timeout_minutes=10,
+                checkpoint_saving_timeout_minutes=30,
+            )
+        )
         ctx = make_detector_context(
             metric_store=store,
             mini_wandb=make_fake_mini_wandb(),
@@ -130,10 +134,12 @@ class TestHangDetector:
         now = datetime.now(timezone.utc)
         _inject_heartbeat(store, value=100.0, timestamp=now - timedelta(minutes=25))
         _inject_heartbeat(store, value=100.0, timestamp=now - timedelta(minutes=10))
-        detector = HangDetector(config=HangDetectorConfig(
-            training_timeout_minutes=10,
-            checkpoint_saving_timeout_minutes=30,
-        ))
+        detector = HangDetector(
+            config=HangDetectorConfig(
+                training_timeout_minutes=10,
+                checkpoint_saving_timeout_minutes=30,
+            )
+        )
         ctx = make_detector_context(
             metric_store=store,
             mini_wandb=make_fake_mini_wandb(),
@@ -177,12 +183,15 @@ class TestHangDetector:
 
 
 class TestHangDetectorValidation:
-    @pytest.mark.parametrize("kwargs,match", [
-        (dict(training_timeout_minutes=0), "must be >= 1"),
-        (dict(training_timeout_minutes=-5), "must be >= 1"),
-        (dict(checkpoint_saving_timeout_minutes=0), "must be >= 1"),
-        (dict(checkpoint_saving_timeout_minutes=-10), "must be >= 1"),
-    ])
+    @pytest.mark.parametrize(
+        "kwargs,match",
+        [
+            (dict(training_timeout_minutes=0), "must be >= 1"),
+            (dict(training_timeout_minutes=-5), "must be >= 1"),
+            (dict(checkpoint_saving_timeout_minutes=0), "must be >= 1"),
+            (dict(checkpoint_saving_timeout_minutes=-10), "must be >= 1"),
+        ],
+    )
     def test_invalid_parameter_rejected(self, kwargs: dict, match: str) -> None:
         with pytest.raises(ValueError, match=match):
             HangDetectorConfig(**kwargs)

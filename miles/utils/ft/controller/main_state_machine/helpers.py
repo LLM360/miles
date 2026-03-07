@@ -94,13 +94,16 @@ def run_detectors(detectors: list[BaseFaultDetector], ctx: DetectorContext) -> D
 
 
 def collect_critical_bad_nodes(
-    detectors: list[BaseFaultDetector], tick_detector_context: DetectorContext | None,
+    detectors: list[BaseFaultDetector],
+    tick_detector_context: DetectorContext | None,
 ) -> set[str]:
     if tick_detector_context is None:
         return set()
     bad_nodes: set[str] = set()
     for decision in _run_detectors_raw(
-        detectors=detectors, ctx=tick_detector_context, critical_only=True,
+        detectors=detectors,
+        ctx=tick_detector_context,
+        critical_only=True,
     ):
         if decision.action == ActionType.ENTER_RECOVERY and decision.bad_node_ids:
             bad_nodes.update(decision.bad_node_ids)

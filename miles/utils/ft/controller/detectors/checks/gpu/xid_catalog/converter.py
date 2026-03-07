@@ -26,35 +26,37 @@ import typer
 # sets. This makes it easy to audit: if NVIDIA adds a new bucket in a future
 # xlsx release, the validation in _audit_buckets will fail loudly, forcing a
 # human to classify it.
-NON_AUTO_RECOVERABLE_BUCKETS: frozenset[str] = frozenset({
-    "CONTACT_SUPPORT",
-    "RESET_GPU",
-    "RESTART_BM",
-    "UPDATE_SWFW",
-    "WORKFLOW_XID_48",
-    "WORKFLOW_NVLINK_ERR",
-    "WORKFLOW_NVLINK5_ERR",
-})
+NON_AUTO_RECOVERABLE_BUCKETS: frozenset[str] = frozenset(
+    {
+        "CONTACT_SUPPORT",
+        "RESET_GPU",
+        "RESTART_BM",
+        "UPDATE_SWFW",
+        "WORKFLOW_XID_48",
+        "WORKFLOW_NVLINK_ERR",
+        "WORKFLOW_NVLINK5_ERR",
+    }
+)
 
-AUTO_RECOVERABLE_BUCKETS: frozenset[str | None] = frozenset({
-    "CHECK_MECHANICALS",
-    "CHECK_UVM",
-    "IGNORE",
-    "RESTART_APP",
-    "RESTART_VM",
-    "WORKFLOW_XID_45",
-    "XID_154",
-    None,  # Not yet classified in the xlsx — review manually when regenerating
-})
+AUTO_RECOVERABLE_BUCKETS: frozenset[str | None] = frozenset(
+    {
+        "CHECK_MECHANICALS",
+        "CHECK_UVM",
+        "IGNORE",
+        "RESTART_APP",
+        "RESTART_VM",
+        "WORKFLOW_XID_45",
+        "XID_154",
+        None,  # Not yet classified in the xlsx — review manually when regenerating
+    }
+)
 
 _REQUIRED_COLUMNS: frozenset[str] = frozenset({"code", "mnemonic", "bucket"})
 
 
 def main(
     xlsx_path: Annotated[Path, typer.Argument(help="Path to Xid-Catalog.xlsx")],
-    output_dir: Annotated[
-        Path, typer.Option(help="Output directory for info.py")
-    ] = Path(__file__).resolve().parent,
+    output_dir: Annotated[Path, typer.Option(help="Output directory for info.py")] = Path(__file__).resolve().parent,
 ) -> None:
     if not xlsx_path.exists():
         raise typer.BadParameter(f"File not found: {xlsx_path}")
@@ -90,9 +92,7 @@ def _read_xids_sheet(xlsx_path: Path) -> pl.DataFrame:
     try:
         df = pl.read_excel(xlsx_path, sheet_name="Xids")
     except Exception as exc:
-        raise typer.BadParameter(
-            f"Failed to read sheet 'Xids' from {xlsx_path}: {exc}"
-        ) from exc
+        raise typer.BadParameter(f"Failed to read sheet 'Xids' from {xlsx_path}: {exc}") from exc
 
     col_map: dict[str, str] = {}
     for col in df.columns:
@@ -106,10 +106,7 @@ def _read_xids_sheet(xlsx_path: Path) -> pl.DataFrame:
 
     missing = _REQUIRED_COLUMNS - set(col_map.values())
     if missing:
-        raise ValueError(
-            f"Could not map xlsx columns to: {missing}. "
-            f"Available columns: {df.columns}"
-        )
+        raise ValueError(f"Could not map xlsx columns to: {missing}. " f"Available columns: {df.columns}")
 
     df = df.rename(col_map).select("code", "mnemonic", "bucket")
 

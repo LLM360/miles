@@ -72,22 +72,14 @@ def check_nic_down_in_window(
     # Detect up→down transitions per (node_id, device).
     # A transition = previous sample was up (>0) and current sample is down (==0).
     # This counts flap events, NOT the number of samples where value==0.
-    transitions = (
-        df.with_columns(
-            prev_value=pl.col("value").shift(1).over("node_id", "device")
-        )
-        .filter(
-            (pl.col("prev_value") > 0) & (pl.col("value") == 0.0)
-        )
+    transitions = df.with_columns(prev_value=pl.col("value").shift(1).over("node_id", "device")).filter(
+        (pl.col("prev_value") > 0) & (pl.col("value") == 0.0)
     )
 
     if transitions.is_empty():
         return []
 
-    node_counts = (
-        transitions.group_by("node_id")
-        .agg(count=pl.len())
-    )
+    node_counts = transitions.group_by("node_id").agg(count=pl.len())
 
     return [
         NodeFault(

@@ -16,7 +16,6 @@ import subprocess
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator
-from http.server import HTTPServer
 from pathlib import Path
 
 import httpx
@@ -32,8 +31,7 @@ logger = logging.getLogger(__name__)
 _PROMETHEUS_VERSION = "3.5.0"
 _PROMETHEUS_TARBALL = f"prometheus-{_PROMETHEUS_VERSION}.linux-amd64.tar.gz"
 _PROMETHEUS_URL = (
-    f"https://github.com/prometheus/prometheus/releases/download/"
-    f"v{_PROMETHEUS_VERSION}/{_PROMETHEUS_TARBALL}"
+    f"https://github.com/prometheus/prometheus/releases/download/" f"v{_PROMETHEUS_VERSION}/{_PROMETHEUS_TARBALL}"
 )
 _BINARY_DIR = Path("/tmp/prometheus_test_binary")
 _BINARY_PATH = _BINARY_DIR / "prometheus"

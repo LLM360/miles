@@ -3,6 +3,7 @@
 Encapsulates ray.get_actor() lookup and .remote() calls so that agent
 code never touches Ray directly.
 """
+
 from __future__ import annotations
 
 import logging
@@ -10,7 +11,7 @@ from typing import Any
 
 import ray
 
-from miles.utils.ft.protocols.platform import REGISTER_TIMEOUT_SECONDS, ControllerClientProtocol, ft_controller_actor_name
+from miles.utils.ft.protocols.platform import REGISTER_TIMEOUT_SECONDS, ft_controller_actor_name
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,10 @@ class RayControllerClient:
         )
 
     def log_step(
-        self, run_id: str, step: int, metrics: dict[str, float],
+        self,
+        run_id: str,
+        step: int,
+        metrics: dict[str, float],
     ) -> None:
         controller = self._get_handle()
         if controller is None:
@@ -74,4 +78,3 @@ class RayControllerClient:
             step=step,
             metrics=metrics,
         )
-

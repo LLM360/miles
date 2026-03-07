@@ -9,16 +9,8 @@ from miles.utils.ft.controller.main_state_machine.helpers import (
     get_known_bad_nodes,
     notify_too_many_bad_nodes,
 )
-from miles.utils.ft.controller.main_state_machine.states import (
-    DetectingAnomaly,
-    MainState,
-    Recovering,
-)
-from miles.utils.ft.controller.recovery.recovery_stepper.states import (
-    NotifyHumans,
-    RealtimeChecks,
-    RecoveryDone,
-)
+from miles.utils.ft.controller.main_state_machine.states import DetectingAnomaly, MainState, Recovering
+from miles.utils.ft.controller.recovery.recovery_stepper.states import NotifyHumans, RealtimeChecks, RecoveryDone
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +23,14 @@ class RecoveringHandler:
         return await self._advance_recovery(state=state, ctx=ctx)
 
     async def _check_new_bad_nodes(
-        self, *, state: Recovering, ctx: MainContext,
+        self,
+        *,
+        state: Recovering,
+        ctx: MainContext,
     ) -> MainState | None:
         new_bad_nodes = collect_critical_bad_nodes(
-            detectors=ctx.detectors, tick_detector_context=ctx.detector_context,
+            detectors=ctx.detectors,
+            tick_detector_context=ctx.detector_context,
         )
         if len(new_bad_nodes) >= ctx.max_simultaneous_bad_nodes:
             await notify_too_many_bad_nodes(
@@ -58,11 +54,15 @@ class RecoveringHandler:
         return None
 
     async def _advance_recovery(
-        self, *, state: Recovering, ctx: MainContext,
+        self,
+        *,
+        state: Recovering,
+        ctx: MainContext,
     ) -> MainState | None:
         try:
             recovery_ctx = ctx.recovery_context_factory(
-                state.trigger, state.recovery_start_time,
+                state.trigger,
+                state.recovery_start_time,
             )
             new_recovery = await ctx.recovery_stepper(state.recovery, recovery_ctx)
         except Exception:

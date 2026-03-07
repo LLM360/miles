@@ -15,8 +15,7 @@ class TestNanLossDetector:
 
         assert decision.action == ActionType.NONE
 
-    @pytest.mark.parametrize("bad_loss", [float("nan"), float("inf"), float("-inf")],
-                             ids=["nan", "inf", "neg_inf"])
+    @pytest.mark.parametrize("bad_loss", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "neg_inf"])
     def test_non_finite_loss_triggers_recovery(self, bad_loss: float) -> None:
         wandb = make_fake_mini_wandb(steps={1: {"loss": bad_loss}})
         detector = NanLossDetector()

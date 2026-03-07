@@ -1,15 +1,16 @@
 """Tests for MetricCollectionLoop — start/stop lifecycle and collector error isolation."""
+
 from __future__ import annotations
 
 import asyncio
 from unittest.mock import MagicMock
 
 import pytest
+from tests.fast.utils.ft.helpers import FailingCloseCollector, FailingCollector
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.utils.metric_collection_loop import MetricCollectionLoop
-from miles.utils.ft.models.metrics import CollectorOutput, GaugeSample
-from tests.fast.utils.ft.helpers import FailingCloseCollector, FailingCollector
+from miles.utils.ft.models.metrics import GaugeSample
 
 
 class _PassCollector(BaseCollector):
@@ -108,7 +109,9 @@ class TestStop:
         normal = _PassCollector()
         exporter = _make_exporter()
         loop = MetricCollectionLoop(
-            node_id="n0", collectors=[failing, normal], exporter=exporter,
+            node_id="n0",
+            collectors=[failing, normal],
+            exporter=exporter,
         )
 
         await loop.start()

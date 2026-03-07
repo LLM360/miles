@@ -7,10 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from miles.utils.ft.agents.collectors.kernel_log_reader import (
-    DmesgSubprocessReader,
-    KmsgFileReader,
-)
+from miles.utils.ft.agents.collectors.kernel_log_reader import DmesgSubprocessReader, KmsgFileReader
 
 
 class TestKmsgFileReader:
@@ -93,6 +90,7 @@ class TestDmesgSubprocessReader:
         reader = DmesgSubprocessReader()
 
         import subprocess
+
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="dmesg", timeout=5)):
             lines = reader.read_new_lines()
 
@@ -110,7 +108,8 @@ class TestDmesgSubprocessReader:
         assert lines == []
 
     def test_nonzero_returncode_logs_warning_with_stderr(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         reader = DmesgSubprocessReader()
         mock_result = MagicMock()

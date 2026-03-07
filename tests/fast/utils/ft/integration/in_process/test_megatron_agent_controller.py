@@ -10,10 +10,9 @@ not by FtMegatronAgent.step().
 
 import httpx
 import pytest
+from tests.fast.utils.ft.conftest import make_test_controller
 
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-
-from tests.fast.utils.ft.conftest import make_test_controller
 
 
 def _make_agent(rank: int = 0, world_size: int = 4) -> FtTrainingRankAgent:
@@ -28,13 +27,17 @@ class TestStepToLogStepFlow:
 
         harness.controller._activate_run(run_id)
         harness.controller.rank_roster.register_training_rank(
-            run_id=run_id, rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://localhost:9999",
+            run_id=run_id,
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://localhost:9999",
             pid=1,
         )
 
         harness.mini_wandb.log_step(
-            run_id=run_id, step=5,
+            run_id=run_id,
+            step=5,
             metrics={"loss": 2.5, "grad_norm": 1.1},
         )
 
@@ -50,13 +53,19 @@ class TestRegisterRankPlacement:
 
         harness.controller._activate_run(run_id)
         harness.controller.rank_roster.register_training_rank(
-            run_id=run_id, rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id=run_id,
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         harness.controller.rank_roster.register_training_rank(
-            run_id=run_id, rank=1, world_size=4,
-            node_id="node-1", exporter_address="http://node-1:9090",
+            run_id=run_id,
+            rank=1,
+            world_size=4,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
             pid=1,
         )
 
@@ -74,8 +83,11 @@ class TestScrapeTargetRegistration:
 
             harness.controller._activate_run(run_id)
             harness.controller.rank_roster.register_training_rank(
-                run_id=run_id, rank=0, world_size=4,
-                node_id="node-0", exporter_address=exporter_address,
+                run_id=run_id,
+                rank=0,
+                world_size=4,
+                node_id="node-0",
+                exporter_address=exporter_address,
                 pid=1,
             )
 
@@ -95,8 +107,11 @@ class TestHeartbeatScrape:
 
             harness.controller._activate_run(run_id)
             harness.controller.rank_roster.register_training_rank(
-                run_id=run_id, rank=0, world_size=4,
-                node_id="node-0", exporter_address=exporter_address,
+                run_id=run_id,
+                rank=0,
+                world_size=4,
+                node_id="node-0",
+                exporter_address=exporter_address,
                 pid=1,
             )
 
@@ -122,20 +137,27 @@ class TestRunIdClear:
 
         harness.controller._activate_run(run_id_1)
         harness.controller.rank_roster.register_training_rank(
-            run_id=run_id_1, rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://localhost:9999",
+            run_id=run_id_1,
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://localhost:9999",
             pid=1,
         )
         harness.mini_wandb.log_step(
-            run_id=run_id_1, step=10,
+            run_id=run_id_1,
+            step=10,
             metrics={"loss": 2.0},
         )
         assert harness.mini_wandb.latest(metric_name="loss") == 2.0
 
         harness.controller._activate_run(run_id_2)
         harness.controller.rank_roster.register_training_rank(
-            run_id=run_id_2, rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://localhost:9999",
+            run_id=run_id_2,
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://localhost:9999",
             pid=1,
         )
 
@@ -173,6 +195,6 @@ class TestPhaseSwitch:
             async with httpx.AsyncClient() as client:
                 response = await client.get(f"{address}/metrics")
             text = response.text
-            assert 'miles_ft_training_phase{node_id=' in text
+            assert "miles_ft_training_phase{node_id=" in text
         finally:
             agent.shutdown()

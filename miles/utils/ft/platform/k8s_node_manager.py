@@ -48,7 +48,9 @@ class K8sNodeManager(NodeManagerProtocol):
         )
         logger.info(
             "mark_node_bad node_id=%s reason=%s elapsed_seconds=%.3f",
-            node_id, reason, elapsed,
+            node_id,
+            reason,
+            elapsed,
         )
 
     async def unmark_node_bad(self, node_id: str) -> None:
@@ -58,7 +60,8 @@ class K8sNodeManager(NodeManagerProtocol):
         )
         logger.info(
             "unmark_node_bad node_id=%s elapsed_seconds=%.3f",
-            node_id, elapsed,
+            node_id,
+            elapsed,
         )
 
     async def aclose(self) -> None:
@@ -83,7 +86,8 @@ class K8sNodeManager(NodeManagerProtocol):
         names = [node.metadata.name for node in node_list.items]
         logger.info(
             "get_bad_nodes count=%d elapsed_seconds=%.3f",
-            len(names), elapsed,
+            len(names),
+            elapsed,
         )
         return names
 

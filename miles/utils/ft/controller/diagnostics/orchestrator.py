@@ -5,15 +5,9 @@ import logging
 from collections.abc import Callable
 
 from miles.utils.ft.agents.diagnostics.gpu_diagnostic import GpuDiagnostic
-from miles.utils.ft.agents.diagnostics.nccl.inter_machine import (
-    InterMachineCommDiagnostic,
-)
-from miles.utils.ft.controller.diagnostics.nccl.orchestrator import (
-    InterMachineOrchestrator,
-)
-from miles.utils.ft.controller.diagnostics.stack_trace import (
-    collect_stack_trace_suspects,
-)
+from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
+from miles.utils.ft.controller.diagnostics.nccl.orchestrator import InterMachineOrchestrator
+from miles.utils.ft.controller.diagnostics.stack_trace import collect_stack_trace_suspects
 from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
 from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.models.fault import TriggerType
@@ -59,7 +53,9 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
     ) -> DiagnosticPipelineResult:
         logger.info(
             "diagnostic_pipeline_start trigger=%s suspect_nodes=%s pipeline=%s",
-            trigger_reason, suspect_node_ids, self._pipeline,
+            trigger_reason,
+            suspect_node_ids,
+            self._pipeline,
         )
 
         try:
@@ -74,7 +70,8 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         except asyncio.TimeoutError:
             logger.warning(
                 "diagnostic_pipeline_timeout timeout=%d trigger=%s",
-                self._pipeline_timeout_seconds, trigger_reason,
+                self._pipeline_timeout_seconds,
+                trigger_reason,
             )
             return DiagnosticPipelineResult(
                 bad_node_ids=[],
@@ -109,8 +106,7 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         if suspect_node_ids is not None:
             suspect_set = set(suspect_node_ids)
             remaining_agents: dict[str, NodeAgentProtocol] = {
-                nid: agent for nid, agent in self._agents.items()
-                if nid in suspect_set
+                nid: agent for nid, agent in self._agents.items() if nid in suspect_set
             }
         else:
             remaining_agents: dict[str, NodeAgentProtocol] = dict(self._agents)
@@ -120,13 +116,15 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
                 break
 
             bad_node_ids, remaining_agents = await self._run_pipeline_step(
-                diagnostic_type, remaining_agents,
+                diagnostic_type,
+                remaining_agents,
             )
 
             if bad_node_ids:
                 logger.info(
                     "diagnostic_step_found_bad step=%s bad_nodes=%s",
-                    diagnostic_type, bad_node_ids,
+                    diagnostic_type,
+                    bad_node_ids,
                 )
                 return DiagnosticPipelineResult(
                     bad_node_ids=sorted(bad_node_ids),
@@ -178,18 +176,21 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         node_ids = list(agents.keys())
         logger.info(
             "diagnostic_step_start type=%s nodes=%s",
-            diagnostic_type, node_ids,
+            diagnostic_type,
+            node_ids,
         )
 
-        raw_results = await asyncio.gather(*(
-            self._call_agent_diagnostic(
-                agent=agents[node_id],
-                node_id=node_id,
-                diagnostic_type=diagnostic_type,
-                timeout_seconds=timeout_seconds,
+        raw_results = await asyncio.gather(
+            *(
+                self._call_agent_diagnostic(
+                    agent=agents[node_id],
+                    node_id=node_id,
+                    diagnostic_type=diagnostic_type,
+                    timeout_seconds=timeout_seconds,
+                )
+                for node_id in node_ids
             )
-            for node_id in node_ids
-        ))
+        )
         return dict(zip(node_ids, raw_results))
 
     @staticmethod
@@ -207,7 +208,9 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
                 bad_node_ids.append(node_id)
                 logger.info(
                     "diagnostic_node_failed type=%s node=%s details=%s",
-                    diagnostic_type, node_id, result.details,
+                    diagnostic_type,
+                    node_id,
+                    result.details,
                 )
         return bad_node_ids, remaining
 
@@ -227,7 +230,9 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
             timeout_seconds=timeout_seconds,
         )
         return self._partition_results(
-            results=results, agents=agents, diagnostic_type=diagnostic_type,
+            results=results,
+            agents=agents,
+            diagnostic_type=diagnostic_type,
         )
 
     # ------------------------------------------------------------------
@@ -251,20 +256,16 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         )
 
         bad_node_ids, remaining = self._partition_results(
-            results=results, agents=remaining_agents,
+            results=results,
+            agents=remaining_agents,
             diagnostic_type=GpuDiagnostic.diagnostic_type,
         )
 
-        passed_results = {
-            nid: results[nid] for nid in remaining
-        }
+        passed_results = {nid: results[nid] for nid in remaining}
         hash_outliers = self._find_gpu_hash_outlier_nodes(passed_results)
         if hash_outliers:
             bad_node_ids.extend(hash_outliers)
-            remaining = {
-                nid: agent for nid, agent in remaining.items()
-                if nid not in set(hash_outliers)
-            }
+            remaining = {nid: agent for nid, agent in remaining.items() if nid not in set(hash_outliers)}
 
         return bad_node_ids, remaining
 
@@ -320,10 +321,13 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
             for h, nodes in hash_to_nodes.items():
                 if h != majority_hash:
                     logger.info(
-                        "gpu_hash_outlier gpu_idx=%s nodes=%s "
-                        "outlier_hash=%s majority_hash=%s (%d/%d nodes agree)",
-                        gpu_idx, nodes, h[:12], majority_hash[:12],
-                        majority_count, total,
+                        "gpu_hash_outlier gpu_idx=%s nodes=%s " "outlier_hash=%s majority_hash=%s (%d/%d nodes agree)",
+                        gpu_idx,
+                        nodes,
+                        h[:12],
+                        majority_hash[:12],
+                        majority_count,
+                        total,
                     )
                     outlier_nodes.update(nodes)
 
@@ -345,7 +349,8 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         try:
             return await asyncio.wait_for(
                 agent.run_diagnostic(
-                    diagnostic_type, timeout_seconds=timeout_seconds,
+                    diagnostic_type,
+                    timeout_seconds=timeout_seconds,
                 ),
                 timeout=timeout_seconds + self._RPC_TIMEOUT_BUFFER_SECONDS,
             )
@@ -353,10 +358,13 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
         except asyncio.TimeoutError:
             logger.warning(
                 "diagnostic_agent_rpc_timeout node=%s type=%s timeout=%d",
-                node_id, diagnostic_type, timeout_seconds,
+                node_id,
+                diagnostic_type,
+                timeout_seconds,
             )
             return DiagnosticResult.fail_result(
-                diagnostic_type=diagnostic_type, node_id=node_id,
+                diagnostic_type=diagnostic_type,
+                node_id=node_id,
                 details=f"agent RPC timed out after {timeout_seconds + self._RPC_TIMEOUT_BUFFER_SECONDS}s",
             )
 
@@ -364,21 +372,25 @@ class DiagnosticOrchestrator(DiagnosticOrchestratorProtocol):
             logger.error(
                 "diagnostic_type_not_registered node=%s type=%s — "
                 "this is a pipeline configuration error, treating as fail",
-                node_id, diagnostic_type,
+                node_id,
+                diagnostic_type,
                 exc_info=True,
             )
             return DiagnosticResult.fail_result(
-                diagnostic_type=diagnostic_type, node_id=node_id,
+                diagnostic_type=diagnostic_type,
+                node_id=node_id,
                 details=f"config error: diagnostic type '{diagnostic_type}' not registered on node",
             )
 
         except Exception:
             logger.warning(
                 "diagnostic_agent_call_failed node=%s type=%s",
-                node_id, diagnostic_type,
+                node_id,
+                diagnostic_type,
                 exc_info=True,
             )
             return DiagnosticResult.fail_result(
-                diagnostic_type=diagnostic_type, node_id=node_id,
+                diagnostic_type=diagnostic_type,
+                node_id=node_id,
                 details="agent call raised exception",
             )

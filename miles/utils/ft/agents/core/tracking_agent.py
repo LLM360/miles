@@ -49,6 +49,4 @@ class FtTrackingAgent:
             return
         if self._exception_inject_path.exists():
             self._exception_inject_path.unlink(missing_ok=True)
-            raise FaultInjectionError(
-                f"Fault injection triggered via {self._exception_inject_path}"
-            )
+            raise FaultInjectionError(f"Fault injection triggered via {self._exception_inject_path}")

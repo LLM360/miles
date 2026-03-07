@@ -1,4 +1,5 @@
 """Semi-E2E: status — consistency, run_id switch, metric scrape, no false positive, monotonicity."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,32 +8,29 @@ from collections.abc import Callable
 from typing import Any
 
 import ray
-
-from miles.utils.ft.controller.detectors.chain import build_detector_chain
-from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.models.metric_names import GPU_AVAILABLE
-from miles.utils.ft.models.metrics import GaugeSample
-from miles.utils.ft.models.recovery import ControllerMode
-
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
+    _FAST_SCRAPE,
     E2EEnv,
     NodeSpec,
-    _FAST_SCRAPE,
     _FastHangDetector,
 )
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     get_status,
     scenario_no_false_positive,
-    wait_for_mode,
     wait_for_mode_transition,
-    wait_for_recovery_complete,
     wait_for_training_stable,
 )
+
+from miles.utils.ft.controller.detectors.chain import build_detector_chain
+from miles.utils.ft.models.metric_names import GPU_AVAILABLE
+from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.models.recovery import ControllerMode
 
 
 class TestStatusConsistency:
     async def test_status_snapshots_internally_consistent(
-        self, e2e_env: E2EEnv,
+        self,
+        e2e_env: E2EEnv,
     ) -> None:
         """High-frequency polling during recovery → every snapshot is internally consistent."""
         env = e2e_env
@@ -65,7 +63,8 @@ class TestStatusConsistency:
 
 class TestRunIdSwitch:
     async def test_new_run_id_reregistration_and_metric_isolation(
-        self, e2e_env: E2EEnv,
+        self,
+        e2e_env: E2EEnv,
     ) -> None:
         """After recovery, worker re-registers with new run_id and metrics use new run."""
         env = e2e_env
@@ -92,7 +91,8 @@ class TestRunIdSwitch:
 
 class TestMetricScrapeE2E:
     async def test_prometheus_exporter_to_metric_store_pipeline(
-        self, e2e_full_detector_env: E2EEnv,
+        self,
+        e2e_full_detector_env: E2EEnv,
     ) -> None:
         """Worker pushes iteration → controller scrapes → status.latest_iteration tracks it."""
         env = e2e_full_detector_env
@@ -143,7 +143,8 @@ class TestNoFalsePositive:
 
 class TestStaleMetrics:
     async def test_log_step_with_stale_run_id_discarded(
-        self, e2e_env: E2EEnv,
+        self,
+        e2e_env: E2EEnv,
     ) -> None:
         """log_step with old run_id after recovery does not pollute iteration counter."""
         env = e2e_env
@@ -160,10 +161,14 @@ class TestStaleMetrics:
         assert new_run_id != old_run_id
 
         # Step 2: inject a stale log_step with the old run_id
-        ray.get(env.controller.log_step.remote(
-            run_id=old_run_id, step=999999,
-            metrics={"iteration": 999999.0},
-        ), timeout=5)
+        ray.get(
+            env.controller.log_step.remote(
+                run_id=old_run_id,
+                step=999999,
+                metrics={"iteration": 999999.0},
+            ),
+            timeout=5,
+        )
 
         # Step 3: verify iteration is not polluted
         await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
@@ -174,7 +179,8 @@ class TestStaleMetrics:
 
 class TestRecoveryPhaseMonotonicity:
     async def test_recovery_phase_order_monotonic_during_polling(
-        self, e2e_env: E2EEnv,
+        self,
+        e2e_env: E2EEnv,
     ) -> None:
         """High-frequency polling during recovery: mode transitions are orderly."""
         env = e2e_env
@@ -201,9 +207,7 @@ class TestRecoveryPhaseMonotonicity:
         for s in snapshots:
             if s.mode == ControllerMode.RECOVERY:
                 saw_recovery = True
-                assert not saw_monitoring_after_recovery, (
-                    "Mode went back to RECOVERY after returning to MONITORING"
-                )
+                assert not saw_monitoring_after_recovery, "Mode went back to RECOVERY after returning to MONITORING"
             elif s.mode == ControllerMode.MONITORING and saw_recovery:
                 saw_monitoring_after_recovery = True
 
@@ -213,7 +217,8 @@ class TestRecoveryPhaseMonotonicity:
 
 class TestBadNodesDuringEviction:
     async def test_status_reports_bad_nodes_during_eviction(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """During eviction, status.bad_nodes includes the faulted node; cleared after recovery."""
         env = make_e2e_env(
@@ -229,13 +234,16 @@ class TestBadNodesDuringEviction:
         await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
 
         # Step 1: inject GPU fault on node-0
-        env.set_collector_metrics("e2ebn-node-0", [
-            GaugeSample(
-                name=GPU_AVAILABLE,
-                labels={"node_id": "e2ebn-node-0", "gpu": "0"},
-                value=0.0,
-            ),
-        ])
+        env.set_collector_metrics(
+            "e2ebn-node-0",
+            [
+                GaugeSample(
+                    name=GPU_AVAILABLE,
+                    labels={"node_id": "e2ebn-node-0", "gpu": "0"},
+                    value=0.0,
+                ),
+            ],
+        )
 
         # Step 2: poll status during recovery for bad_nodes
         saw_bad_nodes = False
@@ -258,7 +266,8 @@ class TestBadNodesDuringEviction:
 
 class TestStaleCombined:
     async def test_stale_register_and_stale_log_step_together_are_ignored(
-        self, e2e_env: E2EEnv,
+        self,
+        e2e_env: E2EEnv,
     ) -> None:
         """Concurrent stale register_training_rank + stale log_step do not pollute new run."""
         env = e2e_env
@@ -275,19 +284,25 @@ class TestStaleCombined:
         assert new_run_id != old_run_id
 
         # Step 2: send stale register + stale log_step with old run_id
-        ray.get(env.controller.register_training_rank.remote(
-            run_id=old_run_id,
-            rank=99,
-            world_size=100,
-            node_id="stale-node",
-            exporter_address="http://stale:9090",
-            pid=99999,
-        ), timeout=5)
-        ray.get(env.controller.log_step.remote(
-            run_id=old_run_id,
-            step=999999,
-            metrics={"iteration": 999999.0},
-        ), timeout=5)
+        ray.get(
+            env.controller.register_training_rank.remote(
+                run_id=old_run_id,
+                rank=99,
+                world_size=100,
+                node_id="stale-node",
+                exporter_address="http://stale:9090",
+                pid=99999,
+            ),
+            timeout=5,
+        )
+        ray.get(
+            env.controller.log_step.remote(
+                run_id=old_run_id,
+                step=999999,
+                metrics={"iteration": 999999.0},
+            ),
+            timeout=5,
+        )
 
         # Step 3: verify new run is not polluted
         await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)

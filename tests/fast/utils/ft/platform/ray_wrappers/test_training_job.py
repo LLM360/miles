@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from miles.utils.ft.protocols.platform import JobStatus
 from miles.utils.ft.platform.ray_wrappers.node_discovery import resolve_to_ray_node_ids
 from miles.utils.ft.platform.ray_wrappers.training_job import (
     RayTrainingJob,
@@ -13,6 +12,7 @@ from miles.utils.ft.platform.ray_wrappers.training_job import (
     _stop_job,
     stop_all_active_jobs,
 )
+from miles.utils.ft.protocols.platform import JobStatus
 
 
 def _make_job(
@@ -163,8 +163,9 @@ class TestStopTraining:
 
         mock_client.get_job_status.return_value = "RUNNING"
 
-        with patch("miles.utils.ft.platform.ray_wrappers.training_job.time") as mock_time, \
-             patch("miles.utils.ft.utils.polling.time") as mock_poll_time:
+        with patch("miles.utils.ft.platform.ray_wrappers.training_job.time") as mock_time, patch(
+            "miles.utils.ft.utils.polling.time"
+        ) as mock_poll_time:
             call_count = 0
 
             def advancing_monotonic() -> float:
@@ -251,7 +252,9 @@ class TestGetTrainingStatus:
         ],
     )
     async def test_status_mapping(
-        self, raw_status: str, expected: JobStatus,
+        self,
+        raw_status: str,
+        expected: JobStatus,
     ) -> None:
         job, mock_client = _make_job()
         mock_client.submit_job.return_value = "job-1"
@@ -355,6 +358,7 @@ class TestParseRayStatus:
         class FakeEnum:
             def __str__(self) -> str:
                 return "JobSubmissionStatus.SUCCEEDED"
+
         assert _parse_ray_status(FakeEnum()) == "SUCCEEDED"
 
 
@@ -374,8 +378,9 @@ class TestStopJob:
         mock_client = MagicMock()
         mock_client.get_job_status.return_value = "RUNNING"
 
-        with patch("miles.utils.ft.platform.ray_wrappers.training_job.time") as mock_time, \
-             patch("miles.utils.ft.utils.polling.time") as mock_poll_time:
+        with patch("miles.utils.ft.platform.ray_wrappers.training_job.time") as mock_time, patch(
+            "miles.utils.ft.utils.polling.time"
+        ) as mock_poll_time:
             call_count = 0
 
             def advancing_monotonic() -> float:

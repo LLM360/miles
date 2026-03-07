@@ -2,7 +2,6 @@
 
 import pytest
 
-from miles.utils.ft.models.fault import ActionType
 from tests.fast.utils.ft.conftest import AlwaysMarkBadDetector, make_test_controller
 
 
@@ -25,25 +24,33 @@ class TestRegisterRankLogStepQuery:
 
         harness.controller._activate_run(run_id)
         harness.controller.rank_roster.register_training_rank(
-            run_id=run_id, rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id=run_id,
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         harness.controller.rank_roster.register_training_rank(
-            run_id=run_id, rank=1, world_size=4,
-            node_id="node-1", exporter_address="http://node-1:9090",
+            run_id=run_id,
+            rank=1,
+            world_size=4,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
             pid=1,
         )
 
         harness.mini_wandb.log_step(
-            run_id=run_id, step=1,
+            run_id=run_id,
+            step=1,
             metrics={"loss": 3.5, "grad_norm": 1.2},
         )
 
         assert harness.mini_wandb.latest(metric_name="loss") == 3.5
 
         result = harness.mini_wandb.query_last_n_steps(
-            metric_name="grad_norm", last_n=10,
+            metric_name="grad_norm",
+            last_n=10,
         )
         assert len(result) == 1
         assert result[0] == (1, 1.2)
@@ -56,20 +63,27 @@ class TestRunIdIsolation:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         harness.mini_wandb.log_step(
-            run_id="run-1", step=10,
+            run_id="run-1",
+            step=10,
             metrics={"loss": 2.0},
         )
         assert harness.mini_wandb.latest(metric_name="loss") == 2.0
 
         harness.controller._activate_run("run-2")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-2", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-2",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
 
@@ -83,24 +97,32 @@ class TestRunIdIsolation:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         harness.mini_wandb.log_step(
-            run_id="run-1", step=10,
+            run_id="run-1",
+            step=10,
             metrics={"loss": 2.0},
         )
 
         harness.controller._activate_run("run-2")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-2", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-2",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
 
         harness.mini_wandb.log_step(
-            run_id="run-1", step=11,
+            run_id="run-1",
+            step=11,
             metrics={"loss": 1.5},
         )
 

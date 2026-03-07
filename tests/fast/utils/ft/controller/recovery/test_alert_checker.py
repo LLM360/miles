@@ -1,10 +1,5 @@
 """Unit tests for AlertChecker."""
-from datetime import timedelta
 
-from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
-from miles.utils.ft.models.fault import unique_node_ids
-from miles.utils.ft.models.metric_names import GPU_AVAILABLE
-from miles.utils.ft.models.metrics import GaugeSample
 from tests.fast.utils.ft.conftest import (
     inject_critical_xid,
     inject_gpu_unavailable,
@@ -12,6 +7,11 @@ from tests.fast.utils.ft.conftest import (
     inject_nic_up,
     make_fake_metric_store,
 )
+
+from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
+from miles.utils.ft.models.fault import unique_node_ids
+from miles.utils.ft.models.metric_names import GPU_AVAILABLE
+from miles.utils.ft.models.metrics import GaugeSample
 
 
 class TestAlertCheckerEmpty:
@@ -24,9 +24,11 @@ class TestAlertCheckerEmpty:
         assert faults == []
 
     def test_healthy_metrics_returns_empty(self) -> None:
-        store = make_fake_metric_store(metrics=[
-            GaugeSample(name=GPU_AVAILABLE, labels={"gpu": "0"}, value=1.0),
-        ])
+        store = make_fake_metric_store(
+            metrics=[
+                GaugeSample(name=GPU_AVAILABLE, labels={"gpu": "0"}, value=1.0),
+            ]
+        )
         checker = AlertChecker(metric_store=store)
 
         faults = checker.check_alerts()

@@ -43,5 +43,7 @@ async def handle_notify_human(
         decision.reason,
     )
     await safe_notify(
-        notifier, title="Fault Alert", content=decision.reason,
+        notifier,
+        title="Fault Alert",
+        content=decision.reason,
     )

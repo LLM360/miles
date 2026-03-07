@@ -1,11 +1,6 @@
 """Tests for conftest.py builder helpers."""
 
 import pytest
-
-from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.models.metrics import GaugeSample
-from miles.utils.ft.protocols.platform import JobStatus
 from tests.fast.utils.ft.conftest import (
     FakeNodeAgent,
     FakeNodeManager,
@@ -15,6 +10,11 @@ from tests.fast.utils.ft.conftest import (
     make_fake_mini_wandb,
     make_metric,
 )
+
+from miles.utils.ft.agents.collectors.base import BaseCollector
+from miles.utils.ft.models.diagnostics import DiagnosticResult
+from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.protocols.platform import JobStatus
 
 
 class TestMakeMetric:
@@ -51,10 +51,12 @@ class TestMakeFakeMiniWandb:
         assert wandb.latest(metric_name="loss") is None
 
     def test_with_steps(self) -> None:
-        wandb = make_fake_mini_wandb(steps={
-            1: {"loss": 3.0, "grad_norm": 1.0},
-            2: {"loss": 2.5, "grad_norm": 0.8},
-        })
+        wandb = make_fake_mini_wandb(
+            steps={
+                1: {"loss": 3.0, "grad_norm": 1.0},
+                2: {"loss": 2.5, "grad_norm": 0.8},
+            }
+        )
         assert wandb.latest(metric_name="loss") == 2.5
         result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
         assert len(result) == 2
@@ -93,11 +95,13 @@ class TestFakeNodeManager:
 class TestFakeTrainingJob:
     @pytest.mark.anyio
     async def test_status_sequence(self) -> None:
-        job = FakeTrainingJob(status_sequence=[
-            JobStatus.PENDING,
-            JobStatus.RUNNING,
-            JobStatus.FAILED,
-        ])
+        job = FakeTrainingJob(
+            status_sequence=[
+                JobStatus.PENDING,
+                JobStatus.RUNNING,
+                JobStatus.FAILED,
+            ]
+        )
         assert await job.get_training_status() == JobStatus.PENDING
         assert await job.get_training_status() == JobStatus.RUNNING
         assert await job.get_training_status() == JobStatus.FAILED
@@ -117,10 +121,12 @@ class TestFakeTrainingJob:
 
     @pytest.mark.anyio
     async def test_submit_resets_call_count(self) -> None:
-        job = FakeTrainingJob(status_sequence=[
-            JobStatus.PENDING,
-            JobStatus.RUNNING,
-        ])
+        job = FakeTrainingJob(
+            status_sequence=[
+                JobStatus.PENDING,
+                JobStatus.RUNNING,
+            ]
+        )
         assert await job.get_training_status() == JobStatus.PENDING
         await job.submit_training()
         assert job._submitted

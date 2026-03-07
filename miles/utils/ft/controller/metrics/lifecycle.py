@@ -31,7 +31,8 @@ async def start_metric_store_task(store: MetricStoreLifecycle) -> asyncio.Task[N
 
 
 async def stop_metric_store_task(
-    store: MetricStoreLifecycle, task: asyncio.Task[None],
+    store: MetricStoreLifecycle,
+    task: asyncio.Task[None],
 ) -> None:
     await store.stop()
     task.cancel()

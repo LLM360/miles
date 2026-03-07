@@ -14,8 +14,11 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
 
@@ -28,13 +31,19 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=1, world_size=2,
-            node_id="node-1", exporter_address="http://node-1:9090",
+            run_id="run-1",
+            rank=1,
+            world_size=2,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
             pid=1,
         )
 
@@ -46,17 +55,25 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         harness.mini_wandb.log_step(
-            run_id="run-1", step=1, metrics={"loss": 3.0},
+            run_id="run-1",
+            step=1,
+            metrics={"loss": 3.0},
         )
 
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0-new", exporter_address="http://node-0-new:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0-new",
+            exporter_address="http://node-0-new:9090",
             pid=1,
         )
 
@@ -69,8 +86,11 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
 
@@ -83,16 +103,22 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         assert "rank-0" in harness.metric_store._scrape_targets
 
         harness.controller._activate_run("run-2")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-2", rank=1, world_size=2,
-            node_id="node-1", exporter_address="http://node-1:9090",
+            run_id="run-2",
+            rank=1,
+            world_size=2,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
             pid=1,
         )
 
@@ -105,13 +131,19 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=1, world_size=4,
-            node_id="node-1", exporter_address="http://node-1:9090",
+            run_id="run-1",
+            rank=1,
+            world_size=4,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
             pid=1,
         )
         assert "rank-0" in harness.metric_store._scrape_targets
@@ -119,8 +151,11 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-2")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-2", rank=2, world_size=4,
-            node_id="node-2", exporter_address="http://node-2:9090",
+            run_id="run-2",
+            rank=2,
+            world_size=4,
+            node_id="node-2",
+            exporter_address="http://node-2:9090",
             pid=1,
         )
 
@@ -138,8 +173,11 @@ class TestRegisterRank:
         harness.controller._activate_run("run-1")
         for rank in range(3):
             harness.controller.rank_roster.register_training_rank(
-                run_id="run-1", rank=rank, world_size=4,
-                node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
+                run_id="run-1",
+                rank=rank,
+                world_size=4,
+                node_id=f"node-{rank}",
+                exporter_address=f"http://node-{rank}:9090",
                 pid=1,
             )
 
@@ -155,7 +193,6 @@ class TestRegisterRank:
         assert "registered=3" in caplog.text
         assert "expected=4" in caplog.text
 
-
     @pytest.mark.anyio
     async def test_full_registration_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         """All 4/4 ranks registered — tick should not emit WARNING."""
@@ -164,8 +201,11 @@ class TestRegisterRank:
         harness.controller._activate_run("run-1")
         for rank in range(4):
             harness.controller.rank_roster.register_training_rank(
-                run_id="run-1", rank=rank, world_size=4,
-                node_id=f"node-{rank}", exporter_address=f"http://node-{rank}:9090",
+                run_id="run-1",
+                rank=rank,
+                world_size=4,
+                node_id=f"node-{rank}",
+                exporter_address=f"http://node-{rank}:9090",
                 pid=1,
             )
 
@@ -184,16 +224,22 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=8,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=8,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         assert harness.controller._rank_roster.expected_world_size == 8
 
         harness.controller._activate_run("run-2")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-2", rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-2",
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
         assert harness.controller._rank_roster.expected_world_size == 4
@@ -205,8 +251,11 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1234,
         )
 
@@ -218,19 +267,26 @@ class TestRegisterRank:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1234,
         )
         assert harness.controller._rank_roster.rank_pids == {0: 1234}
 
         harness.controller._activate_run("run-2")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-2", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-2",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=5678,
         )
         assert harness.controller._rank_roster.rank_pids == {0: 5678}
+
 
 class TestGetRankPidsForNode:
     @pytest.mark.anyio
@@ -239,18 +295,27 @@ class TestGetRankPidsForNode:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=4,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=100,
         )
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=1, world_size=4,
-            node_id="node-0", exporter_address="http://node-0:9091",
+            run_id="run-1",
+            rank=1,
+            world_size=4,
+            node_id="node-0",
+            exporter_address="http://node-0:9091",
             pid=101,
         )
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=2, world_size=4,
-            node_id="node-1", exporter_address="http://node-1:9090",
+            run_id="run-1",
+            rank=2,
+            world_size=4,
+            node_id="node-1",
+            exporter_address="http://node-1:9090",
             pid=200,
         )
 
@@ -263,13 +328,17 @@ class TestGetRankPidsForNode:
 
         harness.controller._activate_run("run-1")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-1", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-1",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=100,
         )
 
         result = harness.controller._rank_roster.get_rank_pids_for_node("node-999")
         assert result == {}
+
 
 class TestLogStep:
     @pytest.mark.anyio
@@ -278,13 +347,17 @@ class TestLogStep:
         run_id = "run-123"
         harness.controller._activate_run(run_id)
         harness.controller.rank_roster.register_training_rank(
-            run_id=run_id, rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id=run_id,
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
 
         harness.mini_wandb.log_step(
-            run_id=run_id, step=1,
+            run_id=run_id,
+            step=1,
             metrics={"loss": 3.0, "grad_norm": 1.0},
         )
 
@@ -295,13 +368,17 @@ class TestLogStep:
         harness = make_test_controller()
         harness.controller._activate_run("run-123")
         harness.controller.rank_roster.register_training_rank(
-            run_id="run-123", rank=0, world_size=2,
-            node_id="node-0", exporter_address="http://node-0:9090",
+            run_id="run-123",
+            rank=0,
+            world_size=2,
+            node_id="node-0",
+            exporter_address="http://node-0:9090",
             pid=1,
         )
 
         harness.mini_wandb.log_step(
-            run_id="run-OTHER", step=1,
+            run_id="run-OTHER",
+            step=1,
             metrics={"loss": 3.0},
         )
 
@@ -312,7 +389,8 @@ class TestLogStep:
         harness = make_test_controller(register_dummy_rank=False)
 
         harness.mini_wandb.log_step(
-            run_id="run-123", step=1,
+            run_id="run-123",
+            step=1,
             metrics={"loss": 3.0},
         )
 

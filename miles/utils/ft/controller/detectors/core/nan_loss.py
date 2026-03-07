@@ -1,8 +1,4 @@
-from miles.utils.ft.controller.detectors.base import (
-    BaseFaultDetector,
-    DetectorContext,
-    get_non_finite_loss,
-)
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext, get_non_finite_loss
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
 

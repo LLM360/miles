@@ -1,7 +1,6 @@
 import pytest
 from pydantic import ValidationError
 
-from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.models.fault import ActionType, Decision, NodeFault, TriggerType
 from miles.utils.ft.models.metrics import CollectorOutput, CounterSample, GaugeSample
@@ -134,7 +133,9 @@ class TestDecision:
 class TestDecisionFromNodeFaults:
     def test_empty_faults_returns_none_action(self) -> None:
         decision = Decision.from_node_faults(
-            faults=[], fallback_reason="no faults", trigger=TriggerType.HARDWARE,
+            faults=[],
+            fallback_reason="no faults",
+            trigger=TriggerType.HARDWARE,
         )
 
         assert decision.action == ActionType.NONE
@@ -145,7 +146,9 @@ class TestDecisionFromNodeFaults:
     def test_single_fault(self) -> None:
         faults = [NodeFault(node_id="node-0", reason="GPU lost")]
         decision = Decision.from_node_faults(
-            faults=faults, fallback_reason="n/a", trigger=TriggerType.HARDWARE,
+            faults=faults,
+            fallback_reason="n/a",
+            trigger=TriggerType.HARDWARE,
         )
 
         assert decision.action == ActionType.ENTER_RECOVERY
@@ -159,7 +162,9 @@ class TestDecisionFromNodeFaults:
             NodeFault(node_id="node-0", reason="GPU ECC error"),
         ]
         decision = Decision.from_node_faults(
-            faults=faults, fallback_reason="n/a", trigger=TriggerType.NETWORK,
+            faults=faults,
+            fallback_reason="n/a",
+            trigger=TriggerType.NETWORK,
         )
 
         assert decision.bad_node_ids == ["node-0", "node-2"]
@@ -172,7 +177,9 @@ class TestDecisionFromNodeFaults:
             NodeFault(node_id="node-0", reason="GPU 1 lost"),
         ]
         decision = Decision.from_node_faults(
-            faults=faults, fallback_reason="n/a", trigger=TriggerType.HARDWARE,
+            faults=faults,
+            fallback_reason="n/a",
+            trigger=TriggerType.HARDWARE,
         )
 
         assert decision.bad_node_ids == ["node-0"]
@@ -185,7 +192,9 @@ class TestDecisionFromNodeFaults:
             NodeFault(node_id="node-2", reason="reason-c"),
         ]
         decision = Decision.from_node_faults(
-            faults=faults, fallback_reason="n/a", trigger=TriggerType.CRASH,
+            faults=faults,
+            fallback_reason="n/a",
+            trigger=TriggerType.CRASH,
         )
 
         assert decision.reason == "reason-a; reason-b; reason-c"

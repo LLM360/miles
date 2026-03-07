@@ -1,4 +1,5 @@
 """Tests for recovery_orchestrator/helpers.py (retry_async, stop_and_submit, SlidingWindowThrottle)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,18 +7,12 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
+from tests.fast.utils.ft.conftest import FakeTrainingJob, make_failing_training_job
 
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle, stop_and_submit
 from miles.utils.ft.models.fault import TriggerType
-from miles.utils.ft.utils.retry import RetryResult, retry_async
 from miles.utils.ft.protocols.platform import JobStatus
-from tests.fast.utils.ft.conftest import (
-    FakeNodeManager,
-    FakeNotifier,
-    FakeTrainingJob,
-    make_failing_node_manager,
-    make_failing_training_job,
-)
+from miles.utils.ft.utils.retry import RetryResult, retry_async
 
 
 class TestRetryAsyncEdgePaths:
@@ -40,9 +35,13 @@ class TestRetryAsyncEdgePaths:
         async def always_fail() -> None:
             raise RuntimeError("permanent error")
 
-        result = asyncio.run(retry_async(
-            func=always_fail, description="test_fail", max_retries=2,
-        ))
+        result = asyncio.run(
+            retry_async(
+                func=always_fail,
+                description="test_fail",
+                max_retries=2,
+            )
+        )
 
         assert isinstance(result, RetryResult)
         assert result.ok is False
@@ -67,12 +66,14 @@ class TestRetryAsyncEdgePaths:
         async def always_fail() -> None:
             raise RuntimeError("fail")
 
-        asyncio.run(retry_async(
-            func=always_fail,
-            description="test_backoff",
-            max_retries=4,
-            sleep_fn=record_sleep,
-        ))
+        asyncio.run(
+            retry_async(
+                func=always_fail,
+                description="test_backoff",
+                max_retries=4,
+                sleep_fn=record_sleep,
+            )
+        )
 
         assert sleep_durations == [1.0, 2.0, 4.0]
 
@@ -85,11 +86,13 @@ class TestRetryAsyncEdgePaths:
         async def succeed() -> str:
             return "ok"
 
-        asyncio.run(retry_async(
-            func=succeed,
-            description="test_no_sleep",
-            sleep_fn=record_sleep,
-        ))
+        asyncio.run(
+            retry_async(
+                func=succeed,
+                description="test_no_sleep",
+                sleep_fn=record_sleep,
+            )
+        )
 
         assert sleep_durations == []
 
@@ -102,12 +105,14 @@ class TestRetryAsyncEdgePaths:
         async def always_fail() -> None:
             raise RuntimeError("fail")
 
-        asyncio.run(retry_async(
-            func=always_fail,
-            description="test_cap",
-            max_retries=8,
-            sleep_fn=record_sleep,
-        ))
+        asyncio.run(
+            retry_async(
+                func=always_fail,
+                description="test_cap",
+                max_retries=8,
+                sleep_fn=record_sleep,
+            )
+        )
 
         assert all(d <= 30.0 for d in sleep_durations)
         assert sleep_durations[-1] == 30.0
@@ -127,7 +132,8 @@ class TestStopAndSubmit:
     @pytest.mark.anyio
     async def test_stop_failure_but_job_stopped_still_submits(self) -> None:
         training_job = make_failing_training_job(
-            fail_stop=True, status_sequence=[JobStatus.STOPPED],
+            fail_stop=True,
+            status_sequence=[JobStatus.STOPPED],
         )
 
         result = await stop_and_submit(training_job)
@@ -138,7 +144,8 @@ class TestStopAndSubmit:
     @pytest.mark.anyio
     async def test_stop_failure_job_still_running_skips_submit(self) -> None:
         training_job = make_failing_training_job(
-            fail_stop=True, status_sequence=[JobStatus.RUNNING],
+            fail_stop=True,
+            status_sequence=[JobStatus.RUNNING],
         )
 
         result = await stop_and_submit(training_job)
@@ -160,7 +167,8 @@ class TestStopAndSubmit:
         training_job = FakeTrainingJob()
 
         result = await stop_and_submit(
-            training_job, excluded_node_ids=["node-x", "node-y"],
+            training_job,
+            excluded_node_ids=["node-x", "node-y"],
         )
 
         assert result is True
@@ -172,7 +180,8 @@ class TestStopAndSubmit:
         calls: list[str] = []
 
         result = await stop_and_submit(
-            training_job, on_new_run=lambda run_id: calls.append(run_id),
+            training_job,
+            on_new_run=lambda run_id: calls.append(run_id),
         )
 
         assert result is True
@@ -185,7 +194,8 @@ class TestStopAndSubmit:
         calls: list[str] = []
 
         result = await stop_and_submit(
-            training_job, on_new_run=lambda run_id: calls.append(run_id),
+            training_job,
+            on_new_run=lambda run_id: calls.append(run_id),
         )
 
         assert result is False
@@ -194,7 +204,8 @@ class TestStopAndSubmit:
     @pytest.mark.anyio
     async def test_stop_failure_job_failed_still_submits(self) -> None:
         training_job = make_failing_training_job(
-            fail_stop=True, status_sequence=[JobStatus.FAILED],
+            fail_stop=True,
+            status_sequence=[JobStatus.FAILED],
         )
 
         result = await stop_and_submit(training_job)

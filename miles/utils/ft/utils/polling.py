@@ -1,4 +1,5 @@
 """Async deadline-based polling primitive."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +7,7 @@ import inspect
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from typing import TypeVar, Union
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ _T = TypeVar("_T")
 
 
 async def poll_until(
-    probe: Callable[[], Union[_T, Awaitable[_T]]],
+    probe: Callable[[], _T | Awaitable[_T]],
     predicate: Callable[[_T], bool],
     *,
     timeout: float,
@@ -45,7 +46,9 @@ async def poll_until(
             elapsed = timeout - (deadline - time.monotonic())
             logger.info(
                 "poll_until description=%s elapsed=%.0fs poll_count=%d",
-                description, elapsed, poll_count,
+                description,
+                elapsed,
+                poll_count,
             )
 
         await asyncio.sleep(poll_interval)

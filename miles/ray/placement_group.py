@@ -56,7 +56,9 @@ def _create_placement_group(
         logger.info("Excluding Ray node IDs from placement: %s", excluded_node_ids)
 
     pg = placement_group(
-        bundles, strategy="PACK", bundle_label_selector=bundle_label_selector,
+        bundles,
+        strategy="PACK",
+        bundle_label_selector=bundle_label_selector,
     )
     num_bundles = len(bundles)
 
@@ -131,7 +133,8 @@ def create_placement_groups(args):
 
     logger.info(f"Creating placement group with {num_gpus} GPUs...")
     pg, actor_pg_reordered_bundle_indices, actor_pg_reordered_gpu_ids = _create_placement_group(
-        num_gpus, excluded_node_ids=excluded_node_ids,
+        num_gpus,
+        excluded_node_ids=excluded_node_ids,
     )
 
     rollout_pg_reordered_bundle_indices = actor_pg_reordered_bundle_indices[rollout_offset:]

@@ -1,17 +1,17 @@
 """Local Ray: Actor lifecycle — naming, discovery, shutdown, restart."""
+
 from __future__ import annotations
 
 import time
 
 import pytest
 import ray
+from tests.fast.utils.ft.integration.conftest import poll_for_run_id
 
 from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
-
-from tests.fast.utils.ft.integration.conftest import poll_for_run_id
 
 pytestmark = [
     pytest.mark.local_ray,
@@ -41,7 +41,8 @@ class TestNamedActorCreation:
 
 class TestFtIdIsolation:
     def test_two_controllers_with_different_ft_id_are_independent(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         name_a = ft_controller_actor_name("alpha")
         name_b = ft_controller_actor_name("beta")
@@ -60,14 +61,28 @@ class TestFtIdIsolation:
             run_id_b = poll_for_run_id(handle_b)
             assert run_id_a != run_id_b
 
-            ray.get(handle_a.register_training_rank.remote(
-                run_id=run_id_a, rank=0, world_size=1,
-                node_id="n0", exporter_address="http://n0:9090", pid=1000,
-            ), timeout=5)
-            ray.get(handle_b.register_training_rank.remote(
-                run_id=run_id_b, rank=0, world_size=1,
-                node_id="n1", exporter_address="http://n1:9090", pid=2000,
-            ), timeout=5)
+            ray.get(
+                handle_a.register_training_rank.remote(
+                    run_id=run_id_a,
+                    rank=0,
+                    world_size=1,
+                    node_id="n0",
+                    exporter_address="http://n0:9090",
+                    pid=1000,
+                ),
+                timeout=5,
+            )
+            ray.get(
+                handle_b.register_training_rank.remote(
+                    run_id=run_id_b,
+                    rank=0,
+                    world_size=1,
+                    node_id="n1",
+                    exporter_address="http://n1:9090",
+                    pid=2000,
+                ),
+                timeout=5,
+            )
         finally:
             try:
                 ray.get(handle_a.shutdown.remote(), timeout=5)
@@ -83,7 +98,8 @@ class TestFtIdIsolation:
 
 class TestDuplicateActorName:
     def test_duplicate_name_raises(
-        self, controller_actor: ray.actor.ActorHandle,
+        self,
+        controller_actor: ray.actor.ActorHandle,
     ) -> None:
         name = ft_controller_actor_name("")
         with pytest.raises(Exception):
@@ -130,7 +146,8 @@ class TestShutdownReleasesName:
 
 class TestKillAndAutoRestart:
     def test_kill_restarts_actor_with_fresh_state(
-        self, controller_actor: ray.actor.ActorHandle,
+        self,
+        controller_actor: ray.actor.ActorHandle,
     ) -> None:
         status_before = ray.get(controller_actor.get_status.remote(), timeout=5)
         assert status_before.mode == ControllerMode.MONITORING

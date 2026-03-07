@@ -37,9 +37,7 @@ class Decision(FtBaseModel):
     @model_validator(mode="after")
     def _validate_trigger(self) -> Decision:
         if self.action != ActionType.NONE and self.trigger is None:
-            raise ValueError(
-                f"trigger is required when action={self.action.value}"
-            )
+            raise ValueError(f"trigger is required when action={self.action.value}")
         return self
 
     @classmethod
@@ -65,7 +63,7 @@ class Decision(FtBaseModel):
         )
 
 
-def unique_node_ids(faults: list["NodeFault"]) -> list[str]:
+def unique_node_ids(faults: list[NodeFault]) -> list[str]:
     """Return deduplicated node IDs from faults, preserving first-seen order."""
     seen: set[str] = set()
     result: list[str] = []

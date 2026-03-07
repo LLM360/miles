@@ -23,7 +23,10 @@ class TestNodeAgentProtocolCompliance:
     def test_conforming_class_passes_isinstance(self) -> None:
         class _Conforming:
             async def run_diagnostic(
-                self, diagnostic_type: str, timeout_seconds: int = 120, **kwargs: object,
+                self,
+                diagnostic_type: str,
+                timeout_seconds: int = 120,
+                **kwargs: object,
             ) -> object:
                 return None
 

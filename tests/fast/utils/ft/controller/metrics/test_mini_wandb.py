@@ -46,9 +46,7 @@ class TestMiniWandbTimeWindow:
         wandb.log_step(run_id="run-1", step=1, metrics={"loss": 3.0})
         wandb.log_step(run_id="run-1", step=2, metrics={"loss": 2.5})
 
-        result = wandb.query_time_window(
-            metric_name="loss", window=timedelta(minutes=5)
-        )
+        result = wandb.query_time_window(metric_name="loss", window=timedelta(minutes=5))
         assert len(result) == 2
         assert result[0][0] == 1  # step
         assert result[0][2] == 3.0  # value
@@ -59,28 +57,26 @@ class TestMiniWandbTimeWindow:
 class TestMiniWandbTimeWindowEdgeCases:
     def test_empty_returns_empty(self) -> None:
         wandb = MiniWandb(active_run_id="run-1")
-        result = wandb.query_time_window(
-            metric_name="loss", window=timedelta(minutes=5)
-        )
+        result = wandb.query_time_window(metric_name="loss", window=timedelta(minutes=5))
         assert result == []
 
     def test_missing_metric_returns_empty(self) -> None:
         wandb = MiniWandb(active_run_id="run-1")
         wandb.log_step(run_id="run-1", step=1, metrics={"loss": 1.0})
 
-        result = wandb.query_time_window(
-            metric_name="nonexistent", window=timedelta(minutes=5)
-        )
+        result = wandb.query_time_window(metric_name="nonexistent", window=timedelta(minutes=5))
         assert result == []
 
     def test_multi_metric_per_step(self) -> None:
         wandb = MiniWandb(active_run_id="run-1")
         wandb.log_step(
-            run_id="run-1", step=1,
+            run_id="run-1",
+            step=1,
             metrics={"loss": 2.0, "grad_norm": 1.5, "lr": 0.001},
         )
         wandb.log_step(
-            run_id="run-1", step=2,
+            run_id="run-1",
+            step=2,
             metrics={"loss": 1.8, "grad_norm": 1.3, "lr": 0.001},
         )
 
@@ -101,9 +97,7 @@ class TestMiniWandbRingBuffer:
     def test_max_steps_evicts_oldest(self) -> None:
         wandb = MiniWandb(active_run_id="run-1", max_steps=3)
         for i in range(5):
-            wandb.log_step(
-                run_id="run-1", step=i, metrics={"loss": float(i)}
-            )
+            wandb.log_step(run_id="run-1", step=i, metrics={"loss": float(i)})
 
         result = wandb.query_last_n_steps(metric_name="loss", last_n=10)
         assert len(result) == 3
@@ -117,7 +111,9 @@ class TestMiniWandbMaxAgeEviction:
 
         old_time = datetime.now(timezone.utc) - timedelta(seconds=2)
         wandb.log_step(
-            run_id="run-1", step=1, metrics={"loss": 3.0},
+            run_id="run-1",
+            step=1,
+            metrics={"loss": 3.0},
             receive_time=old_time,
         )
         wandb.log_step(run_id="run-1", step=2, metrics={"loss": 2.0})

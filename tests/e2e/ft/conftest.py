@@ -7,6 +7,7 @@ Required environment variables:
   RAY_ADDRESS              — Ray cluster dashboard URL (e.g. http://head-node:8265)
   MILES_SCRIPT_EXTERNAL_RAY — Must be "1" (uses existing Ray cluster)
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,17 +20,16 @@ from uuid import uuid4
 
 import pytest
 import ray
-
 from ray.job_submission import JobSubmissionClient
+from tests.fast.utils.ft.integration.local_ray_semi_e2e import scenarios as _scenarios
 
 from miles.utils.external_utils.command_utils import get_bool_env_var
 from miles.utils.ft.fault_injectors.fault_injector import deploy_fault_injector
 from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
 from miles.utils.ft.platform.k8s_node_manager import K8sNodeManager
 from miles.utils.ft.platform.ray_wrappers.training_job import stop_all_active_jobs
-from miles.utils.ft.utils.polling import poll_until
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
-from tests.fast.utils.ft.integration.local_ray_semi_e2e import scenarios as _scenarios
+from miles.utils.ft.utils.polling import poll_until
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,7 @@ def _k8s_label_prefix() -> Generator[str, None, None]:
 
 @pytest.fixture(scope="session", autouse=True)
 def _assert_external_ray() -> None:
-    assert get_bool_env_var("MILES_SCRIPT_EXTERNAL_RAY"), (
-        "MILES_SCRIPT_EXTERNAL_RAY must be '1' for FT e2e tests"
-    )
+    assert get_bool_env_var("MILES_SCRIPT_EXTERNAL_RAY"), "MILES_SCRIPT_EXTERNAL_RAY must be '1' for FT e2e tests"
 
 
 @pytest.fixture(scope="session")
@@ -251,7 +249,8 @@ def fault_injector(ray_cluster: None) -> Generator[FaultInjectorFactory, None, N
 def gpu_nodes(*, exclude: set[str] | None = None) -> list[dict]:
     """Return alive Ray nodes that have GPUs, optionally excluding node IDs."""
     return [
-        n for n in ray.nodes()
+        n
+        for n in ray.nodes()
         if n.get("Alive")
         and n.get("Resources", {}).get("GPU", 0) > 0
         and (exclude is None or n["NodeID"] not in exclude)
@@ -399,7 +398,9 @@ class E2eFaultInjector:
 
     async def crash_training(self) -> None:
         pid = await wait_for_training_pid(
-            self._injector, timeout=60.0, poll_interval=3.0,
+            self._injector,
+            timeout=60.0,
+            poll_interval=3.0,
         )
         ray.get(self._injector.kill_process.remote(pid=pid, sig=9))
 

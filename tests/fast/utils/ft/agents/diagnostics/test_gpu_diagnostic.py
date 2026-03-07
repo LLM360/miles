@@ -1,4 +1,5 @@
 """Unit tests for GpuDiagnostic — subprocess-based GPU health check."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,10 +8,10 @@ from dataclasses import asdict
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from tests.fast.utils.ft.helpers import make_mock_subprocess
 
 from miles.utils.ft.agents.diagnostics.gpu_check_script import GpuCheckResult
 from miles.utils.ft.agents.diagnostics.gpu_diagnostic import GpuDiagnostic
-from tests.fast.utils.ft.helpers import make_mock_subprocess
 
 
 def _make_gpu_result(
@@ -24,16 +25,18 @@ def _make_gpu_result(
     matmul_passed: bool = True,
     details: str = "all checks passed",
 ) -> dict[str, object]:
-    return asdict(GpuCheckResult(
-        gpu_index=gpu_index,
-        passed=passed,
-        ecc_errors_uncorrectable=ecc_errors_uncorrectable,
-        retired_pages_count=retired_pages_count,
-        power_state_abnormal=power_state_abnormal,
-        row_remap_failure=row_remap_failure,
-        matmul_passed=matmul_passed,
-        details=details,
-    ))
+    return asdict(
+        GpuCheckResult(
+            gpu_index=gpu_index,
+            passed=passed,
+            ecc_errors_uncorrectable=ecc_errors_uncorrectable,
+            retired_pages_count=retired_pages_count,
+            power_state_abnormal=power_state_abnormal,
+            row_remap_failure=row_remap_failure,
+            matmul_passed=matmul_passed,
+            details=details,
+        )
+    )
 
 
 class TestGpuDiagnosticAllPass:
@@ -56,13 +59,23 @@ class TestGpuDiagnosticAllPass:
 
 
 class TestGpuDiagnosticSingleFailure:
-    @pytest.mark.parametrize("gpu_kwargs,expected_detail", [
-        (dict(gpu_index=0, passed=False, ecc_errors_uncorrectable=5, details="uncorrectable ECC errors: 5"), "ECC"),
-        (dict(gpu_index=2, passed=False, matmul_passed=False, details="matmul mismatch"), "matmul"),
-        (dict(gpu_index=0, passed=False, retired_pages_count=3, details="retired pages: 3"), "retired"),
-        (dict(gpu_index=0, passed=False, power_state_abnormal=True, details="abnormal power state"), "power state"),
-        (dict(gpu_index=3, passed=False, row_remap_failure=True, details="row remap failure"), "row remap"),
-    ], ids=["ecc", "matmul", "retired_pages", "power_state", "row_remap"])
+    @pytest.mark.parametrize(
+        "gpu_kwargs,expected_detail",
+        [
+            (
+                dict(gpu_index=0, passed=False, ecc_errors_uncorrectable=5, details="uncorrectable ECC errors: 5"),
+                "ECC",
+            ),
+            (dict(gpu_index=2, passed=False, matmul_passed=False, details="matmul mismatch"), "matmul"),
+            (dict(gpu_index=0, passed=False, retired_pages_count=3, details="retired pages: 3"), "retired"),
+            (
+                dict(gpu_index=0, passed=False, power_state_abnormal=True, details="abnormal power state"),
+                "power state",
+            ),
+            (dict(gpu_index=3, passed=False, row_remap_failure=True, details="row remap failure"), "row remap"),
+        ],
+        ids=["ecc", "matmul", "retired_pages", "power_state", "row_remap"],
+    )
     @pytest.mark.anyio
     async def test_single_failure_detected(self, gpu_kwargs: dict, expected_detail: str) -> None:
         results = [_make_gpu_result(**gpu_kwargs)]

@@ -24,9 +24,7 @@ class DiagnosticRunner(NodeAgentProtocol):
         diagnostics: list[DiagnosticProtocol] | None = None,
     ) -> None:
         self._node_id = node_id
-        self._diagnostics: dict[str, DiagnosticProtocol] = {
-            d.diagnostic_type: d for d in (diagnostics or [])
-        }
+        self._diagnostics: dict[str, DiagnosticProtocol] = {d.diagnostic_type: d for d in (diagnostics or [])}
 
     async def run_diagnostic(
         self,

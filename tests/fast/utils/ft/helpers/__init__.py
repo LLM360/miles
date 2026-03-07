@@ -6,6 +6,7 @@ Submodules:
 - metric_injectors: metric store/wandb factories, inject_* helpers
 - agent_fakes: collector fakes, HW-collector mocks, stack trace helpers
 """
+
 from tests.fast.utils.ft.helpers.agent_fakes import (
     SAMPLE_PYSPY_JSON_DIFFERENT_STUCK,
     SAMPLE_PYSPY_JSON_NORMAL,

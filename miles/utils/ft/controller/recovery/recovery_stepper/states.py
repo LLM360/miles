@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from pydantic import ConfigDict
 
-from miles.utils.ft.controller.recovery.restart_stepper.states import (
-    Evicting,
-    RestartState,
-    StoppingAndRestarting,
-)
+from miles.utils.ft.controller.recovery.restart_stepper.states import Evicting, RestartState, StoppingAndRestarting
 from miles.utils.ft.models.base import FtBaseModel
 
 
