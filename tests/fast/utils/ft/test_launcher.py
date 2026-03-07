@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from miles.utils.ft.launcher import app
+from miles.utils.ft.platform.launcher import app
 from miles.utils.ft.platform.controller_factory import _build_notifier
 from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
 from miles.utils.ft.platform.stubs import StubNotifier
@@ -23,8 +23,8 @@ def _patch_build_and_run() -> Generator[tuple[MagicMock, MagicMock], None, None]
     mock_actor_instance.submit_and_run.remote.return_value = MagicMock()
 
     with (
-        patch("miles.utils.ft.launcher.FtControllerActor", mock_actor_cls),
-        patch("miles.utils.ft.launcher.ray") as mock_ray,
+        patch("miles.utils.ft.platform.launcher.FtControllerActor", mock_actor_cls),
+        patch("miles.utils.ft.platform.launcher.ray") as mock_ray,
     ):
         yield mock_actor_cls, mock_ray
 
