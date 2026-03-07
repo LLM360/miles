@@ -173,14 +173,14 @@ def _check_nvml(handle: object) -> _NvmlCheckResult:
 
 
 def _build_deterministic_model_and_input() -> tuple[Any, Any, Any]:
-    """Build a small transformer decoder and fixed input on CPU in float16.
+    """Build a small transformer decoder and fixed input on CPU in bfloat16.
 
     Uses a causal (autoregressive) decoder to mirror actual LLM workloads.
     The model exercises: matmul (attention QKV projections, FFN), causal
     masked attention (triangular mask + softmax), layer normalization
     (reduction + elementwise), and GELU activation.
 
-    Returns (model, input_tensor, causal_mask), all on CPU in float16.
+    Returns (model, input_tensor, causal_mask), all on CPU in bfloat16.
     Called once; reused for all GPUs.
     """
     import torch
@@ -200,9 +200,9 @@ def _build_deterministic_model_and_input() -> tuple[Any, Any, Any]:
     for param in model.parameters():
         param.data = torch.randn(param.shape, generator=gen) * 0.02
 
-    model.half().eval()
+    model.bfloat16().eval()
 
-    x = torch.randn(_BATCH_SIZE, _SEQ_LEN, _HIDDEN_DIM, generator=gen).half()
+    x = torch.randn(_BATCH_SIZE, _SEQ_LEN, _HIDDEN_DIM, generator=gen).bfloat16()
     causal_mask = nn.Transformer.generate_square_subsequent_mask(_SEQ_LEN)
 
     return model, x, causal_mask
