@@ -1,17 +1,32 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
 
 logger = logging.getLogger(__name__)
 
 
+class PySpyFrame(FtBaseModel):
+    name: str
+    filename: str
+    line: int
+
+
+class PySpyThread(FtBaseModel):
+    thread_name: str
+    active: bool
+    owns_gil: bool
+    frames: list[PySpyFrame]
+
+
 class StackTraceDiagnostic(BaseDiagnostic):
-    """Collect stack traces from training processes via py-spy dump."""
+    """Collect stack traces from training processes via py-spy dump --json."""
 
     diagnostic_type = "stack_trace"
 
@@ -24,24 +39,24 @@ class StackTraceDiagnostic(BaseDiagnostic):
         if not self._pids:
             return self._fail(node_id, "no PIDs provided")
 
-        async def _collect_one(pid: int) -> tuple[str, bool]:
+        async def _collect_one(pid: int) -> tuple[list[PySpyThread], bool]:
             try:
-                trace = await self._dump_pid(pid, timeout_seconds=timeout_seconds)
-                return f"=== PID {pid} ===\n{trace}", True
+                threads = await self._dump_pid(pid, timeout_seconds=timeout_seconds)
+                return threads, True
             except Exception:
                 logger.warning(
                     "stack_trace_dump_failed pid=%d node=%s",
                     pid, node_id,
                     exc_info=True,
                 )
-                return f"=== PID {pid} ===\nFAILED: could not collect stack trace", False
+                return [], False
 
         results = await asyncio.gather(*(_collect_one(pid) for pid in self._pids))
 
-        traces: list[str] = []
+        all_threads: list[PySpyThread] = []
         failures: int = 0
-        for trace_text, success in results:
-            traces.append(trace_text)
+        for threads, success in results:
+            all_threads.extend(threads)
             if not success:
                 failures += 1
 
@@ -50,14 +65,16 @@ class StackTraceDiagnostic(BaseDiagnostic):
             diagnostic_type=self.diagnostic_type,
             node_id=node_id,
             passed=not all_failed,
-            details="\n".join(traces),
+            details=json.dumps([t.model_dump() for t in all_threads]),
         )
 
-    async def _dump_pid(self, pid: int, timeout_seconds: int) -> str:
+    async def _dump_pid(self, pid: int, timeout_seconds: int) -> list[PySpyThread]:
         stdout, stderr, returncode = await run_subprocess_with_timeout(
-            cmd=["py-spy", "dump", "--pid", str(pid)],
+            cmd=["py-spy", "dump", "--json", "--pid", str(pid)],
             timeout_seconds=timeout_seconds,
         )
         if returncode != 0:
             raise RuntimeError(f"py-spy failed: {stderr.decode()}")
-        return stdout.decode()
+
+        raw = json.loads(stdout.decode())
+        return [PySpyThread.model_validate(t) for t in raw]
