@@ -6,6 +6,7 @@ import socket
 from typing import TYPE_CHECKING, Literal
 
 from miles.utils.ft.agents.utils.training_rank_metric_exporter import TrainingRankMetricExporter
+from miles.utils.ft.utils.env import get_training_run_id
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import retry_sync
 
@@ -35,7 +36,7 @@ class FtTrainingRankAgent:
         self._rank = rank
         self._world_size = world_size
         self._controller_client = controller_client
-        self._run_id: str = os.environ.get("MILES_FT_TRAINING_RUN_ID", "")
+        self._run_id: str = get_training_run_id()
         self._node_id: str = socket.gethostname()
 
         self._metric_exporter = TrainingRankMetricExporter(rank=rank, node_id=self._node_id)

@@ -7,7 +7,6 @@ node_agent_factory.py for the node agent side.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
@@ -23,6 +22,7 @@ from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.models.base import FtBaseModel
+from miles.utils.ft.utils.env import get_lark_webhook_url, get_notify_platform, get_notify_webhook_url
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 from miles.utils.ft.protocols.platform import (
     DiagnosticOrchestratorProtocol,
@@ -216,8 +216,8 @@ def _resolve_notify_config() -> tuple[str, str]:
     Priority: MILES_FT_NOTIFY_PLATFORM + MILES_FT_NOTIFY_WEBHOOK_URL.
     Fallback: MILES_FT_LARK_WEBHOOK_URL implies platform=lark.
     """
-    webhook_url = (os.environ.get("MILES_FT_NOTIFY_WEBHOOK_URL") or "").strip()
-    notify_platform = (os.environ.get("MILES_FT_NOTIFY_PLATFORM") or "").strip().lower()
+    webhook_url = get_notify_webhook_url()
+    notify_platform = get_notify_platform()
 
     if webhook_url and notify_platform:
         return notify_platform, webhook_url
@@ -225,7 +225,7 @@ def _resolve_notify_config() -> tuple[str, str]:
     if webhook_url and not notify_platform:
         return "lark", webhook_url
 
-    legacy_url = (os.environ.get("MILES_FT_LARK_WEBHOOK_URL") or "").strip()
+    legacy_url = get_lark_webhook_url()
     if legacy_url:
         return "lark", legacy_url
 

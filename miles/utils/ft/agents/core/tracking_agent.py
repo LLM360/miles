@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import logging
-import os
-from pathlib import Path
 from typing import TYPE_CHECKING
 
+from miles.utils.ft.utils.env import get_exception_inject_path, get_training_run_id
 from miles.utils.ft.utils.graceful_degrade import FaultInjectionError, graceful_degrade
 
 if TYPE_CHECKING:
@@ -26,11 +25,10 @@ class FtTrackingAgent:
         run_id: str | None = None,
         controller_client: ControllerClientProtocol | None = None,
     ) -> None:
-        self._run_id = run_id or os.environ.get("MILES_FT_TRAINING_RUN_ID", "")
+        self._run_id = run_id or get_training_run_id()
         self._controller_client = controller_client
 
-        inject_path = os.environ.get("MILES_FT_EXCEPTION_INJECT_PATH", "")
-        self._exception_inject_path: Path | None = Path(inject_path) if inject_path else None
+        self._exception_inject_path = get_exception_inject_path()
 
     @graceful_degrade()
     def log(self, *, metrics: dict[str, float], step: int) -> None:
