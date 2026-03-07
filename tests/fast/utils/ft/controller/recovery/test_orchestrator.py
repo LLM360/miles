@@ -758,7 +758,7 @@ class TestStepChaining:
 
         asyncio.run(orch.step())
 
-        assert orch.phase_history == [RecoveryPhase.EVICT_AND_RESTART, RecoveryPhase.DONE]
+        assert orch.phase_history == [RecoveryPhase.CHECK_ALERTS, RecoveryPhase.EVICT_AND_RESTART, RecoveryPhase.DONE]
         assert orch.is_done()
         assert node_mgr.is_node_bad("node-0")
         assert training_job._submitted
@@ -771,7 +771,7 @@ class TestStepChaining:
 
         asyncio.run(orch.step())
 
-        assert orch.phase_history == [RecoveryPhase.NOTIFY, RecoveryPhase.DONE]
+        assert orch.phase_history == [RecoveryPhase.CHECK_ALERTS, RecoveryPhase.NOTIFY, RecoveryPhase.DONE]
         assert orch.is_done()
         assert len(notifier.calls) == 1
 
@@ -782,7 +782,7 @@ class TestStepChaining:
         asyncio.run(orch.step())
 
         assert orch.phase == RecoveryPhase.REATTEMPTING
-        assert orch.phase_history == [RecoveryPhase.REATTEMPTING]
+        assert orch.phase_history == [RecoveryPhase.CHECK_ALERTS, RecoveryPhase.REATTEMPTING]
         assert training_job._submitted
 
     def test_evict_failure_chains_through_notify_to_done(self) -> None:
@@ -795,7 +795,7 @@ class TestStepChaining:
 
         asyncio.run(orch.step())
 
-        assert orch.phase_history == [RecoveryPhase.NOTIFY, RecoveryPhase.DONE]
+        assert orch.phase_history == [RecoveryPhase.CHECK_ALERTS, RecoveryPhase.NOTIFY, RecoveryPhase.DONE]
         assert orch.is_done()
         assert len(notifier.calls) == 1
 
@@ -809,6 +809,7 @@ class TestStepChaining:
         asyncio.run(orch.step())
 
         assert orch.phase_history == [
+            RecoveryPhase.CHECK_ALERTS,
             RecoveryPhase.EVICT_AND_RESTART,
             RecoveryPhase.DONE,
         ]
