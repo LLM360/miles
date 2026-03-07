@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from pydantic import ConfigDict
@@ -109,7 +109,7 @@ class RecoveryStepper(StateMachineStepper[RecoveryState]):
     def set_rank_pids_provider(self, provider: Callable[[str], dict[int, int]]) -> None:
         self._rank_pids_provider = provider
 
-    def _build_handlers(self) -> dict:
+    def _build_handlers(self) -> dict[type, Callable[[RecoveryState], Awaitable[RecoveryState | None]]]:
         return {
             RealtimeChecks: self._handle_realtime_checks,
             EvictingAndRestarting: self._handle_evicting_and_restarting,

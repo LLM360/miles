@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from pydantic import ConfigDict
@@ -90,7 +90,7 @@ class RestartStepper(StateMachineStepper[RestartState]):
     def set_on_new_run(self, callback: Callable[[str], None]) -> None:
         self._on_new_run = callback
 
-    def _build_handlers(self) -> dict:
+    def _build_handlers(self) -> dict[type, Callable[[RestartState], Awaitable[RestartState | None]]]:
         return {
             Evicting: self._handle_evicting,
             StoppingAndRestarting: self._handle_stopping_and_restarting,
