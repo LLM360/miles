@@ -192,6 +192,20 @@ class TestStoppingAndRestarting:
         await stepper(state)
         assert training_job._last_excluded_node_ids == ["node-B"]
 
+    @pytest.mark.asyncio
+    async def test_stop_training_exception_still_submits(self) -> None:
+        """After stop_training fails but job is already stopped, submit_training proceeds."""
+        training_job = FakeTrainingJob(status_sequence=[JobStatus.STOPPED])
+        training_job.stop_training = failing_stop_training  # type: ignore[assignment]
+        stepper = _make_stepper(training_job=training_job)
+
+        state = StoppingAndRestarting(bad_node_ids=["node-A"])
+        result = await stepper(state)
+
+        assert isinstance(result, StoppingAndRestarting)
+        assert result.submitted is True
+        assert training_job._submitted
+
 
 # ---------------------------------------------------------------------------
 # MonitoringProgress
@@ -265,6 +279,34 @@ class TestMonitoringProgress:
         )
         result = await stepper(state)
         assert result is None
+
+    @pytest.mark.parametrize(
+        "metric_value,expected_progress",
+        [
+            (float("nan"), 0),
+            (float("inf"), 0),
+            (float("-inf"), 0),
+            (None, 0),
+            (50, 0),
+            (100, 0),
+            (105, 5),
+        ],
+        ids=["nan", "inf", "neg_inf", "none", "negative_raw", "zero_raw", "normal"],
+    )
+    def test_iteration_progress_nan_inf_none_boundary_values(
+        self, metric_value: float | None, expected_progress: int,
+    ) -> None:
+        mini_wandb = MiniWandb()
+        if metric_value is not None:
+            mini_wandb.set_active_run_id("r")
+            mini_wandb.log_step(run_id="r", step=1, metrics={"iteration": metric_value})
+        stepper = _make_stepper(mini_wandb=mini_wandb)
+
+        state = MonitoringProgress(
+            start_time=datetime.now(timezone.utc),
+            base_iteration=100,
+        )
+        assert stepper._iteration_progress(state) == expected_progress
 
 
 # ---------------------------------------------------------------------------
