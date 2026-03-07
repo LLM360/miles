@@ -1,25 +1,31 @@
-"""Fixtures for live Prometheus integration tests.
+"""Fixtures for live Prometheus integration tests and backend conformance.
 
-Downloads the Prometheus binary at test time (session scope), starts a
-local Prometheus server (module scope), and exposes test metrics via a
-local HTTP endpoint using prometheus_client (module scope).
+Provides a shared DynamicExporter (HTTP /metrics endpoint), a real
+Prometheus server, and a parametrized ``backend`` fixture that runs
+each test against both MiniPrometheus and real Prometheus — both
+scraping the same exporter endpoint.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import platform
 import socket
 import subprocess
 import time
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator, Iterator
 from http.server import HTTPServer
 from pathlib import Path
-from threading import Thread
 
 import httpx
 import pytest
 from prometheus_client import CollectorRegistry, Gauge, start_http_server
+
+from miles.utils.ft.controller.metrics.mini_prometheus.storage import MiniPrometheus
+from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.protocols.metrics import MetricQueryProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +40,11 @@ _BINARY_PATH = _BINARY_DIR / "prometheus"
 
 _STARTUP_TIMEOUT_SECONDS = 15
 _DOWNLOAD_TIMEOUT_SECONDS = 120
+
+
+# ---------------------------------------------------------------------------
+# Utility
+# ---------------------------------------------------------------------------
 
 
 def _find_free_port() -> int:
@@ -77,6 +88,117 @@ def _wait_for_prometheus(url: str, timeout: float = _STARTUP_TIMEOUT_SECONDS) ->
     raise TimeoutError(f"Prometheus did not become ready at {url} within {timeout}s")
 
 
+# ---------------------------------------------------------------------------
+# DynamicExporter — shared HTTP /metrics endpoint
+# ---------------------------------------------------------------------------
+
+
+class DynamicExporter:
+    """Wraps a CollectorRegistry and creates prometheus_client Gauges on demand."""
+
+    def __init__(self, registry: CollectorRegistry, port: int) -> None:
+        self._registry = registry
+        self.port = port
+        self._gauges: dict[tuple[str, tuple[str, ...]], Gauge] = {}
+
+    def set_gauge(
+        self,
+        name: str,
+        value: float,
+        labels: dict[str, str] | None = None,
+    ) -> None:
+        label_names = tuple(sorted((labels or {}).keys()))
+        key = (name, label_names)
+        if key not in self._gauges:
+            self._gauges[key] = Gauge(
+                name,
+                f"test gauge {name}",
+                labelnames=list(label_names),
+                registry=self._registry,
+            )
+        gauge = self._gauges[key]
+        if labels:
+            gauge.labels(**labels).set(value)
+        else:
+            gauge.set(value)
+
+
+# ---------------------------------------------------------------------------
+# MetricBackend abstraction
+# ---------------------------------------------------------------------------
+
+
+class MetricBackend(ABC):
+    @property
+    @abstractmethod
+    def store(self) -> MetricQueryProtocol: ...
+
+    @abstractmethod
+    def set_gauge(
+        self,
+        name: str,
+        value: float,
+        labels: dict[str, str] | None = None,
+    ) -> None: ...
+
+    @abstractmethod
+    async def flush(self) -> None: ...
+
+
+class MiniBackend(MetricBackend):
+    def __init__(self, exporter: DynamicExporter) -> None:
+        self._exporter = exporter
+        self._store = MiniPrometheus()
+        self._store.add_scrape_target(
+            target_id="test",
+            address=f"http://127.0.0.1:{exporter.port}",
+        )
+
+    @property
+    def store(self) -> MiniPrometheus:
+        return self._store
+
+    def set_gauge(
+        self,
+        name: str,
+        value: float,
+        labels: dict[str, str] | None = None,
+    ) -> None:
+        self._exporter.set_gauge(name=name, value=value, labels=labels)
+
+    async def flush(self) -> None:
+        await self._store.scrape_once()
+
+    async def teardown(self) -> None:
+        await self._store.stop()
+
+
+class LiveBackend(MetricBackend):
+    def __init__(self, exporter: DynamicExporter, prometheus_url: str) -> None:
+        self._exporter = exporter
+        self._client = PrometheusClient(url=prometheus_url)
+
+    @property
+    def store(self) -> PrometheusClient:
+        return self._client
+
+    def set_gauge(
+        self,
+        name: str,
+        value: float,
+        labels: dict[str, str] | None = None,
+    ) -> None:
+        self._exporter.set_gauge(name=name, value=value, labels=labels)
+
+    async def flush(self) -> None:
+        await asyncio.sleep(2)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
 @pytest.fixture(scope="session")
 def prometheus_binary() -> Path:
     if platform.system() != "Linux":
@@ -85,42 +207,13 @@ def prometheus_binary() -> Path:
     return _download_prometheus()
 
 
-@dataclass
-class ExporterInfo:
-    registry: CollectorRegistry
-    port: int
-    test_gauge: Gauge
-    labeled_gauge: Gauge
-
-
 @pytest.fixture(scope="module")
-def local_exporter() -> ExporterInfo:
+def dynamic_exporter() -> Iterator[DynamicExporter]:
     registry = CollectorRegistry()
-    test_gauge = Gauge(
-        "test_gauge",
-        "A test gauge for integration tests",
-        registry=registry,
-    )
-    test_gauge.set(42.0)
-
-    labeled_gauge = Gauge(
-        "test_labeled_gauge",
-        "A test gauge with labels",
-        labelnames=["node_id", "device"],
-        registry=registry,
-    )
-    labeled_gauge.labels(node_id="node-0", device="ib0").set(1.0)
-    labeled_gauge.labels(node_id="node-0", device="ib1").set(0.0)
-
     port = _find_free_port()
-    httpd, thread = start_http_server(port=port, registry=registry)
+    httpd, _thread = start_http_server(port=port, registry=registry)
 
-    yield ExporterInfo(
-        registry=registry,
-        port=port,
-        test_gauge=test_gauge,
-        labeled_gauge=labeled_gauge,
-    )
+    yield DynamicExporter(registry=registry, port=port)
 
     httpd.shutdown()
     httpd.server_close()
@@ -129,9 +222,9 @@ def local_exporter() -> ExporterInfo:
 @pytest.fixture(scope="module")
 def prometheus_server(
     prometheus_binary: Path,
-    local_exporter: ExporterInfo,
+    dynamic_exporter: DynamicExporter,
     tmp_path_factory: pytest.TempPathFactory,
-) -> str:
+) -> Iterator[str]:
     prom_port = _find_free_port()
     data_dir = tmp_path_factory.mktemp("prom_data")
 
@@ -145,7 +238,7 @@ global:
 scrape_configs:
   - job_name: test_exporter
     static_configs:
-      - targets: ["127.0.0.1:{local_exporter.port}"]
+      - targets: ["127.0.0.1:{dynamic_exporter.port}"]
 """
     )
 
@@ -178,3 +271,20 @@ scrape_configs:
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
+
+
+@pytest.fixture(params=["mini", "live"])
+async def backend(
+    request: pytest.FixtureRequest,
+    dynamic_exporter: DynamicExporter,
+) -> AsyncIterator[MetricBackend]:
+    if request.param == "mini":
+        be = MiniBackend(exporter=dynamic_exporter)
+        yield be
+        await be.teardown()
+    else:
+        prometheus_server_url: str = request.getfixturevalue("prometheus_server")
+        yield LiveBackend(
+            exporter=dynamic_exporter,
+            prometheus_url=prometheus_server_url,
+        )
