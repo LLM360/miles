@@ -160,11 +160,7 @@ class TestMfuDeclineDetector:
         assert "monitoring" in decision.reason
 
     def test_dynamic_baseline(self) -> None:
-        high_mfu = [0.5] * 50
-        low_mfu = [0.3] * 10
-        all_steps = high_mfu + low_mfu
-        wandb = _make_wandb_with_mfu(all_steps)
-        store = make_fake_metric_store()
+        wandb = _make_wandb_with_mfu([0.5] * 50 + [0.3] * 10)
 
         detector = MfuDeclineDetector(config=MfuDeclineDetectorConfig(
             mfu_baseline=None,
@@ -172,9 +168,7 @@ class TestMfuDeclineDetector:
             consecutive_steps=10,
         ))
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, mini_wandb=wandb,
-        ))
+        decision = detector.evaluate(make_detector_context(mini_wandb=wandb))
 
         assert decision.action == ActionType.NONE
         assert "monitoring" in decision.reason

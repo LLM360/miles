@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime, timedelta, timezone
 
 import polars as pl
@@ -9,8 +8,6 @@ from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.metric_names import DCGM_FI_DEV_GPU_TEMP
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol, TrainingMetricStoreProtocol
-
-logger = logging.getLogger(__name__)
 
 
 class MfuDeclineDetectorConfig(FtBaseModel):
@@ -36,8 +33,7 @@ class MfuDeclineDetector(BaseFaultDetector):
         if len(recent_mfu) < cfg.consecutive_steps:
             return Decision.no_fault(reason="insufficient MFU data")
 
-        mfu_values = [value for _, value in recent_mfu]
-        avg_mfu = sum(mfu_values) / len(mfu_values)
+        avg_mfu = sum(sv.value for sv in recent_mfu) / len(recent_mfu)
 
         if cfg.mfu_absolute_minimum > 0 and avg_mfu < cfg.mfu_absolute_minimum:
             return Decision(
@@ -51,30 +47,30 @@ class MfuDeclineDetector(BaseFaultDetector):
             return Decision.no_fault(reason="no valid MFU baseline")
 
         threshold = baseline * cfg.mfu_threshold_ratio
-        mfu_stats = f"{avg_mfu:.4f} < {threshold:.4f}"
-
         if avg_mfu >= threshold:
             return Decision.no_fault(reason="MFU within acceptable range")
 
-        high_temp_node = self._find_high_temperature_node(ctx.metric_store, ctx.rank_placement)
-        if high_temp_node is not None:
+        decline_summary = f"{avg_mfu:.4f} < {threshold:.4f}"
+
+        high_temp_node_id = self._find_high_temperature_node(ctx.metric_store, ctx.rank_placement)
+        if high_temp_node_id is not None:
             return Decision(
                 action=ActionType.ENTER_RECOVERY,
-                bad_node_ids=[high_temp_node],
-                reason=f"MFU decline ({mfu_stats}) correlated with high temperature on {high_temp_node}",
+                bad_node_ids=[high_temp_node_id],
+                reason=f"MFU decline ({decline_summary}) correlated with high temperature on {high_temp_node_id}",
                 trigger=TriggerType.HARDWARE,
             )
 
-        elapsed_minutes = self._compute_decline_duration_minutes(ctx, threshold)
+        elapsed_minutes = self._compute_decline_duration_minutes(ctx.mini_wandb, threshold)
         if elapsed_minutes >= cfg.decline_timeout_minutes:
             return Decision(
                 action=ActionType.NOTIFY_HUMAN,
-                reason=f"MFU decline ({mfu_stats}) persisted for {elapsed_minutes:.1f}min without identifiable cause",
+                reason=f"MFU decline ({decline_summary}) persisted for {elapsed_minutes:.1f}min without identifiable cause",
                 trigger=TriggerType.MISC,
             )
 
         return Decision.no_fault(
-            reason=f"MFU declining ({mfu_stats}), monitoring ({elapsed_minutes:.1f}min)",
+            reason=f"MFU declining ({decline_summary}), monitoring ({elapsed_minutes:.1f}min)",
         )
 
     def _compute_baseline(self, mini_wandb: TrainingMetricStoreProtocol) -> float:
@@ -85,14 +81,14 @@ class MfuDeclineDetector(BaseFaultDetector):
         total_needed = cfg.baseline_steps + cfg.consecutive_steps
         all_data = mini_wandb.query_last_n_steps("mfu", last_n=total_needed)
 
-        baseline_data = all_data[:-cfg.consecutive_steps] if len(all_data) > cfg.consecutive_steps else []
+        baseline_data = all_data[:-cfg.consecutive_steps]
         if not baseline_data:
             return 0.0
 
-        return sum(v for _, v in baseline_data) / len(baseline_data)
+        return sum(sv.value for sv in baseline_data) / len(baseline_data)
 
     def _compute_decline_duration_minutes(
-        self, ctx: DetectorContext, threshold: float,
+        self, mini_wandb: TrainingMetricStoreProtocol, threshold: float,
     ) -> float:
         """Derive how long MFU has been below *threshold* from time-series data.
 
@@ -100,19 +96,13 @@ class MfuDeclineDetector(BaseFaultDetector):
         is visible even when the decline started exactly at the timeout boundary.
         """
         lookup_window = timedelta(minutes=self._config.decline_timeout_minutes * 2)
-        timed_mfu = ctx.mini_wandb.query_time_window("mfu", window=lookup_window)
+        timed_mfu = mini_wandb.query_time_window("mfu", window=lookup_window)
         if not timed_mfu:
             return 0.0
 
-        now = datetime.now(timezone.utc)
-
-        last_healthy_time: datetime | None = None
-        for _, ts, value in timed_mfu:
-            if value >= threshold:
-                last_healthy_time = ts
-
-        decline_start = last_healthy_time if last_healthy_time is not None else timed_mfu[0].timestamp
-        return (now - decline_start).total_seconds() / 60
+        healthy_times = [ts for _, ts, value in timed_mfu if value >= threshold]
+        decline_start = healthy_times[-1] if healthy_times else timed_mfu[0].timestamp
+        return (datetime.now(timezone.utc) - decline_start).total_seconds() / 60
 
     def _find_high_temperature_node(
         self,
@@ -140,4 +130,4 @@ class MfuDeclineDetector(BaseFaultDetector):
         if outliers.is_empty():
             return None
 
-        return outliers["node_id"][0]
+        return outliers.sort("avg_temp", descending=True)["node_id"][0]
