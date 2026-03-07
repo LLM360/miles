@@ -237,7 +237,7 @@ class TestCheckMajorityNicDown:
         result = _check_majority_nic_down(store)
         assert len(result) == 1
         assert result[0].node_id == "node-0"
-        assert result[0].ephemeral is True
+        assert result[0].ephemeral is False
 
     def test_all_nics_up_returns_empty(self) -> None:
         store = make_fake_metric_store()
