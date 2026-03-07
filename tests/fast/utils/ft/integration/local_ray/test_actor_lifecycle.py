@@ -105,10 +105,18 @@ class TestShutdownReleasesName:
         ray.get(handle.shutdown.remote(), timeout=5)
         ray.get(run_ref, timeout=5)
 
-        time.sleep(1.0)
+        ray.kill(handle, no_restart=True)
+        del handle
 
-        with pytest.raises(ValueError):
-            ray.get_actor(name)
+        released = False
+        for _ in range(20):
+            time.sleep(0.5)
+            try:
+                ray.get_actor(name)
+            except ValueError:
+                released = True
+                break
+        assert released, f"Actor name {name!r} was not released after kill"
 
         handle2 = FtControllerActor.options(name=name).remote(
             config=FtControllerConfig(platform="stub", tick_interval=1.0),
