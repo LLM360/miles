@@ -93,6 +93,33 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
     # -- DetectingAnomaly -------------------------------------------------
 
     async def _handle_detecting_anomaly(self, state: DetectingAnomaly, context: TickContext) -> MainState | None:
+        decision = await self._get_actionable_decision(context)
+        if decision is None:
+            return None
+
+        self._cooldown.record(decision.trigger)
+        if self._cooldown.is_throttled(decision.trigger):
+            await handle_notify_human(
+                decision=Decision(
+                    action=ActionType.NOTIFY_HUMAN,
+                    reason=f"Recovery cooldown throttled for {decision.trigger}",
+                    trigger=decision.trigger,
+                ),
+                notifier=self._platform_deps.notifier,
+            )
+            return None
+
+        return Recovering(
+            recovery=RealtimeChecks(pre_identified_bad_nodes=decision.bad_node_ids),
+            trigger=decision.trigger,
+            recovery_start_time=datetime.now(timezone.utc),
+        )
+
+    async def _get_actionable_decision(self, context: TickContext) -> Decision | None:
+        """Run detectors and return a validated ENTER_RECOVERY decision, or None.
+
+        Handles NONE, NOTIFY_HUMAN, and too-many-bad-nodes cases internally.
+        """
         if not context.should_run_detectors or context.detector_context is None:
             return None
 
@@ -114,25 +141,7 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
 
         if decision.trigger is None:
             raise ValueError(f"Decision with action={decision.action} has no trigger")
-        self._cooldown.record(decision.trigger)
-        if self._cooldown.is_throttled(decision.trigger):
-            await handle_notify_human(
-                decision=Decision(
-                    action=ActionType.NOTIFY_HUMAN,
-                    reason=f"Recovery cooldown throttled for {decision.trigger}",
-                    trigger=decision.trigger,
-                ),
-                notifier=self._platform_deps.notifier,
-            )
-            return None
-
-        now = datetime.now(timezone.utc)
-        initial_recovery = RealtimeChecks(pre_identified_bad_nodes=decision.bad_node_ids)
-        return Recovering(
-            recovery=initial_recovery,
-            trigger=decision.trigger,
-            recovery_start_time=now,
-        )
+        return decision
 
     # -- Recovering -------------------------------------------------------
 
