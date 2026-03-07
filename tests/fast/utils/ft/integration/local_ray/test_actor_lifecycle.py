@@ -62,11 +62,11 @@ class TestFtIdIsolation:
 
             ray.get(handle_a.register_training_rank.remote(
                 run_id=run_id_a, rank=0, world_size=1,
-                node_id="n0", exporter_address="http://n0:9090",
+                node_id="n0", exporter_address="http://n0:9090", pid=1000,
             ), timeout=5)
             ray.get(handle_b.register_training_rank.remote(
                 run_id=run_id_b, rank=0, world_size=1,
-                node_id="n1", exporter_address="http://n1:9090",
+                node_id="n1", exporter_address="http://n1:9090", pid=2000,
             ), timeout=5)
         finally:
             try:
