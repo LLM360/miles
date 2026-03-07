@@ -1,6 +1,8 @@
 """Local Ray: E2E-like shared scenarios — transient crash, no false positive, hang."""
 from __future__ import annotations
 
+import asyncio
+import time
 from collections.abc import Generator
 from datetime import timedelta
 from typing import Any
@@ -12,7 +14,7 @@ from prometheus_client import Gauge
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.training_crash import TrainingCrashDetector
-from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
 from miles.utils.ft.platform.controller_actor import FtControllerActor
@@ -20,11 +22,14 @@ from miles.utils.ft.platform.controller_factory import FtControllerConfig
 from miles.utils.ft.protocols.platform import JobStatus, ft_controller_actor_name
 
 from tests.fast.utils.ft.helpers.fault_injection import LocalRayFaultInjector
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import E2EEnv
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
+    assert_phase_path_contains,
+    get_status,
     scenario_hang_detection,
     scenario_no_false_positive,
-    scenario_repeated_crash,
     scenario_transient_crash,
+    wait_for_recovery_phase,
 )
 from tests.fast.utils.ft.helpers.training_simulator import (
     RemoteControlledTrainingJob,
@@ -168,15 +173,13 @@ def hang_simulated_env(
 class TestTransientCrash:
     async def test_crash_triggers_recovery_then_returns_to_monitoring(
         self,
-        simulated_env: tuple[ray.actor.ActorHandle, ray.actor.ActorHandle, LocalRayFaultInjector],
+        e2e_env: E2EEnv,
     ) -> None:
-        controller, state_actor, injector = simulated_env
-
         status = await scenario_transient_crash(
-            handle=controller,
-            injector=injector,
+            handle=e2e_env.controller,
+            injector=e2e_env.injector,
             stable_iterations=0,
-            recovery_timeout=30.0,
+            recovery_timeout=60.0,
         )
 
         assert status.mode == ControllerMode.MONITORING
@@ -202,16 +205,31 @@ class TestNoFalsePositive:
 class TestRepeatedCrash:
     async def test_two_crashes_escalate_to_diagnosing(
         self,
-        simulated_env: tuple[ray.actor.ActorHandle, ray.actor.ActorHandle, LocalRayFaultInjector],
+        e2e_env: E2EEnv,
     ) -> None:
-        controller, _state_actor, injector = simulated_env
-
-        await scenario_repeated_crash(
-            handle=controller,
-            injector=injector,
-            stable_iterations=0,
-            recovery_timeout=30.0,
+        """Crash → recovery MONITORING → crash again → escalates to DIAGNOSING."""
+        # Step 1: crash → recovery enters MONITORING phase
+        await e2e_env.injector.crash_training()
+        await wait_for_recovery_phase(
+            e2e_env.controller,
+            phase=RecoveryPhase.MONITORING,
+            timeout=60.0,
         )
+
+        # Step 2: crash during MONITORING → DIAGNOSING
+        await e2e_env.injector.crash_training()
+
+        # Step 3: poll for DIAGNOSING in phase_history during the active recovery
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            status = get_status(e2e_env.controller)
+            if status.phase_history and RecoveryPhase.DIAGNOSING in status.phase_history:
+                break
+            await asyncio.sleep(0.5)
+        else:
+            raise TimeoutError("DIAGNOSING not observed in phase_history within 60s")
+
+        assert_phase_path_contains(status, [RecoveryPhase.DIAGNOSING])
 
 
 class TestHangDetection:

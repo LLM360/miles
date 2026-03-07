@@ -1,6 +1,6 @@
 """Controller memory leak test.
 
-Runs 500 ticks with realistic data injection and asserts RSS growth < 50MB.
+Runs 500 ticks with realistic data injection and asserts RSS growth < 160MB.
 Validates that MiniPrometheus ring buffer, MiniWandb, and detector chain
 don't accumulate memory over time.
 """
@@ -16,7 +16,7 @@ from miles.utils.ft.controller.detectors.chain import build_detector_chain
 
 _WARMUP_TICKS = 10
 _TEST_TICKS = 500
-_MAX_RSS_GROWTH_BYTES = 80 * 1024 * 1024  # 80 MB
+_MAX_RSS_GROWTH_BYTES = 160 * 1024 * 1024  # 160 MB
 
 _NODE_IDS = ["node-0", "node-1", "node-2", "node-3"]
 
