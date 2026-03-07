@@ -105,22 +105,7 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
             return None
 
         if len(decision.bad_node_ids) >= self._max_simultaneous_bad_nodes:
-            logger.warning(
-                "too_many_bad_nodes count=%d threshold=%d, likely false positive",
-                len(decision.bad_node_ids),
-                self._max_simultaneous_bad_nodes,
-            )
-            await handle_notify_human(
-                decision=Decision(
-                    action=ActionType.NOTIFY_HUMAN,
-                    reason=(
-                        f"Detector reported {len(decision.bad_node_ids)} bad nodes "
-                        f"(>= {self._max_simultaneous_bad_nodes}), likely false positive"
-                    ),
-                    trigger=decision.trigger,
-                ),
-                notifier=self._platform_deps.notifier,
-            )
+            await self._handle_too_many_simultaneous_bad_nodes(decision)
             return None
 
         if decision.trigger is None:
@@ -237,6 +222,24 @@ class MainStepper(StateMachineStepper[MainState, TickContext]):
                     type(detector).__name__,
                     exc_info=True,
                 )
+
+    async def _handle_too_many_simultaneous_bad_nodes(self, decision):
+        logger.warning(
+            "too_many_bad_nodes count=%d threshold=%d, likely false positive",
+            len(decision.bad_node_ids),
+            self._max_simultaneous_bad_nodes,
+        )
+        await handle_notify_human(
+            decision=Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason=(
+                    f"Detector reported {len(decision.bad_node_ids)} bad nodes "
+                    f"(>= {self._max_simultaneous_bad_nodes}), likely false positive"
+                ),
+                trigger=decision.trigger,
+            ),
+            notifier=self._platform_deps.notifier,
+        )
 
 
 def get_known_bad_nodes(recovery_state: RecoveryState) -> list[str]:
