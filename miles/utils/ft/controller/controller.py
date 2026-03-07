@@ -28,6 +28,7 @@ from miles.utils.ft.controller.recovery.recovery_stepper import (
     NotifyHumans,
     RECOVERY_HANDLER_MAP,
     RECOVERY_STATE_TO_INT,
+    RECOVERY_TIMEOUT_SECONDS,
     RecoveryContext,
     RecoveryDone,
     RecoveryState,
@@ -135,7 +136,7 @@ class FtController:
         max_simultaneous_bad_nodes: int = 3,
         monitoring_success_iterations: int = 10,
         monitoring_timeout_seconds: int = 600,
-        recovery_timeout_seconds: int = 1800,
+        recovery_timeout_seconds: int = RECOVERY_TIMEOUT_SECONDS,
     ) -> FtController:
         agents: dict[str, NodeAgentProtocol] = {}
         rank_roster = RankRoster(scrape_target_manager=scrape_target_manager)
