@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Generator
+from typing import Any
+
+import pytest
+import ray
+
+from miles.utils.ft.platform.controller_actor import FtControllerActor
+from miles.utils.ft.platform.controller_factory import FtControllerConfig
+from miles.utils.ft.protocols.platform import ft_controller_actor_name
+
+from tests.fast.utils.ft.integration.conftest import (
+    _kill_named_actor,
+    get_status,
+    poll_for_run_id,
+)
+
+pytestmark = [
+    pytest.mark.local_ray,
+]
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_default_controller(local_ray: None) -> Generator[None, None, None]:
+    _kill_named_actor(ft_controller_actor_name(""))
+    yield
+    _kill_named_actor(ft_controller_actor_name(""))
+
+
+@pytest.fixture
+def controller_actor(
+    local_ray: None,
+) -> Generator[ray.actor.ActorHandle, None, None]:
+    actor_name = ft_controller_actor_name("")
+    handle = FtControllerActor.options(name=actor_name).remote(
+        config=FtControllerConfig(platform="stub", tick_interval=0.05),
+    )
+    yield handle
+    try:
+        ray.get(handle.shutdown.remote(), timeout=10)
+    except Exception:
+        pass
+    _kill_named_actor(actor_name)
+
+
+@pytest.fixture
+def make_controller_actor(
+    local_ray: None,
+) -> Generator[Callable[..., ray.actor.ActorHandle], None, None]:
+    created_actors: list[tuple[ray.actor.ActorHandle, str]] = []
+
+    def _factory(
+        ft_id: str = "",
+        tick_interval: float = 0.05,
+        **overrides: Any,
+    ) -> ray.actor.ActorHandle:
+        actor_name = ft_controller_actor_name(ft_id)
+        _kill_named_actor(actor_name)
+        handle = FtControllerActor.options(name=actor_name).remote(
+            config=FtControllerConfig(
+                platform="stub",
+                tick_interval=tick_interval,
+                ft_id=ft_id,
+            ),
+            **overrides,
+        )
+        created_actors.append((handle, actor_name))
+        return handle
+
+    yield _factory
+
+    for handle, name in created_actors:
+        try:
+            ray.get(handle.shutdown.remote(), timeout=5)
+        except Exception:
+            pass
+        _kill_named_actor(name)
+
+
+@pytest.fixture
+def running_controller(
+    local_ray: None,
+) -> Generator[tuple[ray.actor.ActorHandle, str], None, None]:
+    """Controller actor that has already submitted a training run via StubTrainingJob.
+
+    Yields (handle, run_id) where run_id is the auto-generated ID from StubTrainingJob.
+    """
+    actor_name = ft_controller_actor_name("")
+    handle = FtControllerActor.options(name=actor_name).remote(
+        config=FtControllerConfig(platform="stub", tick_interval=0.05),
+    )
+    handle.submit_and_run.remote()
+    run_id = poll_for_run_id(handle)
+    yield handle, run_id
+    try:
+        ray.get(handle.shutdown.remote(), timeout=10)
+    except Exception:
+        pass
+    _kill_named_actor(actor_name)
