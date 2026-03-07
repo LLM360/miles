@@ -1,6 +1,8 @@
 """Semi-E2E: hardware faults — GPU lost, NaN loss, fault during recovery."""
 from __future__ import annotations
 
+import asyncio
+import time
 from collections.abc import Callable
 
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
@@ -15,6 +17,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
 )
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
+    get_status,
     wait_for_mode,
     wait_for_recovery_complete,
     wait_for_training_stable,
@@ -37,17 +40,20 @@ class TestHardwareAlert:
             ),
         ])
 
-        # Step 2: wait for metrics to be scraped and detector to act
-        status = await wait_for_mode(
-            env.controller,
-            target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
-        )
-        assert status.mode == ControllerMode.RECOVERY
+        # Step 2: with phase chaining, MARK_BAD_AND_RESTART may complete
+        # recovery in a single tick (CHECK_ALERTS → EVICT_AND_RESTART → DONE),
+        # so RECOVERY mode may be too transient to observe. Poll until
+        # phase_history contains the expected eviction path instead.
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            status = get_status(env.controller)
+            if status.phase_history and RecoveryPhase.EVICT_AND_RESTART in status.phase_history:
+                break
+            await asyncio.sleep(0.5)
+        else:
+            raise TimeoutError("Recovery with EVICT_AND_RESTART not observed within 60s")
 
-        # Step 3: wait for full recovery
-        final = await wait_for_recovery_complete(env.controller, timeout=60.0)
-        assert_phase_path_contains(final, [
+        assert_phase_path_contains(status, [
             RecoveryPhase.EVICT_AND_RESTART,
             RecoveryPhase.DONE,
         ])

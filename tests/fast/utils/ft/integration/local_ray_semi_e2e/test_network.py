@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 from datetime import timedelta
 
+from miles.utils.ft.controller.detectors.network import NetworkAlertDetector, NetworkAlertDetectorConfig
 from miles.utils.ft.models.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.models.metrics import GaugeSample
 from miles.utils.ft.models.recovery import ControllerMode
@@ -25,13 +26,11 @@ class TestEphemeralNic:
     async def test_ephemeral_nic_fault_goes_to_reattempting(
         self, make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """NIC down samples (ephemeral) → NetworkAlertDetector → MARK_BAD_AND_RESTART.
+        """NIC up→down transition → NetworkAlertDetector → MARK_BAD_AND_RESTART.
 
         MARK_BAD_AND_RESTART evicts directly without entering recovery mode,
         so we detect the action by observing run_id change.
         """
-        from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
-
         env = make_e2e_env(
             ft_id="e2enic",
             nodes=[NodeSpec(
@@ -39,18 +38,29 @@ class TestEphemeralNic:
                 use_remote_collector=True,
             )],
             detectors=[
-                NetworkAlertDetector(
-                    alert_window=timedelta(seconds=10),
+                NetworkAlertDetector(config=NetworkAlertDetectorConfig(
+                    alert_window_minutes=10 / 60,
                     alert_threshold=1,
-                ),
+                )),
             ],
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
         await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+
+        # Step 1: inject NIC up so MiniPrometheus has a baseline
+        env.set_collector_metrics("e2enic-node-0", [
+            GaugeSample(
+                name=NODE_NETWORK_UP,
+                labels={"node_id": "e2enic-node-0", "device": "eth0"},
+                value=1.0,
+            ),
+        ])
+        await asyncio.sleep(_FAST_SCRAPE * 3)
+
         old_run_id = get_status(env.controller).active_run_id
 
-        # Step 1: inject NIC down metrics
+        # Step 2: inject NIC down to create up→down transition
         env.set_collector_metrics("e2enic-node-0", [
             GaugeSample(
                 name=NODE_NETWORK_UP,
@@ -59,7 +69,7 @@ class TestEphemeralNic:
             ),
         ])
 
-        # Step 2: MARK_BAD_AND_RESTART evicts and restarts without entering
+        # Step 3: MARK_BAD_AND_RESTART evicts and restarts without entering
         # recovery mode; poll until active_run_id changes.
         deadline = time.monotonic() + 60.0
         while time.monotonic() < deadline:
@@ -77,12 +87,10 @@ class TestNetworkAlert:
     async def test_sustained_nic_down_triggers_eviction(
         self, make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """Sustained NIC down → NetworkAlertDetector → MARK_BAD_AND_RESTART.
+        """Sustained NIC up→down → NetworkAlertDetector → MARK_BAD_AND_RESTART.
 
         MARK_BAD_AND_RESTART evicts directly without entering recovery mode.
         """
-        from miles.utils.ft.controller.detectors.network import NetworkAlertDetector
-
         env = make_e2e_env(
             ft_id="e2enet",
             nodes=[NodeSpec(
@@ -90,18 +98,34 @@ class TestNetworkAlert:
                 use_remote_collector=True,
             )],
             detectors=[
-                NetworkAlertDetector(
-                    alert_window=timedelta(seconds=10),
+                NetworkAlertDetector(config=NetworkAlertDetectorConfig(
+                    alert_window_minutes=10 / 60,
                     alert_threshold=1,
-                ),
+                )),
             ],
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
         await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+
+        # Step 1: inject NIC up baseline
+        env.set_collector_metrics("e2enet-node-0", [
+            GaugeSample(
+                name=NODE_NETWORK_UP,
+                labels={"node_id": "e2enet-node-0", "device": "eth0"},
+                value=1.0,
+            ),
+            GaugeSample(
+                name=NODE_NETWORK_UP,
+                labels={"node_id": "e2enet-node-0", "device": "eth1"},
+                value=1.0,
+            ),
+        ])
+        await asyncio.sleep(_FAST_SCRAPE * 3)
+
         old_run_id = get_status(env.controller).active_run_id
 
-        # Step 1: inject sustained NIC down
+        # Step 2: inject sustained NIC down to create up→down transitions
         env.set_collector_metrics("e2enet-node-0", [
             GaugeSample(
                 name=NODE_NETWORK_UP,
@@ -115,7 +139,7 @@ class TestNetworkAlert:
             ),
         ])
 
-        # Step 2: poll until active_run_id changes (MARK_BAD_AND_RESTART
+        # Step 3: poll until active_run_id changes (MARK_BAD_AND_RESTART
         # evicts and restarts without entering recovery mode)
         deadline = time.monotonic() + 60.0
         while time.monotonic() < deadline:

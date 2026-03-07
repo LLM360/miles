@@ -49,7 +49,9 @@ class TestNetworkAlertDetector:
     def test_two_alerts_triggers(self) -> None:
         store = make_fake_metric_store()
         now = datetime.now(timezone.utc)
+        _inject_nic_at_time(store, "node-0", "ib0", 1.0, now - timedelta(minutes=4))
         _inject_nic_at_time(store, "node-0", "ib0", 0.0, now - timedelta(minutes=3))
+        _inject_nic_at_time(store, "node-0", "ib0", 1.0, now - timedelta(minutes=2))
         _inject_nic_at_time(store, "node-0", "ib0", 0.0, now - timedelta(minutes=1))
 
         detector = NetworkAlertDetector()
