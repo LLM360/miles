@@ -22,9 +22,10 @@ from miles.utils.ft.controller.rank_roster import RankRoster
 from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
 from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper import (
-    BAD_NODES_CONFIRMED_TYPES,
     EvictingAndRestarting,
+    NotifyHumans,
     RECOVERY_STATE_TO_INT,
+    RecoveryDone,
     RecoveryStepper,
     RecoveryState,
 )
@@ -242,7 +243,7 @@ class FtController:
             mode = ControllerMode.RECOVERY
             recovery_phase_str = _recovery_phase_name(recovery)
             bad_nodes = sorted(get_known_bad_nodes(recovery))
-            bad_nodes_confirmed = type(recovery) in BAD_NODES_CONFIRMED_TYPES
+            bad_nodes_confirmed = bool(bad_nodes) or isinstance(recovery, (NotifyHumans, RecoveryDone))
         else:
             mode = ControllerMode.MONITORING
             recovery_phase_str = None

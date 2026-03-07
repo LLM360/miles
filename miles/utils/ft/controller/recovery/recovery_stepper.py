@@ -82,11 +82,6 @@ RECOVERY_STATE_TO_INT: dict[type[RecoveryState], int] = {
     RecoveryDone: 6,
 }
 
-BAD_NODES_CONFIRMED_TYPES: frozenset[type[RecoveryState]] = frozenset({
-    EvictingAndRestarting, NotifyHumans, RecoveryDone,
-})
-
-
 # ---------------------------------------------------------------------------
 # Stepper
 # ---------------------------------------------------------------------------
