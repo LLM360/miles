@@ -14,6 +14,8 @@ import pytest
 
 from miles.utils.ft.controller.metrics.prometheus_api.store import (
     PrometheusClient,
+    _build_selector,
+    _escape_promql_label_value,
     _format_duration,
 )
 
@@ -528,3 +530,241 @@ class TestFormatDuration:
 
     def test_non_even_hours_falls_to_minutes(self) -> None:
         assert _format_duration(timedelta(hours=1, minutes=30)) == "90m"
+
+
+# ---------------------------------------------------------------------------
+# NaN / Inf handling
+# ---------------------------------------------------------------------------
+
+
+class TestNanAndInfValues:
+    def test_nan_value_parsed_correctly(self) -> None:
+        json_data = {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [
+                    {"metric": {"__name__": "m"}, "value": [1709000000, "NaN"]},
+                ],
+            },
+        }
+
+        with _mock_prometheus_client(json_data) as client:
+            df = client.query_latest("m")
+
+        assert df.shape[0] == 1
+        import math
+        assert math.isnan(df["value"][0])
+
+    def test_positive_inf_value_parsed(self) -> None:
+        json_data = {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [
+                    {"metric": {"__name__": "m"}, "value": [1709000000, "+Inf"]},
+                ],
+            },
+        }
+
+        with _mock_prometheus_client(json_data) as client:
+            df = client.query_latest("m")
+
+        assert df.shape[0] == 1
+        assert df["value"][0] == float("inf")
+
+    def test_negative_inf_value_parsed(self) -> None:
+        json_data = {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [
+                    {"metric": {"__name__": "m"}, "value": [1709000000, "-Inf"]},
+                ],
+            },
+        }
+
+        with _mock_prometheus_client(json_data) as client:
+            df = client.query_latest("m")
+
+        assert df.shape[0] == 1
+        assert df["value"][0] == float("-inf")
+
+    def test_nan_in_matrix_values(self) -> None:
+        json_data = {
+            "status": "success",
+            "data": {
+                "resultType": "matrix",
+                "result": [
+                    {
+                        "metric": {"__name__": "m"},
+                        "values": [
+                            [1709000000, "1.0"],
+                            [1709000060, "NaN"],
+                            [1709000120, "3.0"],
+                        ],
+                    }
+                ],
+            },
+        }
+
+        with _mock_prometheus_client(json_data) as client:
+            df = client.query_range("m", window=timedelta(hours=1))
+
+        assert df.shape[0] == 3
+        import math
+        assert df["value"][0] == 1.0
+        assert math.isnan(df["value"][1])
+        assert df["value"][2] == 3.0
+
+
+# ---------------------------------------------------------------------------
+# Retry behaviour
+# ---------------------------------------------------------------------------
+
+
+class TestRetryBehaviour:
+    def test_retry_succeeds_on_second_attempt(self) -> None:
+        success_json = {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [
+                    {"metric": {"__name__": "up"}, "value": [1709000000, "1"]},
+                ],
+            },
+        }
+        error_response = httpx.Response(
+            status_code=500,
+            text="Internal Server Error",
+            request=httpx.Request("GET", "http://fake:9090/api/v1/query"),
+        )
+        call_count = 0
+
+        def _side_effect(*args: object, **kwargs: object) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return error_response
+            return _make_response(success_json)
+
+        with patch.object(httpx.Client, "get", side_effect=_side_effect):
+            client = PrometheusClient(url="http://fake:9090")
+            df = client.query_latest("up")
+
+        assert call_count == 2
+        assert df.shape[0] == 1
+        assert df["value"][0] == 1.0
+
+    def test_retry_exhausted_returns_empty(self) -> None:
+        error_response = httpx.Response(
+            status_code=500,
+            text="Internal Server Error",
+            request=httpx.Request("GET", "http://fake:9090/api/v1/query"),
+        )
+        call_count = 0
+
+        def _side_effect(*args: object, **kwargs: object) -> httpx.Response:
+            nonlocal call_count
+            call_count += 1
+            return error_response
+
+        with patch.object(httpx.Client, "get", side_effect=_side_effect):
+            client = PrometheusClient(url="http://fake:9090")
+            df = client.query_latest("up")
+
+        assert call_count == 2
+        assert df.is_empty()
+
+
+# ---------------------------------------------------------------------------
+# avg_over_time PromQL construction
+# ---------------------------------------------------------------------------
+
+
+class TestAvgOverTimePromQL:
+    def test_avg_over_time_builds_correct_promql(self) -> None:
+        json_data = {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [
+                    {"metric": {"__name__": "cpu"}, "value": [1709000000, "0.75"]},
+                ],
+            },
+        }
+
+        with patch.object(httpx.Client, "get", return_value=_make_response(json_data)) as mock_get:
+            client = PrometheusClient(url="http://fake:9090")
+            df = client.avg_over_time("cpu", window=timedelta(minutes=5))
+
+            call_args = mock_get.call_args
+            params = call_args.kwargs.get("params") or call_args[1].get("params")
+            assert params["query"] == "avg_over_time(cpu[5m])"
+
+        assert df.shape[0] == 1
+        assert df["value"][0] == 0.75
+
+    def test_avg_over_time_with_label_filters(self) -> None:
+        json_data = {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [
+                    {
+                        "metric": {"__name__": "cpu", "node_id": "node-0"},
+                        "value": [1709000000, "0.6"],
+                    },
+                ],
+            },
+        }
+
+        with patch.object(httpx.Client, "get", return_value=_make_response(json_data)) as mock_get:
+            client = PrometheusClient(url="http://fake:9090")
+            client.avg_over_time(
+                "cpu", window=timedelta(hours=1), label_filters={"node_id": "node-0"},
+            )
+
+            call_args = mock_get.call_args
+            params = call_args.kwargs.get("params") or call_args[1].get("params")
+            assert params["query"] == 'avg_over_time(cpu{node_id="node-0"}[1h])'
+
+
+# ---------------------------------------------------------------------------
+# PromQL label escaping
+# ---------------------------------------------------------------------------
+
+
+class TestPromQLLabelEscaping:
+    def test_label_value_with_double_quotes(self) -> None:
+        escaped = _escape_promql_label_value('value with "quotes"')
+        assert escaped == 'value with \\"quotes\\"'
+
+    def test_label_value_with_backslash(self) -> None:
+        escaped = _escape_promql_label_value("path\\to\\file")
+        assert escaped == "path\\\\to\\\\file"
+
+    def test_label_value_with_newline(self) -> None:
+        escaped = _escape_promql_label_value("line1\nline2")
+        assert escaped == "line1\\nline2"
+
+    def test_build_selector_escapes_label_values(self) -> None:
+        selector = _build_selector("metric", {"key": 'val"ue'})
+        assert selector == 'metric{key="val\\"ue"}'
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle: stop() then query
+# ---------------------------------------------------------------------------
+
+
+class TestLifecycle:
+    @pytest.mark.asyncio
+    async def test_query_after_stop_returns_empty(self) -> None:
+        client = PrometheusClient(url="http://fake:9090")
+        await client.stop()
+
+        df = client.query_latest("some_metric")
+        assert df.is_empty()
+        assert "__name__" in df.columns
+        assert "value" in df.columns
