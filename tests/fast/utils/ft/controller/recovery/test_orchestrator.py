@@ -464,9 +464,11 @@ class TestCheckAlertsEphemeral:
     def test_ephemeral_only_nic_flapping_goes_to_reattempting(self) -> None:
         """NIC flapping without hardware faults should go to REATTEMPTING, not EVICT."""
         orch, _, _, _, _, metric_store, _ = _make_orchestrator_with_store()
-        # Inject 2 NIC-down samples for same device → triggers check_nic_down_in_window (threshold=2)
+        # Inject 2 up→down transitions for same device → triggers check_nic_down_in_window (threshold=2)
         # but keep majority of NICs up → does NOT trigger _check_majority_nic_down
+        inject_nic_up(metric_store, node_id="node-0", device="ib0")
         inject_nic_down(metric_store, node_id="node-0", device="ib0")
+        inject_nic_up(metric_store, node_id="node-0", device="ib0")
         inject_nic_down(metric_store, node_id="node-0", device="ib0")
         inject_nic_up(metric_store, node_id="node-0", device="ib1")
         inject_nic_up(metric_store, node_id="node-0", device="ib2")
@@ -482,8 +484,10 @@ class TestCheckAlertsEphemeral:
         orch, _, _, _, _, metric_store, _ = _make_orchestrator_with_store()
         # node-1: GPU fault (non-ephemeral)
         inject_gpu_unavailable(metric_store, node_id="node-1")
-        # node-0: NIC flapping only (ephemeral)
+        # node-0: NIC flapping only (ephemeral) — 2 up→down transitions
+        inject_nic_up(metric_store, node_id="node-0", device="ib0")
         inject_nic_down(metric_store, node_id="node-0", device="ib0")
+        inject_nic_up(metric_store, node_id="node-0", device="ib0")
         inject_nic_down(metric_store, node_id="node-0", device="ib0")
         inject_nic_up(metric_store, node_id="node-0", device="ib1")
         inject_nic_up(metric_store, node_id="node-0", device="ib2")

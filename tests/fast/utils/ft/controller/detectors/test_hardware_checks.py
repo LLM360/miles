@@ -19,7 +19,9 @@ class TestCheckNicDownInWindow:
     def test_returns_ephemeral_faults(self) -> None:
         """NodeFault from check_nic_down_in_window must have ephemeral=True."""
         store = make_fake_metric_store()
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
 
         faults = check_nic_down_in_window(store, window=timedelta(minutes=5), threshold=2)

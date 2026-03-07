@@ -94,7 +94,9 @@ class TestAlertCheckerNetworkAlerts:
 
     def test_consecutive_nic_down_detected(self) -> None:
         store = make_fake_metric_store()
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
         checker = AlertChecker(metric_store=store)
 
@@ -102,12 +104,14 @@ class TestAlertCheckerNetworkAlerts:
         node_ids = [f.node_id for f in faults]
 
         assert "node-0" in node_ids
-        assert any("NIC down" in f.reason for f in faults)
+        assert any("NIC went down" in f.reason for f in faults)
 
     def test_nic_flapping_faults_are_ephemeral(self) -> None:
         """NIC-down-in-window faults returned by check_alerts should be ephemeral."""
         store = make_fake_metric_store()
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
         inject_nic_up(store, node_id="node-0", device="ib1")
         inject_nic_up(store, node_id="node-0", device="ib2")
@@ -115,7 +119,7 @@ class TestAlertCheckerNetworkAlerts:
         checker = AlertChecker(metric_store=store)
 
         faults = checker.check_alerts()
-        nic_faults = [f for f in faults if "NIC down" in f.reason]
+        nic_faults = [f for f in faults if "NIC went down" in f.reason]
 
         assert len(nic_faults) == 1
         assert nic_faults[0].ephemeral is True
@@ -137,8 +141,11 @@ class TestAlertCheckerNetworkAlerts:
 
     def test_custom_threshold(self) -> None:
         store = make_fake_metric_store()
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
         checker = AlertChecker(
             metric_store=store,
@@ -153,7 +160,9 @@ class TestAlertCheckerNetworkAlerts:
     def test_network_and_hardware_faults_combined(self) -> None:
         store = make_fake_metric_store()
         inject_gpu_unavailable(store, node_id="node-1")
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
         checker = AlertChecker(metric_store=store)
 
@@ -163,13 +172,17 @@ class TestAlertCheckerNetworkAlerts:
         assert "node-0" in node_ids
         assert "node-1" in node_ids
         assert any("GPU unavailable" in f.reason for f in faults)
-        assert any("NIC down" in f.reason for f in faults)
+        assert any("NIC went down" in f.reason for f in faults)
 
     def test_multiple_nodes_network_alerts(self) -> None:
         store = make_fake_metric_store()
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
+        inject_nic_up(store, node_id="node-2", device="ib0")
         inject_nic_down(store, node_id="node-2", device="ib0")
+        inject_nic_up(store, node_id="node-2", device="ib0")
         inject_nic_down(store, node_id="node-2", device="ib0")
         checker = AlertChecker(metric_store=store)
 
