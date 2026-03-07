@@ -13,9 +13,9 @@ from typing import Any
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
 from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
+from miles.utils.ft.agents.diagnostics.runner import DiagnosticRunner
 from miles.utils.ft.controller.diagnostics.nccl.orchestrator import InterMachineOrchestrator
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.platform.ray_wrappers.node_discovery import build_node_address_map, get_alive_gpu_nodes
@@ -99,7 +99,7 @@ class _StandaloneDiagnosticAgent:
     """Lightweight Ray actor pinned to a node for running NCCL diagnostics."""
 
     def __init__(self, node_id: str, num_gpus: int) -> None:
-        self._agent = FtNodeAgent(
+        self._runner = DiagnosticRunner(
             node_id=node_id,
             diagnostics=[
                 IntraMachineCommDiagnostic(num_gpus=num_gpus),
@@ -113,7 +113,7 @@ class _StandaloneDiagnosticAgent:
         timeout_seconds: int = 120,
         **kwargs: object,
     ) -> DiagnosticResult:
-        return await self._agent.run_diagnostic(
+        return await self._runner.run_diagnostic(
             diagnostic_type=diagnostic_type,
             timeout_seconds=timeout_seconds,
             **kwargs,
