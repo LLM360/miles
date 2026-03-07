@@ -52,7 +52,7 @@ def _make_diagnostic_test_env(
         diagnostic_orchestrator=orchestrator,
     )
     for node_id, agent in agents.items():
-        harness.controller.register_node_agent(node_id, agent)
+        harness.controller.register_node_agent(node_id, agent=agent)
     _enter_recovery_and_skip_to_diagnosing(harness, orchestrator)
     orch = harness.controller._recovery_manager._orchestrator
     assert orch is not None

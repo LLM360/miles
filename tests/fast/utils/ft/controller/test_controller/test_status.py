@@ -179,7 +179,7 @@ class TestAgentManagement:
     def test_register_agent_adds_to_dict(self) -> None:
         harness = make_test_controller()
         agent = object()
-        harness.controller.register_node_agent("node-0", agent)
+        harness.controller.register_node_agent("node-0", agent=agent)
 
         assert "node-0" in harness.controller._agents
         assert harness.controller._agents["node-0"] is agent
@@ -188,8 +188,8 @@ class TestAgentManagement:
         harness = make_test_controller()
         agent1 = object()
         agent2 = object()
-        harness.controller.register_node_agent("node-0", agent1)
-        harness.controller.register_node_agent("node-0", agent2)
+        harness.controller.register_node_agent("node-0", agent=agent1)
+        harness.controller.register_node_agent("node-0", agent=agent2)
 
         assert harness.controller._agents["node-0"] is agent2
 
