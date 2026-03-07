@@ -3,6 +3,7 @@ from __future__ import annotations
 import wandb
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
+from miles.utils.ft.platform.embedded_agents import create_tracking_agent
 from miles.utils.tensorboard_utils import _TensorboardAdapter
 
 from . import wandb_utils
@@ -24,7 +25,7 @@ def init_tracking(args, primary: bool = True, **kwargs) -> None:
         wandb_utils.init_wandb_secondary(args, **kwargs)
 
     if "train" in args.ft_components and _ft_tracking_agent is None:
-        _ft_tracking_agent = FtTrackingAgent()
+        _ft_tracking_agent = create_tracking_agent()
 
 
 # TODO further refactor, e.g. put TensorBoard init to the "init" part
