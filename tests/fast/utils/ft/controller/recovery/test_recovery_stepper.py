@@ -9,7 +9,6 @@ import pytest
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery.alert_checker import AlertChecker
 from miles.utils.ft.controller.recovery.recovery_stepper import (
-    DirectlyRestarting,
     EvictingAndRestarting,
     NotifyHumans,
     RealtimeChecks,
@@ -139,11 +138,13 @@ async def _step(
 
 class TestRealtimeChecks:
     @pytest.mark.asyncio
-    async def test_no_faults_goes_to_directly_restarting(self) -> None:
+    async def test_no_faults_goes_to_restarting(self) -> None:
         stepper = _make_recovery_stepper(alert_checker=FakeAlertChecker(faults=[]))
         result = await _step(stepper, RealtimeChecks())
-        assert isinstance(result, DirectlyRestarting)
+        assert isinstance(result, EvictingAndRestarting)
         assert isinstance(result.restart, StoppingAndRestarting)
+        assert isinstance(result.succeed_next_state, RecoveryDone)
+        assert isinstance(result.failed_next_state, StopTimeDiagnostics)
 
     @pytest.mark.asyncio
     async def test_non_ephemeral_faults_go_to_evicting_and_restarting(self) -> None:
@@ -153,14 +154,16 @@ class TestRealtimeChecks:
         assert isinstance(result, EvictingAndRestarting)
         assert isinstance(result.restart, Evicting)
         assert result.restart.bad_node_ids == ["node-A"]
-        assert result.is_final_attempt is False
+        assert isinstance(result.succeed_next_state, RecoveryDone)
+        assert isinstance(result.failed_next_state, StopTimeDiagnostics)
 
     @pytest.mark.asyncio
-    async def test_ephemeral_only_goes_to_directly_restarting(self) -> None:
+    async def test_ephemeral_only_goes_to_restarting(self) -> None:
         faults = [NodeFault(node_id="node-A", reason="temporary", ephemeral=True)]
         stepper = _make_recovery_stepper(alert_checker=FakeAlertChecker(faults=faults))
         result = await _step(stepper, RealtimeChecks())
-        assert isinstance(result, DirectlyRestarting)
+        assert isinstance(result, EvictingAndRestarting)
+        assert isinstance(result.restart, StoppingAndRestarting)
 
     @pytest.mark.asyncio
     async def test_pre_identified_bad_nodes_skip_alert_check(self) -> None:
@@ -185,7 +188,7 @@ class TestRealtimeChecks:
 
     @pytest.mark.asyncio
     async def test_ephemeral_faults_skip_eviction(self) -> None:
-        """Only ephemeral faults -> DirectlyRestarting with StoppingAndRestarting (no Evicting)."""
+        """Only ephemeral faults -> EvictingAndRestarting with StoppingAndRestarting (no Evicting)."""
         faults = [
             NodeFault(node_id="node-A", reason="temp glitch", ephemeral=True),
             NodeFault(node_id="node-B", reason="transient", ephemeral=True),
@@ -193,7 +196,7 @@ class TestRealtimeChecks:
         stepper = _make_recovery_stepper(alert_checker=FakeAlertChecker(faults=faults))
         result = await _step(stepper, RealtimeChecks())
 
-        assert isinstance(result, DirectlyRestarting)
+        assert isinstance(result, EvictingAndRestarting)
         assert isinstance(result.restart, StoppingAndRestarting)
 
     @pytest.mark.asyncio
@@ -218,26 +221,38 @@ class TestRealtimeChecks:
 
 class TestEvictingAndRestarting:
     @pytest.mark.asyncio
-    async def test_restart_done_returns_recovery_done(self) -> None:
+    async def test_restart_done_returns_succeed_next_state(self) -> None:
         restart_stepper = AsyncMock(return_value=RestartDone())
         stepper = _make_recovery_stepper(restart_stepper=restart_stepper)
-        state = EvictingAndRestarting(restart=Evicting(bad_node_ids=["n"]))
+        state = EvictingAndRestarting(
+            restart=Evicting(bad_node_ids=["n"]),
+            succeed_next_state=RecoveryDone(),
+            failed_next_state=StopTimeDiagnostics(),
+        )
         result = await _step(stepper, state)
         assert isinstance(result, RecoveryDone)
 
     @pytest.mark.asyncio
-    async def test_restart_failed_non_final_goes_to_diagnostics(self) -> None:
+    async def test_restart_failed_returns_failed_next_state(self) -> None:
         restart_stepper = AsyncMock(return_value=RestartFailed())
         stepper = _make_recovery_stepper(restart_stepper=restart_stepper)
-        state = EvictingAndRestarting(restart=Evicting(), is_final_attempt=False)
+        state = EvictingAndRestarting(
+            restart=Evicting(),
+            succeed_next_state=RecoveryDone(),
+            failed_next_state=StopTimeDiagnostics(),
+        )
         result = await _step(stepper, state)
         assert isinstance(result, StopTimeDiagnostics)
 
     @pytest.mark.asyncio
-    async def test_restart_failed_final_goes_to_notify(self) -> None:
+    async def test_restart_failed_with_notify_next_state(self) -> None:
         restart_stepper = AsyncMock(return_value=RestartFailed())
         stepper = _make_recovery_stepper(restart_stepper=restart_stepper)
-        state = EvictingAndRestarting(restart=Evicting(), is_final_attempt=True)
+        state = EvictingAndRestarting(
+            restart=Evicting(),
+            succeed_next_state=RecoveryDone(),
+            failed_next_state=NotifyHumans(state_before="EvictingAndRestarting"),
+        )
         result = await _step(stepper, state)
         assert isinstance(result, NotifyHumans)
         assert result.state_before == "EvictingAndRestarting"
@@ -247,41 +262,28 @@ class TestEvictingAndRestarting:
         new_restart = StoppingAndRestarting(bad_node_ids=["n"], submitted=True)
         restart_stepper = AsyncMock(return_value=new_restart)
         stepper = _make_recovery_stepper(restart_stepper=restart_stepper)
-        state = EvictingAndRestarting(restart=Evicting(bad_node_ids=["n"]))
+        state = EvictingAndRestarting(
+            restart=Evicting(bad_node_ids=["n"]),
+            succeed_next_state=RecoveryDone(),
+            failed_next_state=StopTimeDiagnostics(),
+        )
         result = await _step(stepper, state)
         assert isinstance(result, EvictingAndRestarting)
         assert result.restart == new_restart
+        assert isinstance(result.succeed_next_state, RecoveryDone)
+        assert isinstance(result.failed_next_state, StopTimeDiagnostics)
 
     @pytest.mark.asyncio
     async def test_restart_none_returns_none(self) -> None:
         restart_stepper = AsyncMock(return_value=None)
         stepper = _make_recovery_stepper(restart_stepper=restart_stepper)
-        state = EvictingAndRestarting(restart=StoppingAndRestarting(submitted=True))
+        state = EvictingAndRestarting(
+            restart=StoppingAndRestarting(submitted=True),
+            succeed_next_state=RecoveryDone(),
+            failed_next_state=StopTimeDiagnostics(),
+        )
         result = await _step(stepper, state)
         assert result is None
-
-
-# ---------------------------------------------------------------------------
-# DirectlyRestarting
-# ---------------------------------------------------------------------------
-
-
-class TestDirectlyRestarting:
-    @pytest.mark.asyncio
-    async def test_restart_done_returns_recovery_done(self) -> None:
-        restart_stepper = AsyncMock(return_value=RestartDone())
-        stepper = _make_recovery_stepper(restart_stepper=restart_stepper)
-        state = DirectlyRestarting(restart=StoppingAndRestarting())
-        result = await _step(stepper, state)
-        assert isinstance(result, RecoveryDone)
-
-    @pytest.mark.asyncio
-    async def test_restart_failed_goes_to_diagnostics(self) -> None:
-        restart_stepper = AsyncMock(return_value=RestartFailed())
-        stepper = _make_recovery_stepper(restart_stepper=restart_stepper)
-        state = DirectlyRestarting(restart=StoppingAndRestarting())
-        result = await _step(stepper, state)
-        assert isinstance(result, StopTimeDiagnostics)
 
 
 # ---------------------------------------------------------------------------
@@ -291,15 +293,16 @@ class TestDirectlyRestarting:
 
 class TestStopTimeDiagnostics:
     @pytest.mark.asyncio
-    async def test_bad_nodes_found_goes_to_evicting_final(self) -> None:
+    async def test_bad_nodes_found_goes_to_evicting_with_notify_on_fail(self) -> None:
         diag = FakeDiagOrchestrator(
             result=DiagnosticPipelineResult(bad_node_ids=["node-B"], reason="gpu fail"),
         )
         stepper = _make_recovery_stepper(diagnostic_orchestrator=diag)
         result = await _step(stepper, StopTimeDiagnostics())
         assert isinstance(result, EvictingAndRestarting)
-        assert result.is_final_attempt is True
         assert result.restart.bad_node_ids == ["node-B"]
+        assert isinstance(result.succeed_next_state, RecoveryDone)
+        assert isinstance(result.failed_next_state, NotifyHumans)
 
     @pytest.mark.asyncio
     async def test_no_bad_nodes_goes_to_notify(self) -> None:
@@ -386,14 +389,14 @@ class TestGlobalTimeout:
 
 
 # ---------------------------------------------------------------------------
-# Full flow: DirectlyRestarting -> fail -> Diagnostics -> E&R -> Done
+# Full flow: restart -> fail -> Diagnostics -> E&R -> Done
 # ---------------------------------------------------------------------------
 
 
 class TestFullRecoveryFlow:
     @pytest.mark.asyncio
     async def test_no_fault_direct_restart_success(self) -> None:
-        """RealtimeChecks (no faults) -> DirectlyRestarting -> RestartDone -> RecoveryDone."""
+        """RealtimeChecks (no faults) -> EvictingAndRestarting -> RestartDone -> RecoveryDone."""
         training_job = FakeTrainingJob(status_sequence=[JobStatus.RUNNING])
         mini_wandb = MiniWandb()
         mini_wandb.set_active_run_id("r")
@@ -407,19 +410,20 @@ class TestFullRecoveryFlow:
             restart_stepper=restart_stepper,
         )
 
-        # Step 1: RealtimeChecks -> DirectlyRestarting
+        # Step 1: RealtimeChecks -> EvictingAndRestarting (no eviction, direct restart)
         state = await _step(stepper, RealtimeChecks())
-        assert isinstance(state, DirectlyRestarting)
+        assert isinstance(state, EvictingAndRestarting)
+        assert isinstance(state.restart, StoppingAndRestarting)
 
         # Step 2: submit
         state = await _step(stepper, state)
-        assert isinstance(state, DirectlyRestarting)
+        assert isinstance(state, EvictingAndRestarting)
         assert isinstance(state.restart, StoppingAndRestarting)
         assert state.restart.submitted
 
         # Step 3: poll -> MonitoringProgress
         state = await _step(stepper, state)
-        assert isinstance(state, DirectlyRestarting)
+        assert isinstance(state, EvictingAndRestarting)
         assert isinstance(state.restart, MonitoringProgress)
 
         # Step 4: monitoring success
@@ -449,7 +453,7 @@ class TestFullRecoveryFlow:
         assert isinstance(state, EvictingAndRestarting)
         assert isinstance(state.restart, Evicting)
         assert state.restart.bad_node_ids == ["node-X"]
-        assert state.is_final_attempt is False
+        assert isinstance(state.failed_next_state, StopTimeDiagnostics)
 
         # Step 2: Evicting -> mark node bad -> StoppingAndRestarting
         state = await _step(stepper, state)
@@ -475,8 +479,8 @@ class TestFullRecoveryFlow:
 
     @pytest.mark.anyio
     async def test_direct_restart_fail_escalation_full_flow(self) -> None:
-        """DirectlyRestarting fail -> StopTimeDiagnostics -> diagnostics find bad nodes ->
-        EvictingAndRestarting (final attempt) -> RestartDone -> RecoveryDone."""
+        """Restart fail -> StopTimeDiagnostics -> diagnostics find bad nodes ->
+        EvictingAndRestarting (notify on fail) -> RestartDone -> RecoveryDone."""
         training_job = FakeTrainingJob(status_sequence=[JobStatus.FAILED])
         mini_wandb = MiniWandb()
         mini_wandb.set_active_run_id("r")
@@ -496,13 +500,14 @@ class TestFullRecoveryFlow:
             diagnostic_orchestrator=diag,
         )
 
-        # Step 1: RealtimeChecks (no faults) -> DirectlyRestarting
+        # Step 1: RealtimeChecks (no faults) -> EvictingAndRestarting (direct restart)
         state = await _step(stepper, RealtimeChecks())
-        assert isinstance(state, DirectlyRestarting)
+        assert isinstance(state, EvictingAndRestarting)
+        assert isinstance(state.restart, StoppingAndRestarting)
 
         # Step 2: submit
         state = await _step(stepper, state)
-        assert isinstance(state, DirectlyRestarting)
+        assert isinstance(state, EvictingAndRestarting)
         assert isinstance(state.restart, StoppingAndRestarting)
         assert state.restart.submitted
 
@@ -510,10 +515,10 @@ class TestFullRecoveryFlow:
         state = await _step(stepper, state)
         assert isinstance(state, StopTimeDiagnostics)
 
-        # Step 4: diagnostics find bad nodes -> EvictingAndRestarting (final attempt)
+        # Step 4: diagnostics find bad nodes -> EvictingAndRestarting (notify on fail)
         state = await _step(stepper, state)
         assert isinstance(state, EvictingAndRestarting)
-        assert state.is_final_attempt is True
+        assert isinstance(state.failed_next_state, NotifyHumans)
         assert state.restart.bad_node_ids == ["node-B"]
         assert diag.call_count == 1
 
