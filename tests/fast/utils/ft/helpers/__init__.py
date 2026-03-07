@@ -7,9 +7,12 @@ Submodules:
 - agent_fakes: collector fakes, HW-collector mocks, stack trace helpers
 """
 from tests.fast.utils.ft.helpers.agent_fakes import (
-    SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
-    SAMPLE_PYSPY_OUTPUT_NORMAL,
-    SAMPLE_PYSPY_OUTPUT_STUCK,
+    SAMPLE_PYSPY_JSON_DIFFERENT_STUCK,
+    SAMPLE_PYSPY_JSON_NORMAL,
+    SAMPLE_PYSPY_JSON_STUCK,
+    SAMPLE_PYSPY_THREADS_DIFFERENT_STUCK,
+    SAMPLE_PYSPY_THREADS_NORMAL,
+    SAMPLE_PYSPY_THREADS_STUCK,
     FailingCloseCollector,
     FailingCollector,
     FakeKmsgReader,
@@ -18,6 +21,7 @@ from tests.fast.utils.ft.helpers.agent_fakes import (
     make_mock_pynvml,
     make_rank_pids_provider,
     make_trace_result,
+    serialize_pyspy_threads,
 )
 from tests.fast.utils.ft.helpers.controller_fakes import (
     AlwaysEnterRecoveryDetector,
@@ -71,9 +75,13 @@ from tests.fast.utils.ft.helpers.metric_injectors import (
 
 __all__ = [
     "EMPTY_RANK_PLACEMENT",
-    "SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK",
-    "SAMPLE_PYSPY_OUTPUT_NORMAL",
-    "SAMPLE_PYSPY_OUTPUT_STUCK",
+    "SAMPLE_PYSPY_JSON_DIFFERENT_STUCK",
+    "SAMPLE_PYSPY_JSON_NORMAL",
+    "SAMPLE_PYSPY_JSON_STUCK",
+    "SAMPLE_PYSPY_THREADS_DIFFERENT_STUCK",
+    "SAMPLE_PYSPY_THREADS_NORMAL",
+    "SAMPLE_PYSPY_THREADS_STUCK",
+    "serialize_pyspy_threads",
     "AlwaysEnterRecoveryDetector",
     "AlwaysMarkBadDetector",
     "AlwaysNoneDetector",

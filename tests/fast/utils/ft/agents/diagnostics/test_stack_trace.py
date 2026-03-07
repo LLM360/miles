@@ -3,10 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import patch
 
 from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
 from tests.fast.utils.ft.helpers import make_mock_subprocess
+
+SAMPLE_PYSPY_JSON = json.dumps([
+    {
+        "thread_name": "MainThread",
+        "thread_id": "0x7F1234",
+        "active": True,
+        "owns_gil": False,
+        "frames": [
+            {"name": "func_a", "filename": "file.py", "module": "mod", "line": 10, "locals": []},
+        ],
+    },
+]).encode()
 
 
 class TestStackTraceDiagnosticEmptyPids:
@@ -26,16 +39,18 @@ class TestStackTraceDiagnosticEmptyPids:
 
 
 class TestStackTraceDiagnosticSinglePid:
-    async def test_single_pid_success(self) -> None:
-        mock_proc = make_mock_subprocess(stdout=b"stack trace here")
+    async def test_single_pid_success_returns_json_details(self) -> None:
+        mock_proc = make_mock_subprocess(stdout=SAMPLE_PYSPY_JSON)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
             diag = StackTraceDiagnostic(pids=[1234])
             result = await diag.run(node_id="node-0")
 
         assert result.passed is True
-        assert "PID 1234" in result.details
-        assert "stack trace here" in result.details
+        threads = json.loads(result.details)
+        assert len(threads) == 1
+        assert threads[0]["thread_name"] == "MainThread"
+        assert threads[0]["frames"][0]["name"] == "func_a"
 
     async def test_single_pid_pyspy_failure(self) -> None:
         mock_proc = make_mock_subprocess(
@@ -49,12 +64,12 @@ class TestStackTraceDiagnosticSinglePid:
             result = await diag.run(node_id="node-0")
 
         assert result.passed is False
-        assert "FAILED" in result.details
+        assert json.loads(result.details) == []
 
 
 class TestStackTraceDiagnosticMultiplePids:
     async def test_partial_failure_still_passes(self) -> None:
-        good_proc = make_mock_subprocess(stdout=b"good trace")
+        good_proc = make_mock_subprocess(stdout=SAMPLE_PYSPY_JSON)
         bad_proc = make_mock_subprocess(
             stdout=b"",
             stderr=b"error",
@@ -73,9 +88,8 @@ class TestStackTraceDiagnosticMultiplePids:
             result = await diag.run(node_id="node-0")
 
         assert result.passed is True
-        assert "PID 100" in result.details
-        assert "PID 200" in result.details
-        assert "FAILED" in result.details
+        threads = json.loads(result.details)
+        assert len(threads) == 1
 
     async def test_all_pids_fail_returns_not_passed(self) -> None:
         bad_proc = make_mock_subprocess(
@@ -89,6 +103,7 @@ class TestStackTraceDiagnosticMultiplePids:
             result = await diag.run(node_id="node-0")
 
         assert result.passed is False
+        assert json.loads(result.details) == []
 
     async def test_timeout_treated_as_failure(self) -> None:
         mock_proc = make_mock_subprocess()
@@ -99,4 +114,4 @@ class TestStackTraceDiagnosticMultiplePids:
             result = await diag.run(node_id="node-0", timeout_seconds=10)
 
         assert result.passed is False
-        assert "FAILED" in result.details
+        assert json.loads(result.details) == []

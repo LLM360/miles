@@ -7,14 +7,17 @@ provide real coverage of the stack trace collection and aggregation pipeline.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
-import time
 
 import pytest
 import ray
 
-from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
+from miles.utils.ft.agents.diagnostics.stack_trace import (
+    PySpyThread,
+    StackTraceDiagnostic,
+)
 from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
 
 _HAS_PYSPY = shutil.which("py-spy") is not None
@@ -24,6 +27,10 @@ pytestmark = [
     pytest.mark.skipif(not _HAS_PYSPY, reason="py-spy not installed"),
     pytest.mark.anyio,
 ]
+
+
+def _parse_threads(details: str) -> list[PySpyThread]:
+    return [PySpyThread.model_validate(t) for t in json.loads(details)]
 
 
 @ray.remote(num_cpus=0, num_gpus=0)
@@ -54,8 +61,9 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
         ray.kill(worker, no_restart=True)
 
         assert result.passed is True
-        assert "PID" in result.details
-        assert "Thread" in result.details or "thread" in result.details.lower()
+        threads = _parse_threads(result.details)
+        assert len(threads) > 0
+        assert any(t.frames for t in threads)
 
     async def test_dump_handles_nonexistent_pid(
         self, local_ray: None,
@@ -64,12 +72,12 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
         result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
 
         assert result.passed is False
-        assert "FAILED" in result.details
+        assert json.loads(result.details) == []
 
     async def test_dump_multiple_pids_partial_failure(
         self, local_ray: None,
     ) -> None:
-        """One valid PID + one invalid PID → passed=True (not all failed)."""
+        """One valid PID + one invalid PID -> passed=True (not all failed)."""
         worker = _BusyWorker.remote()
         worker.spin.remote()
         await asyncio.sleep(0.5)
@@ -82,8 +90,8 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
         ray.kill(worker, no_restart=True)
 
         assert result.passed is True
-        assert f"PID {pid}" in result.details
-        assert "PID 999999" in result.details
+        threads = _parse_threads(result.details)
+        assert len(threads) > 0
 
 
 class TestStackTraceAggregatorWithRealTraces:
@@ -116,8 +124,8 @@ class TestStackTraceAggregatorWithRealTraces:
 
         aggregator = StackTraceAggregator()
         traces = {
-            "node-a": result_a.details,
-            "node-b": result_b.details,
+            "node-a": _parse_threads(result_a.details),
+            "node-b": _parse_threads(result_b.details),
         }
         suspects = aggregator.aggregate(traces)
 
@@ -147,8 +155,8 @@ class TestStackTraceAggregatorWithRealTraces:
 
         aggregator = StackTraceAggregator()
         traces = {
-            "node-a": result_a.details,
-            "node-b": result_b.details,
+            "node-a": _parse_threads(result_a.details),
+            "node-b": _parse_threads(result_b.details),
         }
         suspects = aggregator.aggregate(traces)
 

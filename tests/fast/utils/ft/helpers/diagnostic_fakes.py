@@ -227,7 +227,7 @@ def mock_stack_trace_diagnostic(
 ) -> Generator[AsyncMock, None, None]:
     """Patch StackTraceDiagnostic and wire an AsyncMock with the given side_effects."""
     with patch(
-        "miles.utils.ft.controller.diagnostics.stack_trace.StackTraceDiagnostic"
+        "miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic"
     ) as mock_diag_cls:
         mock_instance = AsyncMock()
         mock_instance.run = AsyncMock(side_effect=side_effects)

@@ -1,7 +1,7 @@
 """Integration tests for the stack trace diagnostic pipeline.
 
-Tests the full flow: Controller → DiagnosticOrchestrator → StackTraceDiagnostic
-→ StackTraceAggregator, with FakeNodeAgent instances providing configurable
+Tests the full flow: Controller -> DiagnosticOrchestrator -> StackTraceDiagnostic
+-> StackTraceAggregator, with FakeNodeAgent instances providing configurable
 stack trace results.
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from tests.fast.utils.ft.helpers import (
-    SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
-    SAMPLE_PYSPY_OUTPUT_STUCK,
+    SAMPLE_PYSPY_JSON_DIFFERENT_STUCK,
+    SAMPLE_PYSPY_JSON_STUCK,
     make_fake_agents,
     make_rank_pids_provider,
     make_trace_result,
@@ -23,7 +23,7 @@ from miles.utils.ft.models.fault import ActionType
 
 
 class TestHangWithStackTraceSuspect:
-    """Full pipeline: hang trigger → stack trace identifies suspect → pipeline runs on suspect only."""
+    """Full pipeline: hang trigger -> stack trace identifies suspect -> pipeline runs on suspect only."""
 
     async def test_hang_suspects_from_trace_only_run_gpu_diagnostic(self) -> None:
         agents = make_fake_agents(
@@ -43,9 +43,9 @@ class TestHangWithStackTraceSuspect:
 
         with mock_stack_trace_diagnostic(
             [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_DIFFERENT_STUCK),
             ]
         ):
             orchestrator = DiagnosticOrchestrator(
@@ -78,9 +78,9 @@ class TestHangWithStackTraceSuspect:
 
         with mock_stack_trace_diagnostic(
             [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+                make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
             ]
         ):
             orchestrator = DiagnosticOrchestrator(
@@ -112,7 +112,7 @@ class TestCrashSkipsStackTrace:
             }
         )
 
-        with patch("miles.utils.ft.controller.diagnostics.stack_trace.StackTraceDiagnostic") as mock_diag_cls:
+        with patch("miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic") as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
                 pipeline=["gpu"],
@@ -148,9 +148,9 @@ class TestHangWithCollectionFailure:
 
         with mock_stack_trace_diagnostic(
             [
-                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
                 make_trace_result("node-1", passed=False, details="py-spy failed"),
-                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+                make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
             ]
         ):
             orchestrator = DiagnosticOrchestrator(

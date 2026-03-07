@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 
+from pydantic import ConfigDict
+
 from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.diagnostics import DiagnosticResult
@@ -13,12 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class PySpyFrame(FtBaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     name: str
     filename: str
     line: int
 
 
 class PySpyThread(FtBaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     thread_name: str
     active: bool
     owns_gil: bool

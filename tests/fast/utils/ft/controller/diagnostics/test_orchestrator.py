@@ -15,8 +15,8 @@ from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
 from tests.fast.utils.ft.helpers import (
     FakeNodeAgent,
     HangingNodeAgent,
-    SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK,
-    SAMPLE_PYSPY_OUTPUT_STUCK,
+    SAMPLE_PYSPY_JSON_DIFFERENT_STUCK,
+    SAMPLE_PYSPY_JSON_STUCK,
     StubDiagnostic,
     make_fake_agents,
     make_rank_pids_provider,
@@ -403,8 +403,8 @@ class TestStackTracePreStep:
         })
 
         with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
         ]) as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
@@ -430,7 +430,7 @@ class TestStackTracePreStep:
         })
 
         with patch(
-            "miles.utils.ft.controller.diagnostics.stack_trace.StackTraceDiagnostic"
+            "miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic"
         ) as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
@@ -451,7 +451,7 @@ class TestStackTracePreStep:
         })
 
         with patch(
-            "miles.utils.ft.controller.diagnostics.stack_trace.StackTraceDiagnostic"
+            "miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic"
         ) as mock_diag_cls:
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
@@ -478,9 +478,9 @@ class TestStackTracePreStep:
         })
 
         with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
+            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_DIFFERENT_STUCK),
         ]):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
@@ -506,8 +506,8 @@ class TestStackTracePreStep:
         })
 
         with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
         ]):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
@@ -532,7 +532,7 @@ class TestStackTracePreStep:
         })
 
         with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
             make_trace_result("node-1", passed=False, details="failed to collect"),
         ]):
             orchestrator = DiagnosticOrchestrator(
@@ -561,9 +561,9 @@ class TestStackTracePreStep:
         })
 
         with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
             RuntimeError("py-spy crashed"),
-            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
         ]):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
@@ -592,8 +592,8 @@ class TestStackTracePreStep:
             return {0: 100}
 
         with mock_stack_trace_diagnostic([
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
+            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
         ]):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,
@@ -621,9 +621,9 @@ class TestStackTracePreStep:
         })
 
         with mock_stack_trace_diagnostic([
-            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_OUTPUT_STUCK),
-            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK),
+            make_trace_result("node-0", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+            make_trace_result("node-1", passed=True, details=SAMPLE_PYSPY_JSON_STUCK),
+            make_trace_result("node-2", passed=True, details=SAMPLE_PYSPY_JSON_DIFFERENT_STUCK),
         ]):
             orchestrator = DiagnosticOrchestrator(
                 agents=agents,

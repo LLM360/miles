@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
+from miles.utils.ft.agents.diagnostics.stack_trace import PySpyFrame, PySpyThread
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.models.metrics import MetricSample
 
@@ -144,40 +146,69 @@ def create_sysfs_interface(
 # Stack trace test helpers
 # ---------------------------------------------------------------------------
 
-SAMPLE_PYSPY_OUTPUT_NORMAL = """\
-Thread 0x7F1234 (active): "MainThread"
-    _wait_for_data (selectors.py:451)
-    select (selectors.py:469)
-    _run_once (asyncio/base_events.py:1922)
-    run_forever (asyncio/base_events.py:604)
-Thread 0x7F5678 (idle): "WorkerThread-1"
-    wait (threading.py:320)
-    get (queue.py:171)
-    _worker (concurrent/futures/thread.py:83)
-"""
+_WORKER_THREAD = PySpyThread(
+    thread_name="WorkerThread-1",
+    active=False,
+    owns_gil=False,
+    frames=[
+        PySpyFrame(name="wait", filename="threading.py", line=320),
+        PySpyFrame(name="get", filename="queue.py", line=171),
+        PySpyFrame(name="_worker", filename="concurrent/futures/thread.py", line=83),
+    ],
+)
 
-SAMPLE_PYSPY_OUTPUT_STUCK = """\
-Thread 0x7F1234 (active): "MainThread"
-    nccl_allreduce (nccl_ops.py:42)
-    all_reduce (torch/distributed/distributed_c10d.py:1234)
-    forward (model.py:100)
-    train_step (train.py:50)
-Thread 0x7F5678 (idle): "WorkerThread-1"
-    wait (threading.py:320)
-    get (queue.py:171)
-    _worker (concurrent/futures/thread.py:83)
-"""
+SAMPLE_PYSPY_THREADS_NORMAL: list[PySpyThread] = [
+    PySpyThread(
+        thread_name="MainThread",
+        active=True,
+        owns_gil=False,
+        frames=[
+            PySpyFrame(name="_wait_for_data", filename="selectors.py", line=451),
+            PySpyFrame(name="select", filename="selectors.py", line=469),
+            PySpyFrame(name="_run_once", filename="asyncio/base_events.py", line=1922),
+            PySpyFrame(name="run_forever", filename="asyncio/base_events.py", line=604),
+        ],
+    ),
+    _WORKER_THREAD,
+]
 
-SAMPLE_PYSPY_OUTPUT_DIFFERENT_STUCK = """\
-Thread 0x7F1234 (active): "MainThread"
-    recv (socket.py:123)
-    _receive_data (network.py:456)
-    fetch_batch (dataloader.py:78)
-Thread 0x7F5678 (idle): "WorkerThread-1"
-    wait (threading.py:320)
-    get (queue.py:171)
-    _worker (concurrent/futures/thread.py:83)
-"""
+SAMPLE_PYSPY_THREADS_STUCK: list[PySpyThread] = [
+    PySpyThread(
+        thread_name="MainThread",
+        active=True,
+        owns_gil=False,
+        frames=[
+            PySpyFrame(name="nccl_allreduce", filename="nccl_ops.py", line=42),
+            PySpyFrame(name="all_reduce", filename="torch/distributed/distributed_c10d.py", line=1234),
+            PySpyFrame(name="forward", filename="model.py", line=100),
+            PySpyFrame(name="train_step", filename="train.py", line=50),
+        ],
+    ),
+    _WORKER_THREAD,
+]
+
+SAMPLE_PYSPY_THREADS_DIFFERENT_STUCK: list[PySpyThread] = [
+    PySpyThread(
+        thread_name="MainThread",
+        active=True,
+        owns_gil=False,
+        frames=[
+            PySpyFrame(name="recv", filename="socket.py", line=123),
+            PySpyFrame(name="_receive_data", filename="network.py", line=456),
+            PySpyFrame(name="fetch_batch", filename="dataloader.py", line=78),
+        ],
+    ),
+    _WORKER_THREAD,
+]
+
+
+def serialize_pyspy_threads(threads: list[PySpyThread]) -> str:
+    return json.dumps([t.model_dump() for t in threads])
+
+
+SAMPLE_PYSPY_JSON_NORMAL = serialize_pyspy_threads(SAMPLE_PYSPY_THREADS_NORMAL)
+SAMPLE_PYSPY_JSON_STUCK = serialize_pyspy_threads(SAMPLE_PYSPY_THREADS_STUCK)
+SAMPLE_PYSPY_JSON_DIFFERENT_STUCK = serialize_pyspy_threads(SAMPLE_PYSPY_THREADS_DIFFERENT_STUCK)
 
 
 def make_rank_pids_provider(
@@ -192,7 +223,7 @@ def make_rank_pids_provider(
 def make_trace_result(
     node_id: str,
     passed: bool = True,
-    details: str = "trace output",
+    details: str = "[]",
 ) -> DiagnosticResult:
     return DiagnosticResult(
         diagnostic_type="stack_trace",
