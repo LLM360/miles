@@ -2,7 +2,13 @@
 
 from datetime import timedelta
 
-from tests.fast.utils.ft.conftest import inject_disk_fault, inject_nic_down, inject_nic_up, make_fake_metric_store
+from tests.fast.utils.ft.conftest import (
+    inject_disk_fault,
+    inject_healthy_node,
+    inject_nic_down,
+    inject_nic_up,
+    make_fake_metric_store,
+)
 
 from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.detectors.checks.hardware import (
@@ -344,7 +350,7 @@ class TestCheckDiskFault:
         assert result == []
 
 
-class TestCheckAllHardwareFaultsExcludesDisk:
+class TestCheckAllHardwareFaults:
     def test_disk_fault_not_included_in_check_all(self) -> None:
         """check_all_hardware_faults no longer reports disk faults."""
         store = make_fake_metric_store()
@@ -353,3 +359,35 @@ class TestCheckAllHardwareFaultsExcludesDisk:
         faults = check_all_hardware_faults(metric_store=store)
 
         assert all("disk" not in f.reason for f in faults)
+
+    def test_empty_store_returns_empty(self) -> None:
+        store = make_fake_metric_store()
+
+        faults = check_all_hardware_faults(metric_store=store)
+
+        assert faults == []
+
+    def test_majority_nic_down_included(self) -> None:
+        """check_all_hardware_faults includes NIC majority-down faults."""
+        store = make_fake_metric_store()
+        store.ingest_samples(
+            target_id="node-0",
+            samples=[
+                GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth0"}, value=0.0),
+                GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth1"}, value=0.0),
+                GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth2"}, value=1.0),
+            ],
+        )
+
+        faults = check_all_hardware_faults(metric_store=store)
+
+        nic_faults = [f for f in faults if "NIC" in f.reason or "nic" in f.reason.lower()]
+        assert len(nic_faults) >= 1
+
+    def test_healthy_node_returns_no_faults(self) -> None:
+        store = make_fake_metric_store()
+        inject_healthy_node(store, node_id="node-0", num_gpus=8, num_nics=4)
+
+        faults = check_all_hardware_faults(metric_store=store)
+
+        assert faults == []
