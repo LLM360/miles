@@ -223,7 +223,11 @@ class TestInFlightMessagesDuringRunSwitch:
         deadline = time.monotonic() + 20.0
         while time.monotonic() < deadline:
             status = get_status(handle)
-            if status.active_run_id is not None and status.active_run_id != first_run_id:
+            if (
+                status.active_run_id is not None
+                and status.active_run_id != first_run_id
+                and status.mode == ControllerMode.MONITORING
+            ):
                 break
             time.sleep(0.2)
 

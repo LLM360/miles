@@ -167,7 +167,7 @@ class TestControllerKilledDuringRecovery:
         make_controller_actor: Callable[..., ray.actor.ActorHandle],
     ) -> None:
         handle = make_controller_actor(
-            detectors_override=[_AlwaysCrashDetector()],
+            detectors_override=[OneShotCrashDetector()],
         )
 
         handle.submit_and_run.remote()

@@ -501,7 +501,7 @@ class TestCooldownExpiry:
             detectors=[TrainingCrashDetector()],
             recovery_cooldown=SlidingWindowThrottle(
                 window_minutes=window_seconds / 60.0,
-                max_count=2,
+                max_count=1,
             ),
         )
 
