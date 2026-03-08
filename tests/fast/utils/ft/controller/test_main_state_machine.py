@@ -1,29 +1,11 @@
 """Tests for main state machine handler classes."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
-
-from miles.utils.ft.controller.detectors.base import DetectorContext
-from miles.utils.ft.controller.main_state_machine import (
-    DetectingAnomaly,
-    MainContext,
-    Recovering,
-    create_main_stepper,
-)
-from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
-from miles.utils.ft.controller.recovery.recovery_stepper import (
-    NotifyHumans,
-    RealtimeChecks,
-    RecoveryDone,
-)
-from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import JobStatus
-
 from tests.fast.utils.ft.helpers.controller_fakes import (
     AlwaysEnterRecoveryDetector,
     AlwaysNoneDetector,
@@ -32,6 +14,14 @@ from tests.fast.utils.ft.helpers.controller_fakes import (
     FixedDecisionDetector,
 )
 
+from miles.utils.ft.controller.detectors.base import DetectorContext
+from miles.utils.ft.controller.main_state_machine import DetectingAnomaly, MainContext, Recovering, create_main_stepper
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.recovery.helpers import SlidingWindowThrottle
+from miles.utils.ft.controller.recovery.recovery_stepper import NotifyHumans, RealtimeChecks, RecoveryDone
+from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,8 +64,10 @@ def _make_main_context(
         job_status=JobStatus.RUNNING,
         tick_count=1,
         should_run_detectors=should_run_detectors,
-        detector_context=detector_context if detector_context is not None else (
-            _make_detector_context() if should_run_detectors else None
+        detector_context=(
+            detector_context
+            if detector_context is not None
+            else (_make_detector_context() if should_run_detectors else None)
         ),
         notifier=notifier,
         detectors=detectors or [],
@@ -122,11 +114,13 @@ class TestDetectingAnomaly:
     @pytest.mark.asyncio
     async def test_notify_human_sends_notification_stays_detecting(self) -> None:
         notifier = FakeNotifier()
-        detector = FixedDecisionDetector(Decision(
-            action=ActionType.NOTIFY_HUMAN,
-            reason="test notify",
-            trigger=TriggerType.MISC,
-        ))
+        detector = FixedDecisionDetector(
+            Decision(
+                action=ActionType.NOTIFY_HUMAN,
+                reason="test notify",
+                trigger=TriggerType.MISC,
+            )
+        )
         stepper = _make_stepper()
         result = await stepper(
             DetectingAnomaly(),
@@ -191,7 +185,11 @@ class TestRecovering:
 
     @pytest.mark.asyncio
     async def test_recovery_in_progress_stays_recovering(self) -> None:
-        from miles.utils.ft.controller.recovery.recovery_stepper import EvictingAndRestarting, RecoveryDone, StopTimeDiagnostics
+        from miles.utils.ft.controller.recovery.recovery_stepper import (
+            EvictingAndRestarting,
+            RecoveryDone,
+            StopTimeDiagnostics,
+        )
         from miles.utils.ft.controller.recovery.restart_stepper import StoppingAndRestarting
 
         new_recovery = EvictingAndRestarting(
@@ -301,15 +299,21 @@ class TestRecovering:
     @pytest.mark.asyncio
     async def test_dynamic_bad_nodes_resets_recovery(self) -> None:
         """Critical detector finds new bad nodes -> restart recovery with merged bad_node_ids."""
-        from miles.utils.ft.controller.recovery.recovery_stepper import EvictingAndRestarting, RecoveryDone, StopTimeDiagnostics
+        from miles.utils.ft.controller.recovery.recovery_stepper import (
+            EvictingAndRestarting,
+            RecoveryDone,
+            StopTimeDiagnostics,
+        )
         from miles.utils.ft.controller.recovery.restart_stepper import Evicting
 
-        critical_detector = CriticalFixedDecisionDetector(Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-new"],
-            reason="critical fault",
-            trigger=TriggerType.HARDWARE,
-        ))
+        critical_detector = CriticalFixedDecisionDetector(
+            Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-new"],
+                reason="critical fault",
+                trigger=TriggerType.HARDWARE,
+            )
+        )
 
         stepper = _make_stepper()
         state = Recovering(
@@ -348,12 +352,14 @@ class TestBadNodeCountSafeguard:
     async def test_too_many_bad_nodes_triggers_notify_human(self) -> None:
         """Detector reports >= threshold bad nodes -> NOTIFY_HUMAN, no recovery."""
         notifier = FakeNotifier()
-        detector = FixedDecisionDetector(Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-1", "node-2", "node-3"],
-            reason="three nodes bad",
-            trigger=TriggerType.HARDWARE,
-        ))
+        detector = FixedDecisionDetector(
+            Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-1", "node-2", "node-3"],
+                reason="three nodes bad",
+                trigger=TriggerType.HARDWARE,
+            )
+        )
         stepper = _make_stepper()
         result = await stepper(
             DetectingAnomaly(),
@@ -370,12 +376,14 @@ class TestBadNodeCountSafeguard:
     @pytest.mark.asyncio
     async def test_bad_nodes_below_threshold_enters_recovery(self) -> None:
         """Detector reports fewer bad nodes than threshold -> normal recovery."""
-        detector = FixedDecisionDetector(Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-1", "node-2"],
-            reason="two nodes bad",
-            trigger=TriggerType.HARDWARE,
-        ))
+        detector = FixedDecisionDetector(
+            Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-1", "node-2"],
+                reason="two nodes bad",
+                trigger=TriggerType.HARDWARE,
+            )
+        )
         stepper = _make_stepper()
         result = await stepper(
             DetectingAnomaly(),
@@ -391,17 +399,23 @@ class TestBadNodeCountSafeguard:
     @pytest.mark.asyncio
     async def test_too_many_dynamic_bad_nodes_aborts_recovery(self) -> None:
         """Critical detectors report >= threshold new bad nodes during recovery -> NOTIFY_HUMAN."""
-        from miles.utils.ft.controller.recovery.recovery_stepper import EvictingAndRestarting, RecoveryDone, StopTimeDiagnostics
+        from miles.utils.ft.controller.recovery.recovery_stepper import (
+            EvictingAndRestarting,
+            RecoveryDone,
+            StopTimeDiagnostics,
+        )
         from miles.utils.ft.controller.recovery.restart_stepper import Evicting
 
         notifier = FakeNotifier()
 
-        critical_detector = CriticalFixedDecisionDetector(Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-a", "node-b", "node-c"],
-            reason="three critical faults",
-            trigger=TriggerType.HARDWARE,
-        ))
+        critical_detector = CriticalFixedDecisionDetector(
+            Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-a", "node-b", "node-c"],
+                reason="three critical faults",
+                trigger=TriggerType.HARDWARE,
+            )
+        )
 
         stepper = _make_stepper()
         state = Recovering(
@@ -429,17 +443,23 @@ class TestBadNodeCountSafeguard:
     @pytest.mark.asyncio
     async def test_already_known_bad_nodes_do_not_restart_recovery(self) -> None:
         """Critical detector re-reports nodes already being handled -> no recovery restart."""
-        from miles.utils.ft.controller.recovery.recovery_stepper import EvictingAndRestarting, RecoveryDone, StopTimeDiagnostics
+        from miles.utils.ft.controller.recovery.recovery_stepper import (
+            EvictingAndRestarting,
+            RecoveryDone,
+            StopTimeDiagnostics,
+        )
         from miles.utils.ft.controller.recovery.restart_stepper import Evicting
 
         recovery_stepper = AsyncMock(return_value=None)
 
-        critical_detector = CriticalFixedDecisionDetector(Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-old"],
-            reason="already known fault",
-            trigger=TriggerType.HARDWARE,
-        ))
+        critical_detector = CriticalFixedDecisionDetector(
+            Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-old"],
+                reason="already known fault",
+                trigger=TriggerType.HARDWARE,
+            )
+        )
 
         stepper = _make_stepper()
         state = Recovering(
@@ -465,17 +485,23 @@ class TestBadNodeCountSafeguard:
     @pytest.mark.asyncio
     async def test_dynamic_bad_nodes_below_threshold_continues_recovery(self) -> None:
         """One new bad node during recovery (with 2 existing) -> normal merge, continues."""
-        from miles.utils.ft.controller.recovery.recovery_stepper import EvictingAndRestarting, RecoveryDone, StopTimeDiagnostics
+        from miles.utils.ft.controller.recovery.recovery_stepper import (
+            EvictingAndRestarting,
+            RecoveryDone,
+            StopTimeDiagnostics,
+        )
         from miles.utils.ft.controller.recovery.restart_stepper import Evicting
 
         recovery_stepper = AsyncMock(return_value=None)
 
-        critical_detector = CriticalFixedDecisionDetector(Decision(
-            action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=["node-new"],
-            reason="one critical fault",
-            trigger=TriggerType.HARDWARE,
-        ))
+        critical_detector = CriticalFixedDecisionDetector(
+            Decision(
+                action=ActionType.ENTER_RECOVERY,
+                bad_node_ids=["node-new"],
+                reason="one critical fault",
+                trigger=TriggerType.HARDWARE,
+            )
+        )
 
         stepper = _make_stepper()
         state = Recovering(

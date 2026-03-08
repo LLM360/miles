@@ -1,18 +1,12 @@
 """Semi-E2E: hang detection — stale iteration, monitoring timeout, full recovery cycle."""
+
 from __future__ import annotations
 
 import asyncio
 import time
 from collections.abc import Callable
 
-from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.models.recovery import ControllerMode
-
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
-    E2EEnv,
-    NodeSpec,
-    _SLOW_STEP,
-)
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
     get_status,
@@ -24,10 +18,14 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     wait_for_training_stable,
 )
 
+from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
+from miles.utils.ft.models.recovery import ControllerMode
+
 
 class TestHangDetection:
     async def test_stale_iteration_triggers_recovery(
-        self, e2e_hang_env: E2EEnv,
+        self,
+        e2e_hang_env: E2EEnv,
     ) -> None:
         """Worker iteration stalls → FastHangDetector → ENTER_RECOVERY."""
         status = await scenario_hang_detection(
@@ -40,7 +38,8 @@ class TestHangDetection:
 
 class TestMonitoringTimeout:
     async def test_crash_during_hung_monitoring_escalates_to_diagnosing(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """Worker hung during recovery MONITORING → crash again → DIAGNOSING.
 
@@ -71,7 +70,8 @@ class TestMonitoringTimeout:
 
 class TestHangFullRecovery:
     async def test_hang_detection_full_recovery_and_resume(
-        self, e2e_hang_env: E2EEnv,
+        self,
+        e2e_hang_env: E2EEnv,
     ) -> None:
         """Hang → detect → full recovery → training resumes with new run_id."""
         status = await scenario_hang_detection_and_recovery(
@@ -86,7 +86,8 @@ class TestHangFullRecovery:
 
 class TestMonitoringProgressTimeout:
     async def test_monitoring_progress_timeout_without_new_fault(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """MonitoringProgress times out due to no iteration progress → StopTimeDiagnostics."""
         env = make_e2e_env(
@@ -109,16 +110,15 @@ class TestMonitoringProgressTimeout:
                 break
             await asyncio.sleep(0.5)
         else:
-            raise TimeoutError(
-                "MonitoringProgress did not timeout to StopTimeDiagnostics within 60s"
-            )
+            raise TimeoutError("MonitoringProgress did not timeout to StopTimeDiagnostics within 60s")
 
         assert_phase_path_contains(status, ["MonitoringProgress", "StopTimeDiagnostics"])
 
 
 class TestMonitoringSuccessIterationsZero:
     async def test_monitoring_success_iterations_zero_immediate_restart_done(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """monitoring_success_iterations=0 → RUNNING with 0 progress instantly yields RestartDone."""
         env = make_e2e_env(
@@ -145,7 +145,8 @@ class TestMonitoringSuccessIterationsZero:
 
 class TestMonitoringTimeoutZero:
     async def test_monitoring_timeout_zero_immediate_restart_failed(
-        self, make_e2e_env: Callable[..., E2EEnv],
+        self,
+        make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """monitoring_timeout_seconds=0 → MonitoringProgress times out immediately → StopTimeDiagnostics."""
         env = make_e2e_env(

@@ -1,10 +1,12 @@
 """Tests for recovery stepper handler classes."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
+from tests.fast.utils.ft.helpers.controller_fakes import FakeNodeManager, FakeNotifier, FakeTrainingJob
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.recovery.recovery_stepper import (
@@ -29,13 +31,6 @@ from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
 from miles.utils.ft.models.fault import NodeFault, TriggerType
 from miles.utils.ft.protocols.platform import JobStatus
 from miles.utils.ft.utils.state_machine import StateMachineStepper
-
-from tests.fast.utils.ft.helpers.controller_fakes import (
-    FakeNodeManager,
-    FakeNotifier,
-    FakeTrainingJob,
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -431,7 +426,8 @@ class TestFullRecoveryFlow:
         mini_wandb.log_step(run_id="r", step=1, metrics={"iteration": 100})
 
         restart_stepper, restart_ctx = _make_restart_stepper_and_context(
-            training_job=training_job, mini_wandb=mini_wandb,
+            training_job=training_job,
+            mini_wandb=mini_wandb,
         )
         stepper = _make_stepper()
         ctx = _make_ctx(
@@ -473,8 +469,10 @@ class TestFullRecoveryFlow:
         notifier = FakeNotifier()
 
         restart_stepper, restart_ctx = _make_restart_stepper_and_context(
-            training_job=training_job, mini_wandb=mini_wandb,
-            node_manager=node_manager, notifier=notifier,
+            training_job=training_job,
+            mini_wandb=mini_wandb,
+            node_manager=node_manager,
+            notifier=notifier,
         )
         stepper = _make_stepper()
         ctx = _make_ctx(
@@ -522,7 +520,8 @@ class TestFullRecoveryFlow:
         node_manager = FakeNodeManager()
 
         restart_stepper, restart_ctx = _make_restart_stepper_and_context(
-            training_job=training_job, mini_wandb=mini_wandb,
+            training_job=training_job,
+            mini_wandb=mini_wandb,
             node_manager=node_manager,
         )
         diag = FakeDiagOrchestrator(
@@ -590,4 +589,6 @@ class TestFullRecoveryFlow:
         stepper = _make_stepper()
         result = await _step(stepper, NotifyHumans(state_before="Test"), notifier=notifier)
         assert isinstance(result, RecoveryDone)
+
+
 ce(result, RecoveryDone)

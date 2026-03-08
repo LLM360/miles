@@ -1,4 +1,5 @@
 """Retry primitives for both async and sync callables."""
+
 from __future__ import annotations
 
 import asyncio
@@ -60,11 +61,13 @@ async def retry_async(
             last_exc = exc
             logger.warning(
                 "retry_failed description=%s attempt=%d/%d",
-                description, attempt + 1, max_retries,
+                description,
+                attempt + 1,
+                max_retries,
                 exc_info=True,
             )
             if attempt < max_retries - 1:
-                delay = min(backoff_base * (2 ** attempt), max_backoff)
+                delay = min(backoff_base * (2**attempt), max_backoff)
                 await _sleep(delay)
 
     logger.error("retry_exhausted description=%s", description)
@@ -119,11 +122,13 @@ def retry_sync(
             last_exc = exc
             logger.warning(
                 "retry_failed description=%s attempt=%d/%d",
-                description, attempt + 1, max_retries,
+                description,
+                attempt + 1,
+                max_retries,
                 exc_info=True,
             )
             if attempt < max_retries - 1:
-                delay = min(backoff_base * (2 ** attempt), max_backoff)
+                delay = min(backoff_base * (2**attempt), max_backoff)
                 time.sleep(delay)
 
     logger.error("retry_exhausted description=%s", description)

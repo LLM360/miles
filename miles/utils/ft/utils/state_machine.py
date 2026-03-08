@@ -45,8 +45,7 @@ class StateMachineStepper(Generic[StateT, ContextT]):
         pre_dispatch: Callable[[StateT, ContextT], Awaitable[StateT | None]] | None = None,
     ) -> None:
         self._handlers: dict[type, Callable[[StateT, ContextT], Awaitable[StateT | None]]] = {
-            state_type: handler_cls().step
-            for state_type, handler_cls in handler_map.items()
+            state_type: handler_cls().step for state_type, handler_cls in handler_map.items()
         }
         self._pre_dispatch = pre_dispatch
 

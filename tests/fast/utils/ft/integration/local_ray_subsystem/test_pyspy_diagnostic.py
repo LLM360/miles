@@ -4,6 +4,7 @@ These tests require py-spy to be installed. They are skipped if py-spy
 is not available in the PATH. On CI where py-spy is installed, these
 provide real coverage of the stack trace collection and aggregation pipeline.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,10 +15,7 @@ import shutil
 import pytest
 import ray
 
-from miles.utils.ft.agents.diagnostics.stack_trace import (
-    PySpyThread,
-    StackTraceDiagnostic,
-)
+from miles.utils.ft.agents.diagnostics.stack_trace import PySpyThread, StackTraceDiagnostic
 from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
 
 _HAS_PYSPY = shutil.which("py-spy") is not None
@@ -47,7 +45,8 @@ class _BusyWorker:
 
 class TestStackTraceDiagnosticAgainstLiveProcess:
     async def test_dump_captures_stack_trace_from_ray_actor(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         worker = _BusyWorker.remote()
         worker.spin.remote()
@@ -66,7 +65,8 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
         assert any(t.frames for t in threads)
 
     async def test_dump_handles_nonexistent_pid(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         diagnostic = StackTraceDiagnostic(pids=[999999])
         result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
@@ -75,7 +75,8 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
         assert json.loads(result.details) == []
 
     async def test_dump_multiple_pids_partial_failure(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         """One valid PID + one invalid PID -> passed=True (not all failed)."""
         worker = _BusyWorker.remote()
@@ -96,7 +97,8 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
 
 class TestStackTraceAggregatorWithRealTraces:
     async def test_aggregator_identifies_suspect_from_different_traces(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         """Create two workers doing the same thing and one doing something different.
         The aggregator should flag the different one as a suspect."""
@@ -132,7 +134,8 @@ class TestStackTraceAggregatorWithRealTraces:
         assert isinstance(suspects, list)
 
     async def test_aggregator_returns_empty_for_identical_traces(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         """Two identical workers should produce no suspects."""
         worker_a = _BusyWorker.remote()
@@ -167,7 +170,8 @@ class TestOrchestratorHangTraceFullChain:
     """DiagnosticOrchestrator runs stack trace pre-step on hang trigger with real py-spy (PY4)."""
 
     async def test_orchestrator_hang_trigger_collects_real_traces(
-        self, local_ray: None,
+        self,
+        local_ray: None,
     ) -> None:
         from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
         from miles.utils.ft.models.fault import TriggerType

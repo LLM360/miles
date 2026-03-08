@@ -65,11 +65,15 @@ class TestGpuDiagnosticSingleFailure:
         "gpu_kwargs,expected_detail",
         [
             (
-                dict(gpu_index=0, nvml_passed=False, ecc_errors_uncorrectable=5, details="uncorrectable ECC errors: 5"),
+                dict(
+                    gpu_index=0, nvml_passed=False, ecc_errors_uncorrectable=5, details="uncorrectable ECC errors: 5"
+                ),
                 "ECC",
             ),
             (
-                dict(gpu_index=2, nvml_passed=True, compute_hash="", compute_error="cuda error", details="compute error"),
+                dict(
+                    gpu_index=2, nvml_passed=True, compute_hash="", compute_error="cuda error", details="compute error"
+                ),
                 "compute error",
             ),
             (dict(gpu_index=0, nvml_passed=False, retired_pages_count=3, details="retired pages: 3"), "retired"),
