@@ -17,8 +17,8 @@ import httpx
 from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.detectors.checks.hardware import (
-    _check_disk_fault,
-    _check_majority_nic_down,
+    check_disk_fault,
+    check_majority_nic_down,
     check_nic_down_in_window,
 )
 from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
@@ -226,7 +226,7 @@ class TestMajorityNicDownWithPrometheusClient:
 
         with patch.object(httpx.Client, "get", return_value=_make_response(vector_result)):
             client = PrometheusClient(url="http://fake:9090")
-            faults = _check_majority_nic_down(client)
+            faults = check_majority_nic_down(client)
 
         assert len(faults) == 1
         assert faults[0].node_id == "node-0"
@@ -243,7 +243,7 @@ class TestMajorityNicDownWithPrometheusClient:
 
         with patch.object(httpx.Client, "get", return_value=_make_response(vector_result)):
             client = PrometheusClient(url="http://fake:9090")
-            faults = _check_majority_nic_down(client)
+            faults = check_majority_nic_down(client)
 
         assert faults == []
 
@@ -263,7 +263,7 @@ class TestDiskFaultWithPrometheusClient:
 
         with patch.object(httpx.Client, "get", return_value=_make_response(vector_result)):
             client = PrometheusClient(url="http://fake:9090")
-            faults = _check_disk_fault(client)
+            faults = check_disk_fault(client)
 
         assert len(faults) == 1
         assert faults[0].node_id == "node-0"
@@ -282,6 +282,6 @@ class TestDiskFaultWithPrometheusClient:
 
         with patch.object(httpx.Client, "get", return_value=_make_response(vector_result)):
             client = PrometheusClient(url="http://fake:9090")
-            faults = _check_disk_fault(client)
+            faults = check_disk_fault(client)
 
         assert faults == []

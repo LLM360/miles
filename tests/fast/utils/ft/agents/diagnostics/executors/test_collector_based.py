@@ -7,7 +7,8 @@ import asyncio
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.diagnostics.executors.collector_based import CollectorBasedNodeExecutor
 from miles.utils.ft.agents.types import GaugeSample, MetricSample
-from miles.utils.ft.controller.types import MetricQueryProtocol, NodeFault
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
+from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
 
 
 class _FakeCollector(BaseCollector):
@@ -27,23 +28,30 @@ class _CrashingCollector(BaseCollector):
         raise RuntimeError("hw failure")
 
 
-def _check_always_pass(store: MetricQueryProtocol) -> list[NodeFault]:
-    return []
+class _AlwaysPassDetector(BaseFaultDetector):
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
+        return Decision.no_fault("all checks passed")
 
 
-def _check_always_fail(store: MetricQueryProtocol) -> list[NodeFault]:
-    return [NodeFault(node_id="node-0", reason="fault detected")]
+class _AlwaysFailDetector(BaseFaultDetector):
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
+        return Decision(
+            action=ActionType.ENTER_RECOVERY,
+            reason="fault detected",
+            trigger=TriggerType.HARDWARE,
+            bad_node_ids=["node-0"],
+        )
 
 
 class TestCollectorBasedNodeExecutor:
-    def test_pass_when_check_fn_returns_no_faults(self) -> None:
+    def test_pass_when_detector_returns_no_fault(self) -> None:
         collector = _FakeCollector(
             metrics=[GaugeSample(name="m", labels={}, value=1.0)]
         )
         executor = CollectorBasedNodeExecutor(
             diagnostic_type="test",
             collector=collector,
-            check_fn=_check_always_pass,
+            detector=_AlwaysPassDetector(),
         )
 
         result = asyncio.run(executor.run(node_id="node-0"))
@@ -51,14 +59,14 @@ class TestCollectorBasedNodeExecutor:
         assert result.passed is True
         assert result.diagnostic_type == "test"
 
-    def test_fail_when_check_fn_returns_faults(self) -> None:
+    def test_fail_when_detector_returns_fault(self) -> None:
         collector = _FakeCollector(
             metrics=[GaugeSample(name="m", labels={}, value=1.0)]
         )
         executor = CollectorBasedNodeExecutor(
             diagnostic_type="test",
             collector=collector,
-            check_fn=_check_always_fail,
+            detector=_AlwaysFailDetector(),
         )
 
         result = asyncio.run(executor.run(node_id="node-0"))
@@ -71,7 +79,7 @@ class TestCollectorBasedNodeExecutor:
         executor = CollectorBasedNodeExecutor(
             diagnostic_type="test",
             collector=collector,
-            check_fn=_check_always_pass,
+            detector=_AlwaysPassDetector(),
         )
 
         try:
@@ -85,7 +93,7 @@ class TestCollectorBasedNodeExecutor:
         executor = CollectorBasedNodeExecutor(
             diagnostic_type="test",
             collector=collector,
-            check_fn=_check_always_pass,
+            detector=_AlwaysPassDetector(),
         )
 
         result = asyncio.run(executor.run(node_id="node-0"))

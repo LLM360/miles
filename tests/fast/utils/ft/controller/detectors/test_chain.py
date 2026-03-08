@@ -8,7 +8,8 @@ from pydantic import ValidationError
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.detectors.chain import DetectorChainConfig, build_detector_chain
 from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
-from miles.utils.ft.controller.detectors.core.hardware import HighConfidenceHardwareDetector
+from miles.utils.ft.controller.detectors.core.gpu_fault import GpuFaultDetector
+from miles.utils.ft.controller.detectors.core.nic_majority_down import NicMajorityDownDetector
 from miles.utils.ft.controller.detectors.core.mfu_decline import MfuDeclineDetector
 from miles.utils.ft.controller.detectors.core.nan_loss import NanLossDetector
 from miles.utils.ft.controller.detectors.core.network import NetworkAlertDetector
@@ -36,7 +37,7 @@ class TestBuildDetectorChain:
     def test_default_chain_returns_expected_count(self) -> None:
         chain = build_detector_chain()
 
-        assert len(chain) == 8
+        assert len(chain) == 9
 
     def test_all_detectors_are_base_fault_detector(self) -> None:
         chain = build_detector_chain()
@@ -44,16 +45,17 @@ class TestBuildDetectorChain:
         for detector in chain:
             assert isinstance(detector, BaseFaultDetector)
 
-    def test_highest_priority_is_hardware(self) -> None:
+    def test_highest_priority_is_gpu_fault(self) -> None:
         chain = build_detector_chain()
 
-        assert isinstance(chain[0], HighConfidenceHardwareDetector)
+        assert isinstance(chain[0], GpuFaultDetector)
 
     def test_expected_detector_types_present(self) -> None:
         chain = build_detector_chain()
         types = {type(d) for d in chain}
 
-        assert HighConfidenceHardwareDetector in types
+        assert GpuFaultDetector in types
+        assert NicMajorityDownDetector in types
         assert HangDetector in types
         assert NanLossDetector in types
         assert NetworkAlertDetector in types
@@ -73,4 +75,4 @@ class TestBuildDetectorChain:
     def test_none_config_uses_defaults(self) -> None:
         chain = build_detector_chain(config=None)
 
-        assert len(chain) == 8
+        assert len(chain) == 9

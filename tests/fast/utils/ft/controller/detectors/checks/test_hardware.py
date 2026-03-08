@@ -4,7 +4,6 @@ from datetime import timedelta
 
 from tests.fast.utils.ft.conftest import (
     inject_disk_fault,
-    inject_healthy_node,
     inject_nic_down,
     inject_nic_up,
     make_fake_metric_store,
@@ -12,9 +11,8 @@ from tests.fast.utils.ft.conftest import (
 
 from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.detectors.checks.hardware import (
-    _check_disk_fault,
-    _check_majority_nic_down,
-    check_all_hardware_faults,
+    check_disk_fault,
+    check_majority_nic_down,
     check_nic_down_in_window,
 )
 from miles.utils.ft.controller.metrics.metric_names import NODE_NETWORK_UP
@@ -231,7 +229,7 @@ class TestCheckMajorityNicDown:
             ],
         )
 
-        result = _check_majority_nic_down(store)
+        result = check_majority_nic_down(store)
         assert result == []
 
     def test_majority_nics_down_triggers(self) -> None:
@@ -245,7 +243,7 @@ class TestCheckMajorityNicDown:
             ],
         )
 
-        result = _check_majority_nic_down(store)
+        result = check_majority_nic_down(store)
         assert len(result) == 1
         assert result[0].node_id == "node-0"
         assert result[0].ephemeral is False
@@ -260,12 +258,12 @@ class TestCheckMajorityNicDown:
             ],
         )
 
-        result = _check_majority_nic_down(store)
+        result = check_majority_nic_down(store)
         assert result == []
 
     def test_empty_metric_store_returns_empty(self) -> None:
         store = make_fake_metric_store()
-        result = _check_majority_nic_down(store)
+        result = check_majority_nic_down(store)
         assert result == []
 
 
@@ -274,7 +272,7 @@ class TestCheckDiskFault:
         store = make_fake_metric_store()
         inject_disk_fault(store, node_id="node-0", mountpoint="/", available_bytes=500e6)
 
-        result = _check_disk_fault(store)
+        result = check_disk_fault(store)
 
         assert len(result) == 1
         assert result[0].node_id == "node-0"
@@ -284,19 +282,19 @@ class TestCheckDiskFault:
         store = make_fake_metric_store()
         inject_disk_fault(store, node_id="node-0", mountpoint="/", available_bytes=100e9)
 
-        assert _check_disk_fault(store) == []
+        assert check_disk_fault(store) == []
 
     def test_empty_store_returns_empty(self) -> None:
         store = make_fake_metric_store()
 
-        assert _check_disk_fault(store) == []
+        assert check_disk_fault(store) == []
 
     def test_multiple_nodes_only_low_ones_flagged(self) -> None:
         store = make_fake_metric_store()
         inject_disk_fault(store, node_id="node-0", mountpoint="/", available_bytes=200e6)
         inject_disk_fault(store, node_id="node-1", mountpoint="/", available_bytes=50e9)
 
-        result = _check_disk_fault(store)
+        result = check_disk_fault(store)
 
         assert len(result) == 1
         assert result[0].node_id == "node-0"
@@ -305,10 +303,10 @@ class TestCheckDiskFault:
         store = make_fake_metric_store()
         inject_disk_fault(store, node_id="node-0", mountpoint="/", available_bytes=5e9)
 
-        result_default = _check_disk_fault(store)
+        result_default = check_disk_fault(store)
         assert result_default == []
 
-        result_high = _check_disk_fault(store, disk_available_threshold_bytes=10e9)
+        result_high = check_disk_fault(store, disk_available_threshold_bytes=10e9)
         assert len(result_high) == 1
         assert result_high[0].node_id == "node-0"
 
@@ -316,48 +314,7 @@ class TestCheckDiskFault:
         store = make_fake_metric_store()
         inject_disk_fault(store, node_id="node-0", mountpoint="/", available_bytes=1e9)
 
-        result = _check_disk_fault(store, disk_available_threshold_bytes=1e9)
+        result = check_disk_fault(store, disk_available_threshold_bytes=1e9)
         assert result == []
 
 
-class TestCheckAllHardwareFaults:
-    def test_disk_fault_not_included_in_check_all(self) -> None:
-        """check_all_hardware_faults no longer reports disk faults."""
-        store = make_fake_metric_store()
-        inject_disk_fault(store, node_id="node-0", available_bytes=0.0)
-
-        faults = check_all_hardware_faults(metric_store=store)
-
-        assert all("disk" not in f.reason for f in faults)
-
-    def test_empty_store_returns_empty(self) -> None:
-        store = make_fake_metric_store()
-
-        faults = check_all_hardware_faults(metric_store=store)
-
-        assert faults == []
-
-    def test_majority_nic_down_included(self) -> None:
-        """check_all_hardware_faults includes NIC majority-down faults."""
-        store = make_fake_metric_store()
-        store.ingest_samples(
-            target_id="node-0",
-            samples=[
-                GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth0"}, value=0.0),
-                GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth1"}, value=0.0),
-                GaugeSample(name=NODE_NETWORK_UP, labels={"interface": "eth2"}, value=1.0),
-            ],
-        )
-
-        faults = check_all_hardware_faults(metric_store=store)
-
-        nic_faults = [f for f in faults if "NIC" in f.reason or "nic" in f.reason.lower()]
-        assert len(nic_faults) >= 1
-
-    def test_healthy_node_returns_no_faults(self) -> None:
-        store = make_fake_metric_store()
-        inject_healthy_node(store, node_id="node-0", num_gpus=8, num_nics=4)
-
-        faults = check_all_hardware_faults(metric_store=store)
-
-        assert faults == []

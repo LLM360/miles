@@ -20,7 +20,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
 
 from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
-from miles.utils.ft.controller.detectors.core.hardware import HighConfidenceHardwareDetector
+from miles.utils.ft.controller.detectors.core.gpu_fault import GpuFaultDetector
 from miles.utils.ft.controller.detectors.core.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.controller.metric_names import (
@@ -36,7 +36,7 @@ class TestHardwareAlert:
         self,
         e2e_full_detector_env: E2EEnv,
     ) -> None:
-        """GPU_AVAILABLE=0 → HighConfidenceHardwareDetector → ENTER_RECOVERY."""
+        """GPU_AVAILABLE=0 → GpuFaultDetector → ENTER_RECOVERY."""
         env = e2e_full_detector_env
 
         old_run_id = get_status(env.controller).active_run_id
@@ -354,7 +354,7 @@ class TestXidFault:
         self,
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL > 0 → HighConfidenceHardwareDetector → eviction."""
+        """XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL > 0 → GpuFaultDetector → eviction."""
         env = make_e2e_env(
             ft_id="e2exid",
             nodes=[NodeSpec(node_id="e2exid-node-0", use_remote_collector=True)],
@@ -477,12 +477,12 @@ class TestRealtimeChecksDiscovery:
         self,
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """Crash + GPU fault metric → HighConfidenceHardwareDetector discovers bad node during
+        """Crash + GPU fault metric → GpuFaultDetector discovers bad node during
         recovery's collect_evictable_bad_nodes → RealtimeChecks has pre_identified_bad_nodes → Evicting."""
         env = make_e2e_env(
             ft_id="e2ertc",
             nodes=[NodeSpec(node_id="e2ertc-node-0", use_remote_collector=True)],
-            detectors=[TrainingCrashDetector(), HighConfidenceHardwareDetector()],
+            detectors=[TrainingCrashDetector(), GpuFaultDetector()],
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 

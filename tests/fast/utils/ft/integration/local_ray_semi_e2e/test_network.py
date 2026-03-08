@@ -320,7 +320,7 @@ class TestMajorityNicDown:
         self,
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """Majority NICs down (snapshot) → _check_majority_nic_down → non-ephemeral → Evicting."""
+        """Majority NICs down (snapshot) → check_majority_nic_down → non-ephemeral → Evicting."""
         env = make_e2e_env(
             ft_id="e2emaj",
             nodes=[NodeSpec(node_id="e2emaj-node-0", use_remote_collector=True)],

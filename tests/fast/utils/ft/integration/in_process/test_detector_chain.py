@@ -56,7 +56,7 @@ class TestDetectorChainIntegration:
             assert decision.action == ActionType.NONE
 
     def test_hardware_fault_overrides_crash(self) -> None:
-        """HighConfidenceHardwareDetector has higher priority than TrainingCrashDetector."""
+        """GpuFaultDetector has higher priority than TrainingCrashDetector."""
         store = make_fake_metric_store()
         inject_gpu_unavailable(store, node_id="node-0")
 
@@ -159,7 +159,8 @@ class TestDetectorChainIntegration:
         names = [type(d).__name__ for d in chain]
 
         assert names == [
-            "HighConfidenceHardwareDetector",
+            "GpuFaultDetector",
+            "NicMajorityDownDetector",
             "DiskSpaceLowDetector",
             "ThermalThrottlingDetector",
             "NetworkAlertDetector",
