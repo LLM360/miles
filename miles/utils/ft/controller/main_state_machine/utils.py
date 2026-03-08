@@ -93,18 +93,14 @@ def run_detectors(detectors: list[BaseFaultDetector], ctx: DetectorContext) -> D
     return Decision.no_fault(reason="all detectors passed")
 
 
-def collect_critical_bad_nodes(
+def collect_evictable_bad_nodes(
     detectors: list[BaseFaultDetector],
     tick_detector_context: DetectorContext | None,
 ) -> set[str]:
     if tick_detector_context is None:
         return set()
     bad_nodes: set[str] = set()
-    for decision in _run_detectors_raw(
-        detectors=detectors,
-        ctx=tick_detector_context,
-        critical_only=True,
-    ):
+    for decision in _run_detectors_raw(detectors=detectors, ctx=tick_detector_context):
         if decision.action == ActionType.ENTER_RECOVERY and decision.bad_node_ids:
             bad_nodes.update(decision.bad_node_ids)
     return bad_nodes
@@ -114,11 +110,8 @@ def _run_detectors_raw(
     *,
     detectors: list[BaseFaultDetector],
     ctx: DetectorContext,
-    critical_only: bool = False,
 ) -> Iterator[Decision]:
     for detector in detectors:
-        if critical_only and not detector.is_critical:
-            continue
         try:
             yield detector.evaluate(ctx)
         except Exception:

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from miles.utils.ft.controller.main_state_machine.utils import (
     MainContext,
-    collect_critical_bad_nodes,
+    collect_evictable_bad_nodes,
     get_known_bad_nodes,
     notify_too_many_bad_nodes,
 )
@@ -28,7 +28,7 @@ class RecoveringHandler:
         state: Recovering,
         ctx: MainContext,
     ) -> MainState | None:
-        new_bad_nodes = collect_critical_bad_nodes(
+        new_bad_nodes = collect_evictable_bad_nodes(
             detectors=ctx.detectors,
             tick_detector_context=ctx.detector_context,
         )
