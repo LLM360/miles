@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import re
+import tempfile
 from collections.abc import Callable
 from functools import partial
+from pathlib import Path
 
 from miles.utils.ft.agents.types import DiagnosticResult
 from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
@@ -20,8 +24,12 @@ _NCCL_TEST_MAX_BYTES = "1G"
 _NCCL_TEST_SIZE_FACTOR = "2"
 
 
-def build_nccl_test_cmd(binary: str, num_gpus: int) -> list[str]:
-    return [
+def build_nccl_test_cmd(
+    binary: str,
+    num_gpus: int,
+    json_output_path: Path | None = None,
+) -> list[str]:
+    cmd = [
         binary,
         "-b",
         _NCCL_TEST_MIN_BYTES,
@@ -32,6 +40,9 @@ def build_nccl_test_cmd(binary: str, num_gpus: int) -> list[str]:
         "-g",
         str(num_gpus),
     ]
+    if json_output_path is not None:
+        cmd.extend(["-J", str(json_output_path)])
+    return cmd
 
 
 def parse_avg_bus_bandwidth(output: str) -> float | None:
@@ -67,6 +78,19 @@ def parse_avg_bus_bandwidth(output: str) -> float | None:
     return None
 
 
+def _parse_json_avg_bus_bandwidth(json_path: Path) -> float | None:
+    try:
+        data = json.loads(json_path.read_text())
+        return float(data["average_bus_bandwidth"]["bandwidth"])
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        logger.warning(
+            "nccl_json_parse_failed path=%s",
+            json_path,
+            exc_info=True,
+        )
+        return None
+
+
 async def run_nccl_test(
     cmd: list[str],
     node_id: str,
@@ -86,43 +110,53 @@ async def run_nccl_test(
         node_id=node_id,
     )
 
+    fd, tmp_path_str = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    json_output_path = Path(tmp_path_str)
+
+    cmd = cmd + ["-J", str(json_output_path)]
+
     try:
-        stdout_bytes, stderr_bytes, returncode = await run_subprocess_with_timeout(
-            cmd=cmd,
-            timeout_seconds=timeout_seconds,
-            env=env,
-        )
-    except OSError:
-        logger.warning(
-            "%s_exec_failed node=%s binary=%s",
-            log_prefix,
-            node_id,
-            cmd[0],
-            exc_info=True,
-        )
-        return fail(details=f"failed to execute {cmd[0]}")
-    except asyncio.TimeoutError:
-        logger.warning(
-            "%s_timeout node=%s timeout=%s",
-            log_prefix,
-            node_id,
-            timeout_seconds,
-            exc_info=True,
-        )
-        return fail(details=f"timed out after {timeout_seconds}s")
+        try:
+            stdout_bytes, stderr_bytes, returncode = await run_subprocess_with_timeout(
+                cmd=cmd,
+                timeout_seconds=timeout_seconds,
+                env=env,
+            )
+        except OSError:
+            logger.warning(
+                "%s_exec_failed node=%s binary=%s",
+                log_prefix,
+                node_id,
+                cmd[0],
+                exc_info=True,
+            )
+            return fail(details=f"failed to execute {cmd[0]}")
+        except asyncio.TimeoutError:
+            logger.warning(
+                "%s_timeout node=%s timeout=%s",
+                log_prefix,
+                node_id,
+                timeout_seconds,
+                exc_info=True,
+            )
+            return fail(details=f"timed out after {timeout_seconds}s")
 
-    stdout = stdout_bytes.decode(errors="replace")
-    stderr = stderr_bytes.decode(errors="replace")
+        stdout = stdout_bytes.decode(errors="replace")
+        stderr = stderr_bytes.decode(errors="replace")
 
-    return _interpret_nccl_output(
-        stdout=stdout,
-        stderr=stderr,
-        returncode=returncode,
-        node_id=node_id,
-        diagnostic_type=diagnostic_type,
-        expected_bandwidth_gbps=expected_bandwidth_gbps,
-        log_prefix=log_prefix,
-    )
+        return _interpret_nccl_output(
+            stdout=stdout,
+            stderr=stderr,
+            returncode=returncode,
+            node_id=node_id,
+            diagnostic_type=diagnostic_type,
+            expected_bandwidth_gbps=expected_bandwidth_gbps,
+            log_prefix=log_prefix,
+            json_output_path=json_output_path,
+        )
+    finally:
+        json_output_path.unlink(missing_ok=True)
 
 
 def _interpret_nccl_output(
@@ -134,6 +168,7 @@ def _interpret_nccl_output(
     diagnostic_type: str,
     expected_bandwidth_gbps: float,
     log_prefix: str,
+    json_output_path: Path | None = None,
 ) -> DiagnosticResult:
     fail: Callable[[str], DiagnosticResult] = partial(
         DiagnosticResult.fail_result,
@@ -151,7 +186,13 @@ def _interpret_nccl_output(
         )
         return fail(details=f"exit code {returncode}: {stderr[:500]}")
 
-    bandwidth = parse_avg_bus_bandwidth(stdout)
+    bandwidth: float | None = None
+    if json_output_path is not None:
+        bandwidth = _parse_json_avg_bus_bandwidth(json_output_path)
+
+    if bandwidth is None:
+        bandwidth = parse_avg_bus_bandwidth(stdout)
+
     if bandwidth is None:
         logger.warning(
             "%s_parse_failure node=%s output_len=%d",
