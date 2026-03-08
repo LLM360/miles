@@ -6,7 +6,7 @@ import logging
 
 from pydantic import ConfigDict
 
-from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.models.base import FtBaseModel
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
@@ -31,7 +31,7 @@ class PySpyThread(FtBaseModel):
     frames: list[PySpyFrame]
 
 
-class StackTraceDiagnostic(BaseDiagnostic):
+class StackTraceNodeExecutor(BaseNodeExecutor):
     """Collect stack traces from training processes via py-spy dump --json."""
 
     diagnostic_type = "stack_trace"

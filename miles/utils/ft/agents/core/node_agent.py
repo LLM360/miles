@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.agents.diagnostics.runner import DiagnosticRunner
+from miles.utils.ft.agents.diagnostics.runner import NodeExecutorRunner
 from miles.utils.ft.agents.utils.metric_collection_loop import MetricCollectionLoop
 from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticProtocol, NodeAgentProtocol
+from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, NodeAgentProtocol, NodeExecutorProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +18,10 @@ class FtNodeAgent(NodeAgentProtocol):
         node_id: str,
         collectors: list[BaseCollector] | None = None,
         collect_interval_seconds: float | None = None,
-        diagnostics: list[DiagnosticProtocol] | None = None,
+        diagnostics: list[NodeExecutorProtocol] | None = None,
     ) -> None:
         self._node_id = node_id
-        self._runner = DiagnosticRunner(node_id=node_id, diagnostics=diagnostics)
+        self._runner = NodeExecutorRunner(node_id=node_id, diagnostics=diagnostics)
 
         prepared_collectors = list(collectors or [])
         if collect_interval_seconds is not None:

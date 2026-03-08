@@ -4,10 +4,10 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticProtocol
+from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, NodeExecutorProtocol
 
 
-class BaseDiagnostic(DiagnosticProtocol, ABC):
+class BaseNodeExecutor(NodeExecutorProtocol, ABC):
     """Base class for all on-demand diagnostics.
 
     Subclasses implement run() to execute a diagnostic on a single node.

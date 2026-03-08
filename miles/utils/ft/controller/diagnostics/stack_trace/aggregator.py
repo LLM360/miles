@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from miles.utils.ft.agents.diagnostics.stack_trace import PySpyThread
+from miles.utils.ft.agents.diagnostics.executors.stack_trace import PySpyThread
 from miles.utils.ft.models.base import FtBaseModel
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,12 @@ class StackTraceAggregator:
             suspects: list[str] = []
         else:
             majority_size = max(len(nodes) for nodes in fp_to_nodes.values())
-            suspects = sorted(nid for nodes in fp_to_nodes.values() if len(nodes) < majority_size for nid in nodes)
+            suspects = sorted(
+                nid
+                for nodes in fp_to_nodes.values()
+                if len(nodes) < majority_size
+                for nid in nodes
+            )
 
         result = AggregationResult(
             suspect_node_ids=suspects,

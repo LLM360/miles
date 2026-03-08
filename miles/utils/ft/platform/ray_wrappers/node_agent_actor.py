@@ -11,7 +11,7 @@ from miles.utils.ft.platform.node_agent_factory import (
     DEFAULT_NUM_GPUS,
     build_node_agent,
 )
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticProtocol
+from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, NodeExecutorProtocol
 from miles.utils.ft.protocols.platform import REGISTER_TIMEOUT_SECONDS, ft_controller_actor_name
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import retry_sync
@@ -38,7 +38,7 @@ class _FtNodeAgentActorCls:
         num_gpus: int = DEFAULT_NUM_GPUS,
         collect_interval_seconds: float = DEFAULT_COLLECT_INTERVAL_SECONDS,
         collectors_override: list[BaseCollector] | None = None,
-        diagnostics_override: list[DiagnosticProtocol] | None = None,
+        diagnostics_override: list[NodeExecutorProtocol] | None = None,
     ) -> None:
         self._ft_id = ft_id
         self._agent = build_node_agent(

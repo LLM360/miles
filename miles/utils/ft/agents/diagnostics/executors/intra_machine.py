@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
-from miles.utils.ft.agents.diagnostics.nccl.utils import build_nccl_test_cmd, run_nccl_test
+from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.nccl_utils import build_nccl_test_cmd, run_nccl_test
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 
 _DEFAULT_NUM_GPUS: int = 8
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
 
 
-class IntraMachineCommDiagnostic(BaseDiagnostic):
+class IntraMachineNodeExecutor(BaseNodeExecutor):
     """Single-node intra-machine communication diagnostic.
 
     Runs ``all_reduce_perf`` on one node and compares the measured

@@ -1,4 +1,4 @@
-"""GpuDiagnostic — pynvml extended checks + deterministic compute fingerprinting.
+"""GpuNodeExecutor — pynvml extended checks + deterministic compute fingerprinting.
 
 Launches ``gpu_check_script`` as a subprocess so that pynvml init/shutdown
 and torch computation never block the NodeAgent event loop.
@@ -16,7 +16,7 @@ import json
 import logging
 import sys
 
-from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.agents.diagnostics.gpu_check_script import GpuCheckResult
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
@@ -25,7 +25,7 @@ from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
 logger = logging.getLogger(__name__)
 
 
-class GpuDiagnostic(BaseDiagnostic):
+class GpuNodeExecutor(BaseNodeExecutor):
     diagnostic_type = "gpu"
 
     async def run(

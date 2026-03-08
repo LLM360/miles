@@ -14,10 +14,10 @@ from miles.utils.ft.agents.collectors.gpu import GpuCollector
 from miles.utils.ft.agents.collectors.kmsg import KmsgCollector
 from miles.utils.ft.agents.collectors.network import NetworkCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.agents.diagnostics.gpu_diagnostic import GpuDiagnostic
-from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
-from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
-from miles.utils.ft.protocols.agents import DiagnosticProtocol
+from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.inter_machine import InterMachineNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.intra_machine import IntraMachineNodeExecutor
+from miles.utils.ft.protocols.agents import NodeExecutorProtocol
 
 DEFAULT_NUM_GPUS: int = 8
 DEFAULT_COLLECT_INTERVAL_SECONDS: float = 10.0
@@ -29,11 +29,11 @@ def build_default_collectors() -> list[GpuCollector | KmsgCollector | NetworkCol
 
 def build_default_diagnostics(
     num_gpus: int,
-) -> list[GpuDiagnostic | IntraMachineCommDiagnostic | InterMachineCommDiagnostic]:
+) -> list[GpuNodeExecutor | IntraMachineNodeExecutor | InterMachineNodeExecutor]:
     return [
-        GpuDiagnostic(),
-        IntraMachineCommDiagnostic(num_gpus=num_gpus),
-        InterMachineCommDiagnostic(num_gpus=num_gpus),
+        GpuNodeExecutor(),
+        IntraMachineNodeExecutor(num_gpus=num_gpus),
+        InterMachineNodeExecutor(num_gpus=num_gpus),
     ]
 
 
@@ -42,7 +42,7 @@ def build_node_agent(
     num_gpus: int = DEFAULT_NUM_GPUS,
     collect_interval_seconds: float = DEFAULT_COLLECT_INTERVAL_SECONDS,
     collectors_override: list[BaseCollector] | None = None,
-    diagnostics_override: list[DiagnosticProtocol] | None = None,
+    diagnostics_override: list[NodeExecutorProtocol] | None = None,
 ) -> FtNodeAgent:
     resolved_node_id = node_id or socket.gethostname()
     collectors = collectors_override if collectors_override is not None else build_default_collectors()

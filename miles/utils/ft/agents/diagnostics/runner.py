@@ -4,15 +4,15 @@ import asyncio
 import logging
 
 from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, DiagnosticProtocol, NodeAgentProtocol
+from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, NodeAgentProtocol, NodeExecutorProtocol
 
 logger = logging.getLogger(__name__)
 
 
-class DiagnosticRunner(NodeAgentProtocol):
+class NodeExecutorRunner(NodeAgentProtocol):
     """Registry-based diagnostic dispatcher with timeout protection.
 
-    Holds a set of DiagnosticProtocol implementations keyed by
+    Holds a set of NodeExecutorProtocol implementations keyed by
     diagnostic_type and dispatches run_diagnostic calls to the
     matching one.  Provides asyncio.wait_for timeout and exception
     catch-all so callers always get a DiagnosticResult back.
@@ -21,10 +21,10 @@ class DiagnosticRunner(NodeAgentProtocol):
     def __init__(
         self,
         node_id: str,
-        diagnostics: list[DiagnosticProtocol] | None = None,
+        diagnostics: list[NodeExecutorProtocol] | None = None,
     ) -> None:
         self._node_id = node_id
-        self._diagnostics: dict[str, DiagnosticProtocol] = {d.diagnostic_type: d for d in (diagnostics or [])}
+        self._diagnostics: dict[str, NodeExecutorProtocol] = {d.diagnostic_type: d for d in (diagnostics or [])}
 
     async def run_diagnostic(
         self,

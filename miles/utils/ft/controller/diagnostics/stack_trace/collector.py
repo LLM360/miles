@@ -5,7 +5,7 @@ import json
 import logging
 from collections.abc import Callable
 
-from miles.utils.ft.agents.diagnostics.stack_trace import PySpyThread, StackTraceDiagnostic
+from miles.utils.ft.agents.diagnostics.executors.stack_trace import PySpyThread, StackTraceNodeExecutor
 from miles.utils.ft.controller.diagnostics.stack_trace.aggregator import StackTraceAggregator
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 
@@ -36,7 +36,7 @@ async def collect_stack_trace_suspects(
         if not rank_pids:
             return
 
-        diag = StackTraceDiagnostic(pids=list(rank_pids.values()))
+        diag = StackTraceNodeExecutor(pids=list(rank_pids.values()))
 
         try:
             result = await diag.run(
