@@ -11,7 +11,7 @@ import asyncio
 import logging
 from typing import NamedTuple
 
-from miles.utils.ft.adapters.types import NodeAgentProtocol
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol, NodeAgentProtocol
 from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import DEFAULT_NCCL_MASTER_PORT
 from miles.utils.ft.controller.diagnostics.utils import RPC_TIMEOUT_BUFFER_SECONDS
 
@@ -24,7 +24,7 @@ class _PairResult(NamedTuple):
     passed: bool
 
 
-class PairwiseClusterExecutor:
+class PairwiseClusterExecutor(ClusterExecutorProtocol):
     """Pair-based pairwise diagnostic with cross-comparison.
 
     Implements the ClusterExecutorProtocol protocol.

@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from miles.utils.ft.adapters.types import NodeAgentProtocol
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol, NodeAgentProtocol
 from miles.utils.ft.controller.diagnostics.stack_trace import collect_stack_trace_suspects
 
 logger = logging.getLogger(__name__)
 
 
-class StackTraceClusterExecutor:
+class StackTraceClusterExecutor(ClusterExecutorProtocol):
     """Identifies outlier nodes via stack trace aggregation and evicts them.
 
     Used as the first executor in the pipeline when the trigger is HANG.

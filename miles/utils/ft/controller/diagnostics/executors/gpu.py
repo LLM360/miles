@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from miles.utils.ft.adapters.types import NodeAgentProtocol
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol, NodeAgentProtocol
 from miles.utils.ft.agents.types import DiagnosticResult
 from miles.utils.ft.controller.diagnostics.utils import gather_diagnostic_results, partition_results
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 _GPU_DIAGNOSTIC_TYPE = "gpu"
 
 
-class GpuClusterExecutor:
+class GpuClusterExecutor(ClusterExecutorProtocol):
     """GPU diagnostic with cross-node compute hash comparison.
 
     First partitions by local pass/fail (nvml + compute errors).

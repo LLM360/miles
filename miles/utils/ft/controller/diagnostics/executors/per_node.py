@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from miles.utils.ft.adapters.types import NodeAgentProtocol
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol, NodeAgentProtocol
 from miles.utils.ft.controller.diagnostics.utils import gather_diagnostic_results, partition_results
 
 
-class PerNodeClusterExecutor:
+class PerNodeClusterExecutor(ClusterExecutorProtocol):
     """Run one diagnostic type on every node independently, partition by pass/fail."""
 
     def __init__(self, diagnostic_type: str) -> None:

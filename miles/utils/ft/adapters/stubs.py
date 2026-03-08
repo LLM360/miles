@@ -1,12 +1,18 @@
 import logging
 from uuid import uuid4
 
-from miles.utils.ft.adapters.types import STOP_TRAINING_TIMEOUT_SECONDS, JobStatus
+from miles.utils.ft.adapters.types import (
+    STOP_TRAINING_TIMEOUT_SECONDS,
+    JobStatus,
+    NodeManagerProtocol,
+    NotifierProtocol,
+    TrainingJobProtocol,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class StubNodeManager:
+class StubNodeManager(NodeManagerProtocol):
     """Logs operations but does not call real K8s API."""
 
     async def mark_node_bad(self, node_id: str, reason: str) -> None:
@@ -19,7 +25,7 @@ class StubNodeManager:
         return []
 
 
-class StubTrainingJob:
+class StubTrainingJob(TrainingJobProtocol):
     """Logs operations but does not call real Ray Job API."""
 
     async def stop_training(self, timeout_seconds: int = STOP_TRAINING_TIMEOUT_SECONDS) -> None:
@@ -37,7 +43,7 @@ class StubTrainingJob:
         return JobStatus.RUNNING
 
 
-class StubNotifier:
+class StubNotifier(NotifierProtocol):
     """Logs notifications but does not send them anywhere."""
 
     async def send(self, title: str, content: str, severity: str) -> None:

@@ -11,13 +11,13 @@ from typing import Any
 
 import ray
 
-from miles.utils.ft.adapters.types import REGISTER_TIMEOUT_SECONDS, ft_controller_actor_name
+from miles.utils.ft.adapters.types import REGISTER_TIMEOUT_SECONDS, ControllerClientProtocol, ft_controller_actor_name
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
 logger = logging.getLogger(__name__)
 
 
-class RayControllerClient:
+class RayControllerClient(ControllerClientProtocol):
     """Communicates with the FtController Ray actor on behalf of agents.
 
     Implements :class:`ControllerClientProtocol`.
