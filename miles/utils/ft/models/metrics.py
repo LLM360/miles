@@ -1,8 +1,20 @@
-from typing import Annotated, Literal
+from datetime import datetime
+from typing import Annotated, Literal, NamedTuple
 
 from pydantic import Field
 
 from miles.utils.ft.models.base import FtBaseModel
+
+
+class StepValue(NamedTuple):
+    step: int
+    value: float
+
+
+class TimedStepValue(NamedTuple):
+    step: int
+    timestamp: datetime
+    value: float
 
 
 class _MetricSampleBase(FtBaseModel):

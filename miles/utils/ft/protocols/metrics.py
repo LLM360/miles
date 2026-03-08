@@ -1,20 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import NamedTuple, Protocol, runtime_checkable
+from datetime import timedelta
+from typing import Protocol, runtime_checkable
 
 import polars as pl
 
+from miles.utils.ft.models.metrics import StepValue, TimedStepValue
 
-class StepValue(NamedTuple):
-    step: int
-    value: float
-
-
-class TimedStepValue(NamedTuple):
-    step: int
-    timestamp: datetime
-    value: float
+__all__ = ["StepValue", "TimedStepValue"]
 
 
 @runtime_checkable
