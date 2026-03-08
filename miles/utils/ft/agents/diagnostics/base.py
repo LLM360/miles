@@ -20,7 +20,16 @@ class BaseNodeExecutor(NodeExecutorProtocol):
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        if not getattr(cls, "__abstractmethods__", None):
+        # ABCMeta sets __abstractmethods__ AFTER __init_subclass__ runs,
+        # so we check for abstract methods directly.
+        is_abstract = any(
+            getattr(v, "__isabstractmethod__", False) for v in vars(cls).values()
+        ) or any(
+            getattr(getattr(cls, n, None), "__isabstractmethod__", False)
+            for b in cls.__mro__[1:]
+            for n in getattr(b, "__abstractmethods__", ())
+        )
+        if not is_abstract:
             own_annotations = cls.__dict__.get("__annotations__", {})
             if "diagnostic_type" not in cls.__dict__ and "diagnostic_type" not in own_annotations:
                 raise TypeError(f"{cls.__name__} must define a 'diagnostic_type' class attribute")
