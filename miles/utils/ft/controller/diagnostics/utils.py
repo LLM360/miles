@@ -16,12 +16,14 @@ async def call_agent_diagnostic(
     node_id: str,
     diagnostic_type: str,
     timeout_seconds: int,
+    **kwargs: object,
 ) -> DiagnosticResult:
     try:
         return await asyncio.wait_for(
             agent.run_diagnostic(
                 diagnostic_type,
                 timeout_seconds=timeout_seconds,
+                **kwargs,
             ),
             timeout=timeout_seconds + RPC_TIMEOUT_BUFFER_SECONDS,
         )
