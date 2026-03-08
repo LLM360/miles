@@ -17,13 +17,6 @@ From top to bottom: `cli` > `factories` > `adapters` > `controller`, `agents` > 
 Each layer may only import from layers below it.
 Exception: `controller` and `agents` may import `adapters/types.py` (the boundary contract — cross-layer protocols and constants).
 
-- `adapters/types.py` has all cross-layer Protocol definitions; may import from `controller/types.py` and `agents/types.py` (downward)
-- `controller/types.py` has data types + controller-internal Protocols; may import from `agents/types.py` (downward)
-- `agents/types.py` has data types only; imports from `utils/` only
-- `factories/` is the composition root — may import from all layers
-- `adapters/impl/` receives builder functions via injection, never imports `controller` or `agents`
-- `utils/` has no types.py — all files are public
-
 ### Error-as-Empty — FORBIDDEN on safety-critical paths
 
 On fault detection / recovery / diagnostic paths, "I don't know" must never look like "everything is fine."
