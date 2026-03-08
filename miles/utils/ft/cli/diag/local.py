@@ -10,7 +10,9 @@ import typer
 
 from miles.utils.ft.agents.diagnostics.runner import NodeExecutorRunner
 from miles.utils.ft.cli.diag.output import exit_with_results, print_results
-from miles.utils.ft.platform.node_agent_factory import build_local_diagnostics
+from miles.utils.ft.platform.node_agent_factory import build_all_diagnostics
+
+_LOCAL_EXCLUDED = {"inter_machine"}
 
 
 def local(
@@ -24,7 +26,7 @@ def local(
     """Run diagnostic checks on the local node."""
     mount_paths = [Path(m.strip()) for m in disk_mounts.split(",")]
     xid_since = datetime.now(timezone.utc) - timedelta(minutes=xid_since_minutes)
-    diagnostics = build_local_diagnostics(
+    diagnostics = build_all_diagnostics(
         num_gpus=num_gpus,
         disk_mounts=mount_paths,
         xid_since=xid_since,
@@ -33,7 +35,8 @@ def local(
     node_id = socket.gethostname()
     runner = NodeExecutorRunner(node_id=node_id, diagnostics=diagnostics)
 
-    selected = checks or runner.available_types
+    local_defaults = [t for t in runner.available_types if t not in _LOCAL_EXCLUDED]
+    selected = checks or local_defaults
     unknown = set(selected) - set(runner.available_types)
     if unknown:
         typer.echo(f"Unknown checks: {', '.join(sorted(unknown))}", err=True)

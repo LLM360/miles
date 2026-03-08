@@ -32,30 +32,20 @@ def build_default_collectors() -> list[GpuCollector | KmsgCollector | NetworkCol
     return [GpuCollector(), KmsgCollector(), NetworkCollector(), DiskCollector()]
 
 
-def build_default_diagnostics(
-    num_gpus: int,
-) -> list[GpuNodeExecutor | IntraMachineNodeExecutor | InterMachineNodeExecutor]:
-    return [
-        GpuNodeExecutor(),
-        IntraMachineNodeExecutor(num_gpus=num_gpus),
-        InterMachineNodeExecutor(num_gpus=num_gpus),
-    ]
-
-
-def build_local_diagnostics(
+def build_all_diagnostics(
     num_gpus: int = DEFAULT_NUM_GPUS,
     disk_mounts: list[Path] | None = None,
     xid_since: datetime | None = None,
 ) -> list[NodeExecutorProtocol]:
-    """Build all single-node diagnostics including collector-based checks.
+    """Build all available node-level diagnostic executors.
 
-    Superset of build_default_diagnostics: adds disk, network, and xid
-    checks that are normally covered by the realtime collectors+detectors
-    path but useful for on-demand CLI diagnostics.
+    Registers every diagnostic type the system supports.  Callers choose
+    which subset to actually run (e.g. local CLI excludes inter_machine).
     """
     return [
         GpuNodeExecutor(),
         IntraMachineNodeExecutor(num_gpus=num_gpus),
+        InterMachineNodeExecutor(num_gpus=num_gpus),
         CollectorBasedNodeExecutor(
             diagnostic_type="disk",
             collector=DiskCollector(disk_mounts=disk_mounts or [Path("/")]),
@@ -84,7 +74,7 @@ def build_node_agent(
     resolved_node_id = node_id or socket.gethostname()
     collectors = collectors_override if collectors_override is not None else build_default_collectors()
     diagnostics = (
-        diagnostics_override if diagnostics_override is not None else build_default_diagnostics(num_gpus=num_gpus)
+        diagnostics_override if diagnostics_override is not None else build_all_diagnostics(num_gpus=num_gpus)
     )
     return FtNodeAgent(
         node_id=resolved_node_id,
