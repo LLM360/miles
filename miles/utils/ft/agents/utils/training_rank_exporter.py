@@ -12,7 +12,7 @@ from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 logger = logging.getLogger(__name__)
 
 
-class TrainingRankMetricExporter:
+class TrainingRankExporter:
     """Prometheus metric exporter for a single training rank.
 
     Exposes heartbeat and phase gauges via an HTTP exporter that the

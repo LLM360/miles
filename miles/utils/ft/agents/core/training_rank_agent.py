@@ -5,7 +5,7 @@ import os
 import socket
 from typing import TYPE_CHECKING, Literal
 
-from miles.utils.ft.agents.utils.training_rank_metric_exporter import TrainingRankMetricExporter
+from miles.utils.ft.agents.utils.training_rank_exporter import TrainingRankExporter
 from miles.utils.ft.utils.env import get_training_run_id
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import retry_sync
@@ -20,7 +20,7 @@ class FtTrainingRankAgent:
     """Embedded fault-tolerance agent for each training rank.
 
     Each rank creates one instance. Delegates metric exposition (iteration,
-    phase gauges) to a TrainingRankMetricExporter, and handles rank
+    phase gauges) to a TrainingRankExporter, and handles rank
     registration with the FtController.
 
     Training metrics (loss, grad_norm, etc.) are forwarded separately through
@@ -39,7 +39,7 @@ class FtTrainingRankAgent:
         self._run_id: str = get_training_run_id()
         self._node_id: str = socket.gethostname()
 
-        self._metric_exporter = TrainingRankMetricExporter(rank=rank, node_id=self._node_id)
+        self._metric_exporter = TrainingRankExporter(rank=rank, node_id=self._node_id)
 
         self._register_training_rank()
 
@@ -61,7 +61,7 @@ class FtTrainingRankAgent:
         return cls(rank=rank, world_size=world_size, controller_client=controller_client)
 
     # ------------------------------------------------------------------
-    # Public API — delegated to TrainingRankMetricExporter
+    # Public API — delegated to TrainingRankExporter
     # ------------------------------------------------------------------
 
     def get_exporter_address(self) -> str:

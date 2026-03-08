@@ -1,9 +1,9 @@
 """Unit tests for FtTrainingRankAgent.
 
-FtTrainingRankAgent delegates metric exposition to TrainingRankMetricExporter
+FtTrainingRankAgent delegates metric exposition to TrainingRankExporter
 and is responsible for rank registration with FtController, plus the
 maybe_create factory.  Exporter-level tests live in
-test_training_rank_metric_exporter.py.
+test_training_rank_exporter.py.
 """
 
 from collections.abc import Iterator

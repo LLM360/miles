@@ -1,6 +1,6 @@
-"""Unit tests for TrainingRankMetricExporter.
+"""Unit tests for TrainingRankExporter.
 
-TrainingRankMetricExporter owns the Prometheus exporter and metric gauges
+TrainingRankExporter owns the Prometheus exporter and metric gauges
 (heartbeat + phase). These tests verify gauge creation, updates, and the
 HTTP exposition endpoint.
 """
@@ -10,7 +10,7 @@ from collections.abc import Iterator
 import httpx
 import pytest
 
-from miles.utils.ft.agents.utils.training_rank_metric_exporter import TrainingRankMetricExporter
+from miles.utils.ft.agents.utils.training_rank_exporter import TrainingRankExporter
 
 
 def _parse_gauge(text: str, metric_name: str, labels: dict[str, str]) -> float:
@@ -28,15 +28,15 @@ def _parse_gauge(text: str, metric_name: str, labels: dict[str, str]) -> float:
 
 
 @pytest.fixture()
-def metric_exporter() -> Iterator[TrainingRankMetricExporter]:
-    exporter = TrainingRankMetricExporter(rank=0, node_id="test-node")
+def metric_exporter() -> Iterator[TrainingRankExporter]:
+    exporter = TrainingRankExporter(rank=0, node_id="test-node")
     yield exporter
     exporter.shutdown()
 
 
-class TestTrainingRankMetricExporterExporter:
+class TestTrainingRankExporterExporter:
     @pytest.mark.anyio
-    async def test_exporter_returns_prometheus_format(self, metric_exporter: TrainingRankMetricExporter) -> None:
+    async def test_exporter_returns_prometheus_format(self, metric_exporter: TrainingRankExporter) -> None:
         address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
@@ -45,14 +45,14 @@ class TestTrainingRankMetricExporterExporter:
         assert "text/plain" in response.headers.get("content-type", "")
 
     @pytest.mark.anyio
-    async def test_exporter_address_has_port(self, metric_exporter: TrainingRankMetricExporter) -> None:
+    async def test_exporter_address_has_port(self, metric_exporter: TrainingRankExporter) -> None:
         address = metric_exporter.get_exporter_address()
         assert address.startswith("http://localhost:")
         port = int(address.split(":")[-1])
         assert port > 0
 
     @pytest.mark.anyio
-    async def test_initial_gauge_values(self, metric_exporter: TrainingRankMetricExporter) -> None:
+    async def test_initial_gauge_values(self, metric_exporter: TrainingRankExporter) -> None:
         address = metric_exporter.get_exporter_address()
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{address}/metrics")
@@ -63,9 +63,9 @@ class TestTrainingRankMetricExporterExporter:
         assert 'rank="0"' in text
 
 
-class TestTrainingRankMetricExporterStep:
+class TestTrainingRankExporterStep:
     @pytest.mark.anyio
-    async def test_step_increments_heartbeat(self, metric_exporter: TrainingRankMetricExporter) -> None:
+    async def test_step_increments_heartbeat(self, metric_exporter: TrainingRankExporter) -> None:
         metric_exporter.step()
         metric_exporter.step()
         metric_exporter.step()
@@ -79,7 +79,7 @@ class TestTrainingRankMetricExporterStep:
         assert heartbeat == 3.0
 
     @pytest.mark.anyio
-    async def test_step_heartbeat_monotonic_across_phases(self, metric_exporter: TrainingRankMetricExporter) -> None:
+    async def test_step_heartbeat_monotonic_across_phases(self, metric_exporter: TrainingRankExporter) -> None:
         """Simulate a full rollout cycle with split set_phase/step API."""
         address = metric_exporter.get_exporter_address()
         labels = {"rank": "0"}
@@ -108,16 +108,16 @@ class TestTrainingRankMetricExporterStep:
         phase = _parse_gauge(resp.text, "miles_ft_training_phase", labels)
         assert phase == 0.0
 
-    def test_step_exception_does_not_propagate(self, metric_exporter: TrainingRankMetricExporter) -> None:
+    def test_step_exception_does_not_propagate(self, metric_exporter: TrainingRankExporter) -> None:
         from unittest.mock import patch
 
         with patch.object(metric_exporter, "_heartbeat_child", **{"set.side_effect": RuntimeError("boom")}):
             metric_exporter.step()
 
 
-class TestTrainingRankMetricExporterSetPhase:
+class TestTrainingRankExporterSetPhase:
     @pytest.mark.anyio
-    async def test_set_phase_updates_phase_gauge(self, metric_exporter: TrainingRankMetricExporter) -> None:
+    async def test_set_phase_updates_phase_gauge(self, metric_exporter: TrainingRankExporter) -> None:
         metric_exporter.set_phase("checkpoint_saving")
 
         address = metric_exporter.get_exporter_address()
@@ -129,7 +129,7 @@ class TestTrainingRankMetricExporterSetPhase:
         assert phase == 2.0
 
     @pytest.mark.anyio
-    async def test_set_phase_also_bumps_heartbeat(self, metric_exporter: TrainingRankMetricExporter) -> None:
+    async def test_set_phase_also_bumps_heartbeat(self, metric_exporter: TrainingRankExporter) -> None:
         metric_exporter.set_phase("training")
         metric_exporter.set_phase("idle")
 
