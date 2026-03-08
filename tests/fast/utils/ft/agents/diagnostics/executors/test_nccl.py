@@ -207,7 +207,7 @@ class TestNcclSimple:
                 result = await diag.run(node_id="node-0", timeout_seconds=5)
 
         assert result.passed is False
-        assert "failed to execute all_reduce_perf" in result.details
+        assert "timed out" in result.details
         mock_proc.kill.assert_called_once()
         mock_proc.wait.assert_called_once()
 
@@ -359,7 +359,7 @@ class TestNcclPairwise:
             result = await diag.run(node_id="node-0", timeout_seconds=30, master_addr="10.0.0.1")
 
         assert result.passed is False
-        assert "failed to execute all_gather_perf" in result.details
+        assert "timed out" in result.details
         mock_proc.kill.assert_called_once()
         mock_proc.wait.assert_awaited_once()
 
