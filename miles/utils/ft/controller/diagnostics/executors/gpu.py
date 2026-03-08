@@ -37,14 +37,14 @@ class GpuClusterExecutor:
 
         bad_set = set(bad_node_ids)
         passed_results = {nid: r for nid, r in results.items() if nid not in bad_set}
-        hash_outliers = find_gpu_hash_outlier_nodes(passed_results)
+        hash_outliers = _find_gpu_hash_outlier_nodes(passed_results)
         if hash_outliers:
             bad_node_ids.extend(hash_outliers)
 
         return bad_node_ids
 
 
-def find_gpu_hash_outlier_nodes(
+def _find_gpu_hash_outlier_nodes(
     results: dict[str, DiagnosticResult],
 ) -> list[str]:
     """Compare compute hashes across nodes, return nodes with minority hashes.

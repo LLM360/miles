@@ -6,7 +6,7 @@ import pytest
 from tests.fast.utils.ft.conftest import FakeNodeAgent
 
 from miles.utils.ft.agents.types import DiagnosticResult
-from miles.utils.ft.controller.diagnostics.executors.gpu import GpuClusterExecutor, find_gpu_hash_outlier_nodes
+from miles.utils.ft.controller.diagnostics.executors.gpu import GpuClusterExecutor, _find_gpu_hash_outlier_nodes
 
 
 def _make_result(
@@ -37,7 +37,7 @@ class TestFindGpuHashOutlierNodes:
             "n1": _make_result("n1", compute_hashes={"0": "aaa", "1": "bbb"}),
             "n2": _make_result("n2", compute_hashes={"0": "aaa", "1": "bbb"}),
         }
-        assert find_gpu_hash_outlier_nodes(results) == []
+        assert _find_gpu_hash_outlier_nodes(results) == []
 
     def test_single_outlier_detected(self) -> None:
         results = {
@@ -45,7 +45,7 @@ class TestFindGpuHashOutlierNodes:
             "n1": _make_result("n1", compute_hashes={"0": "aaa"}),
             "n2": _make_result("n2", compute_hashes={"0": "xxx"}),
         }
-        assert find_gpu_hash_outlier_nodes(results) == ["n2"]
+        assert _find_gpu_hash_outlier_nodes(results) == ["n2"]
 
     def test_no_majority_skipped(self) -> None:
         """When hashes split 50/50, no node should be flagged (possible non-determinism)."""
@@ -53,20 +53,20 @@ class TestFindGpuHashOutlierNodes:
             "n0": _make_result("n0", compute_hashes={"0": "aaa"}),
             "n1": _make_result("n1", compute_hashes={"0": "bbb"}),
         }
-        assert find_gpu_hash_outlier_nodes(results) == []
+        assert _find_gpu_hash_outlier_nodes(results) == []
 
     def test_fewer_than_two_nodes_returns_empty(self) -> None:
         results = {
             "n0": _make_result("n0", compute_hashes={"0": "aaa"}),
         }
-        assert find_gpu_hash_outlier_nodes(results) == []
+        assert _find_gpu_hash_outlier_nodes(results) == []
 
     def test_no_metadata_returns_empty(self) -> None:
         results = {
             "n0": _make_result("n0"),
             "n1": _make_result("n1"),
         }
-        assert find_gpu_hash_outlier_nodes(results) == []
+        assert _find_gpu_hash_outlier_nodes(results) == []
 
     def test_multiple_gpu_indices_outliers_combined(self) -> None:
         results = {
@@ -75,7 +75,7 @@ class TestFindGpuHashOutlierNodes:
             "n2": _make_result("n2", compute_hashes={"0": "xxx", "1": "bbb"}),
             "n3": _make_result("n3", compute_hashes={"0": "aaa", "1": "yyy"}),
         }
-        outliers = find_gpu_hash_outlier_nodes(results)
+        outliers = _find_gpu_hash_outlier_nodes(results)
         assert sorted(outliers) == ["n2", "n3"]
 
     def test_empty_hash_ignored(self) -> None:
@@ -84,7 +84,7 @@ class TestFindGpuHashOutlierNodes:
             "n1": _make_result("n1", compute_hashes={"0": "aaa"}),
             "n2": _make_result("n2", compute_hashes={"0": ""}),
         }
-        assert find_gpu_hash_outlier_nodes(results) == []
+        assert _find_gpu_hash_outlier_nodes(results) == []
 
 
 # ---------------------------------------------------------------------------
