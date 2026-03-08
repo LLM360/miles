@@ -11,7 +11,7 @@ from tests.fast.utils.ft.utils.controller_fakes import OneShotCrashDetector
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.models.controller import ControllerMode
 from miles.utils.ft.protocols.controller import ft_controller_actor_name
 
 pytestmark = [

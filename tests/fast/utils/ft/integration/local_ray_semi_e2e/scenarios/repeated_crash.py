@@ -10,7 +10,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios.polling import
 )
 from tests.fast.utils.ft.utils.fault_injection import FaultInjectionProtocol
 
-from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
+from miles.utils.ft.models.controller import ControllerMode, ControllerStatus
 
 
 async def scenario_repeated_crash(

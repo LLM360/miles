@@ -27,7 +27,7 @@ from miles.utils.ft.controller.state_machines.recovery import (
     StopTimeDiagnostics,
 )
 from miles.utils.ft.controller.state_machines.restart import Evicting
-from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.models.controller import ControllerMode
 from miles.utils.ft.protocols.platform import JobStatus
 
 

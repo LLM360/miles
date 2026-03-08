@@ -8,7 +8,7 @@ from collections.abc import Generator
 import pytest
 import ray
 
-from miles.utils.ft.models.recovery import ControllerStatus
+from miles.utils.ft.models.controller import ControllerStatus
 
 logger = logging.getLogger(__name__)
 

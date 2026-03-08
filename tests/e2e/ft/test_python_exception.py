@@ -20,7 +20,7 @@ from tests.e2e.ft.conftest import (
     wait_for_training_stable,
 )
 
-from miles.utils.ft.models.recovery import ControllerMode, RecoveryPhase
+from miles.utils.ft.models.controller import ControllerMode
 
 
 async def test_python_exception_auto_recovery(
@@ -66,10 +66,10 @@ async def test_python_exception_auto_recovery(
     assert_phase_path_contains(
         final,
         [
-            RecoveryPhase.CHECK_ALERTS,
-            RecoveryPhase.REATTEMPTING,
-            RecoveryPhase.MONITORING,
-            RecoveryPhase.DONE,
+            "RealtimeChecks",
+            "StoppingAndRestarting",
+            "MonitoringProgress",
+            "RecoveryDone",
         ],
     )
 

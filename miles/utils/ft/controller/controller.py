@@ -34,7 +34,7 @@ from miles.utils.ft.controller.recovery.recovery_stepper import (
 from miles.utils.ft.controller.recovery.restart_stepper import RestartContext, create_restart_stepper
 from miles.utils.ft.controller.recovery.utils import safe_notify
 from miles.utils.ft.models.fault import TriggerType
-from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
+from miles.utils.ft.models.controller import ControllerMode, ControllerStatus
 from miles.utils.ft.protocols.agents import NodeAgentProtocol
 from miles.utils.ft.protocols.metrics import MetricQueryProtocol, MetricStoreProtocol, ScrapeTargetManagerProtocol
 from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol

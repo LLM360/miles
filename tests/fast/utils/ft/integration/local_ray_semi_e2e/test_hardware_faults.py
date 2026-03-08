@@ -28,7 +28,7 @@ from miles.utils.ft.models.metric_names import (
     XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL,
 )
 from miles.utils.ft.models.metrics import GaugeSample
-from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.models.controller import ControllerMode
 
 
 class TestHardwareAlert:

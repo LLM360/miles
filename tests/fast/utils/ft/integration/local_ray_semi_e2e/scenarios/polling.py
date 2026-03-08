@@ -11,7 +11,7 @@ import time
 
 import ray
 
-from miles.utils.ft.models.recovery import ControllerMode, ControllerStatus
+from miles.utils.ft.models.controller import ControllerMode, ControllerStatus
 
 
 def get_status(handle: ray.actor.ActorHandle, timeout: float = 10) -> ControllerStatus:

@@ -13,7 +13,7 @@ from tests.fast.utils.ft.utils.controller_fakes import OneShotCrashDetector
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-from miles.utils.ft.models.recovery import ControllerMode
+from miles.utils.ft.models.controller import ControllerMode
 from miles.utils.ft.platform.ray.controller_client import RayControllerClient
 
 pytestmark = [
