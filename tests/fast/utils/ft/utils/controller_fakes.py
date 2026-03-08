@@ -84,7 +84,7 @@ class FakeTrainingJob:
         self._submit_call_count += 1
         self._last_excluded_node_ids = excluded_node_ids
         self._call_count = 0
-        self._run_id = f"fake-{id(self)}"
+        self._run_id = f"fake-run-{self._submit_call_count}"
         return self._run_id
 
 
