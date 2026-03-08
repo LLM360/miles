@@ -25,7 +25,7 @@ def cluster(
     import ray
 
     from miles.utils.ft.controller.diagnostics.executors import build_all_cluster_executors
-    from miles.utils.ft.platform.ray_wrappers.node_discovery import get_alive_gpu_nodes
+    from miles.utils.ft.platform.ray.node_discovery import get_alive_gpu_nodes
 
     ray.init(address=ray_address)
 
