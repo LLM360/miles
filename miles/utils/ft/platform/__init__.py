@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.controller_factory import build_ft_controller
-from miles.utils.ft.platform.embedded_agents import create_tracking_agent, create_training_rank_agent
+from miles.utils.ft.platform.embedded_agents import build_tracking_agent, build_training_rank_agent
 from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
@@ -46,6 +46,6 @@ __all__ = [
     "StubNotifier",
     "StubTrainingJob",
     "build_ft_controller",
-    "create_tracking_agent",
-    "create_training_rank_agent",
+    "build_tracking_agent",
+    "build_training_rank_agent",
 ]

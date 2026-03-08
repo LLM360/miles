@@ -14,7 +14,7 @@ from miles.utils.ft.utils.env import get_ft_id
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
 
-def create_tracking_agent(
+def build_tracking_agent(
     run_id: str | None = None,
     ft_id: str = "",
 ) -> FtTrackingAgent:
@@ -23,7 +23,7 @@ def create_tracking_agent(
 
 
 @graceful_degrade()
-def create_training_rank_agent(
+def build_training_rank_agent(
     rank: int,
     world_size: int,
     ft_id: str = "",
