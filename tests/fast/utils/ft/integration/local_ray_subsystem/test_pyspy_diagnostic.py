@@ -43,7 +43,7 @@ class _BusyWorker:
             await asyncio.sleep(0.1)
 
 
-class TestStackTraceDiagnosticAgainstLiveProcess:
+class TestStackTraceNodeExecutorAgainstLiveProcess:
     async def test_dump_captures_stack_trace_from_ray_actor(
         self,
         local_ray: None,
@@ -54,7 +54,7 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
 
         pid: int = ray.get(worker.get_pid.remote(), timeout=5)
 
-        diagnostic = StackTraceDiagnostic(pids=[pid])
+        diagnostic = StackTraceNodeExecutor(pids=[pid])
         result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
 
         ray.kill(worker, no_restart=True)
@@ -68,7 +68,7 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
         self,
         local_ray: None,
     ) -> None:
-        diagnostic = StackTraceDiagnostic(pids=[999999])
+        diagnostic = StackTraceNodeExecutor(pids=[999999])
         result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
 
         assert result.passed is False
@@ -85,7 +85,7 @@ class TestStackTraceDiagnosticAgainstLiveProcess:
 
         pid: int = ray.get(worker.get_pid.remote(), timeout=5)
 
-        diagnostic = StackTraceDiagnostic(pids=[pid, 999999])
+        diagnostic = StackTraceNodeExecutor(pids=[pid, 999999])
         result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
 
         ray.kill(worker, no_restart=True)
@@ -112,8 +112,8 @@ class TestStackTraceAggregatorWithRealTraces:
         pid_a: int = ray.get(worker_a.get_pid.remote(), timeout=5)
         pid_b: int = ray.get(worker_b.get_pid.remote(), timeout=5)
 
-        diag_a = StackTraceDiagnostic(pids=[pid_a])
-        diag_b = StackTraceDiagnostic(pids=[pid_b])
+        diag_a = StackTraceNodeExecutor(pids=[pid_a])
+        diag_b = StackTraceNodeExecutor(pids=[pid_b])
 
         result_a = await diag_a.run(node_id="node-a", timeout_seconds=10)
         result_b = await diag_b.run(node_id="node-b", timeout_seconds=10)
@@ -147,8 +147,8 @@ class TestStackTraceAggregatorWithRealTraces:
         pid_a: int = ray.get(worker_a.get_pid.remote(), timeout=5)
         pid_b: int = ray.get(worker_b.get_pid.remote(), timeout=5)
 
-        diag_a = StackTraceDiagnostic(pids=[pid_a])
-        diag_b = StackTraceDiagnostic(pids=[pid_b])
+        diag_a = StackTraceNodeExecutor(pids=[pid_a])
+        diag_b = StackTraceNodeExecutor(pids=[pid_b])
 
         result_a = await diag_a.run(node_id="node-a", timeout_seconds=10)
         result_b = await diag_b.run(node_id="node-b", timeout_seconds=10)

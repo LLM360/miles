@@ -1,7 +1,7 @@
 """Integration tests for the stack trace diagnostic pipeline.
 
 Tests the full flow: DiagnosticOrchestrator with StackTraceClusterExecutor as pre_executor
--> StackTraceDiagnostic -> StackTraceAggregator, with FakeNodeAgent instances
+-> StackTraceNodeExecutor -> StackTraceAggregator, with FakeNodeAgent instances
 providing configurable stack trace results.
 """
 

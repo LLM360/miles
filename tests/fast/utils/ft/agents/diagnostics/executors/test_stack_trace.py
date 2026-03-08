@@ -1,4 +1,4 @@
-"""Tests for StackTraceDiagnostic."""
+"""Tests for StackTraceNodeExecutor."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from tests.fast.utils.ft.utils import make_mock_subprocess
 
-from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
+from miles.utils.ft.agents.diagnostics.executors.stack_trace import StackTraceNodeExecutor
 
 SAMPLE_PYSPY_JSON = json.dumps(
     [
@@ -25,28 +25,28 @@ SAMPLE_PYSPY_JSON = json.dumps(
 ).encode()
 
 
-class TestStackTraceDiagnosticEmptyPids:
+class TestStackTraceNodeExecutorEmptyPids:
     async def test_empty_pids_returns_failed(self) -> None:
-        diag = StackTraceDiagnostic(pids=[])
+        diag = StackTraceNodeExecutor(pids=[])
         result = await diag.run(node_id="node-0")
 
         assert result.passed is False
         assert "no PIDs provided" in result.details
 
     async def test_none_pids_returns_failed(self) -> None:
-        diag = StackTraceDiagnostic(pids=None)
+        diag = StackTraceNodeExecutor(pids=None)
         result = await diag.run(node_id="node-0")
 
         assert result.passed is False
         assert "no PIDs provided" in result.details
 
 
-class TestStackTraceDiagnosticSinglePid:
+class TestStackTraceNodeExecutorSinglePid:
     async def test_single_pid_success_returns_json_details(self) -> None:
         mock_proc = make_mock_subprocess(stdout=SAMPLE_PYSPY_JSON)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            diag = StackTraceDiagnostic(pids=[1234])
+            diag = StackTraceNodeExecutor(pids=[1234])
             result = await diag.run(node_id="node-0")
 
         assert result.passed is True
@@ -63,14 +63,14 @@ class TestStackTraceDiagnosticSinglePid:
         )
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            diag = StackTraceDiagnostic(pids=[1234])
+            diag = StackTraceNodeExecutor(pids=[1234])
             result = await diag.run(node_id="node-0")
 
         assert result.passed is False
         assert json.loads(result.details) == []
 
 
-class TestStackTraceDiagnosticMultiplePids:
+class TestStackTraceNodeExecutorMultiplePids:
     async def test_partial_failure_still_passes(self) -> None:
         good_proc = make_mock_subprocess(stdout=SAMPLE_PYSPY_JSON)
         bad_proc = make_mock_subprocess(
@@ -87,7 +87,7 @@ class TestStackTraceDiagnosticMultiplePids:
             return good_proc if call_count == 1 else bad_proc
 
         with patch("asyncio.create_subprocess_exec", side_effect=mock_subprocess):
-            diag = StackTraceDiagnostic(pids=[100, 200])
+            diag = StackTraceNodeExecutor(pids=[100, 200])
             result = await diag.run(node_id="node-0")
 
         assert result.passed is True
@@ -102,7 +102,7 @@ class TestStackTraceDiagnosticMultiplePids:
         )
 
         with patch("asyncio.create_subprocess_exec", return_value=bad_proc):
-            diag = StackTraceDiagnostic(pids=[100, 200, 300])
+            diag = StackTraceNodeExecutor(pids=[100, 200, 300])
             result = await diag.run(node_id="node-0")
 
         assert result.passed is False
@@ -113,7 +113,7 @@ class TestStackTraceDiagnosticMultiplePids:
         mock_proc.communicate.side_effect = asyncio.TimeoutError()
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            diag = StackTraceDiagnostic(pids=[1234])
+            diag = StackTraceNodeExecutor(pids=[1234])
             result = await diag.run(node_id="node-0", timeout_seconds=10)
 
         assert result.passed is False

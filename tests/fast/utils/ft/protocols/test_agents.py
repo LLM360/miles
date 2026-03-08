@@ -1,13 +1,13 @@
-"""Protocol compliance tests for NodeAgentProtocol and DiagnosticProtocol."""
+"""Protocol compliance tests for NodeAgentProtocol and NodeExecutorProtocol."""
 
 from __future__ import annotations
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.agents.diagnostics.gpu_diagnostic import GpuDiagnostic
-from miles.utils.ft.agents.diagnostics.nccl.intra_machine import IntraMachineCommDiagnostic
-from miles.utils.ft.agents.diagnostics.runner import DiagnosticRunner
-from miles.utils.ft.agents.diagnostics.stack_trace import StackTraceDiagnostic
-from miles.utils.ft.protocols.agents import DiagnosticProtocol, NodeAgentProtocol
+from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.intra_machine import IntraMachineNodeExecutor
+from miles.utils.ft.agents.diagnostics.runner import NodeExecutorRunner
+from miles.utils.ft.agents.diagnostics.executors.stack_trace import StackTraceNodeExecutor
+from miles.utils.ft.protocols.agents import NodeExecutorProtocol, NodeAgentProtocol
 
 
 class TestNodeAgentProtocolCompliance:
@@ -17,7 +17,7 @@ class TestNodeAgentProtocolCompliance:
         agent._exporter.shutdown()
 
     def test_diagnostic_runner_satisfies_protocol(self) -> None:
-        runner = DiagnosticRunner(node_id="test-node")
+        runner = NodeExecutorRunner(node_id="test-node")
         assert isinstance(runner, NodeAgentProtocol)
 
     def test_conforming_class_passes_isinstance(self) -> None:
@@ -39,15 +39,15 @@ class TestNodeAgentProtocolCompliance:
         assert not isinstance(_Empty(), NodeAgentProtocol)
 
 
-class TestDiagnosticProtocolCompliance:
+class TestNodeExecutorProtocolCompliance:
     def test_gpu_diagnostic_satisfies_protocol(self) -> None:
-        assert isinstance(GpuDiagnostic(), DiagnosticProtocol)
+        assert isinstance(GpuNodeExecutor(), NodeExecutorProtocol)
 
     def test_stack_trace_diagnostic_satisfies_protocol(self) -> None:
-        assert isinstance(StackTraceDiagnostic(), DiagnosticProtocol)
+        assert isinstance(StackTraceNodeExecutor(), NodeExecutorProtocol)
 
     def test_intra_machine_comm_diagnostic_satisfies_protocol(self) -> None:
-        assert isinstance(IntraMachineCommDiagnostic(), DiagnosticProtocol)
+        assert isinstance(IntraMachineNodeExecutor(), NodeExecutorProtocol)
 
     def test_conforming_class_passes_isinstance(self) -> None:
         class _Conforming:
@@ -56,10 +56,10 @@ class TestDiagnosticProtocolCompliance:
             async def run(self, node_id: str, timeout_seconds: int = 120) -> object:
                 return None
 
-        assert isinstance(_Conforming(), DiagnosticProtocol)
+        assert isinstance(_Conforming(), NodeExecutorProtocol)
 
     def test_missing_run_method_fails_isinstance(self) -> None:
         class _MissingRun:
             diagnostic_type = "test"
 
-        assert not isinstance(_MissingRun(), DiagnosticProtocol)
+        assert not isinstance(_MissingRun(), NodeExecutorProtocol)

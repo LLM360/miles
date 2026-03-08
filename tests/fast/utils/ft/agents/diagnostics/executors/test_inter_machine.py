@@ -1,4 +1,4 @@
-"""Tests for InterMachineCommDiagnostic."""
+"""Tests for InterMachineNodeExecutor."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from tests.fast.utils.ft.utils import make_mock_subprocess
 
-from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
+from miles.utils.ft.agents.diagnostics.executors.inter_machine import InterMachineNodeExecutor
 
 SAMPLE_NCCL_OUTPUT_HIGH_BW = """\
 # nThread 1 nGpus 8 minBytes 1048576 maxBytes 1073741824 step: 2(factor) warmup iters: 5 iters: 20 agg iters: 1 validation: 1 graph: 0
@@ -30,12 +30,12 @@ SAMPLE_NCCL_OUTPUT_LOW_BW = """\
 """
 
 
-def _make_diag(**kwargs: object) -> InterMachineCommDiagnostic:
+def _make_diag(**kwargs: object) -> InterMachineNodeExecutor:
     kwargs.setdefault("master_addr", "10.0.0.1")
-    return InterMachineCommDiagnostic(**kwargs)  # type: ignore[arg-type]
+    return InterMachineNodeExecutor(**kwargs)  # type: ignore[arg-type]
 
 
-class TestInterMachineCommDiagnostic:
+class TestInterMachineNodeExecutor:
     async def test_pass_when_bandwidth_above_threshold(self) -> None:
         diag = _make_diag(expected_bandwidth_gbps=40.0, master_port=29500)
         mock_proc = make_mock_subprocess(stdout=SAMPLE_NCCL_OUTPUT_HIGH_BW.encode())

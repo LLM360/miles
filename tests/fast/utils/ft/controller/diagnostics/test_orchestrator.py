@@ -11,17 +11,17 @@ from tests.fast.utils.ft.utils import (
 )
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
+from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor, InterMachineClusterExecutor, SingleNodeClusterExecutor
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 
 # ---------------------------------------------------------------------------
-# BaseDiagnostic tests
+# BaseNodeExecutor tests
 # ---------------------------------------------------------------------------
 
 
-class _ConcreteDiagnostic(BaseDiagnostic):
+class _ConcreteDiagnostic(BaseNodeExecutor):
     diagnostic_type = "test_concrete"
 
     async def run(
@@ -37,7 +37,7 @@ class _ConcreteDiagnostic(BaseDiagnostic):
         )
 
 
-class TestBaseDiagnostic:
+class TestBaseNodeExecutor:
     @pytest.mark.anyio
     async def test_concrete_subclass_can_run(self) -> None:
         diag = _ConcreteDiagnostic()
@@ -49,7 +49,7 @@ class TestBaseDiagnostic:
 
     def test_cannot_instantiate_abstract(self) -> None:
         with pytest.raises(TypeError):
-            BaseDiagnostic()  # type: ignore[abstract]
+            BaseNodeExecutor()  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +290,7 @@ class TestDiagnosticOrchestratorInterMachine:
         assert pairs == expected_pairs
 
     def test_inter_machine_port_assignment(self) -> None:
-        from miles.utils.ft.agents.diagnostics.nccl.inter_machine import DEFAULT_NCCL_MASTER_PORT
+        from miles.utils.ft.agents.diagnostics.executors.inter_machine import DEFAULT_NCCL_MASTER_PORT
 
         assert DEFAULT_NCCL_MASTER_PORT == 29500
 

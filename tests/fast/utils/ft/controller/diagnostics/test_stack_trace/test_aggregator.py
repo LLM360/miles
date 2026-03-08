@@ -9,7 +9,7 @@ from tests.fast.utils.ft.utils import (
     SAMPLE_PYSPY_THREADS_STUCK_FROM_BACKWARD,
 )
 
-from miles.utils.ft.agents.diagnostics.stack_trace import PySpyFrame, PySpyThread
+from miles.utils.ft.agents.diagnostics.executors.stack_trace import PySpyFrame, PySpyThread
 from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
 
 

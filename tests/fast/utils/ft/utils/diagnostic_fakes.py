@@ -5,8 +5,8 @@ import contextlib
 from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 
-from miles.utils.ft.agents.diagnostics.base import BaseDiagnostic
-from miles.utils.ft.agents.diagnostics.nccl.inter_machine import InterMachineCommDiagnostic
+from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.inter_machine import InterMachineNodeExecutor
 from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
 from miles.utils.ft.models.diagnostics import DiagnosticResult
 
@@ -15,7 +15,7 @@ from miles.utils.ft.models.diagnostics import DiagnosticResult
 # ---------------------------------------------------------------------------
 
 
-class StubDiagnostic(BaseDiagnostic):
+class StubDiagnostic(BaseNodeExecutor):
     """Test diagnostic that returns a configurable pass/fail result."""
 
     diagnostic_type = "stub"
@@ -43,7 +43,7 @@ class StubDiagnostic(BaseDiagnostic):
         )
 
 
-class SlowDiagnostic(BaseDiagnostic):
+class SlowDiagnostic(BaseNodeExecutor):
     """Test diagnostic that sleeps longer than its timeout."""
 
     diagnostic_type = "slow"
@@ -176,13 +176,13 @@ def make_fake_agents(
 def mock_inter_machine_run(
     node_pass_map: dict[str, bool],
 ) -> contextlib.AbstractContextManager[None]:
-    """Patch InterMachineCommDiagnostic.run to return results per node_id.
+    """Patch InterMachineNodeExecutor.run to return results per node_id.
 
     ``node_pass_map`` maps node_id → True (pass) or False (fail).
     """
 
     async def _fake_run(
-        self: InterMachineCommDiagnostic,
+        self: InterMachineNodeExecutor,
         node_id: str,
         timeout_seconds: int = 180,
     ) -> DiagnosticResult:
@@ -194,7 +194,7 @@ def mock_inter_machine_run(
             details="pass" if passed else "fail",
         )
 
-    return patch.object(InterMachineCommDiagnostic, "run", _fake_run)
+    return patch.object(InterMachineNodeExecutor, "run", _fake_run)
 
 
 # ---------------------------------------------------------------------------
@@ -222,8 +222,8 @@ def make_mock_subprocess(
 def mock_stack_trace_diagnostic(
     side_effects: list[DiagnosticResult | Exception],
 ) -> Generator[AsyncMock, None, None]:
-    """Patch StackTraceDiagnostic and wire an AsyncMock with the given side_effects."""
-    with patch("miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceDiagnostic") as mock_diag_cls:
+    """Patch StackTraceNodeExecutor and wire an AsyncMock with the given side_effects."""
+    with patch("miles.utils.ft.controller.diagnostics.stack_trace.collector.StackTraceNodeExecutor") as mock_diag_cls:
         mock_instance = AsyncMock()
         mock_instance.run = AsyncMock(side_effect=side_effects)
         mock_diag_cls.return_value = mock_instance

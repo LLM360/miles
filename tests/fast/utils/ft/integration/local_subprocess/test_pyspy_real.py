@@ -1,7 +1,7 @@
 """Real py-spy integration tests using plain subprocess (no Ray).
 
 Spawns Python child processes that deliberately block at different points,
-then runs StackTraceDiagnostic + StackTraceAggregator against the live
+then runs StackTraceNodeExecutor + StackTraceAggregator against the live
 PIDs to verify the full diagnostic pipeline with real stack traces.
 
 Requires py-spy to be installed and the current user to have ptrace
@@ -20,7 +20,7 @@ from collections.abc import Callable
 
 import pytest
 
-from miles.utils.ft.agents.diagnostics.stack_trace import PySpyThread, StackTraceDiagnostic
+from miles.utils.ft.agents.diagnostics.executors.stack_trace import PySpyThread, StackTraceNodeExecutor
 from miles.utils.ft.controller.diagnostics.stack_trace import StackTraceAggregator
 
 _HAS_PYSPY = shutil.which("py-spy") is not None
@@ -72,14 +72,14 @@ def blocked_process() -> Callable[[str], int]:
         proc.wait()
 
 
-class TestStackTraceDiagnosticReal:
+class TestStackTraceNodeExecutorReal:
     async def test_single_blocked_process_captures_trace(
         self,
         blocked_process: Callable[[str], int],
     ) -> None:
         pid = blocked_process("sleep")
 
-        diagnostic = StackTraceDiagnostic(pids=[pid])
+        diagnostic = StackTraceNodeExecutor(pids=[pid])
         result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
 
         assert result.passed is True
@@ -93,7 +93,7 @@ class TestStackTraceDiagnosticReal:
         ), f"Expected a frame containing 'step_communication', got: {all_frame_names}"
 
     async def test_nonexistent_pid_fails_gracefully(self) -> None:
-        diagnostic = StackTraceDiagnostic(pids=[999999])
+        diagnostic = StackTraceNodeExecutor(pids=[999999])
         result = await diagnostic.run(node_id="test-node", timeout_seconds=10)
 
         assert result.passed is False
@@ -110,9 +110,9 @@ class TestStackTraceAggregatorReal:
         pid_sleep_1 = blocked_process("sleep")
         pid_lock = blocked_process("lock")
 
-        diag_sleep_0 = StackTraceDiagnostic(pids=[pid_sleep_0])
-        diag_sleep_1 = StackTraceDiagnostic(pids=[pid_sleep_1])
-        diag_lock = StackTraceDiagnostic(pids=[pid_lock])
+        diag_sleep_0 = StackTraceNodeExecutor(pids=[pid_sleep_0])
+        diag_sleep_1 = StackTraceNodeExecutor(pids=[pid_sleep_1])
+        diag_lock = StackTraceNodeExecutor(pids=[pid_lock])
 
         result_0 = await diag_sleep_0.run(node_id="node-0", timeout_seconds=10)
         result_1 = await diag_sleep_1.run(node_id="node-1", timeout_seconds=10)
@@ -144,9 +144,9 @@ class TestStackTraceAggregatorReal:
         pid_1 = blocked_process("sleep")
         pid_2 = blocked_process("sleep")
 
-        diag_0 = StackTraceDiagnostic(pids=[pid_0])
-        diag_1 = StackTraceDiagnostic(pids=[pid_1])
-        diag_2 = StackTraceDiagnostic(pids=[pid_2])
+        diag_0 = StackTraceNodeExecutor(pids=[pid_0])
+        diag_1 = StackTraceNodeExecutor(pids=[pid_1])
+        diag_2 = StackTraceNodeExecutor(pids=[pid_2])
 
         result_0 = await diag_0.run(node_id="node-0", timeout_seconds=10)
         result_1 = await diag_1.run(node_id="node-1", timeout_seconds=10)
