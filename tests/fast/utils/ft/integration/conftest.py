@@ -51,18 +51,20 @@ def local_ray_with_dashboard() -> Generator[str, None, None]:
 
 
 def _wait_for_dashboard_agent(dashboard_url: str, timeout: float = 60.0) -> None:
-    """Poll the Ray dashboard until the job agent is ready to accept submissions."""
+    """Wait until the Ray dashboard job agent can accept job submissions."""
     from ray.job_submission import JobSubmissionClient
 
     client = JobSubmissionClient(address=dashboard_url)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            client.list_jobs()
+            job_id = client.submit_job(entrypoint='python -c "1"')
+            client.stop_job(job_id)
+            logger.info("Dashboard agent ready after probe job %s", job_id)
             return
         except Exception:
-            pass
-        time.sleep(1.0)
+            logger.debug("Dashboard agent not ready yet", exc_info=True)
+        time.sleep(2.0)
     logger.warning("Dashboard agent not ready after %.0fs", timeout)
 
 
