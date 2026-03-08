@@ -6,7 +6,6 @@ import pytest
 
 from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
-from miles.utils.ft.adapters.types import NodeExecutorProtocol
 
 
 class _StubExecutor:

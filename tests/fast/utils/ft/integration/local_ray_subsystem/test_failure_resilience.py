@@ -9,14 +9,14 @@ import pytest
 import ray
 from tests.fast.utils.ft.integration.conftest import get_status
 
-from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
-from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-from miles.utils.ft.factories.controller import build_ft_controller
-from miles.utils.ft.controller.types import ControllerMode
 from miles.utils.ft.adapters.config import FtControllerConfig
 from miles.utils.ft.adapters.impl.ray.controller_actor import FtControllerActor
 from miles.utils.ft.adapters.impl.ray.controller_client import RayControllerClient
 from miles.utils.ft.adapters.types import ft_controller_actor_name
+from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
+from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
+from miles.utils.ft.controller.types import ControllerMode
+from miles.utils.ft.factories.controller import build_ft_controller
 
 pytestmark = [
     pytest.mark.local_ray,

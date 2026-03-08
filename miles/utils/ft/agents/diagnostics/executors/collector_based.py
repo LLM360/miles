@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
-from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
 from miles.utils.ft.agents.types import DiagnosticResult
-from miles.utils.ft.controller.types import NodeFault
-from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS
-from miles.utils.ft.controller.types import MetricQueryProtocol
+from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
+from miles.utils.ft.controller.types import MetricQueryProtocol, NodeFault
 
 
 class CollectorBasedNodeExecutor(BaseNodeExecutor):

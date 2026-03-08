@@ -5,9 +5,9 @@ import json
 import logging
 from collections.abc import Callable
 
+from miles.utils.ft.adapters.types import NodeAgentProtocol
 from miles.utils.ft.agents.diagnostics.executors.stack_trace import PySpyThread, StackTraceNodeExecutor
 from miles.utils.ft.controller.diagnostics.stack_trace.aggregator import StackTraceAggregator
-from miles.utils.ft.adapters.types import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
 

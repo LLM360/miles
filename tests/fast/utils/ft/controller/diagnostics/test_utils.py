@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
+from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
 
+from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.controller.diagnostics.utils import (
     call_agent_diagnostic,
     gather_diagnostic_results,
     partition_results,
 )
-from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
-from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
-
 
 _DIAG_TYPE = "test_diag"
 
@@ -26,22 +23,16 @@ _DIAG_TYPE = "test_diag"
 class TestCallAgentDiagnostic:
     @pytest.mark.asyncio
     async def test_success(self) -> None:
-        expected = DiagnosticResult(
-            diagnostic_type=_DIAG_TYPE, node_id="n0", passed=True, details="ok"
-        )
+        expected = DiagnosticResult(diagnostic_type=_DIAG_TYPE, node_id="n0", passed=True, details="ok")
         agent = FakeNodeAgent(diagnostic_results={_DIAG_TYPE: expected}, node_id="n0")
-        result = await call_agent_diagnostic(
-            agent=agent, node_id="n0", diagnostic_type=_DIAG_TYPE, timeout_seconds=10
-        )
+        result = await call_agent_diagnostic(agent=agent, node_id="n0", diagnostic_type=_DIAG_TYPE, timeout_seconds=10)
         assert result.passed
         assert result.node_id == "n0"
 
     @pytest.mark.asyncio
     async def test_timeout_returns_fail(self) -> None:
         agent = HangingNodeAgent(node_id="n0")
-        result = await call_agent_diagnostic(
-            agent=agent, node_id="n0", diagnostic_type=_DIAG_TYPE, timeout_seconds=0
-        )
+        result = await call_agent_diagnostic(agent=agent, node_id="n0", diagnostic_type=_DIAG_TYPE, timeout_seconds=0)
         assert not result.passed
         assert "timed out" in result.details
 
@@ -91,33 +82,25 @@ class TestGatherDiagnosticResults:
         agents = {
             "n0": FakeNodeAgent(
                 diagnostic_results={
-                    _DIAG_TYPE: DiagnosticResult(
-                        diagnostic_type=_DIAG_TYPE, node_id="n0", passed=True, details="ok"
-                    )
+                    _DIAG_TYPE: DiagnosticResult(diagnostic_type=_DIAG_TYPE, node_id="n0", passed=True, details="ok")
                 },
                 node_id="n0",
             ),
             "n1": FakeNodeAgent(
                 diagnostic_results={
-                    _DIAG_TYPE: DiagnosticResult(
-                        diagnostic_type=_DIAG_TYPE, node_id="n1", passed=False, details="bad"
-                    )
+                    _DIAG_TYPE: DiagnosticResult(diagnostic_type=_DIAG_TYPE, node_id="n1", passed=False, details="bad")
                 },
                 node_id="n1",
             ),
         }
-        results = await gather_diagnostic_results(
-            diagnostic_type=_DIAG_TYPE, agents=agents, timeout_seconds=10
-        )
+        results = await gather_diagnostic_results(diagnostic_type=_DIAG_TYPE, agents=agents, timeout_seconds=10)
         assert set(results.keys()) == {"n0", "n1"}
         assert results["n0"].passed
         assert not results["n1"].passed
 
     @pytest.mark.asyncio
     async def test_empty_agents_returns_empty(self) -> None:
-        results = await gather_diagnostic_results(
-            diagnostic_type=_DIAG_TYPE, agents={}, timeout_seconds=10
-        )
+        results = await gather_diagnostic_results(diagnostic_type=_DIAG_TYPE, agents={}, timeout_seconds=10)
         assert results == {}
 
 
@@ -129,24 +112,16 @@ class TestGatherDiagnosticResults:
 class TestPartitionResults:
     def test_separates_failed_nodes(self) -> None:
         results = {
-            "n0": DiagnosticResult(
-                diagnostic_type=_DIAG_TYPE, node_id="n0", passed=True, details="ok"
-            ),
-            "n1": DiagnosticResult(
-                diagnostic_type=_DIAG_TYPE, node_id="n1", passed=False, details="fail"
-            ),
-            "n2": DiagnosticResult(
-                diagnostic_type=_DIAG_TYPE, node_id="n2", passed=False, details="fail"
-            ),
+            "n0": DiagnosticResult(diagnostic_type=_DIAG_TYPE, node_id="n0", passed=True, details="ok"),
+            "n1": DiagnosticResult(diagnostic_type=_DIAG_TYPE, node_id="n1", passed=False, details="fail"),
+            "n2": DiagnosticResult(diagnostic_type=_DIAG_TYPE, node_id="n2", passed=False, details="fail"),
         }
         bad = partition_results(results=results, diagnostic_type=_DIAG_TYPE)
         assert sorted(bad) == ["n1", "n2"]
 
     def test_all_pass_returns_empty(self) -> None:
         results = {
-            "n0": DiagnosticResult(
-                diagnostic_type=_DIAG_TYPE, node_id="n0", passed=True, details="ok"
-            ),
+            "n0": DiagnosticResult(diagnostic_type=_DIAG_TYPE, node_id="n0", passed=True, details="ok"),
         }
         assert partition_results(results=results, diagnostic_type=_DIAG_TYPE) == []
 

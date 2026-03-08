@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS, NodeAgentProtocol, NodeExecutorProtocol
+from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,7 @@ class NodeDiagnosticDispatcher(NodeAgentProtocol):
         diagnostic_types: list[str],
         timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
     ) -> list[DiagnosticResult]:
-        return [
-            await self.run_diagnostic(dt, timeout_seconds=timeout_seconds)
-            for dt in diagnostic_types
-        ]
+        return [await self.run_diagnostic(dt, timeout_seconds=timeout_seconds) for dt in diagnostic_types]
 
     async def run_diagnostic(
         self,

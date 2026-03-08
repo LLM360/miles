@@ -14,6 +14,7 @@ from tests.fast.utils.ft.utils.controller_fakes import (
     failing_submit_training,
 )
 
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.state_machines.restart import (
     Evicting,
@@ -25,7 +26,6 @@ from miles.utils.ft.controller.state_machines.restart import (
     create_restart_stepper,
     iteration_progress,
 )
-from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.utils.state_machine import StateMachineStepper
 
 

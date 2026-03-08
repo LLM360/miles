@@ -137,10 +137,7 @@ class TestMonitoringSuccessIterationsZero:
         deadline = time.monotonic() + RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
-            if (
-                status.active_run_id != old_run_id
-                and status.mode == ControllerMode.MONITORING
-            ):
+            if status.active_run_id != old_run_id and status.mode == ControllerMode.MONITORING:
                 break
             await asyncio.sleep(0.5)
         else:
@@ -181,6 +178,8 @@ class TestMonitoringTimeoutZero:
                 break
             await asyncio.sleep(0.5)
         else:
-            raise TimeoutError(f"monitoring_timeout_seconds=0 did not trigger StopTimeDiagnostics within {RECOVERY_TIMEOUT}s")
+            raise TimeoutError(
+                f"monitoring_timeout_seconds=0 did not trigger StopTimeDiagnostics within {RECOVERY_TIMEOUT}s"
+            )
 
         assert_phase_path_contains(status, ["StopTimeDiagnostics"])

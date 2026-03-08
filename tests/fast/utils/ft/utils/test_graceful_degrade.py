@@ -6,12 +6,7 @@ import logging
 
 import pytest
 
-from miles.utils.ft.utils.graceful_degrade import (
-    FaultInjectionError,
-    _format_call_args,
-    graceful_degrade,
-)
-
+from miles.utils.ft.utils.graceful_degrade import FaultInjectionError, _format_call_args, graceful_degrade
 
 # ---------------------------------------------------------------------------
 # _format_call_args

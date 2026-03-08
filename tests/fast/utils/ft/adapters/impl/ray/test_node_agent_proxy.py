@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from miles.utils.ft.agents.types import DiagnosticResult
 from miles.utils.ft.adapters.impl.ray.node_agent_proxy import RayNodeAgentProxy
 from miles.utils.ft.adapters.types import NodeAgentProtocol
+from miles.utils.ft.agents.types import DiagnosticResult
 
 
 class TestRayNodeAgentProxy:

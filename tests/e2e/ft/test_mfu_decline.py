@@ -30,8 +30,8 @@ from tests.e2e.ft.conftest import (
     wait_for_training_stable,
 )
 
-from miles.utils.ft.controller.types import ControllerMode
 from miles.utils.ft.adapters.impl.k8s_node_manager import K8sNodeManager
+from miles.utils.ft.controller.types import ControllerMode
 
 logger = logging.getLogger(__name__)
 

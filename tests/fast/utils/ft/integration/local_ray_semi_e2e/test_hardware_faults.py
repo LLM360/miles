@@ -18,6 +18,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     wait_for_training_stable,
 )
 
+from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.detectors.core.hardware import HighConfidenceHardwareDetector
 from miles.utils.ft.controller.detectors.core.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
@@ -27,7 +28,6 @@ from miles.utils.ft.controller.metric_names import (
     NODE_FILESYSTEM_AVAIL_BYTES,
     XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL,
 )
-from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.types import ControllerMode
 
 
@@ -273,7 +273,9 @@ class TestCrossFaultTypeThrottle:
         await wait_for_training_stable(env.controller, n_iterations=2, timeout=RECOVERY_TIMEOUT)
         await env.injector.inject_nan_loss()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )
 
 
@@ -337,7 +339,9 @@ class TestDiskSpaceLow:
 
         # Step 2: wait for detector cycles, verify no recovery
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 3: notifier should have received a disk-related notification
@@ -418,7 +422,9 @@ class TestMfuAbsoluteMinimum:
 
         # Step 2: wait for detector cycles, verify no recovery
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 3: notifier should have received MFU alert
@@ -504,10 +510,7 @@ class TestRealtimeChecksDiscovery:
         deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
-            if (
-                status.active_run_id != old_run_id
-                and status.mode == ControllerMode.MONITORING
-            ):
+            if status.active_run_id != old_run_id and status.mode == ControllerMode.MONITORING:
                 break
             await asyncio.sleep(0.5)
         else:
@@ -551,7 +554,9 @@ class TestMaxBadNodesOneBoundary:
 
         # Step 2: wait for detection cycles, verify no recovery
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )
 
 
@@ -606,5 +611,7 @@ class TestFaultClearedNoRetrigger:
 
         # Step 4: verify no new recovery triggered after several ticks
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )

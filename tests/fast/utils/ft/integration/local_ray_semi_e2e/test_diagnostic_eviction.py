@@ -17,7 +17,6 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
 )
 
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 from miles.utils.ft.controller.types import ControllerMode
 
 

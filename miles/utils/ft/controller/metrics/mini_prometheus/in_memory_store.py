@@ -5,12 +5,12 @@ from datetime import datetime, timedelta, timezone
 
 import polars as pl
 
+from miles.utils.ft.agents.types import GaugeSample, MetricSample
 from miles.utils.ft.controller.metrics.aggregation_mixin import RangeAggregationMixin
 from miles.utils.ft.controller.metrics.mini_prometheus.query import SeriesKey, TimeSeriesSample
 from miles.utils.ft.controller.metrics.mini_prometheus.query import query_latest as _query_latest
 from miles.utils.ft.controller.metrics.mini_prometheus.query import query_range as _query_range
 from miles.utils.ft.controller.metrics.mini_prometheus.query import range_aggregate as _range_aggregate
-from miles.utils.ft.agents.types import GaugeSample, MetricSample
 
 
 class InMemoryMetricStore(RangeAggregationMixin):

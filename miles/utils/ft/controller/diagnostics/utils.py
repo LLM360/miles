@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.adapters.types import NodeAgentProtocol
+from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
 
 logger = logging.getLogger(__name__)
 

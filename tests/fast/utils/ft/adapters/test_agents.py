@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from miles.utils.ft.adapters.types import NodeAgentProtocol, NodeExecutorProtocol
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
+from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
-from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.agents.diagnostics.executors.stack_trace import StackTraceNodeExecutor
-from miles.utils.ft.adapters.types import NodeExecutorProtocol, NodeAgentProtocol
 
 
 class TestNodeAgentProtocolCompliance:

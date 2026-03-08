@@ -3,18 +3,17 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from tests.fast.utils.ft.utils import (
-    FakeNodeAgent,
-    HangingNodeAgent,
-    StubDiagnostic,
-    make_fake_agents,
-)
+from tests.fast.utils.ft.utils import FakeNodeAgent, HangingNodeAgent, StubDiagnostic, make_fake_agents
 
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
-from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor, PairwiseClusterExecutor, PerNodeClusterExecutor
-from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.controller.diagnostics.executors import (
+    GpuClusterExecutor,
+    PairwiseClusterExecutor,
+    PerNodeClusterExecutor,
+)
+from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 
 # ---------------------------------------------------------------------------
 # BaseNodeExecutor tests

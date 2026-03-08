@@ -12,14 +12,14 @@ from tests.fast.utils.ft.utils import (
     make_fake_mini_wandb,
 )
 
+from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.detectors.chain import DetectorChainConfig, build_detector_chain
 from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
 from miles.utils.ft.controller.detectors.core.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
 from miles.utils.ft.controller.detectors.core.network import NetworkAlertDetector, NetworkAlertDetectorConfig
-from miles.utils.ft.controller.types import ActionType
 from miles.utils.ft.controller.metric_names import AGENT_HEARTBEAT, NODE_NETWORK_UP
-from miles.utils.ft.agents.types import GaugeSample
-from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.controller.types import ActionType
 
 _RANK_PLACEMENT: dict[int, str] = {0: "node-0", 1: "node-1"}
 

@@ -1,5 +1,4 @@
 import pytest
-
 from tests.fast.utils.ft.utils import (
     EMPTY_RANK_PLACEMENT,
     make_detector_context,
@@ -7,9 +6,9 @@ from tests.fast.utils.ft.utils import (
     make_fake_mini_wandb,
 )
 
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.controller.types import ActionType
-from miles.utils.ft.adapters.types import JobStatus
 
 
 class TestTrainingCrashDetector:

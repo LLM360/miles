@@ -7,8 +7,8 @@ import asyncio
 import pytest
 from tests.fast.utils.ft.conftest import FakeTrainingJob, make_failing_training_job
 
-from miles.utils.ft.controller.state_machines.restart.utils import stop_and_submit
 from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.controller.state_machines.restart.utils import stop_and_submit
 from miles.utils.ft.utils.retry import RetryResult, retry_async
 
 

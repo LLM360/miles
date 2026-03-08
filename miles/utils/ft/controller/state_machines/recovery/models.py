@@ -5,16 +5,15 @@ from datetime import datetime
 
 from pydantic import ConfigDict
 
+from miles.utils.ft.adapters.types import NotifierProtocol
 from miles.utils.ft.controller.state_machines.restart.models import (
     Evicting,
     RestartContext,
     RestartState,
     StoppingAndRestarting,
 )
+from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol, TriggerType
 from miles.utils.ft.utils.base_model import FtBaseModel
-from miles.utils.ft.controller.types import TriggerType
-from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
-from miles.utils.ft.adapters.types import NotifierProtocol
 
 
 class RecoveryState(FtBaseModel):

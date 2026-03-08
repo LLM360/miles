@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from tests.fast.utils.ft.conftest import (
-    AlwaysEnterRecoveryDetector,
-    FixedDecisionDetector,
-    make_test_controller,
-)
+from tests.fast.utils.ft.conftest import AlwaysEnterRecoveryDetector, FixedDecisionDetector, make_test_controller
 
 from miles.utils.ft.controller.state_machines.main import Recovering
 from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
@@ -78,9 +74,5 @@ class TestRunIdUniqueness:
             if len(recorded_run_ids) >= 2:
                 break
 
-        assert len(recorded_run_ids) >= 2, (
-            f"Expected at least 2 recoveries, got {len(recorded_run_ids)}"
-        )
-        assert len(set(recorded_run_ids)) == len(recorded_run_ids), (
-            f"Duplicate run_ids found: {recorded_run_ids}"
-        )
+        assert len(recorded_run_ids) >= 2, f"Expected at least 2 recoveries, got {len(recorded_run_ids)}"
+        assert len(set(recorded_run_ids)) == len(recorded_run_ids), f"Duplicate run_ids found: {recorded_run_ids}"

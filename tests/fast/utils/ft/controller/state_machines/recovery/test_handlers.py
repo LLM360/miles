@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock
 import pytest
 from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager, FakeNotifier, FakeTrainingJob
 
+from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.agents.types import DiagnosticPipelineResult
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.state_machines.recovery import (
     EvictingAndRestarting,
@@ -27,9 +29,7 @@ from miles.utils.ft.controller.state_machines.restart import (
     StoppingAndRestarting,
     create_restart_stepper,
 )
-from miles.utils.ft.agents.types import DiagnosticPipelineResult
 from miles.utils.ft.controller.types import TriggerType
-from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.utils.state_machine import StateMachineStepper
 
 # ---------------------------------------------------------------------------
@@ -259,7 +259,6 @@ class TestStopTimeDiagnostics:
         result = await _step(stepper, StopTimeDiagnostics(), diagnostic_orchestrator=diag)
         assert isinstance(result, NotifyHumans)
         assert result.state_before == "StopTimeDiagnostics"
-
 
 
 # ---------------------------------------------------------------------------

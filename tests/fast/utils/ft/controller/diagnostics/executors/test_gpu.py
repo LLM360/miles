@@ -5,11 +5,8 @@ from __future__ import annotations
 import pytest
 from tests.fast.utils.ft.conftest import FakeNodeAgent
 
-from miles.utils.ft.controller.diagnostics.executors.gpu import (
-    GpuClusterExecutor,
-    find_gpu_hash_outlier_nodes,
-)
 from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.controller.diagnostics.executors.gpu import GpuClusterExecutor, find_gpu_hash_outlier_nodes
 
 
 def _make_result(

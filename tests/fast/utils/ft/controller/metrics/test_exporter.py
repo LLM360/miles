@@ -4,8 +4,8 @@ from prometheus_client import CollectorRegistry
 from tests.fast.utils.ft.conftest import get_sample_value, make_test_exporter
 
 import miles.utils.ft.controller.metric_names as mn
-from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 
 
 class TestControllerExporterGauges:

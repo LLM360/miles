@@ -31,17 +31,21 @@ def _make_xid_df(
 
 class TestAuditBuckets:
     def test_known_buckets_pass(self) -> None:
-        df = _make_xid_df([
-            (1, "GPU_LOST", "RESET_GPU"),
-            (2, "GPU_RECOVERED", "IGNORE"),
-            (3, "UNCLASSIFIED", None),
-        ])
+        df = _make_xid_df(
+            [
+                (1, "GPU_LOST", "RESET_GPU"),
+                (2, "GPU_RECOVERED", "IGNORE"),
+                (3, "UNCLASSIFIED", None),
+            ]
+        )
         _audit_buckets(df)
 
     def test_unknown_bucket_raises(self) -> None:
-        df = _make_xid_df([
-            (1, "GPU_LOST", "COMPLETELY_NEW_BUCKET"),
-        ])
+        df = _make_xid_df(
+            [
+                (1, "GPU_LOST", "COMPLETELY_NEW_BUCKET"),
+            ]
+        )
         with pytest.raises(ValueError, match="Unknown resolution bucket"):
             _audit_buckets(df)
 
@@ -63,18 +67,22 @@ class TestAuditBuckets:
 
 class TestGenerateInfoPy:
     def test_output_is_valid_python(self) -> None:
-        df = _make_xid_df([
-            (48, "DBE", "WORKFLOW_XID_48"),
-            (79, "GPU_HAS_FALLEN_OFF_THE_BUS", "RESET_GPU"),
-        ])
+        df = _make_xid_df(
+            [
+                (48, "DBE", "WORKFLOW_XID_48"),
+                (79, "GPU_HAS_FALLEN_OFF_THE_BUS", "RESET_GPU"),
+            ]
+        )
         source = _generate_info_py(df)
         compile(source, filename="<test>", mode="exec")
 
     def test_contains_frozenset_with_codes(self) -> None:
-        df = _make_xid_df([
-            (48, "DBE", "WORKFLOW_XID_48"),
-            (79, "GPU_HAS_FALLEN_OFF_THE_BUS", "RESET_GPU"),
-        ])
+        df = _make_xid_df(
+            [
+                (48, "DBE", "WORKFLOW_XID_48"),
+                (79, "GPU_HAS_FALLEN_OFF_THE_BUS", "RESET_GPU"),
+            ]
+        )
         source = _generate_info_py(df)
         assert "NON_AUTO_RECOVERABLE_XIDS" in source
         assert "48," in source
@@ -98,11 +106,13 @@ class TestReadXidsSheet:
     def test_column_mapping_with_standard_names(self, tmp_path: pytest.TempPathFactory) -> None:
         """Round-trip: write a minimal xlsx, read it back through _read_xids_sheet."""
         xlsx_path = tmp_path / "test_xid.xlsx"  # type: ignore[operator]
-        df = pl.DataFrame({
-            "Code": [1, 2],
-            "Mnemonic": ["FOO", "BAR"],
-            "Immediate Action / Resolution Workflow": ["RESET_GPU", "IGNORE"],
-        })
+        df = pl.DataFrame(
+            {
+                "Code": [1, 2],
+                "Mnemonic": ["FOO", "BAR"],
+                "Immediate Action / Resolution Workflow": ["RESET_GPU", "IGNORE"],
+            }
+        )
         df.write_excel(xlsx_path, worksheet="Xids")
 
         result = _read_xids_sheet(xlsx_path)

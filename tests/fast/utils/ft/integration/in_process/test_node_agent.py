@@ -8,8 +8,8 @@ from tests.fast.utils.ft.conftest import TestCollector
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.agents.types import GaugeSample
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 
 
 @asynccontextmanager

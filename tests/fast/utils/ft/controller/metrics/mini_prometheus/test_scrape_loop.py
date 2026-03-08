@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop, parse_prometheus_text
 from miles.utils.ft.agents.types import GaugeSample
+from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop, parse_prometheus_text
 
 
 class _FakeStore:

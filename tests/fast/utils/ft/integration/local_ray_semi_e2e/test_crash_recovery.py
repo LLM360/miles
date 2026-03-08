@@ -8,7 +8,6 @@ from collections.abc import Callable
 
 from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, LONG_RECOVERY_TIMEOUT, RECOVERY_TIMEOUT
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
-from tests.fast.utils.ft.utils.controller_fakes import FastHangDetector
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
     get_status,
@@ -19,10 +18,11 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     wait_for_recovery_phase,
     wait_for_training_stable,
 )
+from tests.fast.utils.ft.utils.controller_fakes import FastHangDetector
 
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 from miles.utils.ft.controller.types import ControllerMode
+from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
 
 
 class TestTransientCrash:
@@ -77,7 +77,9 @@ class TestRecoveryThrottle:
         # Step 3: third crash → throttled, no recovery
         await env.injector.crash_training()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )
 
 
@@ -388,7 +390,9 @@ class TestCooldownBoundary:
         await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )
 
 
@@ -448,7 +452,9 @@ class TestNotification:
         await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 3: verify notifier received calls
@@ -519,7 +525,9 @@ class TestCooldownExpiry:
         await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 3: sleep past cooldown window, then crash again → recovery succeeds
@@ -539,9 +547,9 @@ class TestFalsePositiveGuard:
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """When >= max_simultaneous_bad_nodes report faults, no recovery is triggered."""
+        from miles.utils.ft.agents.types import GaugeSample
         from miles.utils.ft.controller.detectors.chain import build_detector_chain
         from miles.utils.ft.controller.metric_names import GPU_AVAILABLE
-        from miles.utils.ft.agents.types import GaugeSample
 
         env = make_e2e_env(
             ft_id="e2efpg",
@@ -570,5 +578,7 @@ class TestFalsePositiveGuard:
 
         # Step 2: wait for scrape cycles, then verify no recovery
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
+            env.controller,
+            observation_ticks=20,
+            timeout=FAST_TIMEOUT,
         )

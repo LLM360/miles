@@ -51,9 +51,7 @@ class TestEnsureRayActorOnNode:
         with patch("miles.utils.ft.factories.embedded_agent.ray") as mock_ray:
             mock_ray.get_actor.side_effect = ValueError("not found")
             actor_cls = MagicMock()
-            actor_cls.options.return_value.remote.side_effect = ValueError(
-                "actor already exists"
-            )
+            actor_cls.options.return_value.remote.side_effect = ValueError("actor already exists")
 
             with caplog.at_level(logging.INFO):
                 _ensure_ray_actor_on_node(

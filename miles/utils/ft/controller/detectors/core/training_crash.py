@@ -1,7 +1,6 @@
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext, get_non_finite_loss
-from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
-from miles.utils.ft.controller.types import TrainingMetricStoreProtocol
 from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext, get_non_finite_loss
+from miles.utils.ft.controller.types import ActionType, Decision, TrainingMetricStoreProtocol, TriggerType
 
 
 class TrainingCrashDetector(BaseFaultDetector):

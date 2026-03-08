@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 
+from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS, NodeAgentProtocol, NodeExecutorProtocol
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.agents.metrics.metric_collection_loop import MetricCollectionLoop
 from miles.utils.ft.agents.metrics.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.agents.types import DiagnosticResult
-from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS, NodeAgentProtocol, NodeExecutorProtocol
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 import pytest
 import ray
-from tests.fast.utils.ft.utils.controller_fakes import CrashingDetector
 from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, LONG_RECOVERY_TIMEOUT, RECOVERY_TIMEOUT
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
@@ -19,10 +18,11 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     wait_for_recovery_phase,
     wait_for_training_stable,
 )
+from tests.fast.utils.ft.utils.controller_fakes import CrashingDetector
 
+from miles.utils.ft.adapters.types import ft_controller_actor_name
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.controller.types import ControllerMode
-from miles.utils.ft.adapters.types import ft_controller_actor_name
 
 
 class TestAgentWithoutController:

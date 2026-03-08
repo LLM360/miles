@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import logging
 
-from miles.utils.ft.controller.diagnostics.utils import (
-    gather_diagnostic_results,
-    partition_results,
-)
-from miles.utils.ft.agents.types import DiagnosticResult
 from miles.utils.ft.adapters.types import NodeAgentProtocol
+from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.controller.diagnostics.utils import gather_diagnostic_results, partition_results
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +62,7 @@ def find_gpu_hash_outlier_nodes(
         for h, nodes in hash_to_nodes.items():
             if h != majority_hash:
                 logger.info(
-                    "gpu_hash_outlier gpu_idx=%s nodes=%s "
-                    "outlier_hash=%s majority_hash=%s (%d/%d nodes agree)",
+                    "gpu_hash_outlier gpu_idx=%s nodes=%s " "outlier_hash=%s majority_hash=%s (%d/%d nodes agree)",
                     gpu_idx,
                     nodes,
                     h[:12],

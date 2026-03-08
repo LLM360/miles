@@ -3,11 +3,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from tests.fast.utils.ft.utils import make_detector_context, make_fake_metric_store
 
+from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.detectors.core.network import NetworkAlertDetector, NetworkAlertDetectorConfig
+from miles.utils.ft.controller.metric_names import NODE_NETWORK_UP
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.controller.types import ActionType
-from miles.utils.ft.controller.metric_names import NODE_NETWORK_UP
-from miles.utils.ft.agents.types import GaugeSample
 
 
 def _inject_nic_at_time(
@@ -55,9 +55,12 @@ class TestNetworkAlertDetector:
         _inject_nic_at_time(store, "node-0", "ib0", 0.0, now - timedelta(minutes=1))
 
         detector = NetworkAlertDetector()
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, rank_placement={0: "node-0"},
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                rank_placement={0: "node-0"},
+            )
+        )
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids

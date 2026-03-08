@@ -9,22 +9,18 @@ from typing import Any
 
 import ray
 from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, RECOVERY_TIMEOUT
-from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
-    _FAST_SCRAPE,
-    E2EEnv,
-    NodeSpec,
-)
-from tests.fast.utils.ft.utils.controller_fakes import FastHangDetector
+from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _FAST_SCRAPE, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     get_status,
     scenario_no_false_positive,
     wait_for_mode_transition,
     wait_for_training_stable,
 )
+from tests.fast.utils.ft.utils.controller_fakes import FastHangDetector
 
+from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.metric_names import GPU_AVAILABLE
-from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.types import ControllerMode
 
 

@@ -51,8 +51,8 @@ class NodeAgentCoverageChecker:
 
             if len(window) >= self._threshold and node_id not in self._alerted:
                 logger.warning(
-                    "Node %s has been running training without node agent "
-                    "for %d consecutive checks",
-                    node_id, len(window),
+                    "Node %s has been running training without node agent " "for %d consecutive checks",
+                    node_id,
+                    len(window),
                 )
                 self._alerted.add(node_id)

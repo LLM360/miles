@@ -6,8 +6,15 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+
+from miles.utils.ft.adapters.types import (
+    JobStatus,
+    NodeAgentProtocol,
+    NodeManagerProtocol,
+    NotificationProtocol,
+    TrainingJobProtocol,
+)
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.node_agent_coverage import NodeAgentCoverageChecker
 from miles.utils.ft.controller.main_stepper import (
     DetectingAnomaly,
     MainContext,
@@ -19,8 +26,8 @@ from miles.utils.ft.controller.main_stepper import (
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter, NullControllerExporter
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task, stop_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.node_agent_coverage import NodeAgentCoverageChecker
 from miles.utils.ft.controller.rank_roster import RankRoster
-from miles.utils.ft.utils.sliding_window import SlidingWindowCounter, SlidingWindowThrottle
 from miles.utils.ft.controller.recovery.recovery_stepper import (
     RECOVERY_STATE_TO_INT,
     RECOVERY_TIMEOUT_SECONDS,
@@ -33,17 +40,16 @@ from miles.utils.ft.controller.recovery.recovery_stepper import (
 )
 from miles.utils.ft.controller.recovery.restart_stepper import RestartContext, create_restart_stepper
 from miles.utils.ft.controller.recovery.utils import safe_notify
-from miles.utils.ft.controller.types import TriggerType
-from miles.utils.ft.controller.types import ControllerMode, ControllerStatus
-from miles.utils.ft.adapters.types import NodeAgentProtocol
-from miles.utils.ft.controller.types import MetricQueryProtocol, MetricStoreProtocol, ScrapeTargetManagerProtocol
-from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
-from miles.utils.ft.adapters.types import (
-    JobStatus,
-    NodeManagerProtocol,
-    NotificationProtocol,
-    TrainingJobProtocol,
+from miles.utils.ft.controller.types import (
+    ControllerMode,
+    ControllerStatus,
+    DiagnosticOrchestratorProtocol,
+    MetricQueryProtocol,
+    MetricStoreProtocol,
+    ScrapeTargetManagerProtocol,
+    TriggerType,
 )
+from miles.utils.ft.utils.sliding_window import SlidingWindowCounter, SlidingWindowThrottle
 from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
 
 logger = logging.getLogger(__name__)

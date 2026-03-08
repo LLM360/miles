@@ -3,16 +3,15 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterator
 
+from miles.utils.ft.adapters.types import NotifierProtocol
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.state_machines.utils import safe_notify
 from miles.utils.ft.controller.state_machines.recovery.models import (
     EvictingAndRestarting,
     RealtimeChecks,
     RecoveryState,
 )
-from miles.utils.ft.controller.state_machines.main.models import MainContext
+from miles.utils.ft.controller.state_machines.utils import safe_notify
 from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
-from miles.utils.ft.adapters.types import NotifierProtocol
 from miles.utils.ft.utils.sliding_window import SlidingWindowCounter
 
 logger = logging.getLogger(__name__)

@@ -2,9 +2,9 @@
 
 from tests.fast.utils.ft.conftest import make_fake_metric_store
 
+from miles.utils.ft.agents.types import CounterSample
 from miles.utils.ft.controller.detectors.checks.gpu.checks import _check_non_auto_recoverable_xid
 from miles.utils.ft.controller.metric_names import XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL
-from miles.utils.ft.agents.types import CounterSample
 
 
 class TestCheckNonAutoRecoverableXid:

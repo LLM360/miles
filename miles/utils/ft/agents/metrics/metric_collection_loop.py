@@ -99,11 +99,13 @@ class MetricCollectionLoop:
     ) -> None:
         labels = {"collector": collector_name, "node_id": self._node_id}
         last_success = self._last_success_timestamps.get(collector_name, 0.0)
-        self._exporter.update_metrics([
-            GaugeSample(name=_STALENESS_METRIC, labels=labels, value=last_success),
-            GaugeSample(
-                name=_CONSECUTIVE_FAILURES_METRIC,
-                labels=labels,
-                value=float(consecutive_failures),
-            ),
-        ])
+        self._exporter.update_metrics(
+            [
+                GaugeSample(name=_STALENESS_METRIC, labels=labels, value=last_success),
+                GaugeSample(
+                    name=_CONSECUTIVE_FAILURES_METRIC,
+                    labels=labels,
+                    value=float(consecutive_failures),
+                ),
+            ]
+        )

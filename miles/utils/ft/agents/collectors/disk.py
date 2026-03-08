@@ -11,13 +11,34 @@ from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 
 logger = logging.getLogger(__name__)
 
-_VIRTUAL_FS_TYPES = frozenset({
-    "proc", "sysfs", "devtmpfs", "devpts", "tmpfs",
-    "cgroup", "cgroup2", "securityfs", "pstore", "efivarfs",
-    "bpf", "autofs", "mqueue", "hugetlbfs", "debugfs",
-    "tracefs", "fusectl", "configfs", "nsfs", "rpc_pipefs",
-    "overlay", "squashfs", "ramfs", "rootfs",
-})
+_VIRTUAL_FS_TYPES = frozenset(
+    {
+        "proc",
+        "sysfs",
+        "devtmpfs",
+        "devpts",
+        "tmpfs",
+        "cgroup",
+        "cgroup2",
+        "securityfs",
+        "pstore",
+        "efivarfs",
+        "bpf",
+        "autofs",
+        "mqueue",
+        "hugetlbfs",
+        "debugfs",
+        "tracefs",
+        "fusectl",
+        "configfs",
+        "nsfs",
+        "rpc_pipefs",
+        "overlay",
+        "squashfs",
+        "ramfs",
+        "rootfs",
+    }
+)
 
 
 def discover_disk_mounts(proc_mounts: Path = Path("/proc/mounts")) -> list[Path]:

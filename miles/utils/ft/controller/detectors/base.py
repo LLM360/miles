@@ -5,9 +5,13 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from miles.utils.ft.controller.types import Decision, filter_node_ids_by_active
-from miles.utils.ft.controller.types import MetricQueryProtocol, TrainingMetricStoreProtocol
 from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.controller.types import (
+    Decision,
+    MetricQueryProtocol,
+    TrainingMetricStoreProtocol,
+    filter_node_ids_by_active,
+)
 
 logger = logging.getLogger(__name__)
 

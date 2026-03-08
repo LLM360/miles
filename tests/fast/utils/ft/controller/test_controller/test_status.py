@@ -17,18 +17,14 @@ from tests.fast.utils.ft.conftest import (
 )
 
 import miles.utils.ft.controller.metric_names as mn
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.controller.state_machines.main import Recovering
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.state_machines.recovery import (
-    EvictingAndRestarting,
-    NotifyHumans,
-    StopTimeDiagnostics,
-)
+from miles.utils.ft.controller.state_machines.main import Recovering
+from miles.utils.ft.controller.state_machines.recovery import EvictingAndRestarting, NotifyHumans, StopTimeDiagnostics
 from miles.utils.ft.controller.state_machines.restart import Evicting
 from miles.utils.ft.controller.types import ControllerMode
-from miles.utils.ft.adapters.types import JobStatus
 
 
 class TestTrainingJobStatusExporter:

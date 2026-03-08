@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import httpx
 
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.detectors.checks.hardware import (
     _check_disk_fault,
@@ -21,9 +22,6 @@ from miles.utils.ft.controller.detectors.checks.hardware import (
     check_nic_down_in_window,
 )
 from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
-from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
-from miles.utils.ft.controller.types import ActionType
 from miles.utils.ft.controller.metric_names import (
     AGENT_HEARTBEAT,
     NODE_FILESYSTEM_AVAIL_BYTES,
@@ -31,7 +29,9 @@ from miles.utils.ft.controller.metric_names import (
     PHASE_TRAINING,
     TRAINING_PHASE,
 )
-from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
+from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
+from miles.utils.ft.controller.types import ActionType
 
 
 def _make_response(json_data: dict[str, Any]) -> httpx.Response:

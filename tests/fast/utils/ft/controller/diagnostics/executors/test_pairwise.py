@@ -5,12 +5,12 @@ from __future__ import annotations
 import pytest
 from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
 
+from miles.utils.ft.agents.types import DiagnosticResult
 from miles.utils.ft.controller.diagnostics.executors.pairwise import (
     PairwiseClusterExecutor,
     _cross_compare,
     _PairResult,
 )
-from miles.utils.ft.agents.types import DiagnosticResult
 
 _DIAG_TYPE = "nccl_pairwise"
 

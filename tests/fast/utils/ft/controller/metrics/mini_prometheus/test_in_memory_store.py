@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import polars as pl
 import pytest
 
-from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
 from miles.utils.ft.agents.types import CounterSample, GaugeSample
+from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
 
 
 def _ts(seconds: int) -> datetime:

@@ -7,8 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import NcclPairwiseNodeExecutor
-from miles.utils.ft.agents.types import DiagnosticPipelineResult
-from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.agents.types import DiagnosticPipelineResult, DiagnosticResult
 
 # ---------------------------------------------------------------------------
 # Diagnostic test helpers

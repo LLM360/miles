@@ -6,8 +6,11 @@ from typing import Any
 
 import ray
 
-from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS, REGISTER_TIMEOUT_SECONDS
-from miles.utils.ft.adapters.types import ft_controller_actor_name
+from miles.utils.ft.adapters.types import (
+    DIAGNOSTIC_TIMEOUT_SECONDS,
+    REGISTER_TIMEOUT_SECONDS,
+    ft_controller_actor_name,
+)
 from miles.utils.ft.agents.types import DiagnosticResult
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import retry_sync

@@ -258,9 +258,7 @@ class TestQueryRange:
         )
 
         assert not df.is_empty()
-        assert all(
-            name == "conformance_range_iso_a" for name in df["__name__"].to_list()
-        )
+        assert all(name == "conformance_range_iso_a" for name in df["__name__"].to_list())
 
     async def test_range_name_column_matches_queried_metric(self, backend: MetricBackend) -> None:
         backend.set_gauge("conformance_range_name", 7.0)
@@ -272,9 +270,7 @@ class TestQueryRange:
         )
 
         assert not df.is_empty()
-        assert all(
-            name == "conformance_range_name" for name in df["__name__"].to_list()
-        )
+        assert all(name == "conformance_range_name" for name in df["__name__"].to_list())
 
 
 class TestRangeAggregations:
@@ -572,9 +568,7 @@ class TestMetricIsolation:
         df = backend.store.query_latest("conformance_iso_target")
 
         assert not df.is_empty()
-        assert all(
-            name == "conformance_iso_target" for name in df["__name__"].to_list()
-        )
+        assert all(name == "conformance_iso_target" for name in df["__name__"].to_list())
 
     async def test_query_is_idempotent(self, backend: MetricBackend) -> None:
         backend.set_gauge("conformance_idempotent", 42.0)

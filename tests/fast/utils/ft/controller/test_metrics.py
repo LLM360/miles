@@ -6,6 +6,7 @@ from datetime import timedelta
 
 import polars as pl
 
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
@@ -17,7 +18,6 @@ from miles.utils.ft.controller.types import (
     ScrapeTargetManagerProtocol,
     TrainingMetricStoreProtocol,
 )
-from miles.utils.ft.adapters.types import JobStatus
 
 
 class TestMiniPrometheusProtocolCompliance:

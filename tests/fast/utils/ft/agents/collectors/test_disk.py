@@ -39,12 +39,7 @@ class TestDiscoverDiskMounts:
 
     def test_handles_malformed_lines(self, tmp_path: Path) -> None:
         proc_mounts = tmp_path / "mounts"
-        proc_mounts.write_text(
-            "/dev/sda1 / ext4 rw 0 0\n"
-            "bad_line\n"
-            "\n"
-            "/dev/sdb1 /data xfs rw 0 0\n"
-        )
+        proc_mounts.write_text("/dev/sda1 / ext4 rw 0 0\n" "bad_line\n" "\n" "/dev/sdb1 /data xfs rw 0 0\n")
         mounts = discover_disk_mounts(proc_mounts=proc_mounts)
         assert len(mounts) == 2
 

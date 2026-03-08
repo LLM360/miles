@@ -87,8 +87,7 @@ class RayTrainingJob(TrainingJobProtocol):
     ) -> str:
         if self._job_id is not None:
             raise RuntimeError(
-                f"Cannot submit: previous job {self._job_id} still tracked. "
-                "Call stop_training() first."
+                f"Cannot submit: previous job {self._job_id} still tracked. " "Call stop_training() first."
             )
 
         run_id = uuid4().hex[:8]

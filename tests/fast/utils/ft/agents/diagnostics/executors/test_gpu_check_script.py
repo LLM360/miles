@@ -12,7 +12,12 @@ from unittest.mock import MagicMock, patch
 
 from tests.fast.utils.ft.utils import make_mock_pynvml
 
-from miles.utils.ft.agents.diagnostics.utils.gpu_check_script import GpuCheckResult, _check_nvml, _check_single_gpu, main
+from miles.utils.ft.agents.diagnostics.utils.gpu_check_script import (
+    GpuCheckResult,
+    _check_nvml,
+    _check_single_gpu,
+    main,
+)
 
 _MOCK_MODEL_AND_INPUT = (None, None, None)
 _MOCK_HASH = "abc123"

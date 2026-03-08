@@ -11,12 +11,15 @@ from datetime import datetime, timezone
 import pytest
 from tests.fast.utils.ft.conftest import ControllerTestHarness, make_fake_agents, make_test_controller
 
-from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor, PairwiseClusterExecutor, PerNodeClusterExecutor
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol, JobStatus
+from miles.utils.ft.controller.diagnostics.executors import (
+    GpuClusterExecutor,
+    PairwiseClusterExecutor,
+    PerNodeClusterExecutor,
+)
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.state_machines.main import Recovering
 from miles.utils.ft.controller.state_machines.recovery import StopTimeDiagnostics
-from miles.utils.ft.adapters.types import ClusterExecutorProtocol
-from miles.utils.ft.adapters.types import JobStatus
 
 _TYPE_TO_EXECUTOR: dict[str, ClusterExecutorProtocol] = {
     "gpu": GpuClusterExecutor(),

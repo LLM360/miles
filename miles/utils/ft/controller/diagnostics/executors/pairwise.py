@@ -11,9 +11,9 @@ import asyncio
 import logging
 from typing import NamedTuple
 
+from miles.utils.ft.adapters.types import NodeAgentProtocol
 from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import DEFAULT_NCCL_MASTER_PORT
 from miles.utils.ft.controller.diagnostics.utils import RPC_TIMEOUT_BUFFER_SECONDS
-from miles.utils.ft.adapters.types import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +49,7 @@ class PairwiseClusterExecutor:
             logger.info("pairwise_skip — fewer than 2 nodes")
             return []
 
-        pairs = [
-            (sorted_ids[i], sorted_ids[(i + 1) % len(sorted_ids)])
-            for i in range(len(sorted_ids))
-        ]
+        pairs = [(sorted_ids[i], sorted_ids[(i + 1) % len(sorted_ids)]) for i in range(len(sorted_ids))]
         logger.info("pairwise_step_start pairs=%s", pairs)
 
         tasks = []

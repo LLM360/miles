@@ -71,7 +71,8 @@ def _ensure_ray_actor_on_node(
         handle = actor_cls.options(
             name=name,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=node_id, soft=False,
+                node_id=node_id,
+                soft=False,
             ),
         ).remote(**(actor_kwargs or {}))
         getattr(handle, start_method).remote()
@@ -84,7 +85,8 @@ def _ensure_ray_actor_on_node(
     except Exception:
         logger.warning(
             "Failed to create actor %s on node %s",
-            name, node_id,
+            name,
+            node_id,
             exc_info=True,
         )
 

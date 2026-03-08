@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 # Controller status
 # ---------------------------------------------------------------------------
 
+
 class ControllerMode(str, Enum):
     MONITORING = "monitoring"
     RECOVERY = "recovery"
@@ -40,6 +41,7 @@ class ControllerStatus(FtBaseModel):
 # ---------------------------------------------------------------------------
 # Fault / decision types
 # ---------------------------------------------------------------------------
+
 
 class ActionType(str, Enum):
     NONE = "none"
@@ -121,6 +123,7 @@ def filter_node_ids_by_active(node_ids: list[str], active_node_ids: set[str]) ->
 # Training metric types
 # ---------------------------------------------------------------------------
 
+
 class StepValue(NamedTuple):
     step: int
     value: float
@@ -135,6 +138,7 @@ class TimedStepValue(NamedTuple):
 # ---------------------------------------------------------------------------
 # Controller-internal protocols (metric store, diagnostics)
 # ---------------------------------------------------------------------------
+
 
 @runtime_checkable
 class DiagnosticOrchestratorProtocol(Protocol):

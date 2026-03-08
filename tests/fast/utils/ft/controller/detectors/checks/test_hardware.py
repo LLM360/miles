@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from tests.fast.utils.ft.conftest import inject_disk_fault, inject_nic_down, inject_nic_up, make_fake_metric_store
 
+from miles.utils.ft.agents.types import GaugeSample
 from miles.utils.ft.controller.detectors.checks.hardware import (
     _check_disk_fault,
     _check_majority_nic_down,
@@ -11,7 +12,6 @@ from miles.utils.ft.controller.detectors.checks.hardware import (
     check_nic_down_in_window,
 )
 from miles.utils.ft.controller.metric_names import NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP
-from miles.utils.ft.agents.types import GaugeSample
 
 
 class TestCheckNicDownInWindow:

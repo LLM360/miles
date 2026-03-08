@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.adapters.config import FtControllerConfig
+from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.factories.controller import build_ft_controller
 
 

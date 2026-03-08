@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from tests.fast.utils.ft.conftest import AlwaysNoneDetector, FixedDecisionDetector, make_test_controller
-
-from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
+from tests.fast.utils.ft.conftest import AlwaysNoneDetector, make_test_controller
 
 
 class TestRegistrationGuardNoRanks:

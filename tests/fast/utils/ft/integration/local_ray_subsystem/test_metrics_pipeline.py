@@ -7,20 +7,20 @@ import time
 import pytest
 import ray
 from prometheus_client import Gauge
-from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager, FastHangDetector
 from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
+from tests.fast.utils.ft.utils.controller_fakes import FakeNodeManager, FastHangDetector
 
-from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
-from miles.utils.ft.controller.detectors.core.nan_loss import NanLossDetector
-from miles.utils.ft.factories.controller import build_ft_controller
-from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.agents.types import DiagnosticResult
-from miles.utils.ft.controller.metric_names import AGENT_HEARTBEAT
-from miles.utils.ft.controller.types import ControllerMode
 from miles.utils.ft.adapters.config import FtControllerConfig
 from miles.utils.ft.adapters.impl.ray.controller_actor import FtControllerActor
 from miles.utils.ft.adapters.stubs import StubTrainingJob
 from miles.utils.ft.adapters.types import ft_controller_actor_name
+from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.agents.utils.prometheus_exporter import PrometheusExporter
+from miles.utils.ft.controller.detectors.core.nan_loss import NanLossDetector
+from miles.utils.ft.controller.metric_names import AGENT_HEARTBEAT
+from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
+from miles.utils.ft.controller.types import ControllerMode
+from miles.utils.ft.factories.controller import build_ft_controller
 
 pytestmark = [
     pytest.mark.local_ray,

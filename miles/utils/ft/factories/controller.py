@@ -15,11 +15,7 @@ from uuid import uuid4
 from miles.utils.ft.adapters.config import FtControllerConfig
 from miles.utils.ft.adapters.impl.notifiers.factory import build_notifier
 from miles.utils.ft.adapters.stubs import StubNodeManager, StubTrainingJob
-from miles.utils.ft.adapters.types import (
-    NodeManagerProtocol,
-    NotifierProtocol,
-    TrainingJobProtocol,
-)
+from miles.utils.ft.adapters.types import NodeManagerProtocol, NotifierProtocol, TrainingJobProtocol
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.detectors.chain import build_detector_chain

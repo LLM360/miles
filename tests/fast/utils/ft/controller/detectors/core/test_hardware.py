@@ -28,9 +28,12 @@ class TestHighConfidenceHardwareDetector:
         inject_gpu_unavailable(store, node_id="node-0", gpu="3")
         detector = HighConfidenceHardwareDetector()
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, rank_placement={0: "node-0"},
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                rank_placement={0: "node-0"},
+            )
+        )
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
@@ -41,9 +44,12 @@ class TestHighConfidenceHardwareDetector:
         inject_critical_xid(store, node_id="node-0")
         detector = HighConfidenceHardwareDetector()
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, rank_placement={0: "node-0"},
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                rank_placement={0: "node-0"},
+            )
+        )
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
@@ -57,9 +63,12 @@ class TestHighConfidenceHardwareDetector:
         inject_nic_up(store, node_id="node-0", device="ib3")
         detector = HighConfidenceHardwareDetector()
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, rank_placement={0: "node-0"},
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                rank_placement={0: "node-0"},
+            )
+        )
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids
@@ -96,9 +105,12 @@ class TestHighConfidenceHardwareDetector:
         inject_critical_xid(store, node_id="node-1")
         detector = HighConfidenceHardwareDetector()
 
-        decision = detector.evaluate(make_detector_context(
-            metric_store=store, rank_placement={0: "node-0", 1: "node-1"},
-        ))
+        decision = detector.evaluate(
+            make_detector_context(
+                metric_store=store,
+                rank_placement={0: "node-0", 1: "node-1"},
+            )
+        )
 
         assert decision.action == ActionType.ENTER_RECOVERY
         assert "node-0" in decision.bad_node_ids

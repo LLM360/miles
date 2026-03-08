@@ -99,6 +99,7 @@ def ft_node_agent_actor_name(ft_id: str, node_id: str) -> str:
 # protocols/platform.py — controller calls platform
 # ---------------------------------------------------------------------------
 
+
 class JobStatus(str, Enum):
     RUNNING = "running"
     STOPPED = "stopped"

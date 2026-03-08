@@ -41,9 +41,7 @@ def parse_range_response(data: dict[str, Any]) -> pl.DataFrame:
 
 def _extract_results(data: dict[str, Any]) -> tuple[list[dict[str, Any]], str] | None:
     if data.get("status") != "success":
-        raise PrometheusQueryError(
-            f"Prometheus returned status={data.get('status')}: {data.get('error', '')}"
-        )
+        raise PrometheusQueryError(f"Prometheus returned status={data.get('status')}: {data.get('error', '')}")
 
     data_section = data.get("data") or {}
     result = data_section.get("result") or []

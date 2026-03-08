@@ -36,7 +36,8 @@ class TestTickEmptyDetectorChain:
         harness = make_test_controller()
         await harness.controller._tick()
         ctx = make_detector_context(
-            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            metric_store=harness.metric_store,
+            mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
@@ -52,7 +53,8 @@ class TestDetectorChain:
         )
 
         ctx = make_detector_context(
-            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            metric_store=harness.metric_store,
+            mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
@@ -68,7 +70,8 @@ class TestDetectorChain:
         )
 
         ctx = make_detector_context(
-            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            metric_store=harness.metric_store,
+            mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
@@ -84,7 +87,8 @@ class TestDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[crashing, good])
 
         ctx = make_detector_context(
-            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            metric_store=harness.metric_store,
+            mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
@@ -99,7 +103,8 @@ class TestDetectorExceptionIsolation:
         harness = make_test_controller(detectors=[d1, d2])
 
         ctx = make_detector_context(
-            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            metric_store=harness.metric_store,
+            mini_wandb=harness.mini_wandb,
             rank_placement=_TEST_RANK_PLACEMENT,
         )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)

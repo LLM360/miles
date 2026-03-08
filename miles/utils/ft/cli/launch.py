@@ -10,10 +10,10 @@ from uuid import uuid4
 import ray
 import typer
 
-from miles.utils.ft.controller.detectors.chain import DetectorChainConfig
 from miles.utils.ft.adapters.config import FtControllerConfig
-from miles.utils.ft.factories.controller import launch_ft_controller_actor
 from miles.utils.ft.adapters.types import ft_controller_actor_name
+from miles.utils.ft.controller.detectors.chain import DetectorChainConfig
+from miles.utils.ft.factories.controller import launch_ft_controller_actor
 from miles.utils.logging_utils import configure_logger
 
 logger = logging.getLogger(__name__)

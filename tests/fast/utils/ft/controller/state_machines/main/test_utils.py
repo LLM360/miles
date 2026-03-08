@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 import pytest
 
+from miles.utils.ft.adapters.types import JobStatus
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.state_machines.main.utils import handle_notify_human, run_detectors
 from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
-from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.utils.sliding_window import SlidingWindowCounter
 
 

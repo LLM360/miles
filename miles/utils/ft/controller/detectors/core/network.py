@@ -4,8 +4,8 @@ from pydantic import ConfigDict, field_validator
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.checks.hardware import check_nic_down_in_window
-from miles.utils.ft.utils.base_model import FtBaseModel
 from miles.utils.ft.controller.types import Decision, TriggerType
+from miles.utils.ft.utils.base_model import FtBaseModel
 
 
 class NetworkAlertDetectorConfig(FtBaseModel):
