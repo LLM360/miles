@@ -6,6 +6,7 @@ import asyncio
 import time
 from collections.abc import Callable
 
+from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, LONG_RECOVERY_TIMEOUT
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _FAST_SCRAPE, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
@@ -51,7 +52,7 @@ class TestEphemeralNic:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
 
         # Step 1: inject NIC up so MiniPrometheus has a baseline
         env.set_collector_metrics(
@@ -82,7 +83,7 @@ class TestEphemeralNic:
 
         # Step 3: ENTER_RECOVERY triggers eviction and restart. Poll
         # until active_run_id changes AND mode returns to MONITORING.
-        deadline = time.monotonic() + 90.0
+        deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.active_run_id != old_run_id and status.mode == ControllerMode.MONITORING:
@@ -90,7 +91,7 @@ class TestEphemeralNic:
             await asyncio.sleep(0.5)
         else:
             raise TimeoutError(
-                f"Recovery did not complete within 90s: "
+                f"Recovery did not complete within {LONG_RECOVERY_TIMEOUT}s: "
                 f"run_id changed={status.active_run_id != old_run_id}, mode={status.mode}"
             )
 
@@ -125,7 +126,7 @@ class TestNetworkAlert:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
 
         # Step 1: inject NIC up baseline
         env.set_collector_metrics(
@@ -165,7 +166,7 @@ class TestNetworkAlert:
         )
 
         # Step 3: poll until active_run_id changes AND mode returns to MONITORING
-        deadline = time.monotonic() + 90.0
+        deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.active_run_id != old_run_id and status.mode == ControllerMode.MONITORING:
@@ -173,7 +174,7 @@ class TestNetworkAlert:
             await asyncio.sleep(0.5)
         else:
             raise TimeoutError(
-                f"Recovery did not complete within 90s: "
+                f"Recovery did not complete within {LONG_RECOVERY_TIMEOUT}s: "
                 f"run_id changed={status.active_run_id != old_run_id}, mode={status.mode}"
             )
 
@@ -205,7 +206,7 @@ class TestTransientFault:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
 
         # Step 1: inject NIC up baseline
         env.set_collector_metrics(
@@ -276,7 +277,7 @@ class TestEphemeralNicNoEviction:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
 
         # Step 1: inject NIC up baseline
         env.set_collector_metrics(
@@ -304,7 +305,7 @@ class TestEphemeralNicNoEviction:
         )
 
         # Step 3: wait for recovery to complete
-        final = await wait_for_recovery_complete(env.controller, timeout=90.0)
+        final = await wait_for_recovery_complete(env.controller, timeout=LONG_RECOVERY_TIMEOUT)
         assert final.mode == ControllerMode.MONITORING
 
         # Step 4: verify no eviction in phase_history
@@ -327,7 +328,7 @@ class TestMajorityNicDown:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject 3 NICs — 2 down, 1 up (majority down)
         env.set_collector_metrics(
@@ -355,7 +356,7 @@ class TestMajorityNicDown:
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=90.0,
+            timeout=LONG_RECOVERY_TIMEOUT,
         )
         assert final.mode == ControllerMode.MONITORING
         assert_phase_path_contains(final, ["Evicting"])

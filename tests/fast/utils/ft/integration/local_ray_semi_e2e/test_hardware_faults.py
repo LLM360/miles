@@ -6,6 +6,7 @@ import asyncio
 import time
 from collections.abc import Callable
 
+from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, LONG_RECOVERY_TIMEOUT, RECOVERY_TIMEOUT
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _FAST_SCRAPE, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
@@ -54,7 +55,7 @@ class TestHardwareAlert:
 
         # Step 2: ENTER_RECOVERY triggers recovery state machine. Poll until
         # active_run_id changes AND controller returns to MONITORING.
-        deadline = time.monotonic() + 90.0
+        deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.active_run_id != old_run_id and status.mode == ControllerMode.MONITORING:
@@ -62,7 +63,7 @@ class TestHardwareAlert:
             await asyncio.sleep(0.5)
         else:
             raise TimeoutError(
-                f"Recovery did not complete within 90s: "
+                f"Recovery did not complete within {LONG_RECOVERY_TIMEOUT}s: "
                 f"run_id changed={status.active_run_id != old_run_id}, mode={status.mode}"
             )
 
@@ -77,7 +78,7 @@ class TestNanLoss:
         """loss=NaN via custom log metrics → NanLossDetector → ENTER_RECOVERY."""
         env = e2e_full_detector_env
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject NaN loss
         await env.injector.inject_nan_loss()
@@ -86,7 +87,7 @@ class TestNanLoss:
         status = await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
         assert status.mode == ControllerMode.RECOVERY
 
@@ -109,14 +110,14 @@ class TestFaultDuringRecovery:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: first crash → enters recovery
         await env.injector.crash_training()
         await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 2: while in recovery, inject hardware fault
@@ -132,7 +133,7 @@ class TestFaultDuringRecovery:
         )
 
         # Step 3: wait for recovery to complete with eviction
-        final = await wait_for_recovery_complete(env.controller, timeout=90.0)
+        final = await wait_for_recovery_complete(env.controller, timeout=LONG_RECOVERY_TIMEOUT)
         assert_phase_path_contains(final, ["Evicting"])
 
 
@@ -150,14 +151,14 @@ class TestDynamicBadNodes:
             max_simultaneous_bad_nodes=3,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: crash to enter recovery
         await env.injector.crash_training()
         await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 2: during recovery, inject GPU_AVAILABLE=0 on 3 nodes
@@ -175,7 +176,7 @@ class TestDynamicBadNodes:
             )
 
         # Step 3: recovery should abort, returning to MONITORING
-        deadline = time.monotonic() + 60.0
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.mode == ControllerMode.MONITORING and not status.recovery_in_progress:
@@ -205,7 +206,7 @@ class TestBadNodeMerging:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject GPU fault on node-0 → recovery with bad_node_ids=[node-0]
         env.set_collector_metrics(
@@ -222,7 +223,7 @@ class TestBadNodeMerging:
         await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 2: during recovery, also inject GPU fault on node-1
@@ -238,7 +239,7 @@ class TestBadNodeMerging:
         )
 
         # Step 3: wait for recovery to complete with eviction of both nodes
-        final = await wait_for_recovery_complete(env.controller, timeout=120.0)
+        final = await wait_for_recovery_complete(env.controller, timeout=LONG_RECOVERY_TIMEOUT)
         assert_phase_path_contains(final, ["Evicting"])
 
 
@@ -258,21 +259,21 @@ class TestCrossFaultTypeThrottle:
             recovery_cooldown=SlidingWindowThrottle(window_minutes=60, max_count=2),
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=60.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=RECOVERY_TIMEOUT)
 
         # Step 1: crash → first recovery
         await env.injector.crash_training()
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=120.0,
+            timeout=LONG_RECOVERY_TIMEOUT,
         )
 
         # Step 2: NaN → should be throttled (shared window, max_count=2)
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=60.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=RECOVERY_TIMEOUT)
         await env.injector.inject_nan_loss()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )
 
 
@@ -284,26 +285,26 @@ class TestNaNRecovery:
         """NaN triggers recovery, after which training resumes with clean metrics."""
         env = e2e_full_detector_env
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject NaN → recovery
         await env.injector.inject_nan_loss()
         await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 2: wait for recovery to complete
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=90.0,
+            timeout=LONG_RECOVERY_TIMEOUT,
         )
         assert final.mode == ControllerMode.MONITORING
 
         # Step 3: training resumes normally (NaN state cleared by submit())
-        await wait_for_training_stable(env.controller, n_iterations=5, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=5, timeout=FAST_TIMEOUT)
 
 
 class TestDiskSpaceLow:
@@ -320,7 +321,7 @@ class TestDiskSpaceLow:
             use_notifier=True,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject low disk space (500 MB < 1 GB threshold)
         env.set_collector_metrics(
@@ -336,7 +337,7 @@ class TestDiskSpaceLow:
 
         # Step 2: wait for detector cycles, verify no recovery
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )
 
         # Step 3: notifier should have received a disk-related notification
@@ -357,7 +358,7 @@ class TestXidFault:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
         old_run_id = get_status(env.controller).active_run_id
 
         # Step 1: inject non-auto-recoverable XID event
@@ -373,7 +374,7 @@ class TestXidFault:
         )
 
         # Step 2: wait for eviction + recovery (run_id changes) AND return to MONITORING
-        deadline = time.monotonic() + 90.0
+        deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.active_run_id != old_run_id and status.mode == ControllerMode.MONITORING:
@@ -381,7 +382,7 @@ class TestXidFault:
             await asyncio.sleep(0.5)
         else:
             raise TimeoutError(
-                f"XID fault did not complete recovery within 90s: "
+                f"XID fault did not complete recovery within {LONG_RECOVERY_TIMEOUT}s: "
                 f"run_id changed={status.active_run_id != old_run_id}, mode={status.mode}"
             )
 
@@ -410,14 +411,14 @@ class TestMfuAbsoluteMinimum:
             use_notifier=True,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject very low MFU
         await env.injector.inject_custom_metrics({"mfu": 0.01})
 
         # Step 2: wait for detector cycles, verify no recovery
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )
 
         # Step 3: notifier should have received MFU alert
@@ -438,14 +439,14 @@ class TestNonCriticalSuppressed:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: crash → enters recovery
         await env.injector.crash_training()
         await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 2: while in recovery, inject disk space fault
@@ -461,7 +462,7 @@ class TestNonCriticalSuppressed:
         )
 
         # Step 3: recovery should complete normally (disk alert ignored)
-        final = await wait_for_recovery_complete(env.controller, timeout=90.0)
+        final = await wait_for_recovery_complete(env.controller, timeout=LONG_RECOVERY_TIMEOUT)
         assert final.mode == ControllerMode.MONITORING
 
 
@@ -479,7 +480,7 @@ class TestRealtimeChecksDiscovery:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject GPU fault metric (but only TrainingCrashDetector is in chain,
         # so the detector won't pre-identify the bad node)
@@ -500,7 +501,7 @@ class TestRealtimeChecksDiscovery:
         old_run_id = get_status(env.controller).active_run_id
         await env.injector.crash_training()
 
-        deadline = time.monotonic() + 90.0
+        deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if (
@@ -511,7 +512,7 @@ class TestRealtimeChecksDiscovery:
             await asyncio.sleep(0.5)
         else:
             raise TimeoutError(
-                f"Recovery did not complete within 90s: "
+                f"Recovery did not complete within {LONG_RECOVERY_TIMEOUT}s: "
                 f"run_id changed={status.active_run_id != old_run_id}, mode={status.mode}"
             )
 
@@ -534,7 +535,7 @@ class TestMaxBadNodesOneBoundary:
             use_notifier=True,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject GPU fault on the single node
         env.set_collector_metrics(
@@ -550,7 +551,7 @@ class TestMaxBadNodesOneBoundary:
 
         # Step 2: wait for detection cycles, verify no recovery
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )
 
 
@@ -567,7 +568,7 @@ class TestFaultClearedNoRetrigger:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject GPU fault → triggers eviction
         env.set_collector_metrics(
@@ -584,7 +585,7 @@ class TestFaultClearedNoRetrigger:
         await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 2: clear fault metric (simulating node replacement)
@@ -600,10 +601,10 @@ class TestFaultClearedNoRetrigger:
         )
 
         # Step 3: recovery completes
-        final = await wait_for_recovery_complete(env.controller, timeout=90.0)
+        final = await wait_for_recovery_complete(env.controller, timeout=LONG_RECOVERY_TIMEOUT)
         assert final.mode == ControllerMode.MONITORING
 
         # Step 4: verify no new recovery triggered after several ticks
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )

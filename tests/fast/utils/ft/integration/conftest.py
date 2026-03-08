@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Generator
 
@@ -10,6 +11,11 @@ import ray
 from miles.utils.ft.models.recovery import ControllerStatus
 
 logger = logging.getLogger(__name__)
+
+_TIMEOUT_SCALE = float(os.environ.get("FT_TEST_TIMEOUT_SCALE", "1.0"))
+FAST_TIMEOUT = 30.0 * _TIMEOUT_SCALE
+RECOVERY_TIMEOUT = 60.0 * _TIMEOUT_SCALE
+LONG_RECOVERY_TIMEOUT = 120.0 * _TIMEOUT_SCALE
 
 
 @pytest.fixture(scope="module")

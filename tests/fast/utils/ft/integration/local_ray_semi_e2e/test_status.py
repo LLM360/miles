@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 import ray
+from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, RECOVERY_TIMEOUT
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import (
     _FAST_SCRAPE,
     E2EEnv,
@@ -35,11 +36,11 @@ class TestStatusConsistency:
         """High-frequency polling during recovery → every snapshot is internally consistent."""
         env = e2e_env
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
 
         snapshots: list[Any] = []
-        deadline = time.monotonic() + 60.0
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
 
         while time.monotonic() < deadline:
             status = get_status(env.controller)
@@ -77,7 +78,7 @@ class TestRunIdSwitch:
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: verify new run_id
@@ -86,7 +87,7 @@ class TestRunIdSwitch:
         assert post_run_id != pre_run_id
 
         # Step 3: verify iteration progresses under new run
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
 
 class TestMetricScrapeE2E:
@@ -97,7 +98,7 @@ class TestMetricScrapeE2E:
         """Worker pushes iteration → controller scrapes → status.latest_iteration tracks it."""
         env = e2e_full_detector_env
 
-        await wait_for_training_stable(env.controller, n_iterations=5, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=5, timeout=FAST_TIMEOUT)
         status = get_status(env.controller)
         assert status.latest_iteration is not None
         assert status.latest_iteration >= 5
@@ -155,7 +156,7 @@ class TestStaleMetrics:
         status = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         new_run_id = status.active_run_id
         assert new_run_id != old_run_id
@@ -171,7 +172,7 @@ class TestStaleMetrics:
         )
 
         # Step 3: verify iteration is not polluted
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
         final = get_status(env.controller)
         assert final.latest_iteration is not None
         assert final.latest_iteration < 999999
@@ -185,11 +186,11 @@ class TestRecoveryPhaseMonotonicity:
         """High-frequency polling during recovery: mode transitions are orderly."""
         env = e2e_env
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
 
         snapshots: list[Any] = []
-        deadline = time.monotonic() + 60.0
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
 
         while time.monotonic() < deadline:
             status = get_status(env.controller)
@@ -231,7 +232,7 @@ class TestBadNodesDuringEviction:
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject GPU fault on node-0
         env.set_collector_metrics(
@@ -247,7 +248,7 @@ class TestBadNodesDuringEviction:
 
         # Step 2: poll status during recovery for bad_nodes
         saw_bad_nodes = False
-        deadline = time.monotonic() + 60.0
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.bad_nodes and "e2ebn-node-0" in status.bad_nodes:
@@ -278,7 +279,7 @@ class TestStaleCombined:
         status = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         new_run_id = status.active_run_id
         assert new_run_id != old_run_id
@@ -305,7 +306,7 @@ class TestStaleCombined:
         )
 
         # Step 3: verify new run is not polluted
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
         final = get_status(env.controller)
         assert final.active_run_id == new_run_id
         assert final.latest_iteration is not None

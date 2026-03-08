@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 
 import ray
+from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, LONG_RECOVERY_TIMEOUT, RECOVERY_TIMEOUT
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
@@ -39,7 +40,7 @@ class TestMultiNode:
             recovery_cooldown=SlidingWindowThrottle(window_minutes=1.0, max_count=2),
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=1, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=1, timeout=FAST_TIMEOUT)
 
         status = get_status(env.controller)
         assert status.mode == ControllerMode.MONITORING
@@ -49,7 +50,7 @@ class TestMultiNode:
         await wait_for_recovery_phase(
             env.controller,
             phase="MonitoringProgress",
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: crash during MONITORING → DIAGNOSING
@@ -59,14 +60,14 @@ class TestMultiNode:
         # After recovery completes, the FAILED status can auto-trigger a second
         # recovery that overwrites _last_phase_history, so we observe DIAGNOSING
         # while the recovery is still in progress.
-        deadline = time.monotonic() + 90.0
+        deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.phase_history and "StopTimeDiagnostics" in status.phase_history:
                 break
             await asyncio.sleep(0.5)
         else:
-            raise TimeoutError("DIAGNOSING not observed in phase_history within 90s")
+            raise TimeoutError(f"DIAGNOSING not observed in phase_history within {LONG_RECOVERY_TIMEOUT}s")
 
         assert_phase_path_contains(status, ["StopTimeDiagnostics"])
 
@@ -79,7 +80,7 @@ class TestConcurrentRegistration:
         """4 workers register in parallel → all ranks visible in controller status."""
         env = e2e_multi_node_env
 
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
 
         status = get_status(env.controller)
         assert status.latest_iteration is not None
@@ -125,7 +126,7 @@ class TestRegistrationGrace:
         status = await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
         assert status.mode == ControllerMode.RECOVERY
 
@@ -145,7 +146,7 @@ class TestStaleRunId:
         status = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         new_run_id = status.active_run_id
         assert new_run_id != old_run_id
@@ -164,7 +165,7 @@ class TestStaleRunId:
         )
 
         # Step 3: training continues normally under new run
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
         final = get_status(env.controller)
         assert final.active_run_id == new_run_id
 
@@ -177,20 +178,20 @@ class TestMultiNodeIsolation:
         """In multi-node setup, a global crash recovers cleanly with all nodes participating."""
         env = e2e_multi_node_env
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: crash → recovery
         await env.injector.crash_training()
         status = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         assert status.mode == ControllerMode.MONITORING
         assert status.recovery_in_progress is False
 
         # Step 2: training resumes across all nodes
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
 
 class TestMultiNodeScale:
@@ -209,19 +210,19 @@ class TestMultiNodeScale:
             detectors=[TrainingCrashDetector()],
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: crash → full recovery
         await env.injector.crash_training()
         status = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         assert status.mode == ControllerMode.MONITORING
 
         # Step 2: verify training resumes (proves all workers re-registered)
-        await wait_for_training_stable(env.controller, n_iterations=5, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=5, timeout=FAST_TIMEOUT)
 
 
 class TestGracePeriod:

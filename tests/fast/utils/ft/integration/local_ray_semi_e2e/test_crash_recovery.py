@@ -6,6 +6,7 @@ import asyncio
 import time
 from collections.abc import Callable
 
+from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, LONG_RECOVERY_TIMEOUT, RECOVERY_TIMEOUT
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.utils.controller_fakes import FastHangDetector
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
@@ -31,7 +32,7 @@ class TestTransientCrash:
             handle=e2e_env.controller,
             injector=e2e_env.injector,
             stable_iterations=3,
-            recovery_timeout=60.0,
+            recovery_timeout=RECOVERY_TIMEOUT,
         )
         assert status.mode == ControllerMode.MONITORING
 
@@ -55,14 +56,14 @@ class TestRecoveryThrottle:
             ),
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: first crash → recovery
         await env.injector.crash_training()
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: second crash → recovery
@@ -70,13 +71,13 @@ class TestRecoveryThrottle:
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 3: third crash → throttled, no recovery
         await env.injector.crash_training()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )
 
 
@@ -89,23 +90,23 @@ class TestRecoveryReset:
         env = e2e_env
 
         # Step 1: first crash → full recovery
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
         status = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         assert status.mode == ControllerMode.MONITORING
         assert status.recovery_in_progress is False
 
         # Step 2: second crash → enters a fresh recovery cycle
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
         status = await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
         assert status.mode == ControllerMode.RECOVERY
         assert status.recovery_phase is not None
@@ -129,13 +130,13 @@ class TestExceptionInRecovery:
             detectors=[TrainingCrashDetector()],
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
 
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         assert final.mode == ControllerMode.MONITORING
 
@@ -158,21 +159,21 @@ class TestRepeatedCrash:
         await wait_for_recovery_phase(
             env.controller,
             phase="MonitoringProgress",
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: crash during MONITORING → DIAGNOSING
         await env.injector.crash_training()
 
         # Step 3: poll for DIAGNOSING in phase_history during the active recovery.
-        deadline = time.monotonic() + 60.0
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.phase_history and "StopTimeDiagnostics" in status.phase_history:
                 break
             await asyncio.sleep(0.5)
         else:
-            raise TimeoutError("DIAGNOSING not observed in phase_history within 60s")
+            raise TimeoutError(f"DIAGNOSING not observed in phase_history within {RECOVERY_TIMEOUT}s")
 
         assert_phase_path_contains(status, ["StopTimeDiagnostics"])
 
@@ -192,7 +193,7 @@ class TestConcurrentFaults:
             scrape_interval_seconds=0.5,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject both faults
         await env.injector.inject_nan_loss()
@@ -202,7 +203,7 @@ class TestConcurrentFaults:
         status = await wait_for_mode(
             env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
         assert status.mode == ControllerMode.RECOVERY
 
@@ -210,7 +211,7 @@ class TestConcurrentFaults:
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=90.0,
+            timeout=LONG_RECOVERY_TIMEOUT,
         )
         assert final.mode == ControllerMode.MONITORING
 
@@ -234,21 +235,21 @@ class TestRestartFailed:
         await wait_for_recovery_phase(
             env.controller,
             phase="MonitoringProgress",
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: crash again during monitoring (restart fails)
         await env.injector.crash_training()
 
         # Step 3: poll for StopTimeDiagnostics
-        deadline = time.monotonic() + 60.0
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.phase_history and "StopTimeDiagnostics" in status.phase_history:
                 break
             await asyncio.sleep(0.5)
         else:
-            raise TimeoutError("StopTimeDiagnostics not observed within 60s")
+            raise TimeoutError(f"StopTimeDiagnostics not observed within {RECOVERY_TIMEOUT}s")
 
         assert_phase_path_contains(status, ["StopTimeDiagnostics"])
 
@@ -264,14 +265,14 @@ class TestCrashDuringRecovery:
         await wait_for_mode(
             e2e_env.controller,
             target_mode=ControllerMode.RECOVERY,
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 2: crash again while recovering
         await e2e_env.injector.crash_training()
 
         # Step 3: system must converge (back to MONITORING or NotifyHumans)
-        deadline = time.monotonic() + 120.0
+        deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(e2e_env.controller)
             if status.mode == ControllerMode.MONITORING and not status.recovery_in_progress:
@@ -301,14 +302,14 @@ class TestCrashDuringRecovery:
         await wait_for_recovery_phase(
             env.controller,
             phase="MonitoringProgress",
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: inject another crash during MonitoringProgress
         await env.injector.crash_training()
 
         # Step 3: wait for convergence
-        deadline = time.monotonic() + 120.0
+        deadline = time.monotonic() + LONG_RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.mode == ControllerMode.MONITORING and not status.recovery_in_progress:
@@ -340,13 +341,13 @@ class TestSequentialRecovery:
             run_ids.append(initial_status.active_run_id)
 
         for _cycle in range(3):
-            await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+            await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
             await env.injector.crash_training()
 
             status = await wait_for_mode_transition(
                 env.controller,
                 target_mode=ControllerMode.MONITORING,
-                timeout=60.0,
+                timeout=RECOVERY_TIMEOUT,
             )
             assert status.mode == ControllerMode.MONITORING
             assert status.recovery_in_progress is False
@@ -373,21 +374,21 @@ class TestCooldownBoundary:
             recovery_cooldown=SlidingWindowThrottle(window_minutes=60, max_count=2),
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: first crash → recovery succeeds
         await env.injector.crash_training()
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: second crash → throttled
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )
 
 
@@ -414,7 +415,7 @@ class TestConcurrentDetectors:
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=90.0,
+            timeout=LONG_RECOVERY_TIMEOUT,
         )
         assert final.mode == ControllerMode.MONITORING
 
@@ -433,21 +434,21 @@ class TestNotification:
             use_notifier=True,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: first crash → recovery
         await env.injector.crash_training()
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: second crash → throttled
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )
 
         # Step 3: verify notifier received calls
@@ -475,14 +476,14 @@ class TestRecoveryOverallTimeout:
         await env.injector.crash_training()
 
         # Step 2: wait for NotifyHumans due to overall recovery timeout
-        deadline = time.monotonic() + 60.0
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.phase_history and "NotifyHumans" in status.phase_history:
                 break
             await asyncio.sleep(0.5)
         else:
-            raise TimeoutError("Recovery overall timeout did not escalate to NotifyHumans within 60s")
+            raise TimeoutError(f"Recovery overall timeout did not escalate to NotifyHumans within {RECOVERY_TIMEOUT}s")
 
         assert_phase_path_contains(status, ["NotifyHumans"])
 
@@ -504,21 +505,21 @@ class TestCooldownExpiry:
             ),
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: first crash → recovery
         await env.injector.crash_training()
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
 
         # Step 2: second crash immediately → throttled
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
         await env.injector.crash_training()
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )
 
         # Step 3: sleep past cooldown window, then crash again → recovery succeeds
@@ -527,7 +528,7 @@ class TestCooldownExpiry:
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         assert final.mode == ControllerMode.MONITORING
 
@@ -551,7 +552,7 @@ class TestFalsePositiveGuard:
             use_notifier=True,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=FAST_TIMEOUT)
 
         # Step 1: inject GPU_AVAILABLE=0 on 3 nodes simultaneously
         for i in range(3):
@@ -569,5 +570,5 @@ class TestFalsePositiveGuard:
 
         # Step 2: wait for scrape cycles, then verify no recovery
         await scenario_no_false_positive(
-            env.controller, observation_ticks=20, timeout=30.0,
+            env.controller, observation_ticks=20, timeout=FAST_TIMEOUT,
         )

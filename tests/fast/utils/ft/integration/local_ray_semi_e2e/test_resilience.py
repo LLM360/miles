@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 import ray
 from tests.fast.utils.ft.utils.controller_fakes import CrashingDetector
+from tests.fast.utils.ft.integration.conftest import FAST_TIMEOUT, LONG_RECOVERY_TIMEOUT, RECOVERY_TIMEOUT
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.conftest import _SLOW_STEP, E2EEnv, NodeSpec
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
     assert_phase_path_contains,
@@ -51,7 +52,7 @@ class TestFireAndForget:
             detectors=[TrainingCrashDetector()],
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=FAST_TIMEOUT)
 
         # Step 1: kill controller
         controller_name = ft_controller_actor_name(env.ft_id)
@@ -91,21 +92,21 @@ class TestRestartStepperException:
             monitoring_success_iterations=999,
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=1, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=1, timeout=FAST_TIMEOUT)
 
         # Step 1: crash → recovery → MonitoringProgress (stays active)
         await env.injector.crash_training()
         await wait_for_recovery_phase(
             env.controller,
             phase="MonitoringProgress",
-            timeout=30.0,
+            timeout=FAST_TIMEOUT,
         )
 
         # Step 2: crash during MonitoringProgress → RestartFailed →
         # StopTimeDiagnostics → single node passes → no root cause → NotifyHumans
         await env.injector.crash_training()
 
-        deadline = time.monotonic() + 60.0
+        deadline = time.monotonic() + RECOVERY_TIMEOUT
         while time.monotonic() < deadline:
             status = get_status(env.controller)
             if status.phase_history and "NotifyHumans" in status.phase_history:
@@ -144,18 +145,18 @@ class TestNotifierResilience:
             notifier_override=_CrashingNotifier(),
         )
 
-        await wait_for_training_stable(env.controller, n_iterations=3, timeout=60.0)
+        await wait_for_training_stable(env.controller, n_iterations=3, timeout=RECOVERY_TIMEOUT)
 
         # Step 1: first crash → recovery (notifier not called on normal recovery)
         await env.injector.crash_training()
         await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=120.0,
+            timeout=LONG_RECOVERY_TIMEOUT,
         )
 
         # Step 2: second crash → throttled → notifier.send() called → raises → controller survives
-        await wait_for_training_stable(env.controller, n_iterations=2, timeout=60.0)
+        await wait_for_training_stable(env.controller, n_iterations=2, timeout=RECOVERY_TIMEOUT)
         await env.injector.crash_training()
         await asyncio.sleep(5.0)
 
@@ -177,13 +178,13 @@ class TestDetectorResilience:
         )
 
         # Step 1: let training run for a while with CrashingDetector throwing every tick
-        await wait_for_training_stable(env.controller, n_iterations=5, timeout=30.0)
+        await wait_for_training_stable(env.controller, n_iterations=5, timeout=FAST_TIMEOUT)
 
         # Step 2: crash training → TrainingCrashDetector should still work
         await env.injector.crash_training()
         final = await wait_for_mode_transition(
             env.controller,
             target_mode=ControllerMode.MONITORING,
-            timeout=60.0,
+            timeout=RECOVERY_TIMEOUT,
         )
         assert final.mode == ControllerMode.MONITORING
