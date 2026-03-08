@@ -123,15 +123,6 @@ async def run_nccl_test(
                 timeout_seconds=timeout_seconds,
                 env=env,
             )
-        except OSError:
-            logger.warning(
-                "%s_exec_failed node=%s binary=%s",
-                log_prefix,
-                node_id,
-                cmd[0],
-                exc_info=True,
-            )
-            return fail(details=f"failed to execute {cmd[0]}")
         except asyncio.TimeoutError:
             logger.warning(
                 "%s_timeout node=%s timeout=%s",
@@ -141,6 +132,15 @@ async def run_nccl_test(
                 exc_info=True,
             )
             return fail(details=f"timed out after {timeout_seconds}s")
+        except OSError:
+            logger.warning(
+                "%s_exec_failed node=%s binary=%s",
+                log_prefix,
+                node_id,
+                cmd[0],
+                exc_info=True,
+            )
+            return fail(details=f"failed to execute {cmd[0]}")
 
         stdout = stdout_bytes.decode(errors="replace")
         stderr = stderr_bytes.decode(errors="replace")
