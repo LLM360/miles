@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Awaitable, Callable
-from typing import Generic, Protocol, TypeVar, runtime_checkable
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
@@ -15,8 +16,8 @@ StateT_contra = TypeVar("StateT_contra", bound=BaseModel, contravariant=True)
 ContextT_contra = TypeVar("ContextT_contra", contravariant=True)
 
 
-@runtime_checkable
-class StateHandler(Protocol[StateT_contra, ContextT_contra]):
+class StateHandler(ABC, Generic[StateT_contra, ContextT_contra]):
+    @abstractmethod
     async def step(self, state: StateT_contra, context: ContextT_contra) -> BaseModel | None: ...
 
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from datetime import timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 import polars as pl
 from pydantic import Field, model_validator
@@ -120,22 +121,23 @@ class Decision(FtBaseModel):
 # ---------------------------------------------------------------------------
 
 
-@runtime_checkable
-class DiagnosticOrchestratorProtocol(Protocol):
+class DiagnosticOrchestratorProtocol(ABC):
+    @abstractmethod
     async def run_diagnostic_pipeline(
         self,
         pre_executors: list[ClusterExecutorProtocol] | None = None,
     ) -> DiagnosticPipelineResult: ...
 
 
-@runtime_checkable
-class MetricQueryProtocol(Protocol):
+class MetricQueryProtocol(ABC):
+    @abstractmethod
     def query_latest(
         self,
         metric_name: str,
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame: ...
 
+    @abstractmethod
     def query_range(
         self,
         metric_name: str,
@@ -143,6 +145,7 @@ class MetricQueryProtocol(Protocol):
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame: ...
 
+    @abstractmethod
     def changes(
         self,
         metric_name: str,
@@ -150,6 +153,7 @@ class MetricQueryProtocol(Protocol):
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame: ...
 
+    @abstractmethod
     def count_over_time(
         self,
         metric_name: str,
@@ -157,6 +161,7 @@ class MetricQueryProtocol(Protocol):
         label_filters: dict[str, str] | None = None,
     ) -> pl.DataFrame: ...
 
+    @abstractmethod
     def avg_over_time(
         self,
         metric_name: str,
@@ -165,34 +170,37 @@ class MetricQueryProtocol(Protocol):
     ) -> pl.DataFrame: ...
 
 
-@runtime_checkable
-class MetricStoreLifecycle(Protocol):
+class MetricStoreLifecycle(ABC):
+    @abstractmethod
     async def start(self) -> None: ...
 
+    @abstractmethod
     async def stop(self) -> None: ...
 
 
-@runtime_checkable
-class MetricStoreProtocol(MetricQueryProtocol, MetricStoreLifecycle, Protocol): ...
+class MetricStoreProtocol(MetricQueryProtocol, MetricStoreLifecycle): ...
 
 
-@runtime_checkable
-class ScrapeTargetManagerProtocol(Protocol):
+class ScrapeTargetManagerProtocol(ABC):
+    @abstractmethod
     def add_scrape_target(self, target_id: str, address: str) -> None: ...
 
+    @abstractmethod
     def remove_scrape_target(self, target_id: str) -> None: ...
 
 
-@runtime_checkable
-class TrainingMetricStoreProtocol(Protocol):
+class TrainingMetricStoreProtocol(ABC):
+    @abstractmethod
     def latest(self, metric_name: str) -> float | None: ...
 
+    @abstractmethod
     def query_last_n_steps(
         self,
         metric_name: str,
         last_n: int,
     ) -> list[StepValue]: ...
 
+    @abstractmethod
     def query_time_window(
         self,
         metric_name: str,

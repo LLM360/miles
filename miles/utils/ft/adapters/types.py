@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Protocol, runtime_checkable
 
 from miles.utils.ft.agents.types import DiagnosticResult
 
@@ -15,8 +15,8 @@ from miles.utils.ft.agents.types import DiagnosticResult
 DIAGNOSTIC_TIMEOUT_SECONDS: int = 120
 
 
-@runtime_checkable
-class NodeAgentProtocol(Protocol):
+class NodeAgentProtocol(ABC):
+    @abstractmethod
     async def run_diagnostic(
         self,
         diagnostic_type: str,
@@ -25,10 +25,10 @@ class NodeAgentProtocol(Protocol):
     ) -> DiagnosticResult: ...
 
 
-@runtime_checkable
-class NodeExecutorProtocol(Protocol):
+class NodeExecutorProtocol(ABC):
     diagnostic_type: str
 
+    @abstractmethod
     async def run(
         self,
         node_id: str,
@@ -36,13 +36,13 @@ class NodeExecutorProtocol(Protocol):
     ) -> DiagnosticResult: ...
 
 
-@runtime_checkable
-class ClusterExecutorProtocol(Protocol):
+class ClusterExecutorProtocol(ABC):
     """Strategy for executing one diagnostic step within the pipeline.
 
     Returns bad_node_ids (empty if all healthy).
     """
 
+    @abstractmethod
     async def execute(
         self,
         agents: dict[str, NodeAgentProtocol],
@@ -57,14 +57,14 @@ class ClusterExecutorProtocol(Protocol):
 REGISTER_TIMEOUT_SECONDS: float = 10
 
 
-@runtime_checkable
-class ControllerClientProtocol(Protocol):
+class ControllerClientProtocol(ABC):
     """Agent-side interface for communicating with the FtController.
 
     Implementations hide the transport (Ray, in-process, stub) so that
     agent code never imports ray or calls .remote().
     """
 
+    @abstractmethod
     def register_training_rank(
         self,
         run_id: str,
@@ -76,6 +76,7 @@ class ControllerClientProtocol(Protocol):
         timeout_seconds: float = REGISTER_TIMEOUT_SECONDS,
     ) -> None: ...
 
+    @abstractmethod
     def log_step(
         self,
         run_id: str,
@@ -110,29 +111,34 @@ class JobStatus(str, Enum):
 STOP_TRAINING_TIMEOUT_SECONDS: int = 300
 
 
-@runtime_checkable
-class NodeManagerProtocol(Protocol):
+class NodeManagerProtocol(ABC):
+    @abstractmethod
     async def mark_node_bad(self, node_id: str, reason: str) -> None: ...
 
+    @abstractmethod
     async def unmark_node_bad(self, node_id: str) -> None: ...
 
+    @abstractmethod
     async def get_bad_nodes(self) -> list[str]: ...
 
 
-@runtime_checkable
-class TrainingJobProtocol(Protocol):
+class TrainingJobProtocol(ABC):
+    @abstractmethod
     async def stop_training(self, timeout_seconds: int = STOP_TRAINING_TIMEOUT_SECONDS) -> None: ...
 
+    @abstractmethod
     async def submit_training(
         self,
         excluded_node_ids: list[str] | None = None,
     ) -> str: ...
 
+    @abstractmethod
     async def get_training_status(self) -> JobStatus: ...
 
 
-@runtime_checkable
-class NotifierProtocol(Protocol):
+class NotifierProtocol(ABC):
+    @abstractmethod
     async def send(self, title: str, content: str, severity: str) -> None: ...
 
+    @abstractmethod
     async def aclose(self) -> None: ...
