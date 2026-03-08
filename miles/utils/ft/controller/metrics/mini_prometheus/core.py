@@ -4,15 +4,10 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-import polars as pl
-
-from miles.utils.ft.controller.metrics.aggregation_mixin import RangeAggregationMixin
-from miles.utils.ft.controller.metrics.mini_prometheus.query import SeriesKey, TimeSeriesSample
-from miles.utils.ft.controller.metrics.mini_prometheus.query import query_latest as _query_latest
-from miles.utils.ft.controller.metrics.mini_prometheus.query import query_range as _query_range
-from miles.utils.ft.controller.metrics.mini_prometheus.query import range_aggregate as _range_aggregate
+from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
+from miles.utils.ft.controller.metrics.mini_prometheus.query import SeriesKey
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
-from miles.utils.ft.models.metrics import GaugeSample, MetricSample
+from miles.utils.ft.models.metrics import MetricSample
 from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
 
 
@@ -22,12 +17,10 @@ class MiniPrometheusConfig:
     retention: timedelta = field(default_factory=lambda: timedelta(minutes=60))
 
 
-class MiniPrometheus(RangeAggregationMixin, MetricStoreProtocol, ScrapeTargetManagerProtocol):
+class MiniPrometheus(InMemoryMetricStore, MetricStoreProtocol, ScrapeTargetManagerProtocol):
     def __init__(self, config: MiniPrometheusConfig | None = None) -> None:
+        super().__init__()
         self._config = config or MiniPrometheusConfig()
-        self._series: dict[SeriesKey, deque[TimeSeriesSample]] = {}
-        self._label_maps: dict[SeriesKey, dict[str, str]] = {}
-        self._name_index: dict[str, set[SeriesKey]] = {}
         self._last_eviction_time: datetime | None = None
 
         self._scrape_loop = ScrapeLoop(
@@ -59,7 +52,7 @@ class MiniPrometheus(RangeAggregationMixin, MetricStoreProtocol, ScrapeTargetMan
         await self._scrape_loop.stop()
 
     # -------------------------------------------------------------------
-    # Data ingestion
+    # Data ingestion (extends base with eviction)
     # -------------------------------------------------------------------
 
     def ingest_samples(
@@ -68,57 +61,8 @@ class MiniPrometheus(RangeAggregationMixin, MetricStoreProtocol, ScrapeTargetMan
         samples: list[MetricSample],
         timestamp: datetime | None = None,
     ) -> None:
-        ts = timestamp or datetime.now(timezone.utc)
-        for sample in samples:
-            labels = dict(sample.labels)
-            labels.setdefault("node_id", target_id)
-            key: SeriesKey = (sample.name, frozenset(labels.items()))
-
-            if key not in self._series:
-                self._series[key] = deque()
-                self._label_maps[key] = labels
-                self._name_index.setdefault(sample.name, set()).add(key)
-
-            raw_value = sample.value if isinstance(sample, GaugeSample) else sample.delta
-            self._series[key].append(TimeSeriesSample(timestamp=ts, value=raw_value))
-
+        super().ingest_samples(target_id, samples, timestamp)
         self._maybe_evict()
-
-    # -------------------------------------------------------------------
-    # Query API (MetricStoreProtocol)
-    # -------------------------------------------------------------------
-
-    def query_latest(
-        self,
-        metric_name: str,
-        label_filters: dict[str, str] | None = None,
-    ) -> pl.DataFrame:
-        return _query_latest(self._series, self._label_maps, self._name_index, metric_name, label_filters)
-
-    def query_range(
-        self,
-        metric_name: str,
-        window: timedelta,
-        label_filters: dict[str, str] | None = None,
-    ) -> pl.DataFrame:
-        return _query_range(self._series, self._label_maps, self._name_index, metric_name, window, label_filters)
-
-    def _dispatch_range_function(
-        self,
-        func_name: str,
-        metric_name: str,
-        window: timedelta,
-        label_filters: dict[str, str] | None,
-    ) -> pl.DataFrame:
-        return _range_aggregate(
-            self._series,
-            self._label_maps,
-            self._name_index,
-            func_name,
-            metric_name,
-            window,
-            label_filters,
-        )
 
     @property
     def _scrape_targets(self) -> dict[str, str]:
