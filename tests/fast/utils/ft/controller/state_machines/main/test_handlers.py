@@ -12,9 +12,9 @@ from tests.fast.utils.ft.utils.controller_fakes import (
     FakeNotifier,
     FixedDecisionDetector,
 )
+from tests.fast.utils.ft.utils.metric_injectors import make_detector_context
 
 from miles.utils.ft.adapters.types import JobStatus
-from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.state_machines.main import (
     DetectingAnomaly,
@@ -34,19 +34,6 @@ from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
 
 def _make_stepper() -> StateMachineStepper:
     return create_main_stepper()
-
-
-def _make_detector_context(
-    rank_placement: dict[int, str] | None = None,
-) -> DetectorContext:
-    from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-
-    return DetectorContext(
-        metric_store=MiniPrometheus(config=MiniPrometheusConfig()),
-        mini_wandb=MiniWandb(),
-        rank_placement=rank_placement if rank_placement is not None else {0: "node-0"},
-        job_status=JobStatus.RUNNING,
-    )
 
 
 def _dummy_recovery_context_factory(trigger, recovery_start_time):
@@ -74,7 +61,13 @@ def _make_main_context(
         detector_context=(
             detector_context
             if detector_context is not None
-            else (_make_detector_context(rank_placement=rank_placement) if should_run_detectors else None)
+            else (
+                make_detector_context(
+                    rank_placement=rank_placement if rank_placement is not None else {0: "node-0"},
+                )
+                if should_run_detectors
+                else None
+            )
         ),
         notifier=notifier,
         detectors=detectors or [],
