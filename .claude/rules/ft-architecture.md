@@ -16,6 +16,7 @@ From top to bottom: `cli` > `factories` > `adapters` > `controller`, `agents` > 
 
 Each layer may only import from layers below it.
 Exception: `controller` and `agents` may import `adapters/types.py` (the boundary contract — cross-layer protocols and constants).
+`controller` and `agents` are peers and may import each other's type definitions.
 
 ### Error-as-Empty — FORBIDDEN on safety-critical paths
 
