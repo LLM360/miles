@@ -6,7 +6,6 @@ import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
-from miles.utils.ft.models.fault import TriggerType
 from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, NotificationProtocol, TrainingJobProtocol
 from miles.utils.ft.utils.graceful_degrade import graceful_degrade
 from miles.utils.ft.utils.retry import RetryResult, retry_async
@@ -82,21 +81,20 @@ async def safe_notify(
 class SlidingWindowThrottle:
     """Tracks total recovery frequency and throttles when a limit is exceeded.
 
-    Within a sliding window of ``window_minutes``, if **any** combination of
-    triggers fires ``max_count`` or more times, ``is_throttled`` returns True.
-    The trigger type is still recorded for observability but does not partition
-    the count — a recovery storm should be throttled regardless of fault mix.
+    Within a sliding window of ``window_minutes``, if ``max_count`` or more
+    recoveries have been recorded, ``is_throttled`` returns True — regardless
+    of fault type.
     """
 
     def __init__(self, window_minutes: float, max_count: int) -> None:
         self._window_minutes = window_minutes
         self._max_count = max_count
-        self._history: list[tuple[TriggerType, datetime]] = []
+        self._history: list[datetime] = []
 
-    def record(self, trigger: TriggerType) -> None:
-        self._history.append((trigger, datetime.now(timezone.utc)))
+    def record(self) -> None:
+        self._history.append(datetime.now(timezone.utc))
 
-    def is_throttled(self, trigger: TriggerType) -> bool:
+    def is_throttled(self) -> bool:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=self._window_minutes)
-        recent_count = sum(1 for _, ts in self._history if ts >= cutoff)
+        recent_count = sum(1 for ts in self._history if ts >= cutoff)
         return recent_count >= self._max_count

@@ -15,8 +15,8 @@ class DetectingAnomalyHandler:
         if decision is None:
             return None
 
-        ctx.cooldown.record(decision.trigger)
-        if ctx.cooldown.is_throttled(decision.trigger):
+        ctx.cooldown.record()
+        if ctx.cooldown.is_throttled():
             await handle_notify_human(
                 decision=Decision(
                     action=ActionType.NOTIFY_HUMAN,

@@ -133,7 +133,7 @@ class TestDetectingAnomaly:
     async def test_cooldown_throttle_sends_notify(self) -> None:
         notifier = FakeNotifier()
         cooldown = SlidingWindowThrottle(window_minutes=30.0, max_count=1)
-        cooldown.record(TriggerType.CRASH)
+        cooldown.record()
 
         stepper = _make_stepper()
         result = await stepper(
