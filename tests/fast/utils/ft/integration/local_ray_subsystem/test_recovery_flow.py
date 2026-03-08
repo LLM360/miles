@@ -117,8 +117,10 @@ class TestRecoveryPhaseHistoryRecorded:
         _poll_until(_recovery_done_or_monitoring, timeout=20)
 
         status = get_status(handle)
-        if status.phase_history:
-            assert len(status.phase_history) > 0
+        assert status.phase_history is not None, "phase_history should be populated after recovery"
+        assert any("Recovery" in p or "Done" in p for p in status.phase_history), (
+            f"phase_history should contain recovery phases, got: {status.phase_history}"
+        )
 
 
 class TestStatusDuringRecovery:

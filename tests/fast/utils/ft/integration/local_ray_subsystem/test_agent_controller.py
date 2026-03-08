@@ -229,4 +229,4 @@ class TestInFlightMessagesDuringRunSwitch:
 
         status = get_status(handle)
         assert status.active_run_id is not None
-        assert isinstance(status.mode, ControllerMode)
+        assert status.mode == ControllerMode.MONITORING

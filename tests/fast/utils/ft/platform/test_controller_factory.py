@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.platform.config import FtControllerConfig
 from miles.utils.ft.platform.controller_factory import build_ft_controller
 
@@ -41,6 +42,7 @@ class TestBuildFtControllerStub:
             start_exporter=False,
         )
         assert controller is not None
+        assert isinstance(controller, FtController)
 
     def test_start_exporter_false_skips_exporter_start(self) -> None:
         controller = build_ft_controller(
@@ -48,6 +50,7 @@ class TestBuildFtControllerStub:
             start_exporter=False,
         )
         assert controller._controller_exporter is not None
+        assert controller._controller_exporter._httpd is None, "exporter should not have been started"
 
     def test_kwargs_forwarded_to_config(self) -> None:
         controller = build_ft_controller(
@@ -74,6 +77,7 @@ class TestBuildFtControllerStub:
             start_exporter=False,
         )
         assert controller is not None
+        assert isinstance(controller, FtController)
 
 
 class TestBuildFtControllerNotifier:

@@ -84,6 +84,8 @@ class TestConcurrentRegistration:
         status = get_status(env.controller)
         assert status.latest_iteration is not None
         assert status.latest_iteration > 0
+        assert status.active_run_id is not None, "all ranks should have registered under a run"
+        assert status.mode == ControllerMode.MONITORING
 
 
 class TestRegistrationGrace:

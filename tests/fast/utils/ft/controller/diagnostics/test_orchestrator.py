@@ -99,7 +99,6 @@ class TestDiagnosticOrchestratorSingleStep:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuClusterExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
         assert "node-0" not in decision.bad_node_ids
 
@@ -114,7 +113,6 @@ class TestDiagnosticOrchestratorSingleStep:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuClusterExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
 
 
@@ -133,7 +131,6 @@ class TestDiagnosticOrchestratorMultiStep:
         )
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert decision.bad_node_ids == ["node-0"]
 
     @pytest.mark.anyio
@@ -150,7 +147,6 @@ class TestDiagnosticOrchestratorMultiStep:
         )
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert decision.bad_node_ids == ["node-1"]
 
     @pytest.mark.anyio
@@ -189,7 +185,6 @@ class TestDiagnosticOrchestratorErrorHandling:
         orchestrator = DiagnosticOrchestrator(agents=agents, pipeline=[GpuClusterExecutor()])
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
 
     @pytest.mark.anyio
@@ -234,7 +229,6 @@ class TestDiagnosticOrchestratorInterMachine:
         )
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert "node-0" in decision.bad_node_ids
 
     @pytest.mark.anyio
@@ -325,7 +319,6 @@ class TestDiagnosticOrchestratorInterMachine:
         )
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert "node-1" in decision.bad_node_ids
 
 
@@ -365,7 +358,6 @@ class TestDiagnosticOrchestratorLiveAgents:
             decision = await orchestrator.run_diagnostic_pipeline()
             # node-1 has diagnostic_type="failing", not "stub",
             # so it gets "unknown diagnostic type" → treated as fail
-            assert len(decision.bad_node_ids) > 0
             assert "node-1" in decision.bad_node_ids
         finally:
             await agent0.stop()
@@ -439,7 +431,6 @@ class TestAgentRpcHang:
 
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert "node-hang" in decision.bad_node_ids
         assert "node-0" not in decision.bad_node_ids
 
@@ -461,7 +452,6 @@ class TestAgentRpcHang:
 
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert "node-hang" in decision.bad_node_ids
         assert "node-0" not in decision.bad_node_ids
         assert "node-1" not in decision.bad_node_ids
@@ -480,7 +470,6 @@ class TestAgentRpcHang:
 
         decision = await orchestrator.run_diagnostic_pipeline()
 
-        assert len(decision.bad_node_ids) > 0
         assert sorted(decision.bad_node_ids) == ["node-0", "node-1"]
 
 

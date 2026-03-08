@@ -121,8 +121,9 @@ class TestHeartbeatScrape:
             await harness.metric_store.scrape_once()
 
             result = harness.metric_store.query_latest("miles_ft_agent_heartbeat")
-            assert len(result) > 0
+            assert len(result) == 1, f"expected exactly 1 heartbeat series, got {len(result)}"
             row = result.row(0, named=True)
+            assert row["__name__"] == "miles_ft_agent_heartbeat"
             assert row["value"] >= 1.0
         finally:
             agent.shutdown()
