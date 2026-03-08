@@ -17,6 +17,8 @@ from miles.utils.ft.controller.main_state_machine import Recovering
 from miles.utils.ft.controller.main_state_machine.utils import run_detectors
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
+_TEST_RANK_PLACEMENT: dict[int, str] = {0: "node-0", 1: "node-1"}
+
 
 async def _raise_runtime_error(*_args: object, **_kwargs: object) -> None:
     raise RuntimeError("notifier broken")
@@ -33,7 +35,10 @@ class TestTickEmptyDetectorChain:
     async def test_tick_returns_none_decision(self) -> None:
         harness = make_test_controller()
         await harness.controller._tick()
-        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        ctx = make_detector_context(
+            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            rank_placement=_TEST_RANK_PLACEMENT,
+        )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
         assert decision.action == ActionType.NONE
 
@@ -46,7 +51,10 @@ class TestDetectorChain:
             detectors=[none_detector, bad_detector],
         )
 
-        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        ctx = make_detector_context(
+            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            rank_placement=_TEST_RANK_PLACEMENT,
+        )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
         assert decision.action == ActionType.ENTER_RECOVERY
         assert none_detector.call_count == 1
@@ -59,7 +67,10 @@ class TestDetectorChain:
             detectors=[bad_detector, trailing_detector],
         )
 
-        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        ctx = make_detector_context(
+            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            rank_placement=_TEST_RANK_PLACEMENT,
+        )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
         assert decision.action == ActionType.ENTER_RECOVERY
         assert bad_detector.call_count == 1
@@ -72,7 +83,10 @@ class TestDetectorExceptionIsolation:
         good = AlwaysMarkBadDetector()
         harness = make_test_controller(detectors=[crashing, good])
 
-        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        ctx = make_detector_context(
+            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            rank_placement=_TEST_RANK_PLACEMENT,
+        )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
 
         assert crashing.call_count == 1
@@ -84,7 +98,10 @@ class TestDetectorExceptionIsolation:
         d2 = CrashingDetector()
         harness = make_test_controller(detectors=[d1, d2])
 
-        ctx = make_detector_context(metric_store=harness.metric_store, mini_wandb=harness.mini_wandb)
+        ctx = make_detector_context(
+            metric_store=harness.metric_store, mini_wandb=harness.mini_wandb,
+            rank_placement=_TEST_RANK_PLACEMENT,
+        )
         decision = run_detectors(detectors=harness.controller._detectors, ctx=ctx)
 
         assert d1.call_count == 1

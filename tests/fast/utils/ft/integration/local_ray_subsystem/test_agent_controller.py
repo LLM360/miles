@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -13,7 +12,7 @@ from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 
 from miles.utils.ft.agents.core.tracking_agent import FtTrackingAgent
 from miles.utils.ft.agents.core.training_rank_agent import FtTrainingRankAgent
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.platform.ray_wrappers.controller_client import RayControllerClient
@@ -29,14 +28,13 @@ class _OneShotCrashDetector(BaseFaultDetector):
     def __init__(self) -> None:
         self._fired = False
 
-    def evaluate(self, ctx: Any) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         if not self._fired:
             self._fired = True
             return Decision(
                 action=ActionType.ENTER_RECOVERY,
                 reason="one-shot crash for test",
                 trigger=TriggerType.CRASH,
-                bad_node_ids=["fake-bad-node"],
             )
         return Decision(action=ActionType.NONE, reason="no fault")
 

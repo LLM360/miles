@@ -16,9 +16,9 @@ class TestBaseFaultDetector:
         with pytest.raises(TypeError):
             _IncompleteDetector()  # type: ignore[abstract]
 
-    def test_subclass_with_evaluate_can_be_instantiated(self) -> None:
+    def test_subclass_with_evaluate_raw_can_be_instantiated(self) -> None:
         class _CompleteDetector(BaseFaultDetector):
-            def evaluate(self, ctx: DetectorContext) -> Decision:
+            def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
                 return Decision(action=ActionType.NONE, reason="test")
 
         detector = _CompleteDetector()

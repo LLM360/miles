@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from tests.fast.utils.ft.conftest import FixedDecisionDetector, make_test_controller
+from tests.fast.utils.ft.conftest import AlwaysNoneDetector, FixedDecisionDetector, make_test_controller
 
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 
@@ -9,14 +9,7 @@ from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 class TestRegistrationGuardNoRanks:
     @pytest.mark.anyio
     async def test_detectors_skipped_when_no_ranks_registered(self) -> None:
-        detector = FixedDecisionDetector(
-            decision=Decision(
-                action=ActionType.ENTER_RECOVERY,
-                bad_node_ids=["node-0"],
-                reason="should not fire",
-                trigger=TriggerType.CRASH,
-            )
-        )
+        detector = AlwaysNoneDetector()
         harness = make_test_controller(
             detectors=[detector],
             registration_grace_ticks=0,
@@ -30,14 +23,7 @@ class TestRegistrationGuardNoRanks:
 
     @pytest.mark.anyio
     async def test_detectors_run_when_ranks_registered(self) -> None:
-        detector = FixedDecisionDetector(
-            decision=Decision(
-                action=ActionType.ENTER_RECOVERY,
-                bad_node_ids=["node-0"],
-                reason="fault",
-                trigger=TriggerType.CRASH,
-            )
-        )
+        detector = AlwaysNoneDetector()
         harness = make_test_controller(
             detectors=[detector],
             registration_grace_ticks=0,
@@ -60,14 +46,7 @@ class TestRegistrationGuardNoRanks:
 class TestRegistrationGraceTicks:
     @pytest.mark.anyio
     async def test_detectors_skipped_during_grace_period(self) -> None:
-        detector = FixedDecisionDetector(
-            decision=Decision(
-                action=ActionType.ENTER_RECOVERY,
-                bad_node_ids=["node-0"],
-                reason="fault",
-                trigger=TriggerType.CRASH,
-            )
-        )
+        detector = AlwaysNoneDetector()
         harness = make_test_controller(
             detectors=[detector],
             registration_grace_ticks=3,
@@ -89,14 +68,7 @@ class TestRegistrationGraceTicks:
 
     @pytest.mark.anyio
     async def test_detectors_run_after_grace_period(self) -> None:
-        detector = FixedDecisionDetector(
-            decision=Decision(
-                action=ActionType.ENTER_RECOVERY,
-                bad_node_ids=["node-0"],
-                reason="fault",
-                trigger=TriggerType.CRASH,
-            )
-        )
+        detector = AlwaysNoneDetector()
         harness = make_test_controller(
             detectors=[detector],
             registration_grace_ticks=2,

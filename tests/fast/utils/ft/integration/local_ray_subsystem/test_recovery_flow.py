@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any
-
 import pytest
 import ray
 from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 
-from miles.utils.ft.controller.detectors.base import BaseFaultDetector
+from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
 from miles.utils.ft.models.recovery import ControllerMode
 from miles.utils.ft.protocols.platform import ft_controller_actor_name
@@ -23,12 +21,11 @@ pytestmark = [
 class _AlwaysCrashDetector(BaseFaultDetector):
     """Detector that fires ENTER_RECOVERY on every evaluation."""
 
-    def evaluate(self, ctx: Any) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         return Decision(
             action=ActionType.ENTER_RECOVERY,
             reason="injected crash for test",
             trigger=TriggerType.CRASH,
-            bad_node_ids=["fake-bad-node"],
         )
 
 
@@ -38,14 +35,13 @@ class _OneShotCrashDetector(BaseFaultDetector):
     def __init__(self) -> None:
         self._fired = False
 
-    def evaluate(self, ctx: Any) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         if not self._fired:
             self._fired = True
             return Decision(
                 action=ActionType.ENTER_RECOVERY,
                 reason="one-shot crash for test",
                 trigger=TriggerType.CRASH,
-                bad_node_ids=["fake-bad-node"],
             )
         return Decision(action=ActionType.NONE, reason="no fault")
 
