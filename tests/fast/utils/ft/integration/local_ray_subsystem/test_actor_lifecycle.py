@@ -95,7 +95,7 @@ class TestDuplicateActorName:
         controller_actor: ray.actor.ActorHandle,
     ) -> None:
         name = ft_controller_actor_name("")
-        with pytest.raises(Exception):  # noqa: B017
+        with pytest.raises(ValueError):
             FtControllerActor.options(name=name).remote(
                 config=FtControllerConfig(platform="stub"),
             )

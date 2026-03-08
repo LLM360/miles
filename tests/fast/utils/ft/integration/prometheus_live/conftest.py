@@ -38,6 +38,7 @@ _BINARY_PATH = _BINARY_DIR / "prometheus"
 
 _STARTUP_TIMEOUT_SECONDS = 15
 _DOWNLOAD_TIMEOUT_SECONDS = 120
+_PORT_BIND_RETRIES = 5
 
 
 # ---------------------------------------------------------------------------
@@ -235,8 +236,17 @@ def prometheus_binary() -> Path:
 @pytest.fixture(scope="module")
 def dynamic_exporter() -> Iterator[DynamicExporter]:
     registry = CollectorRegistry()
-    port = _find_free_port()
-    httpd, _thread = start_http_server(port=port, registry=registry)
+    for attempt in range(_PORT_BIND_RETRIES):
+        port = _find_free_port()
+        try:
+            httpd, _thread = start_http_server(port=port, registry=registry)
+            break
+        except OSError:
+            if attempt == _PORT_BIND_RETRIES - 1:
+                raise
+            logger.warning("Port %d already in use, retrying with a new port", port)
+    else:
+        raise OSError("Failed to bind exporter HTTP server after retries")
 
     yield DynamicExporter(registry=registry, port=port)
 
@@ -250,7 +260,6 @@ def prometheus_server(
     dynamic_exporter: DynamicExporter,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[str]:
-    prom_port = _find_free_port()
     data_dir = tmp_path_factory.mktemp("prom_data")
 
     config_path = data_dir / "prometheus.yml"
@@ -267,26 +276,34 @@ scrape_configs:
 """
     )
 
-    proc = subprocess.Popen(
-        [
-            str(prometheus_binary),
-            f"--config.file={config_path}",
-            f"--storage.tsdb.path={data_dir / 'tsdb'}",
-            f"--web.listen-address=127.0.0.1:{prom_port}",
-            "--storage.tsdb.retention.time=5m",
-            "--log.level=warn",
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    proc = None
+    prom_url = ""
+    for attempt in range(_PORT_BIND_RETRIES):
+        prom_port = _find_free_port()
+        proc = subprocess.Popen(
+            [
+                str(prometheus_binary),
+                f"--config.file={config_path}",
+                f"--storage.tsdb.path={data_dir / 'tsdb'}",
+                f"--web.listen-address=127.0.0.1:{prom_port}",
+                "--storage.tsdb.retention.time=5m",
+                "--log.level=warn",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
-    prom_url = f"http://127.0.0.1:{prom_port}"
-    try:
-        _wait_for_prometheus(prom_url)
-    except TimeoutError:
-        proc.terminate()
-        proc.wait(timeout=5)
-        raise
+        prom_url = f"http://127.0.0.1:{prom_port}"
+        try:
+            _wait_for_prometheus(prom_url)
+            break
+        except TimeoutError:
+            proc.terminate()
+            proc.wait(timeout=5)
+            if attempt == _PORT_BIND_RETRIES - 1:
+                raise
+            logger.warning("Prometheus failed to start on port %d, retrying", prom_port)
+    assert proc is not None
 
     yield prom_url
 

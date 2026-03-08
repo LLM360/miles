@@ -4,4 +4,43 @@ Test files import helpers via ``from tests.fast.utils.ft.conftest import ...``.
 The actual implementations live in ``tests.fast.utils.ft.utils``.
 """
 
-from tests.fast.utils.ft.utils import *  # noqa: F401,F403
+from tests.fast.utils.ft.utils.agent_fakes import (  # noqa: F401
+    FakeKmsgReader,
+    TestCollector,
+    create_sysfs_interface,
+    make_mock_pynvml,
+)
+from tests.fast.utils.ft.utils.controller_fakes import (  # noqa: F401
+    AlwaysEnterRecoveryDetector,
+    AlwaysMarkBadDetector,
+    AlwaysNoneDetector,
+    ControllerTestHarness,
+    CrashingDetector,
+    FakeNodeManager,
+    FakeNotifier,
+    FakeTrainingJob,
+    FixedDecisionDetector,
+    make_failing_training_job,
+    make_test_controller,
+    run_controller_briefly,
+)
+from tests.fast.utils.ft.utils.diagnostic_fakes import (  # noqa: F401
+    FakeDiagnosticOrchestrator,
+    FakeNodeAgent,
+    HangingNodeAgent,
+    SlowDiagnostic,
+    StubDiagnostic,
+    make_fake_agents,
+)
+from tests.fast.utils.ft.utils.metric_injectors import (  # noqa: F401
+    get_sample_value,
+    inject_disk_fault,
+    inject_healthy_node,
+    inject_nic_down,
+    inject_nic_up,
+    make_detector_context,
+    make_fake_metric_store,
+    make_fake_mini_wandb,
+    make_metric,
+    make_test_exporter,
+)
