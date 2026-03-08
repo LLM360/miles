@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from miles.utils.ft.agents.types import MetricSample
+from miles.utils.ft.controller.metrics.mini_prometheus.eviction import RetentionEvictor
 from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
-from miles.utils.ft.controller.metrics.mini_prometheus.query import SeriesKey
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
 from miles.utils.ft.controller.types import MetricStoreProtocol, ScrapeTargetManagerProtocol
 
@@ -20,7 +20,7 @@ class MiniPrometheus(InMemoryMetricStore, MetricStoreProtocol, ScrapeTargetManag
     def __init__(self, config: MiniPrometheusConfig | None = None) -> None:
         super().__init__()
         self._config = config or MiniPrometheusConfig()
-        self._last_eviction_time: datetime | None = None
+        self._evictor = RetentionEvictor(store=self, retention=self._config.retention)
 
         self._scrape_loop = ScrapeLoop(
             store=self,
@@ -61,40 +61,8 @@ class MiniPrometheus(InMemoryMetricStore, MetricStoreProtocol, ScrapeTargetManag
         timestamp: datetime | None = None,
     ) -> None:
         super().ingest_samples(target_id, samples, timestamp)
-        self._maybe_evict()
+        self._evictor.maybe_evict()
 
     @property
     def _scrape_targets(self) -> dict[str, str]:
         return self._scrape_loop.targets
-
-    # -------------------------------------------------------------------
-    # Internal: eviction
-    # -------------------------------------------------------------------
-
-    def _maybe_evict(self) -> None:
-        now = datetime.now(timezone.utc)
-        evict_interval = self._config.retention / 10
-        if self._last_eviction_time is not None and now - self._last_eviction_time < evict_interval:
-            return
-        self._last_eviction_time = now
-        self._evict_expired()
-
-    def _evict_expired(self) -> None:
-        cutoff = datetime.now(timezone.utc) - self._config.retention
-        empty_keys: list[SeriesKey] = []
-
-        for key, samples in self._series.items():
-            while samples and samples[0].timestamp < cutoff:
-                samples.popleft()
-            if not samples:
-                empty_keys.append(key)
-
-        for key in empty_keys:
-            metric_name, _ = key
-            del self._series[key]
-            self._label_maps.pop(key, None)
-            index_set = self._name_index.get(metric_name)
-            if index_set is not None:
-                index_set.discard(key)
-                if not index_set:
-                    del self._name_index[metric_name]
