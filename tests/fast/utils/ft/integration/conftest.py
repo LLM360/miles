@@ -45,8 +45,26 @@ def local_ray() -> Generator[None, None, None]:
 def local_ray_with_dashboard() -> Generator[str, None, None]:
     _, url = _init_local_ray(include_dashboard=True)
     assert url is not None
+    _wait_for_dashboard_agent(url)
     yield url
     ray.shutdown()
+
+
+def _wait_for_dashboard_agent(dashboard_url: str, timeout: float = 30.0) -> None:
+    """Poll the Ray dashboard until the job agent is ready to accept submissions."""
+    import urllib.request
+
+    agent_url = f"{dashboard_url}/api/jobs/"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(agent_url, timeout=2) as resp:
+                if resp.status == 200:
+                    return
+        except Exception:
+            pass
+        time.sleep(0.5)
+    logger.warning("Dashboard agent not ready after %.0fs", timeout)
 
 
 def _kill_named_actor(name: str) -> None:

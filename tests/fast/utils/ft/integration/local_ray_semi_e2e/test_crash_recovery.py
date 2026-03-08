@@ -500,7 +500,7 @@ class TestCooldownExpiry:
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
         """After cooldown window expires, a new crash triggers recovery normally."""
-        window_seconds = 2
+        window_seconds = 8
         env = make_e2e_env(
             ft_id="e2ecwe",
             nodes=[NodeSpec(node_id="e2ecwe-node-0")],

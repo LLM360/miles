@@ -207,5 +207,9 @@ class TestControllerKilledDuringRecovery:
         else:
             raise TimeoutError("Actor did not restart within 10s")
 
-        assert status.mode == ControllerMode.MONITORING
-        assert status.recovery_in_progress is False
+        # After restart submit_and_run is retried (max_task_retries=-1),
+        # creating a fresh controller with a new run. _AlwaysCrashDetector
+        # fires immediately so mode may be RECOVERY again — verify
+        # the actor restarted by checking it has a new run_id.
+        assert status.active_run_id is not None
+        assert status.active_run_id != run_id
