@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from miles.utils.ft.platform.launcher import app
+from miles.utils.ft.cli import app
 from miles.utils.ft.platform.notifiers.discord_notifier import DiscordWebhookNotifier
 from miles.utils.ft.platform.notifiers.factory import build_notifier
 from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
@@ -25,8 +25,8 @@ def _patch_build_and_run() -> Generator[tuple[MagicMock, MagicMock], None, None]
     mock_actor_instance.submit_and_run.remote.return_value = MagicMock()
 
     with (
-        patch("miles.utils.ft.platform.launcher.FtControllerActor", mock_actor_cls),
-        patch("miles.utils.ft.platform.launcher.ray") as mock_ray,
+        patch("miles.utils.ft.cli.launch.FtControllerActor", mock_actor_cls),
+        patch("miles.utils.ft.cli.launch.ray") as mock_ray,
     ):
         yield mock_actor_cls, mock_ray
 
@@ -55,7 +55,7 @@ class TestLauncherCli:
         ],
     )
     def test_help_includes_option(self, expected_text: str) -> None:
-        result = runner.invoke(app, ["--help"])
+        result = runner.invoke(app, ["launch", "--help"])
         assert result.exit_code == 0
         assert expected_text in result.output
 
@@ -130,7 +130,7 @@ class TestBuildNotifier:
 class TestLauncherSubmitAndRun:
     def test_inline_mode_calls_submit_and_run(self) -> None:
         with _patch_build_and_run() as (mock_actor_cls, mock_ray):
-            result = runner.invoke(app, ["--platform", "stub", "--", "python3", "train.py"])
+            result = runner.invoke(app, ["launch", "--platform", "stub", "--", "python3", "train.py"])
 
         assert result.exit_code == 0, result.output
         mock_ray.get.assert_called_once()
@@ -140,6 +140,7 @@ class TestLauncherSubmitAndRun:
             result = runner.invoke(
                 app,
                 [
+                    "launch",
                     "--platform",
                     "stub",
                     "--",
@@ -161,6 +162,7 @@ class TestLauncherSubmitAndRun:
             result = runner.invoke(
                 app,
                 [
+                    "launch",
                     "--platform",
                     "stub",
                     "--ft-id",
@@ -183,6 +185,7 @@ class TestLauncherSubmitAndRun:
             result = runner.invoke(
                 app,
                 [
+                    "launch",
                     "--platform",
                     "stub",
                     "--notify-webhook-url",
@@ -206,6 +209,7 @@ class TestLauncherSubmitAndRun:
             result = runner.invoke(
                 app,
                 [
+                    "launch",
                     "--platform",
                     "stub",
                     "--runtime-env-json",
@@ -226,6 +230,7 @@ class TestLauncherInvalidInput:
         result = runner.invoke(
             app,
             [
+                "launch",
                 "--platform",
                 "stub",
                 "--runtime-env-json",
@@ -239,7 +244,7 @@ class TestLauncherInvalidInput:
 
     def test_empty_entrypoint_produces_empty_string(self) -> None:
         with _patch_build_and_run() as (mock_actor_cls, _):
-            result = runner.invoke(app, ["--platform", "stub"])
+            result = runner.invoke(app, ["launch", "--platform", "stub"])
 
         assert result.exit_code == 0, result.output
         config = mock_actor_cls.options.return_value.remote.call_args.kwargs["config"]
@@ -250,7 +255,7 @@ class TestLauncherWiring:
     def test_main_creates_actor_with_config(self) -> None:
         """Verify launcher creates FtControllerActor with a valid config."""
         with _patch_build_and_run() as (mock_actor_cls, _):
-            result = runner.invoke(app, ["--platform", "stub", "--", "python3", "train.py"])
+            result = runner.invoke(app, ["launch", "--platform", "stub", "--", "python3", "train.py"])
 
         assert result.exit_code == 0, result.output
         mock_actor_cls.options.assert_called_once()

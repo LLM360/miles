@@ -186,7 +186,7 @@ def execute_train(
             f"export no_proxy=127.0.0.1 && export PYTHONBUFFERED=16 && "
             f"{cmd_megatron_model_source}"
             f'ray job submit --address="http://127.0.0.1:8265" '
-            f"{'-- python -m miles.utils.ft.launcher ' if config.full_fault_tolerance else ''}"
+            f"{'-- python -m miles.utils.ft launch ' if config.full_fault_tolerance else ''}"
             f"--runtime-env-json='{runtime_env_json}' "
             f"-- python3 {train_script} "
             f"{'${MODEL_ARGS[@]}' if megatron_model_type is not None else ''} "

@@ -18,8 +18,6 @@ from miles.utils.logging_utils import configure_logger
 
 logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-
 
 def _parse_detector_config(raw: str) -> DetectorChainConfig:
     """Parse detector config from a JSON string or @filepath reference."""
@@ -28,10 +26,7 @@ def _parse_detector_config(raw: str) -> DetectorChainConfig:
     return DetectorChainConfig.model_validate_json(raw)
 
 
-@app.command(
-    context_settings={"allow_extra_args": True, "allow_interspersed_args": False},
-)
-def main(
+def launch(
     ctx: typer.Context,
     ft_id: Annotated[
         str, typer.Option(help="FT instance ID for multi-instance isolation (auto-generated if empty)")
@@ -67,7 +62,7 @@ def main(
     command (passed after --) as a Ray job, and blocks until the
     controller loop finishes.
 
-    Usage: python -m miles.utils.ft.launcher [OPTIONS] -- COMMAND...
+    Usage: python -m miles.utils.ft launch [OPTIONS] -- COMMAND...
     """
     configure_logger()
 
@@ -104,7 +99,3 @@ def main(
 
     actor = FtControllerActor.options(name=actor_name).remote(config=config)
     ray.get(actor.submit_and_run.remote())
-
-
-if __name__ == "__main__":
-    app()
