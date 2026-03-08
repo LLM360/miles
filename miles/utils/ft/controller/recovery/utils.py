@@ -50,6 +50,7 @@ async def stop_and_submit(
     return True
 
 
+# Should not gracefully degrade here - let callers handle
 async def get_already_bad_nodes(node_manager: NodeManagerProtocol) -> set[str]:
     return set(await node_manager.get_bad_nodes())
 
