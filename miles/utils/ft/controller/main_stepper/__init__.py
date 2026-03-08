@@ -1,5 +1,4 @@
-from miles.utils.ft.controller.main_stepper.detecting_handler import DetectingAnomalyHandler
-from miles.utils.ft.controller.main_stepper.recovering_handler import RecoveringHandler
+from miles.utils.ft.controller.main_stepper.handlers import DetectingAnomalyHandler, RecoveringHandler
 from miles.utils.ft.controller.main_stepper.states import DetectingAnomaly, MainState, Recovering
 from miles.utils.ft.controller.main_stepper.utils import MainContext, get_known_bad_nodes
 from miles.utils.ft.utils.state_machine import StateMachineStepper
