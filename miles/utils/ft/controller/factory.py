@@ -25,7 +25,7 @@ from miles.utils.ft.controller.state_machines.recovery import (
     create_recovery_stepper,
 )
 from miles.utils.ft.controller.state_machines.restart import RestartContext, create_restart_stepper
-from miles.utils.ft.controller.tick import TickLoop
+from miles.utils.ft.controller.tick_loop import TickLoop
 from miles.utils.ft.controller.types import (
     DiagnosticOrchestratorProtocol,
     MetricQueryProtocol,

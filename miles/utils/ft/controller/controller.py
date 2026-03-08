@@ -14,7 +14,7 @@ from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.rank_roster import RankRoster
 from miles.utils.ft.controller.state_machines.main import MainContext, MainState
 from miles.utils.ft.controller.status import build_controller_status
-from miles.utils.ft.controller.tick import TickLoop
+from miles.utils.ft.controller.tick_loop import TickLoop
 from miles.utils.ft.controller.types import (
     ControllerStatus,
     MetricStoreProtocol,
