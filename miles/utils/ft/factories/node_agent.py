@@ -29,7 +29,7 @@ DEFAULT_NUM_GPUS: int = 8
 DEFAULT_COLLECT_INTERVAL_SECONDS: float = 10.0
 
 
-def build_default_collectors() -> list[GpuCollector | KmsgCollector | NetworkCollector | DiskCollector]:
+def build_default_collectors() -> list[BaseCollector]:
     return [GpuCollector(), KmsgCollector(), NetworkCollector(), DiskCollector()]
 
 
