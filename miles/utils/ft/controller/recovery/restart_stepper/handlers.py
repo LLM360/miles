@@ -78,6 +78,7 @@ class EvictingHandler:
         try:
             already_bad = await get_already_bad_nodes(ctx.node_manager)
         except Exception:
+            # mark_node_bad is idempotent, so re-marking is harmless
             logger.warning("get_already_bad_nodes_failed, proceeding with empty set", exc_info=True)
             already_bad = set()
 
