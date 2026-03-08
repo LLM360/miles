@@ -558,6 +558,7 @@ class TestFalsePositiveGuard:
             nodes=[NodeSpec(node_id=f"e2efpg-node-{i}", use_remote_collector=True) for i in range(4)],
             detectors=build_detector_chain(),
             scrape_interval_seconds=0.5,
+            tick_interval=1.0,
             max_simultaneous_bad_nodes=3,
             use_notifier=True,
         )
@@ -578,9 +579,14 @@ class TestFalsePositiveGuard:
                 ],
             )
 
-        # Step 2: wait for scrape cycles, then verify no recovery
+        # Step 2: wait for metrics to propagate through scrape pipeline
+        # (collect_interval=0.3s + scrape_interval=0.5s + margin) before
+        # the next detector evaluation (tick_interval=1.0s).
+        await asyncio.sleep(1.5)
+
+        # Step 3: verify no recovery triggered — all 3 bad nodes seen at once
         await scenario_no_false_positive(
             env.controller,
-            observation_ticks=20,
+            observation_ticks=10,
             timeout=FAST_TIMEOUT,
         )
