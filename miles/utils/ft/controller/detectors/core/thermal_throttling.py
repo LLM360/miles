@@ -27,7 +27,7 @@ class ThermalThrottlingDetector(BaseFaultDetector):
     def __init__(self, config: ThermalThrottlingDetectorConfig | None = None) -> None:
         self._config = config or ThermalThrottlingDetectorConfig()
 
-    def evaluate(self, ctx: DetectorContext) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         hot_node_id = _find_temperature_outlier(
             metric_store=ctx.metric_store,
             rank_placement=ctx.rank_placement,

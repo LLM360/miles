@@ -24,7 +24,7 @@ class MfuDeclineDetector(BaseFaultDetector):
     def __init__(self, config: MfuDeclineDetectorConfig | None = None) -> None:
         self._config = config or MfuDeclineDetectorConfig()
 
-    def evaluate(self, ctx: DetectorContext) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         cfg = self._config
 
         mfu = check_mfu_health(

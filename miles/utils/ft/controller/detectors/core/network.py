@@ -30,14 +30,12 @@ class NetworkAlertDetectorConfig(FtBaseModel):
 
 
 class NetworkAlertDetector(BaseFaultDetector):
-    is_critical = True
-
     def __init__(self, config: NetworkAlertDetectorConfig | None = None) -> None:
         self._config = config or NetworkAlertDetectorConfig()
         self._alert_window = timedelta(minutes=self._config.alert_window_minutes)
         self._alert_threshold = self._config.alert_threshold
 
-    def evaluate(self, ctx: DetectorContext) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         faults = check_nic_down_in_window(
             ctx.metric_store,
             window=self._alert_window,

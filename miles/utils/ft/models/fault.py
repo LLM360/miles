@@ -55,9 +55,13 @@ class Decision(FtBaseModel):
         if not faults:
             return cls(action=ActionType.NONE, reason=fallback_reason)
 
+        non_ephemeral = [f for f in faults if not f.ephemeral]
+        if not non_ephemeral:
+            return cls(action=ActionType.NONE, reason=f"ephemeral only: {fallback_reason}")
+
         return cls(
             action=ActionType.ENTER_RECOVERY,
-            bad_node_ids=sorted(unique_node_ids(faults)),
+            bad_node_ids=sorted(unique_node_ids(non_ephemeral)),
             reason="; ".join(f.reason for f in faults),
             trigger=trigger,
         )
@@ -72,3 +76,8 @@ def unique_node_ids(faults: list[NodeFault]) -> list[str]:
             seen.add(fault.node_id)
             result.append(fault.node_id)
     return result
+
+
+def filter_node_ids_by_active(node_ids: list[str], active_node_ids: set[str]) -> list[str]:
+    """Keep only node IDs that are in the active training placement."""
+    return [n for n in node_ids if n in active_node_ids]

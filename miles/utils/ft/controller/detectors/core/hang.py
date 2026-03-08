@@ -39,7 +39,7 @@ class HangDetector(BaseFaultDetector):
     def __init__(self, config: HangDetectorConfig | None = None) -> None:
         self._config = config or HangDetectorConfig()
 
-    def evaluate(self, ctx: DetectorContext) -> Decision:
+    def _evaluate_raw(self, ctx: DetectorContext) -> Decision:
         if ctx.job_status != JobStatus.RUNNING:
             return Decision.no_fault(reason="job not running, skipping hang check")
 
