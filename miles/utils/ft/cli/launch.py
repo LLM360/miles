@@ -19,13 +19,6 @@ from miles.utils.logging_utils import configure_logger
 logger = logging.getLogger(__name__)
 
 
-def _parse_detector_config(raw: str) -> DetectorChainConfig:
-    """Parse detector config from a JSON string or @filepath reference."""
-    if raw.startswith("@"):
-        raw = Path(raw[1:]).read_text()
-    return DetectorChainConfig.model_validate_json(raw)
-
-
 def launch(
     ctx: typer.Context,
     ft_id: Annotated[
@@ -99,3 +92,10 @@ def launch(
 
     actor = FtControllerActor.options(name=actor_name).remote(config=config)
     ray.get(actor.submit_and_run.remote())
+
+
+def _parse_detector_config(raw: str) -> DetectorChainConfig:
+    """Parse detector config from a JSON string or @filepath reference."""
+    if raw.startswith("@"):
+        raw = Path(raw[1:]).read_text()
+    return DetectorChainConfig.model_validate_json(raw)

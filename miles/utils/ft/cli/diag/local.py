@@ -26,6 +26,35 @@ logger = logging.getLogger(__name__)
 LOCAL_CHECK_NAMES = ["gpu", "intra_machine", "disk", "network", "xid"]
 
 
+def local(
+    checks: Annotated[list[str] | None, typer.Argument(help="Checks to run (default: all)")] = None,
+    timeout: Annotated[int, typer.Option(help="Per-check timeout in seconds")] = 120,
+    disk_mounts: Annotated[str, typer.Option(help="Comma-separated mount paths")] = "/",
+    num_gpus: Annotated[int, typer.Option(help="Number of GPUs on this node")] = 8,
+    xid_since_minutes: Annotated[int, typer.Option(help="Look back N minutes for XID errors")] = 5,
+    json_output: Annotated[bool, typer.Option("--json", help="Output results as JSON")] = False,
+) -> None:
+    """Run diagnostic checks on the local node."""
+    selected = checks or LOCAL_CHECK_NAMES
+    unknown = set(selected) - set(LOCAL_CHECK_NAMES)
+    if unknown:
+        typer.echo(f"Unknown checks: {', '.join(sorted(unknown))}", err=True)
+        raise typer.Exit(code=1)
+
+    mount_paths = [Path(m.strip()) for m in disk_mounts.split(",")]
+    registry = _build_local_registry(
+        disk_mounts=mount_paths,
+        num_gpus=num_gpus,
+        xid_since_minutes=xid_since_minutes,
+    )
+
+    node_id = socket.gethostname()
+    results = asyncio.run(_run_checks(registry, selected, node_id, timeout))
+
+    print_results(results, json_output=json_output, node_id=node_id)
+    exit_with_results(results)
+
+
 def _build_local_registry(
     disk_mounts: list[Path],
     num_gpus: int,
@@ -77,32 +106,3 @@ async def _run_checks(
             )
         results.append(result)
     return results
-
-
-def local(
-    checks: Annotated[list[str] | None, typer.Argument(help="Checks to run (default: all)")] = None,
-    timeout: Annotated[int, typer.Option(help="Per-check timeout in seconds")] = 120,
-    disk_mounts: Annotated[str, typer.Option(help="Comma-separated mount paths")] = "/",
-    num_gpus: Annotated[int, typer.Option(help="Number of GPUs on this node")] = 8,
-    xid_since_minutes: Annotated[int, typer.Option(help="Look back N minutes for XID errors")] = 5,
-    json_output: Annotated[bool, typer.Option("--json", help="Output results as JSON")] = False,
-) -> None:
-    """Run diagnostic checks on the local node."""
-    selected = checks or LOCAL_CHECK_NAMES
-    unknown = set(selected) - set(LOCAL_CHECK_NAMES)
-    if unknown:
-        typer.echo(f"Unknown checks: {', '.join(sorted(unknown))}", err=True)
-        raise typer.Exit(code=1)
-
-    mount_paths = [Path(m.strip()) for m in disk_mounts.split(",")]
-    registry = _build_local_registry(
-        disk_mounts=mount_paths,
-        num_gpus=num_gpus,
-        xid_since_minutes=xid_since_minutes,
-    )
-
-    node_id = socket.gethostname()
-    results = asyncio.run(_run_checks(registry, selected, node_id, timeout))
-
-    print_results(results, json_output=json_output, node_id=node_id)
-    exit_with_results(results)

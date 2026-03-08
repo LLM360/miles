@@ -15,6 +15,45 @@ from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
 logger = logging.getLogger(__name__)
 
 
+def cluster(
+    checks: Annotated[list[str] | None, typer.Argument(help="Checks to run (default: all)")] = None,
+    ray_address: Annotated[str, typer.Option(help="Ray cluster address")] = "auto",
+    timeout: Annotated[int, typer.Option(help="Per-check timeout in seconds")] = 180,
+    json_output: Annotated[bool, typer.Option("--json", help="Output results as JSON")] = False,
+) -> None:
+    """Run diagnostic checks across a Ray cluster."""
+    import ray
+
+    from miles.utils.ft.platform.ray_wrappers.node_discovery import (
+        build_node_address_map,
+        get_alive_gpu_nodes,
+    )
+
+    ray.init(address=ray_address)
+
+    try:
+        nodes = get_alive_gpu_nodes()
+        node_addresses = build_node_address_map(nodes)
+        registry = _build_cluster_registry(node_addresses=node_addresses)
+
+        selected = checks or list(registry.keys())
+        unknown = set(selected) - set(registry.keys())
+        if unknown:
+            typer.echo(f"Unknown checks: {', '.join(sorted(unknown))}", err=True)
+            raise typer.Exit(code=1)
+
+        async def _run() -> list[DiagnosticResult]:
+            async with _managed_agents(nodes) as agents:
+                return await _run_cluster_checks(registry, agents, selected, timeout)
+
+        results = asyncio.run(_run())
+    finally:
+        ray.shutdown()
+
+    print_results(results, json_output=json_output, node_id="cluster")
+    exit_with_results(results)
+
+
 def _build_cluster_registry(
     node_addresses: dict[str, str],
 ) -> dict[str, ClusterExecutorProtocol]:
@@ -72,9 +111,18 @@ async def _run_cluster_checks(
     return all_results
 
 
-# ---------------------------------------------------------------------------
-# Agent lifecycle
-# ---------------------------------------------------------------------------
+@contextlib.asynccontextmanager
+async def _managed_agents(
+    nodes: list[dict[str, Any]],
+) -> AsyncIterator[dict[str, Any]]:
+    import ray
+
+    agents = _deploy_agents(nodes)
+    try:
+        yield agents
+    finally:
+        for actor in agents.values():
+            ray.kill(actor)
 
 
 def _deploy_agents(
@@ -127,56 +175,3 @@ def _deploy_agents(
         agents[node_id] = actor
 
     return agents
-
-
-@contextlib.asynccontextmanager
-async def _managed_agents(
-    nodes: list[dict[str, Any]],
-) -> AsyncIterator[dict[str, Any]]:
-    import ray
-
-    agents = _deploy_agents(nodes)
-    try:
-        yield agents
-    finally:
-        for actor in agents.values():
-            ray.kill(actor)
-
-
-def cluster(
-    checks: Annotated[list[str] | None, typer.Argument(help="Checks to run (default: all)")] = None,
-    ray_address: Annotated[str, typer.Option(help="Ray cluster address")] = "auto",
-    timeout: Annotated[int, typer.Option(help="Per-check timeout in seconds")] = 180,
-    json_output: Annotated[bool, typer.Option("--json", help="Output results as JSON")] = False,
-) -> None:
-    """Run diagnostic checks across a Ray cluster."""
-    import ray
-
-    from miles.utils.ft.platform.ray_wrappers.node_discovery import (
-        build_node_address_map,
-        get_alive_gpu_nodes,
-    )
-
-    ray.init(address=ray_address)
-
-    try:
-        nodes = get_alive_gpu_nodes()
-        node_addresses = build_node_address_map(nodes)
-        registry = _build_cluster_registry(node_addresses=node_addresses)
-
-        selected = checks or list(registry.keys())
-        unknown = set(selected) - set(registry.keys())
-        if unknown:
-            typer.echo(f"Unknown checks: {', '.join(sorted(unknown))}", err=True)
-            raise typer.Exit(code=1)
-
-        async def _run() -> list[DiagnosticResult]:
-            async with _managed_agents(nodes) as agents:
-                return await _run_cluster_checks(registry, agents, selected, timeout)
-
-        results = asyncio.run(_run())
-    finally:
-        ray.shutdown()
-
-    print_results(results, json_output=json_output, node_id="cluster")
-    exit_with_results(results)
