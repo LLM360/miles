@@ -2,66 +2,84 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 
 import typer
 
 from miles.utils.ft.cli.diag.output import exit_with_results, print_results
 from miles.utils.ft.models.diagnostics import DiagnosticResult
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
-CLUSTER_CHECK_NAMES = ["gpu", "intra_machine", "inter_machine"]
+ClusterCheckFn = Callable[[int], Awaitable[list[DiagnosticResult]]]
 
 
-async def _run_cluster_checks(
-    checks: list[str],
-    timeout: int,
-) -> list[DiagnosticResult]:
+def _build_cluster_registry() -> dict[str, ClusterCheckFn]:
     from miles.utils.ft.platform.ray_wrappers.standalone_diagnostic import (
         run_gpu_diagnostics,
         run_inter_machine_diagnostics,
         run_intra_machine_diagnostics,
     )
 
-    all_results: list[DiagnosticResult] = []
-
-    if "gpu" in checks:
-        gpu_results, outlier_ids = await run_gpu_diagnostics(timeout_seconds=timeout)
-        all_results.extend(gpu_results)
+    async def _gpu_check(timeout: int) -> list[DiagnosticResult]:
+        results, outlier_ids = await run_gpu_diagnostics(timeout_seconds=timeout)
         if outlier_ids:
-            all_results.append(
+            results.append(
                 DiagnosticResult.fail_result(
                     diagnostic_type="gpu_hash_comparison",
                     node_id="cluster",
                     details=f"outlier nodes: {', '.join(outlier_ids)}",
                 )
             )
+        return results
 
-    if "intra_machine" in checks:
-        intra_results = await run_intra_machine_diagnostics(timeout_seconds=timeout)
-        all_results.extend(intra_results)
+    async def _intra_machine_check(timeout: int) -> list[DiagnosticResult]:
+        return await run_intra_machine_diagnostics(timeout_seconds=timeout)
 
-    if "inter_machine" in checks:
+    async def _inter_machine_check(timeout: int) -> list[DiagnosticResult]:
         bad_nodes = await run_inter_machine_diagnostics(timeout_seconds=timeout)
         if bad_nodes:
-            all_results.append(
+            return [
                 DiagnosticResult.fail_result(
                     diagnostic_type="inter_machine",
                     node_id="cluster",
                     details=f"bad nodes: {', '.join(bad_nodes)}",
                 )
+            ]
+        return [
+            DiagnosticResult.pass_result(
+                diagnostic_type="inter_machine",
+                node_id="cluster",
+                details="all inter-machine NCCL checks passed",
             )
-        else:
+        ]
+
+    return {
+        "gpu": _gpu_check,
+        "intra_machine": _intra_machine_check,
+        "inter_machine": _inter_machine_check,
+    }
+
+
+async def _run_cluster_checks(
+    registry: dict[str, ClusterCheckFn],
+    checks: list[str],
+    timeout: int,
+) -> list[DiagnosticResult]:
+    all_results: list[DiagnosticResult] = []
+    for name in checks:
+        try:
+            all_results.extend(await registry[name](timeout))
+        except Exception:
+            logger.error("cluster check %s failed with exception", name, exc_info=True)
             all_results.append(
-                DiagnosticResult.pass_result(
-                    diagnostic_type="inter_machine",
+                DiagnosticResult.fail_result(
+                    diagnostic_type=name,
                     node_id="cluster",
-                    details="all inter-machine NCCL checks passed",
+                    details="exception during check (see logs)",
                 )
             )
-
     return all_results
 
 
@@ -74,8 +92,9 @@ def cluster(
     """Run diagnostic checks across a Ray cluster."""
     import ray
 
-    selected = checks or CLUSTER_CHECK_NAMES
-    unknown = set(selected) - set(CLUSTER_CHECK_NAMES)
+    registry = _build_cluster_registry()
+    selected = checks or list(registry.keys())
+    unknown = set(selected) - set(registry.keys())
     if unknown:
         typer.echo(f"Unknown checks: {', '.join(sorted(unknown))}", err=True)
         raise typer.Exit(code=1)
@@ -83,7 +102,7 @@ def cluster(
     ray.init(address=ray_address)
 
     try:
-        results = asyncio.run(_run_cluster_checks(selected, timeout))
+        results = asyncio.run(_run_cluster_checks(registry, selected, timeout))
     finally:
         ray.shutdown()
 
