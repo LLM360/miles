@@ -22,8 +22,9 @@ from miles.utils.ft.agents.diagnostics.executors.collector_based import Collecto
 from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl import NcclNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.stack_trace import StackTraceNodeExecutor
-from miles.utils.ft.controller.detectors.checks.gpu.checks import check_gpu_faults
-from miles.utils.ft.controller.detectors.checks.hardware import _check_disk_fault, _check_majority_nic_down
+from miles.utils.ft.controller.detectors.core.disk_space import DiskSpaceLowDetector
+from miles.utils.ft.controller.detectors.core.gpu_fault import GpuFaultDetector
+from miles.utils.ft.controller.detectors.core.nic_majority_down import NicMajorityDownDetector
 
 DEFAULT_NUM_GPUS: int = 8
 DEFAULT_COLLECT_INTERVAL_SECONDS: float = 10.0
@@ -56,17 +57,17 @@ def build_all_diagnostics(
         CollectorBasedNodeExecutor(
             diagnostic_type="disk",
             collector=DiskCollector(disk_mounts=disk_mounts),
-            check_fn=_check_disk_fault,
+            detector=DiskSpaceLowDetector(),
         ),
         CollectorBasedNodeExecutor(
             diagnostic_type="network",
             collector=NetworkCollector(),
-            check_fn=_check_majority_nic_down,
+            detector=NicMajorityDownDetector(),
         ),
         CollectorBasedNodeExecutor(
             diagnostic_type="xid",
             collector=KmsgCollector(since=xid_since),
-            check_fn=check_gpu_faults,
+            detector=GpuFaultDetector(),
         ),
     ]
 

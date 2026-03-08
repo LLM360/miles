@@ -5,7 +5,8 @@ from pydantic import ConfigDict, Field
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.detectors.core.disk_space import DiskSpaceLowDetector
 from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
-from miles.utils.ft.controller.detectors.core.hardware import HighConfidenceHardwareDetector
+from miles.utils.ft.controller.detectors.core.gpu_fault import GpuFaultDetector
+from miles.utils.ft.controller.detectors.core.nic_majority_down import NicMajorityDownDetector
 from miles.utils.ft.controller.detectors.core.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
 from miles.utils.ft.controller.detectors.core.nan_loss import NanLossDetector
 from miles.utils.ft.controller.detectors.core.network import NetworkAlertDetector, NetworkAlertDetectorConfig
@@ -32,7 +33,8 @@ def build_detector_chain(
     """Build the default detector chain in priority order (highest first)."""
     cfg = config or DetectorChainConfig()
     return [
-        HighConfidenceHardwareDetector(),
+        GpuFaultDetector(),
+        NicMajorityDownDetector(),
         DiskSpaceLowDetector(),
         ThermalThrottlingDetector(config=cfg.thermal),
         NetworkAlertDetector(config=cfg.network),

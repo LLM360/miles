@@ -1,7 +1,7 @@
 """Shared hardware fault detection logic.
 
-Used by HighConfidenceHardwareDetector and NetworkAlertDetector for
-metric queries and threshold constants.
+Used by GpuFaultDetector, NicMajorityDownDetector, DiskSpaceLowDetector,
+and NetworkAlertDetector for metric queries and threshold constants.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from datetime import timedelta
 
 import polars as pl
 
-from miles.utils.ft.controller.detectors.checks.gpu.checks import check_gpu_faults
 from miles.utils.ft.controller.metrics.metric_names import NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP
 from miles.utils.ft.controller.types import MetricQueryProtocol, NodeFault
 
@@ -20,16 +19,7 @@ logger = logging.getLogger(__name__)
 DISK_AVAILABLE_THRESHOLD_BYTES: float = 1e9  # 1 GB
 
 
-def check_all_hardware_faults(
-    metric_store: MetricQueryProtocol,
-) -> list[NodeFault]:
-    return [
-        *check_gpu_faults(metric_store),
-        *_check_majority_nic_down(metric_store),
-    ]
-
-
-def _check_disk_fault(
+def check_disk_fault(
     metric_store: MetricQueryProtocol,
     disk_available_threshold_bytes: float = DISK_AVAILABLE_THRESHOLD_BYTES,
 ) -> list[NodeFault]:
@@ -89,7 +79,7 @@ def check_nic_down_in_window(
     ]
 
 
-def _check_majority_nic_down(metric_store: MetricQueryProtocol) -> list[NodeFault]:
+def check_majority_nic_down(metric_store: MetricQueryProtocol) -> list[NodeFault]:
     df = metric_store.query_latest(NODE_NETWORK_UP)
     if df is None or df.is_empty():
         return []

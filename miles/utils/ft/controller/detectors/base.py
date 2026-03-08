@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import math
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.controller.types import (
@@ -23,9 +23,9 @@ def _filter_node_ids_by_active(node_ids: list[str], active_node_ids: set[str]) -
 @dataclass
 class DetectorContext:
     metric_store: MetricQueryProtocol
-    mini_wandb: TrainingMetricStoreProtocol
-    rank_placement: dict[int, str]
-    job_status: JobStatus
+    mini_wandb: TrainingMetricStoreProtocol | None = None
+    rank_placement: dict[int, str] = field(default_factory=dict)
+    job_status: JobStatus | None = None
 
 
 class BaseFaultDetector(ABC):
@@ -44,7 +44,7 @@ class BaseFaultDetector(ABC):
 
     def evaluate(self, ctx: DetectorContext) -> Decision:
         decision = self._evaluate_raw(ctx)
-        if decision.bad_node_ids:
+        if decision.bad_node_ids and ctx.rank_placement:
             active_node_ids = set(ctx.rank_placement.values())
             filtered = _filter_node_ids_by_active(decision.bad_node_ids, active_node_ids)
             if not filtered:
