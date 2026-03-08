@@ -354,12 +354,13 @@ class TestRangeAggregations:
         assert df["value"][0] == 0.0
 
     async def test_changes_with_label_filters(self, backend: MetricBackend) -> None:
-        backend.set_gauge("conformance_changes_lf", 1.0, labels={"device": "ib0"})
+        """Set the target series last before flush so LiveBackend waits for it."""
         backend.set_gauge("conformance_changes_lf", 1.0, labels={"device": "ib1"})
+        backend.set_gauge("conformance_changes_lf", 1.0, labels={"device": "ib0"})
         await backend.flush()
 
-        backend.set_gauge("conformance_changes_lf", 2.0, labels={"device": "ib0"})
         backend.set_gauge("conformance_changes_lf", 1.0, labels={"device": "ib1"})
+        backend.set_gauge("conformance_changes_lf", 2.0, labels={"device": "ib0"})
         await backend.flush()
 
         df = backend.store.changes(
