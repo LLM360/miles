@@ -17,6 +17,7 @@ from miles.utils.ft.adapters.impl.notifiers.factory import build_notifier
 from miles.utils.ft.adapters.stubs import StubNodeManager, StubTrainingJob
 from miles.utils.ft.adapters.types import NodeManagerProtocol, NotifierProtocol, TrainingJobProtocol
 from miles.utils.ft.controller.controller import FtController
+from miles.utils.ft.controller.factory import create_ft_controller
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
@@ -143,7 +144,7 @@ def build_ft_controller(
     if monitoring_success_iterations_override is not None:
         create_kwargs["monitoring_success_iterations"] = monitoring_success_iterations_override
 
-    return FtController.create(**create_kwargs)
+    return create_ft_controller(**create_kwargs)
 
 
 def launch_ft_controller_actor(
