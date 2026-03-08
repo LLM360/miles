@@ -15,7 +15,7 @@ from miles.utils.ft.adapters.types import (
     TrainingJobProtocol,
 )
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.controller.main_stepper import (
+from miles.utils.ft.controller.state_machines.main import (
     DetectingAnomaly,
     MainContext,
     MainState,
@@ -28,7 +28,7 @@ from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task,
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.node_agent_coverage import NodeAgentCoverageChecker
 from miles.utils.ft.controller.rank_roster import RankRoster
-from miles.utils.ft.controller.recovery.recovery_stepper import (
+from miles.utils.ft.controller.state_machines.recovery import (
     RECOVERY_STATE_TO_INT,
     RECOVERY_TIMEOUT_SECONDS,
     EvictingAndRestarting,
@@ -38,8 +38,8 @@ from miles.utils.ft.controller.recovery.recovery_stepper import (
     RecoveryState,
     create_recovery_stepper,
 )
-from miles.utils.ft.controller.recovery.restart_stepper import RestartContext, create_restart_stepper
-from miles.utils.ft.controller.recovery.utils import safe_notify
+from miles.utils.ft.controller.state_machines.restart import RestartContext, create_restart_stepper
+from miles.utils.ft.controller.state_machines.utils import safe_notify
 from miles.utils.ft.controller.types import (
     ControllerMode,
     ControllerStatus,
