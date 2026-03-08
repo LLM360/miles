@@ -27,15 +27,16 @@ class TestEnterRecovery:
 
     @pytest.mark.anyio
     async def test_recovery_mode_runs_all_detectors(self) -> None:
-        """All detectors run during recovery (is_critical distinction removed)."""
+        """All detectors run during recovery (is_critical distinction removed).
+
+        Tick 1 enters recovery; collect_evictable_bad_nodes also calls
+        detectors during recovery steps, so call_count > 1 after a single tick.
+        """
         detector = AlwaysEnterRecoveryDetector()
         harness = make_test_controller(detectors=[detector])
 
         await harness.controller._tick()
-        initial_count = detector.call_count
-
-        await harness.controller._tick()
-        assert detector.call_count > initial_count
+        assert detector.call_count > 1
 
     @pytest.mark.anyio
     async def test_detector_finds_bad_nodes_during_recovery(self) -> None:

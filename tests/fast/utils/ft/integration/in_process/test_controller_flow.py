@@ -2,7 +2,7 @@
 
 import pytest
 
-from tests.fast.utils.ft.conftest import AlwaysMarkBadDetector, make_test_controller
+from tests.fast.utils.ft.conftest import AlwaysNoneDetector, make_test_controller
 
 
 class TestEmptyDetectorChainMultipleTicks:
@@ -132,7 +132,7 @@ class TestRunIdIsolation:
 class TestCustomDetectorInTick:
     @pytest.mark.anyio
     async def test_detector_invoked_during_tick(self) -> None:
-        detector = AlwaysMarkBadDetector()
+        detector = AlwaysNoneDetector()
         harness = make_test_controller(detectors=[detector])
 
         await harness.controller._tick()

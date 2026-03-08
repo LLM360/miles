@@ -173,8 +173,8 @@ class TestOrchestratorHangTraceFullChain:
         self,
         local_ray: None,
     ) -> None:
+        from miles.utils.ft.controller.diagnostics.executors import StackTraceExecutor
         from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
-        from miles.utils.ft.models.fault import TriggerType
 
         worker_a = _BusyWorker.remote()
         worker_b = _BusyWorker.remote()
@@ -199,8 +199,7 @@ class TestOrchestratorHangTraceFullChain:
         )
 
         decision = await orchestrator.run_diagnostic_pipeline(
-            trigger_reason=TriggerType.HANG,
-            rank_pids_provider=pids_provider,
+            pre_executors=[StackTraceExecutor(rank_pids_provider=pids_provider)],
         )
 
         ray.kill(worker_a, no_restart=True)

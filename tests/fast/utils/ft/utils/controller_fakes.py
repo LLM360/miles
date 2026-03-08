@@ -215,15 +215,6 @@ def make_test_controller(
         controller.rank_roster.rank_placement[0] = "node-0"
         controller.rank_roster.rank_placement[1] = "node-1"
 
-        original_activate_run = controller._activate_run
-
-        def _patched_activate_run(run_id: str) -> None:
-            original_activate_run(run_id)
-            controller.rank_roster.rank_placement[0] = "node-0"
-            controller.rank_roster.rank_placement[1] = "node-1"
-
-        controller._activate_run = _patched_activate_run  # type: ignore[method-assign]
-
     return ControllerTestHarness(
         controller=controller,
         node_manager=node_manager,

@@ -17,6 +17,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
 )
 
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
+from miles.utils.ft.controller.detectors.core.hardware import HighConfidenceHardwareDetector
 from miles.utils.ft.controller.detectors.core.mfu_decline import MfuDeclineDetector, MfuDeclineDetectorConfig
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.models.metric_names import (
@@ -475,11 +476,12 @@ class TestRealtimeChecksDiscovery:
         self,
         make_e2e_env: Callable[..., E2EEnv],
     ) -> None:
-        """Pure crash (no pre-identified bad nodes) + GPU fault metric → RealtimeChecks discovers → Evicting."""
+        """Crash + GPU fault metric → HighConfidenceHardwareDetector discovers bad node during
+        recovery's collect_evictable_bad_nodes → RealtimeChecks has pre_identified_bad_nodes → Evicting."""
         env = make_e2e_env(
             ft_id="e2ertc",
             nodes=[NodeSpec(node_id="e2ertc-node-0", use_remote_collector=True)],
-            detectors=[TrainingCrashDetector()],
+            detectors=[TrainingCrashDetector(), HighConfidenceHardwareDetector()],
             scrape_interval_seconds=_FAST_SCRAPE,
         )
 
@@ -507,7 +509,10 @@ class TestRealtimeChecksDiscovery:
         deadline = time.monotonic() + 90.0
         while time.monotonic() < deadline:
             status = get_status(env.controller)
-            if status.active_run_id != old_run_id and status.mode == ControllerMode.MONITORING:
+            if (
+                status.active_run_id != old_run_id
+                and status.mode == ControllerMode.MONITORING
+            ):
                 break
             await asyncio.sleep(0.5)
         else:

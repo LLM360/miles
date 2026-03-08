@@ -15,8 +15,9 @@ from miles.utils.ft.models.metrics import GaugeSample
 
 
 class TestCheckNicDownInWindow:
-    def test_returns_ephemeral_faults(self) -> None:
-        """NodeFault from check_nic_down_in_window must have ephemeral=True."""
+    def test_returns_non_ephemeral_faults(self) -> None:
+        """NodeFault from check_nic_down_in_window are non-ephemeral so
+        NetworkAlertDetector can trigger recovery via Decision.from_node_faults."""
         store = make_fake_metric_store()
         inject_nic_up(store, node_id="node-0", device="ib0")
         inject_nic_down(store, node_id="node-0", device="ib0")
@@ -27,7 +28,7 @@ class TestCheckNicDownInWindow:
 
         assert len(faults) == 1
         assert faults[0].node_id == "node-0"
-        assert faults[0].ephemeral is True
+        assert faults[0].ephemeral is False
 
     # --- Core semantics: transitions vs sample counts ---
 
