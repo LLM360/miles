@@ -3,8 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from miles.utils.ft.models.diagnostic import DiagnosticResult
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, NodeExecutorProtocol
+from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS, NodeExecutorProtocol
 
 
 class BaseNodeExecutor(NodeExecutorProtocol, ABC):

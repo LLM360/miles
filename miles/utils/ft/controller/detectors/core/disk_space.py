@@ -1,6 +1,6 @@
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.checks.hardware import _check_disk_fault
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
+from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
 
 
 class DiskSpaceLowDetector(BaseFaultDetector):

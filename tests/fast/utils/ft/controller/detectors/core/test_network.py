@@ -5,9 +5,9 @@ from tests.fast.utils.ft.utils import make_detector_context, make_fake_metric_st
 
 from miles.utils.ft.controller.detectors.core.network import NetworkAlertDetector, NetworkAlertDetectorConfig
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
-from miles.utils.ft.models.fault import ActionType
-from miles.utils.ft.models.metric_names import NODE_NETWORK_UP
-from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.controller.types import ActionType
+from miles.utils.ft.controller.metric_names import NODE_NETWORK_UP
+from miles.utils.ft.agents.types import GaugeSample
 
 
 def _inject_nic_at_time(

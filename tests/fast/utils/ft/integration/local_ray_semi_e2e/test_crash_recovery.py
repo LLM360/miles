@@ -22,7 +22,7 @@ from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios import (
 
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
 from miles.utils.ft.utils.sliding_window import SlidingWindowThrottle
-from miles.utils.ft.models.controller import ControllerMode
+from miles.utils.ft.controller.types import ControllerMode
 
 
 class TestTransientCrash:
@@ -540,8 +540,8 @@ class TestFalsePositiveGuard:
     ) -> None:
         """When >= max_simultaneous_bad_nodes report faults, no recovery is triggered."""
         from miles.utils.ft.controller.detectors.chain import build_detector_chain
-        from miles.utils.ft.models.metric_names import GPU_AVAILABLE
-        from miles.utils.ft.models.metrics import GaugeSample
+        from miles.utils.ft.controller.metric_names import GPU_AVAILABLE
+        from miles.utils.ft.agents.types import GaugeSample
 
         env = make_e2e_env(
             ft_id="e2efpg",

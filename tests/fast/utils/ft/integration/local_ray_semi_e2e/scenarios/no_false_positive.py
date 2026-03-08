@@ -6,7 +6,7 @@ import time
 import ray
 from tests.fast.utils.ft.integration.local_ray_semi_e2e.scenarios.polling import get_status
 
-from miles.utils.ft.models.controller import ControllerMode, ControllerStatus
+from miles.utils.ft.controller.types import ControllerMode, ControllerStatus
 
 
 async def scenario_no_false_positive(

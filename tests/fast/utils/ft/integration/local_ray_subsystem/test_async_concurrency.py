@@ -9,7 +9,7 @@ import pytest
 import ray
 from tests.fast.utils.ft.integration.conftest import get_status
 
-from miles.utils.ft.models.controller import ControllerMode
+from miles.utils.ft.controller.types import ControllerMode
 
 pytestmark = [
     pytest.mark.local_ray,

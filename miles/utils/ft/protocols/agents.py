@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from miles.utils.ft.models.diagnostic import DiagnosticResult
+from miles.utils.ft.agents.types import DiagnosticResult
 
 DIAGNOSTIC_TIMEOUT_SECONDS: int = 120
 

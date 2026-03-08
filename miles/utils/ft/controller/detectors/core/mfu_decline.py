@@ -4,9 +4,9 @@ from pydantic import ConfigDict, Field
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.checks.mfu_health import check_mfu_health
-from miles.utils.ft.models.base import FtBaseModel
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.metrics import TrainingMetricStoreProtocol
+from miles.utils.ft.utils.base_model import FtBaseModel
+from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
+from miles.utils.ft.controller.types import TrainingMetricStoreProtocol
 
 
 class MfuDeclineDetectorConfig(FtBaseModel):

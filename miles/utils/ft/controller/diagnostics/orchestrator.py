@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, ClusterExecutorProtocol, NodeAgentProtocol
-from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
+from miles.utils.ft.agents.types import DiagnosticPipelineResult
+from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS, ClusterExecutorProtocol, NodeAgentProtocol
+from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
 
 logger = logging.getLogger(__name__)
 

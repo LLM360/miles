@@ -5,7 +5,7 @@ from typing import Protocol, runtime_checkable
 
 import polars as pl
 
-from miles.utils.ft.models.metrics import StepValue, TimedStepValue
+from miles.utils.ft.agents.types import StepValue, TimedStepValue
 
 __all__ = ["StepValue", "TimedStepValue"]
 

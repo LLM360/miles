@@ -8,8 +8,8 @@ from tests.fast.utils.ft.utils import (
 )
 
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.models.fault import ActionType
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.controller.types import ActionType
+from miles.utils.ft.adapters.types import JobStatus
 
 
 class TestTrainingCrashDetector:

@@ -6,8 +6,8 @@ from miles.utils.ft.controller.diagnostics.utils import (
     gather_diagnostic_results,
     partition_results,
 )
-from miles.utils.ft.models.diagnostic import DiagnosticResult
-from miles.utils.ft.protocols.agents import NodeAgentProtocol
+from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.adapters.types import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
 

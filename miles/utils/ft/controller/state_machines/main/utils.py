@@ -11,8 +11,8 @@ from miles.utils.ft.controller.state_machines.recovery.models import (
     RecoveryState,
 )
 from miles.utils.ft.controller.state_machines.main.models import MainContext
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import NotifierProtocol
+from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
+from miles.utils.ft.adapters.types import NotifierProtocol
 from miles.utils.ft.utils.sliding_window import SlidingWindowCounter
 
 logger = logging.getLogger(__name__)

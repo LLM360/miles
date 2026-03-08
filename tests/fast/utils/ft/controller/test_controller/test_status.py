@@ -16,7 +16,7 @@ from tests.fast.utils.ft.conftest import (
     run_controller_briefly,
 )
 
-import miles.utils.ft.models.metric_names as mn
+import miles.utils.ft.controller.metric_names as mn
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.state_machines.main import Recovering
 from miles.utils.ft.controller.metrics.lifecycle import start_metric_store_task
@@ -27,8 +27,8 @@ from miles.utils.ft.controller.state_machines.recovery import (
     StopTimeDiagnostics,
 )
 from miles.utils.ft.controller.state_machines.restart import Evicting
-from miles.utils.ft.models.controller import ControllerMode
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.controller.types import ControllerMode
+from miles.utils.ft.adapters.types import JobStatus
 
 
 class TestTrainingJobStatusExporter:

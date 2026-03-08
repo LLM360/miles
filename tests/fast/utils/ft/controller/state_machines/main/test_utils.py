@@ -8,8 +8,8 @@ from miles.utils.ft.controller.detectors.base import BaseFaultDetector, Detector
 import pytest
 
 from miles.utils.ft.controller.state_machines.main.utils import handle_notify_human, run_detectors
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.utils.sliding_window import SlidingWindowCounter
 
 

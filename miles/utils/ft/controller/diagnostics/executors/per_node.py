@@ -4,7 +4,7 @@ from miles.utils.ft.controller.diagnostics.utils import (
     gather_diagnostic_results,
     partition_results,
 )
-from miles.utils.ft.protocols.agents import NodeAgentProtocol
+from miles.utils.ft.adapters.types import NodeAgentProtocol
 
 
 class PerNodeClusterExecutor:

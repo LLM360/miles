@@ -10,14 +10,14 @@ from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
-from miles.utils.ft.protocols.metrics import (
+from miles.utils.ft.controller.types import (
     MetricQueryProtocol,
     MetricStoreLifecycle,
     MetricStoreProtocol,
     ScrapeTargetManagerProtocol,
     TrainingMetricStoreProtocol,
 )
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.adapters.types import JobStatus
 
 
 class TestMiniPrometheusProtocolCompliance:

@@ -6,11 +6,11 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import miles.utils.ft.models.metric_names as mn
+import miles.utils.ft.controller.metric_names as mn
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.collectors.kernel_log_reader import DmesgSubprocessReader, KernelLogReader, KmsgFileReader
 from miles.utils.ft.controller.detectors.checks.gpu.xid_catalog.info import NON_AUTO_RECOVERABLE_XIDS
-from miles.utils.ft.models.metrics import CounterSample, GaugeSample
+from miles.utils.ft.agents.types import CounterSample, GaugeSample
 
 logger = logging.getLogger(__name__)
 

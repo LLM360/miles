@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from miles.utils.ft.protocols.metrics import MetricStoreLifecycle
+from miles.utils.ft.controller.types import MetricStoreLifecycle
 
 logger = logging.getLogger(__name__)
 

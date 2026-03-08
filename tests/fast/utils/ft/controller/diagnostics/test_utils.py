@@ -11,7 +11,7 @@ from miles.utils.ft.controller.diagnostics.utils import (
     gather_diagnostic_results,
     partition_results,
 )
-from miles.utils.ft.models.diagnostic import DiagnosticResult, UnknownDiagnosticError
+from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
 from tests.fast.utils.ft.conftest import FakeNodeAgent, HangingNodeAgent
 
 

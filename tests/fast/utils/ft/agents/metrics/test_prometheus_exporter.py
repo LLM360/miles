@@ -6,7 +6,7 @@ import pytest
 from tests.fast.utils.ft.utils.metric_injectors import get_sample_value as _scrape_value
 
 from miles.utils.ft.agents.metrics.prometheus_exporter import PrometheusExporter
-from miles.utils.ft.models.metrics import CounterSample, GaugeSample
+from miles.utils.ft.agents.types import CounterSample, GaugeSample
 
 
 @pytest.fixture

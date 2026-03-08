@@ -3,7 +3,7 @@ from typing import Annotated, Literal, NamedTuple
 
 from pydantic import Field
 
-from miles.utils.ft.models.base import FtBaseModel
+from miles.utils.ft.utils.base_model import FtBaseModel
 
 
 class StepValue(NamedTuple):

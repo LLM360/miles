@@ -6,7 +6,7 @@ import time
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.metrics.prometheus_exporter import PrometheusExporter
-from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.agents.types import GaugeSample
 
 logger = logging.getLogger(__name__)
 

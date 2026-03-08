@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from miles.utils.ft.platform.k8s_node_manager import LABEL_KEY, REASON_LABEL_KEY, K8sNodeManager, _build_label_keys
+from miles.utils.ft.adapters.impl.k8s_node_manager import LABEL_KEY, REASON_LABEL_KEY, K8sNodeManager, _build_label_keys
 
 
 def _make_manager_with_mock_api(

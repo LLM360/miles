@@ -6,10 +6,10 @@ import pytest
 import ray
 from tests.fast.utils.ft.integration.conftest import _kill_named_actor
 
-from miles.utils.ft.models.controller import ControllerMode, ControllerStatus
-from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray.controller_actor import FtControllerActor
-from miles.utils.ft.protocols.controller import ft_controller_actor_name
+from miles.utils.ft.controller.types import ControllerMode, ControllerStatus
+from miles.utils.ft.adapters.config import FtControllerConfig
+from miles.utils.ft.adapters.impl.ray.controller_actor import FtControllerActor
+from miles.utils.ft.adapters.types import ft_controller_actor_name
 
 pytestmark = [
     pytest.mark.local_ray,

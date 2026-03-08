@@ -12,9 +12,9 @@ from tests.fast.utils.ft.conftest import (
 )
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
-from miles.utils.ft.models.diagnostic import DiagnosticResult
-from miles.utils.ft.models.metrics import GaugeSample
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.agents.types import GaugeSample
+from miles.utils.ft.adapters.types import JobStatus
 
 
 class TestMakeMetric:

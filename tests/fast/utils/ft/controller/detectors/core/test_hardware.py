@@ -9,7 +9,7 @@ from tests.fast.utils.ft.utils import (
 )
 
 from miles.utils.ft.controller.detectors.core.hardware import HighConfidenceHardwareDetector
-from miles.utils.ft.models.fault import ActionType
+from miles.utils.ft.controller.types import ActionType
 
 
 class TestHighConfidenceHardwareDetector:

@@ -1,6 +1,6 @@
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.detectors.checks.hardware import check_all_hardware_faults
-from miles.utils.ft.models.fault import Decision, TriggerType
+from miles.utils.ft.controller.types import Decision, TriggerType
 
 
 class HighConfidenceHardwareDetector(BaseFaultDetector):

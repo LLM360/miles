@@ -14,7 +14,7 @@ from miles.utils.ft.controller.detectors.core.thermal_throttling import (
     ThermalThrottlingDetectorConfig,
 )
 from miles.utils.ft.controller.detectors.core.training_crash import TrainingCrashDetector
-from miles.utils.ft.models.base import FtBaseModel
+from miles.utils.ft.utils.base_model import FtBaseModel
 
 
 class DetectorChainConfig(FtBaseModel):

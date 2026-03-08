@@ -7,7 +7,7 @@ from miles.utils.ft.utils.env import get_exception_inject_path, get_training_run
 from miles.utils.ft.utils.graceful_degrade import FaultInjectionError, graceful_degrade
 
 if TYPE_CHECKING:
-    from miles.utils.ft.protocols.controller import ControllerClientProtocol
+    from miles.utils.ft.adapters.types import ControllerClientProtocol
 
 logger = logging.getLogger(__name__)
 

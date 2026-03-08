@@ -8,11 +8,11 @@ import pytest
 from typer.testing import CliRunner
 
 from miles.utils.ft.cli import app
-from miles.utils.ft.platform.notifiers.discord_notifier import DiscordWebhookNotifier
-from miles.utils.ft.platform.notifiers.factory import build_notifier
-from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
-from miles.utils.ft.platform.notifiers.slack_notifier import SlackWebhookNotifier
-from miles.utils.ft.platform.stubs import StubNotifier
+from miles.utils.ft.adapters.impl.notifiers.discord_notifier import DiscordWebhookNotifier
+from miles.utils.ft.adapters.impl.notifiers.factory import build_notifier
+from miles.utils.ft.adapters.impl.notifiers.lark_notifier import LarkWebhookNotifier
+from miles.utils.ft.adapters.impl.notifiers.slack_notifier import SlackWebhookNotifier
+from miles.utils.ft.adapters.stubs import StubNotifier
 
 runner = CliRunner()
 

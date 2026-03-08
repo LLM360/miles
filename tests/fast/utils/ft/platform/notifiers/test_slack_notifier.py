@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from tests.fast.utils.ft.platform.notifiers.conftest import make_ok_response
 
-from miles.utils.ft.platform.notifiers.slack_notifier import SlackWebhookNotifier
+from miles.utils.ft.adapters.impl.notifiers.slack_notifier import SlackWebhookNotifier
 
 
 class TestSlackWebhookNotifierPayload:

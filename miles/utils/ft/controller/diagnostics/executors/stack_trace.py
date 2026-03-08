@@ -4,7 +4,7 @@ import logging
 from collections.abc import Callable
 
 from miles.utils.ft.controller.diagnostics.stack_trace import collect_stack_trace_suspects
-from miles.utils.ft.protocols.agents import NodeAgentProtocol
+from miles.utils.ft.adapters.types import NodeAgentProtocol
 
 logger = logging.getLogger(__name__)
 

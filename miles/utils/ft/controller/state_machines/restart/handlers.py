@@ -20,7 +20,7 @@ from miles.utils.ft.controller.state_machines.restart.utils import (
     stop_and_submit,
 )
 from miles.utils.ft.controller.state_machines.utils import safe_notify
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.adapters.types import JobStatus
 
 logger = logging.getLogger(__name__)
 

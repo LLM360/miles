@@ -8,7 +8,7 @@ import polars as pl
 import pytest
 
 from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
-from miles.utils.ft.models.metrics import CounterSample, GaugeSample
+from miles.utils.ft.agents.types import CounterSample, GaugeSample
 
 
 def _ts(seconds: int) -> datetime:

@@ -8,7 +8,7 @@ from miles.utils.ft.controller.detectors.base import DetectorContext
 from miles.utils.ft.controller.metrics.exporter import ControllerExporter
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.models.metric_names import (
+from miles.utils.ft.controller.metric_names import (
     DCGM_FI_DEV_GPU_TEMP,
     GPU_AVAILABLE,
     NODE_FILESYSTEM_AVAIL_BYTES,
@@ -16,8 +16,8 @@ from miles.utils.ft.models.metric_names import (
     TRAINING_JOB_STATUS,
     XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL,
 )
-from miles.utils.ft.models.metrics import CounterSample, GaugeSample
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.agents.types import CounterSample, GaugeSample
+from miles.utils.ft.adapters.types import JobStatus
 
 
 def get_sample_value(

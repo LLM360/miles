@@ -1,8 +1,8 @@
 import pytest
 
-from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
-from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
-from miles.utils.ft.protocols.platform import (
+from miles.utils.ft.adapters.stubs import StubNodeManager, StubNotifier, StubTrainingJob
+from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
+from miles.utils.ft.adapters.types import (
     JobStatus,
     NodeManagerProtocol,
     NotifierProtocol,

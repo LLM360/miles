@@ -25,7 +25,7 @@ from miles.utils.ft.controller.state_machines.restart import (
     create_restart_stepper,
     iteration_progress,
 )
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.utils.state_machine import StateMachineStepper
 
 

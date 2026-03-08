@@ -2,7 +2,7 @@ from miles.utils.ft.controller.diagnostics.executors.gpu import GpuClusterExecut
 from miles.utils.ft.controller.diagnostics.executors.pairwise import PairwiseClusterExecutor
 from miles.utils.ft.controller.diagnostics.executors.per_node import PerNodeClusterExecutor
 from miles.utils.ft.controller.diagnostics.executors.stack_trace import StackTraceClusterExecutor
-from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol
 
 __all__ = [
     "GpuClusterExecutor",

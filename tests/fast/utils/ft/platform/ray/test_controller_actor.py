@@ -7,9 +7,9 @@ from tests.fast.utils.ft.conftest import make_test_controller
 
 from miles.utils.ft.controller.detectors.chain import build_detector_chain
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
-from miles.utils.ft.platform.controller_factory import build_ft_controller
-from miles.utils.ft.platform.ray.controller_actor import _FtControllerActorCls
-from miles.utils.ft.platform.stubs import StubNodeManager, StubNotifier, StubTrainingJob
+from miles.utils.ft.factories.controller import build_ft_controller
+from miles.utils.ft.adapters.impl.ray.controller_actor import _FtControllerActorCls
+from miles.utils.ft.adapters.stubs import StubNodeManager, StubNotifier, StubTrainingJob
 
 
 class TestBuildFtController:
@@ -28,7 +28,7 @@ class TestBuildFtController:
         assert isinstance(ctrl._platform_deps.notifier, StubNotifier)
 
     def test_lark_webhook_notifier_when_url_provided(self) -> None:
-        from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
+        from miles.utils.ft.adapters.impl.notifiers.lark_notifier import LarkWebhookNotifier
 
         ctrl = build_ft_controller(
             platform="stub",
@@ -92,10 +92,10 @@ class TestBuildFtController:
 
 class TestBuildPlatformComponentsK8sRay:
     def test_k8s_ray_creates_correct_types(self) -> None:
-        from miles.utils.ft.platform.controller_factory import _build_platform_components
+        from miles.utils.ft.factories.controller import _build_platform_components
 
         with (
-            patch("miles.utils.ft.platform.k8s_node_manager.K8sNodeManager") as mock_k8s,
+            patch("miles.utils.ft.adapters.impl.k8s_node_manager.K8sNodeManager") as mock_k8s,
             patch("ray.job_submission.JobSubmissionClient") as mock_jsc,
         ):
             mock_k8s.return_value = MagicMock()
@@ -112,11 +112,11 @@ class TestBuildPlatformComponentsK8sRay:
         assert node_mgr is mock_k8s.return_value
 
     def test_k8s_ray_passes_ft_id_and_label_prefix(self) -> None:
-        from miles.utils.ft.platform.controller_factory import _build_platform_components
-        from miles.utils.ft.platform.ray.training_job import RayTrainingJob
+        from miles.utils.ft.factories.controller import _build_platform_components
+        from miles.utils.ft.adapters.impl.ray.training_job import RayTrainingJob
 
         with (
-            patch("miles.utils.ft.platform.k8s_node_manager.K8sNodeManager") as mock_k8s,
+            patch("miles.utils.ft.adapters.impl.k8s_node_manager.K8sNodeManager") as mock_k8s,
             patch("ray.job_submission.JobSubmissionClient") as mock_jsc,
         ):
             mock_k8s.return_value = MagicMock()

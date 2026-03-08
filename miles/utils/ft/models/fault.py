@@ -4,7 +4,7 @@ from enum import Enum
 
 from pydantic import Field, model_validator
 
-from miles.utils.ft.models.base import FtBaseModel
+from miles.utils.ft.utils.base_model import FtBaseModel
 
 
 class ActionType(str, Enum):

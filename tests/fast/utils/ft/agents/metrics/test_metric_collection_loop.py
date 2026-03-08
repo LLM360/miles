@@ -10,7 +10,7 @@ from tests.fast.utils.ft.utils import FailingCloseCollector, FailingCollector
 
 from miles.utils.ft.agents.collectors.base import BaseCollector
 from miles.utils.ft.agents.metrics.metric_collection_loop import MetricCollectionLoop
-from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.agents.types import GaugeSample
 
 
 class _PassCollector(BaseCollector):

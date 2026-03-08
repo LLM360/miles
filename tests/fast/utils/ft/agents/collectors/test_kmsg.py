@@ -17,7 +17,7 @@ from miles.utils.ft.agents.collectors.kmsg import (
     _parse_xid_codes,
     _prune_xid_window,
 )
-from miles.utils.ft.models.metrics import CollectorOutput, CounterSample, GaugeSample
+from miles.utils.ft.agents.types import CollectorOutput, CounterSample, GaugeSample
 
 
 def _make_kmsg_collector(lines: list[str], **kwargs: Any) -> KmsgCollector:

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from tests.fast.utils.ft.platform.notifiers.conftest import make_ok_response
 
-from miles.utils.ft.platform.notifiers.discord_notifier import DiscordWebhookNotifier
+from miles.utils.ft.adapters.impl.notifiers.discord_notifier import DiscordWebhookNotifier
 
 
 class TestDiscordWebhookNotifierPayload:

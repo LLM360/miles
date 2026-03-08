@@ -12,9 +12,9 @@ from datetime import timedelta
 import polars as pl
 
 from miles.utils.ft.controller.detectors.checks.gpu.checks import check_gpu_faults
-from miles.utils.ft.models.fault import NodeFault
-from miles.utils.ft.models.metric_names import NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP
-from miles.utils.ft.protocols.metrics import MetricQueryProtocol
+from miles.utils.ft.controller.types import NodeFault
+from miles.utils.ft.controller.metric_names import NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP
+from miles.utils.ft.controller.types import MetricQueryProtocol
 
 logger = logging.getLogger(__name__)
 

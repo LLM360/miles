@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from miles.utils.ft.protocols.platform import JobStatus, NodeManagerProtocol, TrainingJobProtocol
+from miles.utils.ft.adapters.types import JobStatus, NodeManagerProtocol, TrainingJobProtocol
 from miles.utils.ft.utils.retry import RetryResult, retry_async
 
 logger = logging.getLogger(__name__)

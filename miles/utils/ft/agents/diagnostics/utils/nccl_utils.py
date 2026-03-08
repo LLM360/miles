@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from functools import partial
 
-from miles.utils.ft.models.diagnostic import DiagnosticResult
+from miles.utils.ft.agents.types import DiagnosticResult
 from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
 
 logger = logging.getLogger(__name__)

@@ -27,9 +27,9 @@ from miles.utils.ft.controller.state_machines.restart import (
     StoppingAndRestarting,
     create_restart_stepper,
 )
-from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-from miles.utils.ft.models.fault import TriggerType
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.agents.types import DiagnosticPipelineResult
+from miles.utils.ft.controller.types import TriggerType
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.utils.state_machine import StateMachineStepper
 
 # ---------------------------------------------------------------------------

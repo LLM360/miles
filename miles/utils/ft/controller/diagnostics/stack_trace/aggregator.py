@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from miles.utils.ft.agents.diagnostics.executors.stack_trace import PySpyThread
-from miles.utils.ft.models.base import FtBaseModel
+from miles.utils.ft.utils.base_model import FtBaseModel
 
 logger = logging.getLogger(__name__)
 

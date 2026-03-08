@@ -6,9 +6,9 @@ import logging
 
 import polars as pl
 
-from miles.utils.ft.models.fault import NodeFault
-from miles.utils.ft.models.metric_names import GPU_AVAILABLE, XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL
-from miles.utils.ft.protocols.metrics import MetricQueryProtocol
+from miles.utils.ft.controller.types import NodeFault
+from miles.utils.ft.controller.metric_names import GPU_AVAILABLE, XID_NON_AUTO_RECOVERABLE_COUNT_TOTAL
+from miles.utils.ft.controller.types import MetricQueryProtocol
 
 logger = logging.getLogger(__name__)
 

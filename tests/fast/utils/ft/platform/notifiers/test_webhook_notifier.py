@@ -5,7 +5,7 @@ import httpx
 import pytest
 from tests.fast.utils.ft.platform.notifiers.conftest import make_error_response, make_ok_response
 
-from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
+from miles.utils.ft.adapters.impl.notifiers.lark_notifier import LarkWebhookNotifier
 
 _SLEEP_PATCH = "miles.utils.ft.utils.retry.asyncio.sleep"
 

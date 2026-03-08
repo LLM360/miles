@@ -10,10 +10,10 @@ from tests.fast.utils.ft.utils import (
 
 from miles.utils.ft.controller.detectors.core.hang import HangDetector, HangDetectorConfig
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus
-from miles.utils.ft.models.fault import ActionType
-from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT, TRAINING_PHASE
-from miles.utils.ft.models.metrics import GaugeSample
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.controller.types import ActionType
+from miles.utils.ft.controller.metric_names import AGENT_HEARTBEAT, TRAINING_PHASE
+from miles.utils.ft.agents.types import GaugeSample
+from miles.utils.ft.adapters.types import JobStatus
 
 
 def _inject_heartbeat(

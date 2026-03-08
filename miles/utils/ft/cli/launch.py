@@ -11,9 +11,9 @@ import ray
 import typer
 
 from miles.utils.ft.controller.detectors.chain import DetectorChainConfig
-from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray.controller_actor import FtControllerActor
-from miles.utils.ft.protocols.controller import ft_controller_actor_name
+from miles.utils.ft.adapters.config import FtControllerConfig
+from miles.utils.ft.factories.controller import launch_ft_controller_actor
+from miles.utils.ft.adapters.types import ft_controller_actor_name
 from miles.utils.logging_utils import configure_logger
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ def launch(
         entrypoint,
     )
 
-    actor = FtControllerActor.options(name=actor_name).remote(config=config)
+    actor = launch_ft_controller_actor(config=config, actor_name=actor_name)
     ray.get(actor.submit_and_run.remote())
 
 

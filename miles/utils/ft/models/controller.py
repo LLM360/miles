@@ -1,6 +1,6 @@
 from enum import Enum
 
-from miles.utils.ft.models.base import FtBaseModel
+from miles.utils.ft.utils.base_model import FtBaseModel
 
 
 class ControllerMode(str, Enum):

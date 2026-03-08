@@ -18,8 +18,8 @@ import sys
 
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.agents.diagnostics.utils.gpu_check_script import GpuCheckResult
-from miles.utils.ft.models.diagnostic import DiagnosticResult
-from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
+from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS
 from miles.utils.ft.utils.subprocess import run_subprocess_with_timeout
 
 logger = logging.getLogger(__name__)

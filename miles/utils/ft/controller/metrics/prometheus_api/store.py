@@ -15,7 +15,7 @@ from miles.utils.ft.controller.metrics.prometheus_api.response_parser import (
     parse_range_response,
 )
 from miles.utils.ft.controller.metrics.prometheus_api.errors import PrometheusQueryError
-from miles.utils.ft.protocols.metrics import MetricStoreProtocol
+from miles.utils.ft.controller.types import MetricStoreProtocol
 from miles.utils.ft.utils.retry import retry_sync
 
 logger = logging.getLogger(__name__)

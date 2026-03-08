@@ -13,11 +13,11 @@ import httpx
 import pytest
 from tests.fast.utils.ft.conftest import FakeNodeManager, FakeTrainingJob, get_sample_value, make_test_exporter
 
-import miles.utils.ft.models.metric_names as mn
+import miles.utils.ft.controller.metric_names as mn
 from miles.utils.ft.controller.controller import FtController
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.controller.metrics.prometheus_api.store import PrometheusClient
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.adapters.types import JobStatus
 
 
 def _make_prom_response(

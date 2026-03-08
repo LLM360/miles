@@ -4,8 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from miles.utils.ft.controller.controller import FtController
-from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.controller_factory import build_ft_controller
+from miles.utils.ft.adapters.config import FtControllerConfig
+from miles.utils.ft.factories.controller import build_ft_controller
 
 
 class TestFtControllerConfig:
@@ -82,7 +82,7 @@ class TestBuildFtControllerStub:
 
 class TestBuildFtControllerNotifier:
     def test_stub_platform_gets_stub_notifier(self) -> None:
-        from miles.utils.ft.platform.stubs import StubNotifier
+        from miles.utils.ft.adapters.stubs import StubNotifier
 
         controller = build_ft_controller(
             config=FtControllerConfig(platform="stub"),
@@ -91,7 +91,7 @@ class TestBuildFtControllerNotifier:
         assert isinstance(controller._platform_deps.notifier, StubNotifier)
 
     def test_webhook_url_creates_lark_notifier(self) -> None:
-        from miles.utils.ft.platform.notifiers.lark_notifier import LarkWebhookNotifier
+        from miles.utils.ft.adapters.impl.notifiers.lark_notifier import LarkWebhookNotifier
 
         controller = build_ft_controller(
             config=FtControllerConfig(
@@ -105,7 +105,7 @@ class TestBuildFtControllerNotifier:
 
 class TestBuildPlatformComponentsUnknown:
     def test_unknown_platform_raises_value_error(self) -> None:
-        from miles.utils.ft.platform.controller_factory import _build_platform_components
+        from miles.utils.ft.factories.controller import _build_platform_components
 
         with pytest.raises(ValueError, match="Unknown platform"):
             _build_platform_components(platform="docker", ray_address="", entrypoint="")

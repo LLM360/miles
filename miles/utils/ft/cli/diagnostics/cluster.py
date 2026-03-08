@@ -9,8 +9,8 @@ from typing import Annotated, Any
 import typer
 
 from miles.utils.ft.cli.diagnostics.output import exit_with_results, print_results, validate_check_names
-from miles.utils.ft.models.diagnostic import DiagnosticResult
-from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
+from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def cluster(
     import ray
 
     from miles.utils.ft.controller.diagnostics.executors import build_all_cluster_executors
-    from miles.utils.ft.platform.ray.node_discovery import get_alive_gpu_nodes
+    from miles.utils.ft.adapters.impl.ray.node_discovery import get_alive_gpu_nodes
 
     ray.init(address=ray_address)
 
@@ -110,9 +110,9 @@ def _deploy_agents(
     from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
     from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
-    from miles.utils.ft.models.diagnostic import DiagnosticResult
-    from miles.utils.ft.platform.node_agent_factory import build_all_diagnostics
-    from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
+    from miles.utils.ft.agents.types import DiagnosticResult
+    from miles.utils.ft.factories.node_agent import build_all_diagnostics
+    from miles.utils.ft.adapters.types import DIAGNOSTIC_TIMEOUT_SECONDS
 
     @ray.remote(num_gpus=0)
     class _DiagnosticAgent:

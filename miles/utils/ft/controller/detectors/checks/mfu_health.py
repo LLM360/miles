@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from miles.utils.ft.protocols.metrics import TrainingMetricStoreProtocol
+from miles.utils.ft.controller.types import TrainingMetricStoreProtocol
 
 
 @dataclass(frozen=True)

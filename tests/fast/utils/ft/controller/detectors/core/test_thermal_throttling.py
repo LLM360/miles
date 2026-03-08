@@ -11,7 +11,7 @@ from miles.utils.ft.controller.detectors.core.thermal_throttling import (
     ThermalThrottlingDetector,
     ThermalThrottlingDetectorConfig,
 )
-from miles.utils.ft.models.fault import ActionType, TriggerType
+from miles.utils.ft.controller.types import ActionType, TriggerType
 
 _RANK_PLACEMENT = {0: "node-0", 1: "node-1"}
 

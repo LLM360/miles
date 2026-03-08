@@ -7,7 +7,7 @@ from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
 from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.agents.diagnostics.executors.stack_trace import StackTraceNodeExecutor
-from miles.utils.ft.protocols.agents import NodeExecutorProtocol, NodeAgentProtocol
+from miles.utils.ft.adapters.types import NodeExecutorProtocol, NodeAgentProtocol
 
 
 class TestNodeAgentProtocolCompliance:

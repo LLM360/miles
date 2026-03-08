@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from miles.utils.ft.protocols.metrics import ScrapeTargetManagerProtocol
+from miles.utils.ft.controller.types import ScrapeTargetManagerProtocol
 
 logger = logging.getLogger(__name__)
 

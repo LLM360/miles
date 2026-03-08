@@ -3,11 +3,11 @@ from datetime import timedelta
 from pydantic import ConfigDict, field_validator
 
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
-from miles.utils.ft.models.base import FtBaseModel
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT, PHASE_CHECKPOINT_SAVING, PHASE_TRAINING, TRAINING_PHASE
-from miles.utils.ft.protocols.metrics import MetricQueryProtocol
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.utils.base_model import FtBaseModel
+from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
+from miles.utils.ft.controller.metric_names import AGENT_HEARTBEAT, PHASE_CHECKPOINT_SAVING, PHASE_TRAINING, TRAINING_PHASE
+from miles.utils.ft.controller.types import MetricQueryProtocol
+from miles.utils.ft.adapters.types import JobStatus
 
 
 class HangDetectorConfig(FtBaseModel):

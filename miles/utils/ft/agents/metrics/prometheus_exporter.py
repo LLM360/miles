@@ -5,7 +5,7 @@ from typing import TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, start_http_server
 
-from miles.utils.ft.models.metrics import CounterSample, GaugeSample, _MetricSampleBase
+from miles.utils.ft.agents.types import CounterSample, GaugeSample, _MetricSampleBase
 
 logger = logging.getLogger(__name__)
 

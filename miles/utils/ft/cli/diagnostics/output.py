@@ -6,7 +6,7 @@ from collections.abc import Iterable
 
 import typer
 
-from miles.utils.ft.models.diagnostic import DiagnosticResult
+from miles.utils.ft.agents.types import DiagnosticResult
 
 
 def print_results(

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from miles.utils.ft.platform.embedded_agents import _ensure_ray_actor_on_node, ensure_node_agent
+from miles.utils.ft.factories.embedded_agent import _ensure_ray_actor_on_node, ensure_node_agent
 
 
 class TestEnsureRayActorOnNode:
@@ -13,7 +13,7 @@ class TestEnsureRayActorOnNode:
 
     def test_idempotent_when_actor_already_exists(self) -> None:
         """Second call is a no-op when the actor is already registered."""
-        with patch("miles.utils.ft.platform.embedded_agents.ray") as mock_ray:
+        with patch("miles.utils.ft.factories.embedded_agent.ray") as mock_ray:
             mock_ray.get_actor.return_value = MagicMock()
             actor_cls = MagicMock()
 
@@ -28,7 +28,7 @@ class TestEnsureRayActorOnNode:
 
     def test_creates_actor_when_not_exists(self) -> None:
         """Creates and starts the actor when ray.get_actor raises ValueError."""
-        with patch("miles.utils.ft.platform.embedded_agents.ray") as mock_ray:
+        with patch("miles.utils.ft.factories.embedded_agent.ray") as mock_ray:
             mock_ray.get_actor.side_effect = ValueError("not found")
             actor_cls = MagicMock()
             handle = MagicMock()
@@ -48,7 +48,7 @@ class TestEnsureRayActorOnNode:
 
     def test_concurrent_creation_race_logs_info(self, caplog: pytest.LogCaptureFixture) -> None:
         """When another rank creates the actor concurrently, logs info and does not raise."""
-        with patch("miles.utils.ft.platform.embedded_agents.ray") as mock_ray:
+        with patch("miles.utils.ft.factories.embedded_agent.ray") as mock_ray:
             mock_ray.get_actor.side_effect = ValueError("not found")
             actor_cls = MagicMock()
             actor_cls.options.return_value.remote.side_effect = ValueError(
@@ -66,7 +66,7 @@ class TestEnsureRayActorOnNode:
 
     def test_unexpected_exception_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         """Non-ValueError exceptions are logged as warnings with exc_info."""
-        with patch("miles.utils.ft.platform.embedded_agents.ray") as mock_ray:
+        with patch("miles.utils.ft.factories.embedded_agent.ray") as mock_ray:
             mock_ray.get_actor.side_effect = ValueError("not found")
             actor_cls = MagicMock()
             actor_cls.options.return_value.remote.side_effect = RuntimeError("boom")
@@ -83,7 +83,7 @@ class TestEnsureRayActorOnNode:
 
     def test_custom_start_method(self) -> None:
         """Respects a custom start_method parameter."""
-        with patch("miles.utils.ft.platform.embedded_agents.ray") as mock_ray:
+        with patch("miles.utils.ft.factories.embedded_agent.ray") as mock_ray:
             mock_ray.get_actor.side_effect = ValueError("not found")
             actor_cls = MagicMock()
             handle = MagicMock()
@@ -102,9 +102,9 @@ class TestEnsureRayActorOnNode:
 class TestEnsureNodeAgent:
     """Tests for the ensure_node_agent wrapper."""
 
-    @patch("miles.utils.ft.platform.embedded_agents._ensure_ray_actor_on_node")
-    @patch("miles.utils.ft.platform.embedded_agents.ray")
-    @patch("miles.utils.ft.platform.embedded_agents.get_ft_id", return_value="job-42")
+    @patch("miles.utils.ft.factories.embedded_agent._ensure_ray_actor_on_node")
+    @patch("miles.utils.ft.factories.embedded_agent.ray")
+    @patch("miles.utils.ft.factories.embedded_agent.get_ft_id", return_value="job-42")
     def test_calls_ensure_with_correct_args(
         self,
         mock_get_ft_id: MagicMock,
@@ -123,8 +123,8 @@ class TestEnsureNodeAgent:
             "ft_id": "job-42",
         }
 
-    @patch("miles.utils.ft.platform.embedded_agents._ensure_ray_actor_on_node")
-    @patch("miles.utils.ft.platform.embedded_agents.ray")
+    @patch("miles.utils.ft.factories.embedded_agent._ensure_ray_actor_on_node")
+    @patch("miles.utils.ft.factories.embedded_agent.ray")
     def test_explicit_ft_id_overrides_env(
         self,
         mock_ray: MagicMock,
@@ -137,9 +137,9 @@ class TestEnsureNodeAgent:
         call_kwargs = mock_ensure.call_args
         assert call_kwargs.kwargs["actor_kwargs"]["ft_id"] == "explicit-id"
 
-    @patch("miles.utils.ft.platform.embedded_agents._ensure_ray_actor_on_node")
-    @patch("miles.utils.ft.platform.embedded_agents.ray")
-    @patch("miles.utils.ft.platform.embedded_agents.get_ft_id", return_value="job-42")
+    @patch("miles.utils.ft.factories.embedded_agent._ensure_ray_actor_on_node")
+    @patch("miles.utils.ft.factories.embedded_agent.ray")
+    @patch("miles.utils.ft.factories.embedded_agent.get_ft_id", return_value="job-42")
     def test_graceful_degrade_on_exception(
         self,
         mock_get_ft_id: MagicMock,

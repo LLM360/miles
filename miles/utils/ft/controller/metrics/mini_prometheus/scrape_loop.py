@@ -7,7 +7,7 @@ from typing import Protocol
 import httpx
 from prometheus_client.parser import text_string_to_metric_families
 
-from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.agents.types import GaugeSample
 
 logger = logging.getLogger(__name__)
 

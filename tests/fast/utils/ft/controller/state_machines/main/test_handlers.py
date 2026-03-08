@@ -18,8 +18,8 @@ from miles.utils.ft.controller.state_machines.main import DetectingAnomaly, Main
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
 from miles.utils.ft.utils.sliding_window import SlidingWindowCounter, SlidingWindowThrottle
 from miles.utils.ft.controller.state_machines.recovery import NotifyHumans, RealtimeChecks, RecoveryDone
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
+from miles.utils.ft.adapters.types import JobStatus
 from miles.utils.ft.utils.state_machine import StateMachine, StateMachineStepper
 
 # ---------------------------------------------------------------------------

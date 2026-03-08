@@ -10,7 +10,7 @@ from typing import Protocol
 
 import ray
 
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.adapters.types import JobStatus
 
 
 class FaultInjectionProtocol(Protocol):

@@ -14,7 +14,7 @@ from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
 from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor, PairwiseClusterExecutor, PerNodeClusterExecutor
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
-from miles.utils.ft.models.diagnostic import DiagnosticResult
+from miles.utils.ft.agents.types import DiagnosticResult
 
 # ---------------------------------------------------------------------------
 # BaseNodeExecutor tests

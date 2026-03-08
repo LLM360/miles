@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from miles.utils.ft.platform.ray.node_discovery import (
+from miles.utils.ft.adapters.impl.ray.node_discovery import (
     build_node_address_map,
     get_alive_gpu_nodes,
     resolve_to_ray_node_ids,
@@ -43,21 +43,21 @@ _SAMPLE_NODES = [
 
 
 class TestGetAliveGpuNodes:
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_returns_only_alive_gpu_nodes(self, mock_ray) -> None:
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = get_alive_gpu_nodes()
         node_ids = {n["NodeID"] for n in result}
         assert node_ids == {"aaa", "bbb"}
 
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_filters_by_node_ids(self, mock_ray) -> None:
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = get_alive_gpu_nodes(node_ids=["bbb"])
         assert len(result) == 1
         assert result[0]["NodeID"] == "bbb"
 
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_empty_when_no_match(self, mock_ray) -> None:
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = get_alive_gpu_nodes(node_ids=["zzz"])
@@ -65,38 +65,38 @@ class TestGetAliveGpuNodes:
 
 
 class TestResolveToRayNodeIds:
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_resolves_by_node_name(self, mock_ray) -> None:
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = resolve_to_ray_node_ids(["k8s-node-0"])
         assert result == ["aaa"]
 
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_resolves_by_ip_address(self, mock_ray) -> None:
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = resolve_to_ray_node_ids(["10.0.0.2"])
         assert result == ["bbb"]
 
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_resolves_by_ray_id_passthrough(self, mock_ray) -> None:
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = resolve_to_ray_node_ids(["aaa"])
         assert result == ["aaa"]
 
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_deduplicates_resolved_ids(self, mock_ray) -> None:
         """Same node referenced by name and IP -> only one entry."""
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = resolve_to_ray_node_ids(["k8s-node-0", "10.0.0.1", "aaa"])
         assert result == ["aaa"]
 
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_skips_dead_nodes(self, mock_ray) -> None:
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = resolve_to_ray_node_ids(["dead-gpu-node"])
         assert result == []
 
-    @patch("miles.utils.ft.platform.ray.node_discovery.ray")
+    @patch("miles.utils.ft.adapters.impl.ray.node_discovery.ray")
     def test_skips_unknown_identifiers(self, mock_ray) -> None:
         mock_ray.nodes.return_value = _SAMPLE_NODES
         result = resolve_to_ray_node_ids(["unknown-host"])

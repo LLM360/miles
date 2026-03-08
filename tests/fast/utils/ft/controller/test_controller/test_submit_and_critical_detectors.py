@@ -11,11 +11,11 @@ from tests.fast.utils.ft.conftest import (
     make_test_exporter,
 )
 
-import miles.utils.ft.models.metric_names as mn
+import miles.utils.ft.controller.metric_names as mn
 from miles.utils.ft.controller.detectors.base import BaseFaultDetector, DetectorContext
 from miles.utils.ft.controller.state_machines.main import DetectingAnomaly, Recovering
-from miles.utils.ft.models.fault import ActionType, Decision, TriggerType
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.controller.types import ActionType, Decision, TriggerType
+from miles.utils.ft.adapters.types import JobStatus
 
 # ===================================================================
 # submit_initial_training

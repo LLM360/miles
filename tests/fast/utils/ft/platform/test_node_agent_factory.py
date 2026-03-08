@@ -7,7 +7,7 @@ from miles.utils.ft.agents.diagnostics.executors.collector_based import Collecto
 from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import NcclPairwiseNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
-from miles.utils.ft.platform.node_agent_factory import build_all_diagnostics
+from miles.utils.ft.factories.node_agent import build_all_diagnostics
 
 
 class TestBuildAllDiagnostics:

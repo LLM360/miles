@@ -20,7 +20,7 @@ from tests.e2e.ft.conftest import (
     wait_for_training_stable,
 )
 
-from miles.utils.ft.models.controller import ControllerMode
+from miles.utils.ft.controller.types import ControllerMode
 
 
 async def test_python_exception_auto_recovery(

@@ -6,8 +6,8 @@ from datetime import datetime
 from pydantic import ConfigDict
 
 from miles.utils.ft.controller.metrics.mini_wandb import MiniWandb
-from miles.utils.ft.models.base import FtBaseModel
-from miles.utils.ft.protocols.platform import NodeManagerProtocol, NotifierProtocol, TrainingJobProtocol
+from miles.utils.ft.utils.base_model import FtBaseModel
+from miles.utils.ft.adapters.types import NodeManagerProtocol, NotifierProtocol, TrainingJobProtocol
 
 
 class RestartState(FtBaseModel):

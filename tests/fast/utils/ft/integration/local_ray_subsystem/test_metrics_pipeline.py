@@ -13,13 +13,13 @@ from tests.fast.utils.ft.integration.conftest import get_status, poll_for_run_id
 from miles.utils.ft.agents.metrics.prometheus_exporter import PrometheusExporter
 from miles.utils.ft.controller.detectors.core.nan_loss import NanLossDetector
 from miles.utils.ft.controller.metrics.mini_prometheus import MiniPrometheus, MiniPrometheusConfig
-from miles.utils.ft.models.diagnostic import DiagnosticResult
-from miles.utils.ft.models.metric_names import AGENT_HEARTBEAT
-from miles.utils.ft.models.controller import ControllerMode
-from miles.utils.ft.platform.config import FtControllerConfig
-from miles.utils.ft.platform.ray_wrappers.controller_actor import FtControllerActor
-from miles.utils.ft.platform.stubs import StubTrainingJob
-from miles.utils.ft.protocols.controller import ft_controller_actor_name
+from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.controller.metric_names import AGENT_HEARTBEAT
+from miles.utils.ft.controller.types import ControllerMode
+from miles.utils.ft.adapters.config import FtControllerConfig
+from miles.utils.ft.adapters.impl.ray.controller_actor import FtControllerActor
+from miles.utils.ft.adapters.stubs import StubTrainingJob
+from miles.utils.ft.adapters.types import ft_controller_actor_name
 
 pytestmark = [
     pytest.mark.local_ray,

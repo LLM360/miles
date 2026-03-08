@@ -11,10 +11,10 @@ from miles.utils.ft.controller.state_machines.restart.models import (
     RestartState,
     StoppingAndRestarting,
 )
-from miles.utils.ft.models.base import FtBaseModel
-from miles.utils.ft.models.fault import TriggerType
-from miles.utils.ft.protocols.controller import DiagnosticOrchestratorProtocol
-from miles.utils.ft.protocols.platform import NotifierProtocol
+from miles.utils.ft.utils.base_model import FtBaseModel
+from miles.utils.ft.controller.types import TriggerType
+from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
+from miles.utils.ft.adapters.types import NotifierProtocol
 
 
 class RecoveryState(FtBaseModel):

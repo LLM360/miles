@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from miles.utils.ft.models.diagnostic import DiagnosticPipelineResult
-    from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
+    from miles.utils.ft.agents.types import DiagnosticPipelineResult
+    from miles.utils.ft.adapters.types import ClusterExecutorProtocol
 
 REGISTER_TIMEOUT_SECONDS: float = 10
 

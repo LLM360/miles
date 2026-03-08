@@ -10,7 +10,7 @@ from miles.utils.ft.controller.diagnostics.executors.pairwise import (
     _cross_compare,
     _PairResult,
 )
-from miles.utils.ft.models.diagnostic import DiagnosticResult
+from miles.utils.ft.agents.types import DiagnosticResult
 
 _DIAG_TYPE = "nccl_pairwise"
 

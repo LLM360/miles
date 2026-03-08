@@ -10,8 +10,8 @@ from miles.utils.ft.controller.detectors.checks.hardware import (
     check_all_hardware_faults,
     check_nic_down_in_window,
 )
-from miles.utils.ft.models.metric_names import NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP
-from miles.utils.ft.models.metrics import GaugeSample
+from miles.utils.ft.controller.metric_names import NODE_FILESYSTEM_AVAIL_BYTES, NODE_NETWORK_UP
+from miles.utils.ft.agents.types import GaugeSample
 
 
 class TestCheckNicDownInWindow:

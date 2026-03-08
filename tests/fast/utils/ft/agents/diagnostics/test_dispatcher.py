@@ -5,8 +5,8 @@ import asyncio
 import pytest
 
 from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
-from miles.utils.ft.models.diagnostic import DiagnosticResult, UnknownDiagnosticError
-from miles.utils.ft.protocols.agents import NodeExecutorProtocol
+from miles.utils.ft.agents.types import DiagnosticResult, UnknownDiagnosticError
+from miles.utils.ft.adapters.types import NodeExecutorProtocol
 
 
 class _StubExecutor:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from miles.utils.ft.protocols.platform import NotifierProtocol
+from miles.utils.ft.adapters.types import NotifierProtocol
 
 logger = logging.getLogger(__name__)
 

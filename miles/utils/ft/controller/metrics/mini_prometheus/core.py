@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 from miles.utils.ft.controller.metrics.mini_prometheus.in_memory_store import InMemoryMetricStore
 from miles.utils.ft.controller.metrics.mini_prometheus.query import SeriesKey
 from miles.utils.ft.controller.metrics.mini_prometheus.scrape_loop import ScrapeLoop
-from miles.utils.ft.models.metrics import MetricSample
-from miles.utils.ft.protocols.metrics import MetricStoreProtocol, ScrapeTargetManagerProtocol
+from miles.utils.ft.agents.types import MetricSample
+from miles.utils.ft.controller.types import MetricStoreProtocol, ScrapeTargetManagerProtocol
 
 
 @dataclass

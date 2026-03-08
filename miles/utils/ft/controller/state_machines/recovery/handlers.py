@@ -15,8 +15,8 @@ from miles.utils.ft.controller.state_machines.recovery.models import (
 from miles.utils.ft.controller.state_machines.restart.models import RestartDone, RestartFailed
 from miles.utils.ft.controller.state_machines.utils import safe_notify
 from miles.utils.ft.controller.diagnostics.executors import StackTraceClusterExecutor
-from miles.utils.ft.models.fault import TriggerType
-from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
+from miles.utils.ft.controller.types import TriggerType
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol
 
 logger = logging.getLogger(__name__)
 

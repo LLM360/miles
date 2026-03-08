@@ -15,8 +15,8 @@ from miles.utils.ft.controller.diagnostics.executors import GpuClusterExecutor, 
 from miles.utils.ft.controller.diagnostics.orchestrator import DiagnosticOrchestrator
 from miles.utils.ft.controller.state_machines.main import Recovering
 from miles.utils.ft.controller.state_machines.recovery import StopTimeDiagnostics
-from miles.utils.ft.protocols.agents import ClusterExecutorProtocol
-from miles.utils.ft.protocols.platform import JobStatus
+from miles.utils.ft.adapters.types import ClusterExecutorProtocol
+from miles.utils.ft.adapters.types import JobStatus
 
 _TYPE_TO_EXECUTOR: dict[str, ClusterExecutorProtocol] = {
     "gpu": GpuClusterExecutor(),
