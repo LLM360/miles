@@ -8,7 +8,7 @@ from miles.utils.ft.adapters.types import NodeAgentProtocol, NodeExecutorProtoco
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
-from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.nccl import NcclNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.stack_trace import StackTraceNodeExecutor
 
 
@@ -37,8 +37,11 @@ class TestNodeExecutorProtocolCompliance:
     def test_stack_trace_diagnostic_satisfies_protocol(self) -> None:
         assert isinstance(StackTraceNodeExecutor(), NodeExecutorProtocol)
 
-    def test_nccl_simple_diagnostic_satisfies_protocol(self) -> None:
-        assert isinstance(NcclSimpleNodeExecutor(), NodeExecutorProtocol)
+    def test_nccl_diagnostic_satisfies_protocol(self) -> None:
+        assert isinstance(
+            NcclNodeExecutor(diagnostic_type="nccl_simple", expected_bandwidth_gbps=350.0),
+            NodeExecutorProtocol,
+        )
 
     def test_incomplete_subclass_raises_type_error(self) -> None:
         class _Incomplete(NodeExecutorProtocol):

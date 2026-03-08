@@ -20,8 +20,7 @@ from miles.utils.ft.agents.collectors.network import NetworkCollector
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.executors.collector_based import CollectorBasedNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
-from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import NcclPairwiseNodeExecutor
-from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.nccl import NcclNodeExecutor
 from miles.utils.ft.controller.detectors.checks.gpu.checks import check_gpu_faults
 from miles.utils.ft.controller.detectors.checks.hardware import _check_disk_fault, _check_majority_nic_down
 
@@ -45,8 +44,13 @@ def build_all_diagnostics(
     """
     return [
         GpuNodeExecutor(),
-        NcclSimpleNodeExecutor(num_gpus=num_gpus),
-        NcclPairwiseNodeExecutor(num_gpus=num_gpus),
+        NcclNodeExecutor(diagnostic_type="nccl_simple", expected_bandwidth_gbps=350.0, num_gpus=num_gpus),
+        NcclNodeExecutor(
+            diagnostic_type="nccl_pairwise",
+            expected_bandwidth_gbps=40.0,
+            num_gpus=num_gpus,
+            nccl_test_binary="all_gather_perf",
+        ),
         CollectorBasedNodeExecutor(
             diagnostic_type="disk",
             collector=DiskCollector(disk_mounts=disk_mounts),

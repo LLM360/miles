@@ -1,14 +1,14 @@
-"""Tests for NcclSimpleNodeExecutor."""
+"""Tests for NcclNodeExecutor."""
 
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from tests.fast.utils.ft.utils import make_mock_subprocess
 
-from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.nccl import NcclNodeExecutor
 from miles.utils.ft.agents.diagnostics.utils.nccl_utils import parse_avg_bus_bandwidth
 
 # ---------------------------------------------------------------------------
@@ -68,6 +68,39 @@ This is not valid nccl-tests output
 Some random text here
 """
 
+PAIRWISE_OUTPUT_HIGH_BW = """\
+# nThread 1 nGpus 8 minBytes 1048576 maxBytes 1073741824 step: 2(factor) warmup iters: 5 iters: 20 agg iters: 1 validation: 1 graph: 0
+#
+# Using devices
+#  Rank  0 Group  0 Pid 123456 on node-0 device  0 [0x07] NVIDIA H100 80GB HBM3
+#  Rank  1 Group  0 Pid 123456 on node-0 device  1 [0x0a] NVIDIA H100 80GB HBM3
+#
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)
+     1048576        262144     float     sum      -1    123.4    8.50   45.00      0    124.5    8.42   44.90      0
+     2097152        524288     float     sum      -1    234.5   8.94   47.00      0    235.6    8.90   46.80      0
+# Avg bus bandwidth    : 45.5000
+"""
+
+PAIRWISE_OUTPUT_LOW_BW = """\
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+     1048576        262144     float     sum      -1    500.0    2.10   10.00      0    501.0    2.09    9.90      0
+# Avg bus bandwidth    : 10.0000
+"""
+
+
+def _make_simple(**kwargs: object) -> NcclNodeExecutor:
+    kwargs.setdefault("diagnostic_type", "nccl_simple")
+    kwargs.setdefault("expected_bandwidth_gbps", 350.0)
+    return NcclNodeExecutor(**kwargs)  # type: ignore[arg-type]
+
+
+def _make_pairwise(**kwargs: object) -> NcclNodeExecutor:
+    kwargs.setdefault("diagnostic_type", "nccl_pairwise")
+    kwargs.setdefault("expected_bandwidth_gbps", 40.0)
+    kwargs.setdefault("nccl_test_binary", "all_gather_perf")
+    return NcclNodeExecutor(**kwargs)  # type: ignore[arg-type]
+
 
 # ---------------------------------------------------------------------------
 # parse_avg_bus_bandwidth unit tests
@@ -98,13 +131,13 @@ class TestParseAvgBusBandwidth:
 
 
 # ---------------------------------------------------------------------------
-# NcclSimpleNodeExecutor.run() tests
+# NcclNodeExecutor (simple mode) tests
 # ---------------------------------------------------------------------------
 
 
-class TestNcclSimpleNodeExecutor:
+class TestNcclSimple:
     async def test_pass_when_bandwidth_above_threshold(self) -> None:
-        diag = NcclSimpleNodeExecutor(expected_bandwidth_gbps=350.0)
+        diag = _make_simple(expected_bandwidth_gbps=350.0)
         mock_proc = make_mock_subprocess(stdout=NCCL_OUTPUT_WITH_SUMMARY)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
@@ -117,7 +150,7 @@ class TestNcclSimpleNodeExecutor:
         assert "350.00" in result.details
 
     async def test_fail_when_bandwidth_below_threshold(self) -> None:
-        diag = NcclSimpleNodeExecutor(expected_bandwidth_gbps=350.0)
+        diag = _make_simple(expected_bandwidth_gbps=350.0)
         mock_proc = make_mock_subprocess(stdout=NCCL_OUTPUT_LOW_BW)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
@@ -128,7 +161,7 @@ class TestNcclSimpleNodeExecutor:
         assert "350.00" in result.details
 
     async def test_fail_when_binary_not_found(self) -> None:
-        diag = NcclSimpleNodeExecutor()
+        diag = _make_simple()
 
         with patch(
             "asyncio.create_subprocess_exec",
@@ -140,7 +173,7 @@ class TestNcclSimpleNodeExecutor:
         assert "failed to execute" in result.details
 
     async def test_fail_when_subprocess_returns_nonzero(self) -> None:
-        diag = NcclSimpleNodeExecutor()
+        diag = _make_simple()
         mock_proc = make_mock_subprocess(
             stdout="",
             stderr="NCCL WARN: some error",
@@ -155,7 +188,7 @@ class TestNcclSimpleNodeExecutor:
         assert "exit code 1" in result.details
 
     async def test_fail_when_output_unparseable(self) -> None:
-        diag = NcclSimpleNodeExecutor()
+        diag = _make_simple()
         mock_proc = make_mock_subprocess(stdout=NCCL_OUTPUT_GARBAGE)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
@@ -165,7 +198,7 @@ class TestNcclSimpleNodeExecutor:
         assert "failed to parse bandwidth" in result.details
 
     async def test_fail_on_timeout(self) -> None:
-        diag = NcclSimpleNodeExecutor()
+        diag = _make_simple()
         mock_proc = make_mock_subprocess()
         mock_proc.communicate.side_effect = asyncio.TimeoutError()
 
@@ -179,7 +212,7 @@ class TestNcclSimpleNodeExecutor:
         mock_proc.wait.assert_called_once()
 
     async def test_custom_num_gpus(self) -> None:
-        diag = NcclSimpleNodeExecutor(num_gpus=4)
+        diag = _make_simple(num_gpus=4)
         mock_proc = make_mock_subprocess(stdout=NCCL_OUTPUT_WITH_SUMMARY)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
@@ -191,7 +224,7 @@ class TestNcclSimpleNodeExecutor:
         assert call_args.args[g_index + 1] == "4"
 
     async def test_node_id_in_result(self) -> None:
-        diag = NcclSimpleNodeExecutor(expected_bandwidth_gbps=100.0)
+        diag = _make_simple(expected_bandwidth_gbps=100.0)
         mock_proc = make_mock_subprocess(stdout=NCCL_OUTPUT_WITH_SUMMARY)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
@@ -201,7 +234,7 @@ class TestNcclSimpleNodeExecutor:
         assert result.diagnostic_type == "nccl_simple"
 
     async def test_custom_binary_name(self) -> None:
-        diag = NcclSimpleNodeExecutor(nccl_test_binary="/opt/nccl/all_reduce_perf")
+        diag = _make_simple(nccl_test_binary="/opt/nccl/all_reduce_perf")
         mock_proc = make_mock_subprocess(stdout=NCCL_OUTPUT_WITH_SUMMARY)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
@@ -210,7 +243,7 @@ class TestNcclSimpleNodeExecutor:
         assert mock_exec.call_args.args[0] == "/opt/nccl/all_reduce_perf"
 
     async def test_bandwidth_exactly_at_threshold_passes(self) -> None:
-        diag = NcclSimpleNodeExecutor(expected_bandwidth_gbps=380.50)
+        diag = _make_simple(expected_bandwidth_gbps=380.50)
         mock_proc = make_mock_subprocess(stdout=NCCL_OUTPUT_WITH_SUMMARY)
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
@@ -219,7 +252,7 @@ class TestNcclSimpleNodeExecutor:
         assert result.passed is True
 
     async def test_fail_when_permission_denied(self) -> None:
-        diag = NcclSimpleNodeExecutor()
+        diag = _make_simple()
 
         with patch(
             "asyncio.create_subprocess_exec",
@@ -231,7 +264,7 @@ class TestNcclSimpleNodeExecutor:
         assert "failed to execute" in result.details
 
     async def test_stderr_truncated_at_500_chars(self) -> None:
-        diag = NcclSimpleNodeExecutor()
+        diag = _make_simple()
         long_stderr = "E" * 600
         mock_proc = make_mock_subprocess(
             stdout="",
@@ -244,3 +277,143 @@ class TestNcclSimpleNodeExecutor:
 
         assert result.passed is False
         assert len(result.details) < 600
+
+    async def test_no_env_when_no_master_params(self) -> None:
+        """Simple mode should not set env when master_addr/master_port are not passed."""
+        diag = _make_simple()
+        mock_proc = make_mock_subprocess(stdout=NCCL_OUTPUT_WITH_SUMMARY)
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_exec:
+            await diag.run(node_id="node-0")
+
+        call_kwargs = mock_exec.call_args.kwargs
+        assert "env" not in call_kwargs or call_kwargs["env"] is None
+
+
+# ---------------------------------------------------------------------------
+# NcclNodeExecutor (pairwise mode) tests
+# ---------------------------------------------------------------------------
+
+
+class TestNcclPairwise:
+    async def test_pass_when_bandwidth_above_threshold(self) -> None:
+        diag = _make_pairwise(expected_bandwidth_gbps=40.0)
+        mock_proc = make_mock_subprocess(stdout=PAIRWISE_OUTPUT_HIGH_BW.encode())
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await diag.run(node_id="node-0", timeout_seconds=180, master_addr="10.0.0.1", master_port=29500)
+
+        assert result.passed is True
+        assert result.node_id == "node-0"
+        assert result.diagnostic_type == "nccl_pairwise"
+        assert "45.50" in result.details
+
+    async def test_fail_when_bandwidth_below_threshold(self) -> None:
+        diag = _make_pairwise(expected_bandwidth_gbps=40.0)
+        mock_proc = make_mock_subprocess(stdout=PAIRWISE_OUTPUT_LOW_BW.encode())
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await diag.run(node_id="node-0", master_addr="10.0.0.1")
+
+        assert result.passed is False
+        assert "10.00" in result.details
+
+    async def test_fail_when_binary_not_found(self) -> None:
+        diag = _make_pairwise()
+
+        with patch(
+            "asyncio.create_subprocess_exec",
+            side_effect=OSError("No such file"),
+        ):
+            result = await diag.run(node_id="node-0", master_addr="10.0.0.1")
+
+        assert result.passed is False
+        assert "failed to execute" in result.details
+
+    async def test_fail_when_subprocess_returns_nonzero(self) -> None:
+        diag = _make_pairwise()
+        mock_proc = make_mock_subprocess(stderr=b"NCCL error", returncode=1)
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await diag.run(node_id="node-0", master_addr="10.0.0.1")
+
+        assert result.passed is False
+        assert "exit code 1" in result.details
+
+    async def test_fail_when_output_unparseable(self) -> None:
+        diag = _make_pairwise()
+        mock_proc = make_mock_subprocess(stdout=b"garbage output")
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await diag.run(node_id="node-0", master_addr="10.0.0.1")
+
+        assert result.passed is False
+        assert "failed to parse" in result.details
+
+    async def test_timeout_handling(self) -> None:
+        diag = _make_pairwise()
+        mock_proc = make_mock_subprocess()
+        mock_proc.communicate.side_effect = asyncio.TimeoutError()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await diag.run(node_id="node-0", timeout_seconds=30, master_addr="10.0.0.1")
+
+        assert result.passed is False
+        assert "failed to execute all_gather_perf" in result.details
+        mock_proc.kill.assert_called_once()
+        mock_proc.wait.assert_awaited_once()
+
+    async def test_environment_variables_set(self) -> None:
+        diag = _make_pairwise()
+        mock_proc = make_mock_subprocess(stdout=PAIRWISE_OUTPUT_HIGH_BW.encode())
+        captured_env: dict[str, str] = {}
+
+        async def capture_exec(*args: object, **kwargs: object) -> AsyncMock:
+            env = kwargs.get("env", {})
+            assert isinstance(env, dict)
+            captured_env.update(env)
+            return mock_proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=capture_exec):
+            await diag.run(node_id="node-0", master_addr="10.0.0.1", master_port=29501)
+
+        assert captured_env["MASTER_ADDR"] == "10.0.0.1"
+        assert captured_env["MASTER_PORT"] == "29501"
+
+    async def test_custom_threshold(self) -> None:
+        diag = _make_pairwise(expected_bandwidth_gbps=5.0)
+        mock_proc = make_mock_subprocess(stdout=PAIRWISE_OUTPUT_LOW_BW.encode())
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await diag.run(node_id="node-0", master_addr="10.0.0.1")
+
+        assert result.passed is True
+        assert "10.00" in result.details
+
+    async def test_node_id_in_result(self) -> None:
+        diag = _make_pairwise()
+        mock_proc = make_mock_subprocess(stdout=PAIRWISE_OUTPUT_HIGH_BW.encode())
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await diag.run(node_id="my-special-node", master_addr="10.0.0.1")
+
+        assert result.node_id == "my-special-node"
+        assert result.diagnostic_type == "nccl_pairwise"
+
+    async def test_default_master_port_when_only_addr_provided(self) -> None:
+        """When only master_addr is passed, MASTER_PORT defaults to DEFAULT_NCCL_MASTER_PORT."""
+        diag = _make_pairwise()
+        mock_proc = make_mock_subprocess(stdout=PAIRWISE_OUTPUT_HIGH_BW.encode())
+        captured_env: dict[str, str] = {}
+
+        async def capture_exec(*args: object, **kwargs: object) -> AsyncMock:
+            env = kwargs.get("env", {})
+            assert isinstance(env, dict)
+            captured_env.update(env)
+            return mock_proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=capture_exec):
+            await diag.run(node_id="node-0", master_addr="10.0.0.1")
+
+        assert captured_env["MASTER_ADDR"] == "10.0.0.1"
+        assert captured_env["MASTER_PORT"] == "29500"

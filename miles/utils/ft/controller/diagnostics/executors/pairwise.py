@@ -12,7 +12,7 @@ import logging
 from typing import NamedTuple
 
 from miles.utils.ft.adapters.types import ClusterExecutorProtocol, NodeAgentProtocol
-from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import DEFAULT_NCCL_MASTER_PORT
+from miles.utils.ft.agents.diagnostics.executors.nccl import DEFAULT_NCCL_MASTER_PORT
 from miles.utils.ft.controller.diagnostics.utils import RPC_TIMEOUT_BUFFER_SECONDS
 
 logger = logging.getLogger(__name__)

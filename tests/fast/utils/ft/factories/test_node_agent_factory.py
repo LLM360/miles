@@ -5,8 +5,7 @@ from pathlib import Path
 
 from miles.utils.ft.agents.diagnostics.executors.collector_based import CollectorBasedNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
-from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import NcclPairwiseNodeExecutor
-from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.nccl import NcclNodeExecutor
 from miles.utils.ft.factories.node_agent import build_all_diagnostics
 
 
@@ -19,8 +18,8 @@ class TestBuildAllDiagnostics:
     def test_dedicated_executors(self) -> None:
         diagnostics = build_all_diagnostics(num_gpus=4)
         assert isinstance(diagnostics[0], GpuNodeExecutor)
-        assert isinstance(diagnostics[1], NcclSimpleNodeExecutor)
-        assert isinstance(diagnostics[2], NcclPairwiseNodeExecutor)
+        assert isinstance(diagnostics[1], NcclNodeExecutor)
+        assert isinstance(diagnostics[2], NcclNodeExecutor)
 
     def test_collector_based_executors_for_disk_network_xid(self) -> None:
         diagnostics = build_all_diagnostics(num_gpus=4)

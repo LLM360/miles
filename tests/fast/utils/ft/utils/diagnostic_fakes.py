@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from miles.utils.ft.adapters.types import NodeAgentProtocol
 from miles.utils.ft.agents.diagnostics.base import BaseNodeExecutor
-from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import NcclPairwiseNodeExecutor
+from miles.utils.ft.agents.diagnostics.executors.nccl import NcclNodeExecutor
 from miles.utils.ft.agents.types import DiagnosticPipelineResult, DiagnosticResult
 from miles.utils.ft.controller.types import DiagnosticOrchestratorProtocol
 
@@ -177,13 +177,13 @@ def make_fake_agents(
 def mock_nccl_pairwise_run(
     node_pass_map: dict[str, bool],
 ) -> contextlib.AbstractContextManager[None]:
-    """Patch NcclPairwiseNodeExecutor.run to return results per node_id.
+    """Patch NcclNodeExecutor.run to return results per node_id.
 
     ``node_pass_map`` maps node_id → True (pass) or False (fail).
     """
 
     async def _fake_run(
-        self: NcclPairwiseNodeExecutor,
+        self: NcclNodeExecutor,
         node_id: str,
         timeout_seconds: int = 180,
     ) -> DiagnosticResult:
@@ -195,7 +195,7 @@ def mock_nccl_pairwise_run(
             details="pass" if passed else "fail",
         )
 
-    return patch.object(NcclPairwiseNodeExecutor, "run", _fake_run)
+    return patch.object(NcclNodeExecutor, "run", _fake_run)
 
 
 # ---------------------------------------------------------------------------

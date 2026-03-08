@@ -78,8 +78,7 @@ async def run_nccl_test(
 ) -> DiagnosticResult:
     """Run an nccl-tests binary and return a DiagnosticResult.
 
-    Shared subprocess lifecycle used by both NcclSimpleNodeExecutor
-    and NcclPairwiseNodeExecutor.
+    Shared subprocess lifecycle used by NcclNodeExecutor.
     """
     fail: Callable[[str], DiagnosticResult] = partial(
         DiagnosticResult.fail_result,

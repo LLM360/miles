@@ -299,7 +299,7 @@ class TestDiagnosticOrchestratorInterMachine:
         assert pairs == expected_pairs
 
     def test_inter_machine_port_assignment(self) -> None:
-        from miles.utils.ft.agents.diagnostics.executors.nccl_pairwise import DEFAULT_NCCL_MASTER_PORT
+        from miles.utils.ft.agents.diagnostics.executors.nccl import DEFAULT_NCCL_MASTER_PORT
 
         assert DEFAULT_NCCL_MASTER_PORT == 29500
 
