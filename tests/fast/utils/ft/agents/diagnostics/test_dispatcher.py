@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from miles.utils.ft.agents.diagnostics.runner import NodeExecutorRunner
+from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.models.diagnostics import DiagnosticResult, UnknownDiagnosticError
 from miles.utils.ft.protocols.agents import NodeExecutorProtocol
 
@@ -50,20 +50,20 @@ class _CrashingExecutor:
 
 class TestAvailableTypes:
     def test_returns_sorted_registered_types(self) -> None:
-        runner = NodeExecutorRunner(
+        runner = NodeDiagnosticDispatcher(
             node_id="node-1",
             diagnostics=[_StubExecutor("zeta"), _StubExecutor("alpha"), _StubExecutor("mid")],
         )
         assert runner.available_types == ["alpha", "mid", "zeta"]
 
     def test_empty_when_no_diagnostics(self) -> None:
-        runner = NodeExecutorRunner(node_id="node-1")
+        runner = NodeDiagnosticDispatcher(node_id="node-1")
         assert runner.available_types == []
 
 
 class TestRunSelected:
     def test_runs_all_selected_types_in_order(self) -> None:
-        runner = NodeExecutorRunner(
+        runner = NodeDiagnosticDispatcher(
             node_id="node-1",
             diagnostics=[_StubExecutor("a", passed=True), _StubExecutor("b", passed=False)],
         )
@@ -76,7 +76,7 @@ class TestRunSelected:
         assert results[1].passed is False
 
     def test_unknown_type_raises(self) -> None:
-        runner = NodeExecutorRunner(
+        runner = NodeDiagnosticDispatcher(
             node_id="node-1",
             diagnostics=[_StubExecutor("known")],
         )
@@ -84,7 +84,7 @@ class TestRunSelected:
             asyncio.run(runner.run_selected(["unknown"], timeout_seconds=10))
 
     def test_timeout_returns_fail_result(self) -> None:
-        runner = NodeExecutorRunner(
+        runner = NodeDiagnosticDispatcher(
             node_id="node-1",
             diagnostics=[_SlowExecutor()],
         )
@@ -95,7 +95,7 @@ class TestRunSelected:
         assert "timed out" in results[0].details
 
     def test_exception_returns_fail_result(self) -> None:
-        runner = NodeExecutorRunner(
+        runner = NodeDiagnosticDispatcher(
             node_id="node-1",
             diagnostics=[_CrashingExecutor()],
         )
@@ -106,7 +106,7 @@ class TestRunSelected:
         assert "exception" in results[0].details
 
     def test_empty_selection_returns_empty_list(self) -> None:
-        runner = NodeExecutorRunner(
+        runner = NodeDiagnosticDispatcher(
             node_id="node-1",
             diagnostics=[_StubExecutor("a")],
         )

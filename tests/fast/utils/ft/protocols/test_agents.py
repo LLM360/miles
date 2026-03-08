@@ -5,7 +5,7 @@ from __future__ import annotations
 from miles.utils.ft.agents.core.node_agent import FtNodeAgent
 from miles.utils.ft.agents.diagnostics.executors.gpu import GpuNodeExecutor
 from miles.utils.ft.agents.diagnostics.executors.nccl_simple import NcclSimpleNodeExecutor
-from miles.utils.ft.agents.diagnostics.runner import NodeExecutorRunner
+from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.agents.diagnostics.executors.stack_trace import StackTraceNodeExecutor
 from miles.utils.ft.protocols.agents import NodeExecutorProtocol, NodeAgentProtocol
 
@@ -17,7 +17,7 @@ class TestNodeAgentProtocolCompliance:
         agent._exporter.shutdown()
 
     def test_diagnostic_runner_satisfies_protocol(self) -> None:
-        runner = NodeExecutorRunner(node_id="test-node")
+        runner = NodeDiagnosticDispatcher(node_id="test-node")
         assert isinstance(runner, NodeAgentProtocol)
 
     def test_conforming_class_passes_isinstance(self) -> None:

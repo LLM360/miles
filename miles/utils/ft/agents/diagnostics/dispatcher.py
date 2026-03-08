@@ -9,7 +9,7 @@ from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS, NodeAgen
 logger = logging.getLogger(__name__)
 
 
-class NodeExecutorRunner(NodeAgentProtocol):
+class NodeDiagnosticDispatcher(NodeAgentProtocol):
     """Registry-based diagnostic dispatcher with timeout protection.
 
     Holds a set of NodeExecutorProtocol implementations keyed by

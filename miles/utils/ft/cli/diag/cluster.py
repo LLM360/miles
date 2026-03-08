@@ -112,7 +112,7 @@ def _deploy_agents(
     import ray
     from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-    from miles.utils.ft.agents.diagnostics.runner import NodeExecutorRunner
+    from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
     from miles.utils.ft.models.diagnostics import DiagnosticResult
     from miles.utils.ft.platform.node_agent_factory import build_all_diagnostics
     from miles.utils.ft.protocols.agents import DIAGNOSTIC_TIMEOUT_SECONDS
@@ -120,7 +120,7 @@ def _deploy_agents(
     @ray.remote(num_gpus=0)
     class _DiagnosticAgent:
         def __init__(self, node_id: str, num_gpus: int) -> None:
-            self._runner = NodeExecutorRunner(
+            self._dispatcher = NodeDiagnosticDispatcher(
                 node_id=node_id,
                 diagnostics=build_all_diagnostics(num_gpus=num_gpus),
             )
@@ -131,7 +131,7 @@ def _deploy_agents(
             timeout_seconds: int = DIAGNOSTIC_TIMEOUT_SECONDS,
             **kwargs: object,
         ) -> DiagnosticResult:
-            return await self._runner.run_diagnostic(
+            return await self._dispatcher.run_diagnostic(
                 diagnostic_type=diagnostic_type,
                 timeout_seconds=timeout_seconds,
                 **kwargs,

@@ -8,7 +8,7 @@ from typing import Annotated
 
 import typer
 
-from miles.utils.ft.agents.diagnostics.runner import NodeExecutorRunner
+from miles.utils.ft.agents.diagnostics.dispatcher import NodeDiagnosticDispatcher
 from miles.utils.ft.cli.diag.output import exit_with_results, print_results
 from miles.utils.ft.platform.node_agent_factory import build_all_diagnostics
 
@@ -33,15 +33,15 @@ def local(
     )
 
     node_id = socket.gethostname()
-    runner = NodeExecutorRunner(node_id=node_id, diagnostics=diagnostics)
+    dispatcher = NodeDiagnosticDispatcher(node_id=node_id, diagnostics=diagnostics)
 
-    local_defaults = [t for t in runner.available_types if t not in _LOCAL_EXCLUDED]
+    local_defaults = [t for t in dispatcher.available_types if t not in _LOCAL_EXCLUDED]
     selected = checks or local_defaults
-    unknown = set(selected) - set(runner.available_types)
+    unknown = set(selected) - set(dispatcher.available_types)
     if unknown:
         typer.echo(f"Unknown checks: {', '.join(sorted(unknown))}", err=True)
         raise typer.Exit(code=1)
 
-    results = asyncio.run(runner.run_selected(selected, timeout_seconds=timeout))
+    results = asyncio.run(dispatcher.run_selected(selected, timeout_seconds=timeout))
     print_results(results, json_output=json_output, node_id=node_id)
     exit_with_results(results)
