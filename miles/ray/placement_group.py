@@ -42,18 +42,10 @@ def create_placement_groups(args) -> dict[str, PlacementGroupSlice | None]:
     logger.info(f"Creating placement group with {num_gpus} GPUs...")
     pg_info = create_placement_group_info(num_gpus)
 
-    actor_count = args.actor_num_nodes * args.actor_num_gpus_per_node
-    rollout_count = num_gpus - rollout_offset
-
-    critic_slice: PlacementGroupSlice | None = None
-    if args.use_critic:
-        critic_count = args.critic_num_nodes * args.critic_num_gpus_per_node
-        critic_slice = pg_info[critic_offset : critic_offset + critic_count]
-
     return {
-        "actor": pg_info[0:actor_count],
-        "critic": critic_slice,
-        "rollout": pg_info[rollout_offset : rollout_offset + rollout_count],
+        "actor": pg_info[:],
+        "critic": pg_info[critic_offset:] if args.use_critic else None,
+        "rollout": pg_info[rollout_offset:],
     }
 
 
