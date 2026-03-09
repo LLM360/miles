@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 import ray
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-
-if TYPE_CHECKING:
-    from miles.utils.placement_group_utils import PlacementGroupSlice
+from miles.utils.placement_group_utils import PlacementGroupSlice
 
 
 class RayTrainGroup:
