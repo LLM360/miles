@@ -59,7 +59,7 @@ class PlacementGroupSlice:
         return self._owner.reordered_gpu_ids[self._offset : self._offset + self._count]
 
 
-def bundle_sort_key(probe: BundleLocationSnapshot) -> tuple[list[int], str]:
+def _bundle_sort_key(probe: BundleLocationSnapshot) -> tuple[list[int], str]:
     node_identifier = probe.node_ip
     try:
         node_ip_parts = list(map(int, node_identifier.split(".")))
@@ -80,7 +80,7 @@ class _InfoActor:
         return ray.util.get_node_ip_address(), ray.get_gpu_ids()[0]
 
 
-def probe_bundles(pg: PlacementGroup, num_bundles: int, num_gpus: float = 1) -> list[BundleLocationSnapshot]:
+def _probe_bundles(pg: PlacementGroup, num_bundles: int, num_gpus: float = 1) -> list[BundleLocationSnapshot]:
     """Probe all bundles in a PG to discover (node_ip, gpu_id) mappings.
 
     Args:
@@ -122,8 +122,8 @@ def create_placement_group_info(num_gpus: int) -> PlacementGroupInfo:
 
     ray.get(pg.ready())
 
-    probes = probe_bundles(pg=pg, num_bundles=num_gpus)
-    sorted_probes = sorted(probes, key=bundle_sort_key)
+    probes = _probe_bundles(pg=pg, num_bundles=num_gpus)
+    sorted_probes = sorted(probes, key=_bundle_sort_key)
 
     for rank, probe in enumerate(sorted_probes):
         logger.info(
