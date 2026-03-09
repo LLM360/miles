@@ -2,9 +2,19 @@
 
 ***WARN: This is experimental and can only be stabilized after sufficiently many large training runs.***
 
+## Goals
+
+These failures are considered:
+1. Program error (recoverable by restarting corresponding components or the whole system)
+2. Node error (only recoverable by removing the bad nodes and use replacement good nodes)
+
+## Architecture & State Machines
+
+### Figure
+
 ![](ft_arch.svg)
 
-## Architecture
+## Directory Structures
 
 The directory layout also tightly follows the architecture.
 
