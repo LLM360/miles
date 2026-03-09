@@ -105,6 +105,10 @@ class PlacementGroupSlice:
     def reordered_gpu_ids(self) -> list[str]:
         return self._owner.reordered_gpu_ids[self._offset : self._offset + self._count]
 
+    def refresh(self) -> RefreshResult:
+        """Delegate to owner: re-probe all bundles and partially re-sort changed ranks."""
+        return self._owner.refresh()
+
 
 def _bundle_sort_key(probe: BundleLocationSnapshot) -> tuple[list[int], str]:
     node_identifier = probe.node_ip
