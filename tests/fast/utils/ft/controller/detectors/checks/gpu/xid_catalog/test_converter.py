@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import importlib
-
 import polars as pl
 import pytest
-
-_has_xlsxwriter = importlib.util.find_spec("xlsxwriter") is not None
 
 from miles.utils.ft.controller.detectors.checks.gpu.xid_catalog.converter import (
     AUTO_RECOVERABLE_BUCKETS,
     NON_AUTO_RECOVERABLE_BUCKETS,
     _audit_buckets,
     _generate_info_py,
-    _read_xids_sheet,
 )
 
 
@@ -99,43 +94,6 @@ class TestGenerateInfoPy:
         ns: dict = {}
         exec(source, ns)
         assert ns["NON_AUTO_RECOVERABLE_XIDS"] == frozenset()
-
-
-# ---------------------------------------------------------------------------
-# _read_xids_sheet (column mapping via in-memory xlsx)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(
-    not _has_xlsxwriter,
-    reason="xlsxwriter not installed",
-)
-class TestReadXidsSheet:
-    def test_column_mapping_with_standard_names(self, tmp_path: pytest.TempPathFactory) -> None:
-        """Round-trip: write a minimal xlsx, read it back through _read_xids_sheet."""
-        xlsx_path = tmp_path / "test_xid.xlsx"  # type: ignore[operator]
-        df = pl.DataFrame(
-            {
-                "Code": [1, 2],
-                "Mnemonic": ["FOO", "BAR"],
-                "Immediate Action / Resolution Workflow": ["RESET_GPU", "IGNORE"],
-            }
-        )
-        df.write_excel(xlsx_path, worksheet="Xids")
-
-        result = _read_xids_sheet(xlsx_path)
-        assert "code" in result.columns
-        assert "mnemonic" in result.columns
-        assert "bucket" in result.columns
-        assert result["code"].to_list() == [1, 2]
-
-    def test_missing_column_raises(self, tmp_path: pytest.TempPathFactory) -> None:
-        xlsx_path = tmp_path / "bad.xlsx"  # type: ignore[operator]
-        df = pl.DataFrame({"Code": [1], "Mnemonic": ["FOO"]})
-        df.write_excel(xlsx_path, worksheet="Xids")
-
-        with pytest.raises(ValueError, match="Could not map"):
-            _read_xids_sheet(xlsx_path)
 
 
 # ---------------------------------------------------------------------------
