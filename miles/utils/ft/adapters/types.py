@@ -6,6 +6,17 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 from miles.utils.ft.agents.types import DiagnosticResult
+from miles.utils.ft.utils.base_model import FtBaseModel
+
+
+# ---------------------------------------------------------------------------
+# K8s node metadata (populated from Downward API env vars)
+# ---------------------------------------------------------------------------
+
+
+class K8sNodeInfo(FtBaseModel):
+    k8s_node_name: str
+    pod_name: str
 
 
 # ---------------------------------------------------------------------------

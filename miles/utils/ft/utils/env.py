@@ -23,3 +23,11 @@ def get_training_run_id() -> str:
 def get_exception_inject_path() -> Path | None:
     raw = os.environ.get("MILES_FT_EXCEPTION_INJECT_PATH", "")
     return Path(raw) if raw else None
+
+
+def get_k8s_node_name() -> str:
+    return os.environ.get("K8S_NODE_NAME", "")
+
+
+def get_k8s_pod_name() -> str:
+    return os.environ.get("K8S_POD_NAME", "")
