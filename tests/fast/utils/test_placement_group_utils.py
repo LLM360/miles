@@ -217,15 +217,14 @@ class TestPartialResortSnapshots:
         ]
         result = _partial_resort_snapshots(old, new)
 
-        # Unchanged ranks 0,1,4,5
-        assert result[0] == old[0]
-        assert result[1] == old[1]
-        assert result[4] == old[4]
-        assert result[5] == old[5]
-
-        # Changed ranks 2,3 sorted by (node_ip, gpu_id): gpu_id=1 before gpu_id=3
-        assert result[2] == BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.4", gpu_id="1")
-        assert result[3] == BundleLocationSnapshot(bundle_index=5, node_ip="10.0.0.4", gpu_id="3")
+        assert result == [
+            BundleLocationSnapshot(bundle_index=3, node_ip="10.0.0.1", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=0, node_ip="10.0.0.1", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.4", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=5, node_ip="10.0.0.4", gpu_id="3"),
+            BundleLocationSnapshot(bundle_index=4, node_ip="10.0.0.3", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=2, node_ip="10.0.0.3", gpu_id="1"),
+        ]
 
     def test_all_nodes_changed_degrades_to_full_sort(self) -> None:
         """All nodes replaced -> all ranks reordered (same as initial sort)."""
@@ -240,9 +239,14 @@ class TestPartialResortSnapshots:
         ]
         result = _partial_resort_snapshots(old, new)
 
-        # 10.0.0.7:gpu0(5), 10.0.0.7:gpu1(3), 10.0.0.8:gpu0(0), 10.0.0.8:gpu1(4), 10.0.0.9:gpu0(2), 10.0.0.9:gpu1(1)
-        assert [s.bundle_index for s in result] == [5, 3, 0, 4, 2, 1]
-        assert [s.gpu_id for s in result] == ["0", "1", "0", "1", "0", "1"]
+        assert result == [
+            BundleLocationSnapshot(bundle_index=5, node_ip="10.0.0.7", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=3, node_ip="10.0.0.7", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=0, node_ip="10.0.0.8", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=4, node_ip="10.0.0.8", gpu_id="1"),
+            BundleLocationSnapshot(bundle_index=2, node_ip="10.0.0.9", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.9", gpu_id="1"),
+        ]
 
     def test_gpu_id_change_without_node_change_not_treated_as_changed(self) -> None:
         """gpu_id change on the same node_ip is NOT a node replacement."""
@@ -272,6 +276,8 @@ class TestPartialResortSnapshots:
         ]
         result = _partial_resort_snapshots(old, new)
 
-        assert result[0] == old[0]
-        assert result[1] == BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.5", gpu_id="2")
-        assert result[2] == old[2]
+        assert result == [
+            BundleLocationSnapshot(bundle_index=0, node_ip="10.0.0.1", gpu_id="0"),
+            BundleLocationSnapshot(bundle_index=1, node_ip="10.0.0.5", gpu_id="2"),
+            BundleLocationSnapshot(bundle_index=2, node_ip="10.0.0.3", gpu_id="0"),
+        ]
