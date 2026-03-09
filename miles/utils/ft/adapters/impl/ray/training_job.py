@@ -106,6 +106,7 @@ class RayTrainingJob(TrainingJobProtocol):
         if excluded_node_ids:
             ray_node_ids = await asyncio.to_thread(resolve_to_ray_node_ids, excluded_node_ids)
             if ray_node_ids:
+                # TODO: this is no longer supported!
                 entrypoint += f" --excluded-node-ids {','.join(ray_node_ids)}"
 
         start = time.monotonic()
