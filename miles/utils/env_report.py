@@ -162,7 +162,8 @@ def _collect_git_info(*, package_name: str, location: str) -> GitRepoInfo | None
         return None
 
 
+ENV_REPORT_PREFIX = "ENV_REPORT_JSON="
+
+
 def _print_report(report: NodeEnvReport) -> None:
-    print(f"========== ENV REPORT (role={report.role}, rank={report.rank}) ==========")
-    print(json.dumps(asdict(report), indent=2, default=str))
-    print("=" * 60)
+    print(f"{ENV_REPORT_PREFIX}{json.dumps(asdict(report), separators=(',', ':'), default=str)}")
