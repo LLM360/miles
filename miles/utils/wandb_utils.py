@@ -77,8 +77,7 @@ def init_wandb_primary(args):
 
     _init_wandb_common()
 
-    env_report_raw = getattr(args, "env_report", "")
-    if env_report_raw:
+    if (env_report_raw := args.env_report):
         from miles.utils.env_report import collect_and_print_node_env_report
 
         node_report = collect_and_print_node_env_report(
@@ -102,8 +101,7 @@ def _compute_config_for_logging(args):
     ]
     output["env_vars"] = {k: v for k, v in os.environ.items() if k in whitelist_env_vars}
 
-    env_report_raw = getattr(args, "env_report", "")
-    if env_report_raw:
+    if (env_report_raw := args.env_report):
         try:
             output["launcher_env_report"] = json.loads(env_report_raw)
         except json.JSONDecodeError:
