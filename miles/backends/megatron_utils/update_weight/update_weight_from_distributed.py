@@ -54,14 +54,11 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
         # For TP:
         #   1. AllGather parameters to rank 0
         #   2. Broadcast parameters from rank 0 to all sglang engines
-        self._is_pp_src_rank = (
-            mpu.get_data_parallel_rank(with_context_parallel=True) == 0 and mpu.get_tensor_model_parallel_rank() == 0
-        )
         pp_rank = mpu.get_pipeline_model_parallel_rank()
-        if self._is_pp_src_rank:
+        if self._is_source:
             self._group_name = f"miles-pp_{pp_rank}"
 
-        if self._is_pp_src_rank:
+        if self._is_source:
             if self._model_update_groups is not None:
                 disconnect_rollout_engines_from_distributed(
                     self.args, self._group_name, self._model_update_groups, self.rollout_engines
@@ -69,6 +66,13 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
             self._model_update_groups = connect_rollout_engines_from_distributed(
                 self.args, self._group_name, rollout_engines
             )
+
+    @property
+    def _is_source(self):
+        """If it's the source gpu that broadcasting weights to rollout side"""
+        return (
+            mpu.get_data_parallel_rank(with_context_parallel=True) == 0 and mpu.get_tensor_model_parallel_rank() == 0
+        )
 
     def _pause_and_prepare_engines(self) -> None:
         """Pause rollout engines, flush cache, and run pre-process if needed."""

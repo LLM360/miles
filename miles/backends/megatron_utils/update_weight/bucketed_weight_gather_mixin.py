@@ -18,7 +18,7 @@ class BucketedWeightGatherMixin:
         self.model: Sequence[torch.nn.Module] (Megatron model chunks).
         self.model_name: str (for HF conversion).
         self.quantization_config: dict | None.
-        self._is_pp_src_rank: bool (whether it's the rank broadcasting weights after `all_gather`).
+        self._is_source: bool (whether it's the rank broadcasting weights after `all_gather`).
     """
 
     def _gather_and_update_non_expert_weights(
@@ -37,7 +37,7 @@ class BucketedWeightGatherMixin:
 
         for name, param in collect_named_tensors_for_weight_transfer(self.args, self.model, is_expert=False):
             param = all_gather_param(self.args, name, param)
-            if not self._is_pp_src_rank:
+            if not self._is_source:
                 continue
 
             param_size = param.numel() * param.element_size()
@@ -115,7 +115,7 @@ class BucketedWeightGatherMixin:
             handle.wait()
 
         named_tensors.clear()
-        if not self._is_pp_src_rank:
+        if not self._is_source:
             return
 
         flat_gathered = sum(all_gathered_params, [])
