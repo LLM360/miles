@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -89,11 +90,15 @@ def _compute_config_for_logging(args):
     ]
     output["env_vars"] = {k: v for k, v in os.environ.items() if k in whitelist_env_vars}
 
-    if env_report_raw := args.env_report:
+    if env_report_raw := getattr(args, "env_report", "") or os.environ.get("MILES_SCRIPT_ENV_REPORT", ""):
         try:
-            output["launcher_env_report"] = json.loads(env_report_raw)
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse args.env_report", exc_info=True)
+            decoded = base64.b64decode(env_report_raw).decode()
+            output["launcher_env_report"] = json.loads(decoded)
+        except Exception:
+            try:
+                output["launcher_env_report"] = json.loads(env_report_raw)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse env_report", exc_info=True)
 
     return output
 
