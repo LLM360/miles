@@ -96,27 +96,31 @@ def _collect_pip_info() -> tuple[list[EditablePackageInfo], list[dict[str, str]]
         data = json.loads(result.stdout)
         installed: list[dict[str, Any]] = data.get("installed", [])
 
-        editable_packages: list[EditablePackageInfo] = []
-        full_pip_list: list[dict[str, str]] = []
-
-        for pkg in installed:
-            metadata = pkg.get("metadata", {})
-            name = metadata.get("name", "")
-            version = metadata.get("version", "")
-            full_pip_list.append({"name": name, "version": version})
-
-            direct_url = pkg.get("direct_url")
-            if direct_url and direct_url.get("dir_info", {}).get("editable"):
-                url = direct_url.get("url", "")
-                location = url.removeprefix("file://")
-                editable_packages.append(EditablePackageInfo(
-                    name=name, version=version, location=location,
-                ))
+        full_pip_list = [_parse_pip_entry(pkg) for pkg in installed]
+        editable_packages = [
+            EditablePackageInfo(
+                name=entry["name"],
+                version=entry["version"],
+                location=pkg["direct_url"]["url"].removeprefix("file://"),
+            )
+            for pkg, entry in zip(installed, full_pip_list)
+            if _is_editable(pkg)
+        ]
 
         return editable_packages, full_pip_list
     except Exception:
         logger.warning("Failed to collect pip info", exc_info=True)
         return [], []
+
+
+def _parse_pip_entry(pkg: dict[str, Any]) -> dict[str, str]:
+    metadata = pkg.get("metadata", {})
+    return {"name": metadata.get("name", ""), "version": metadata.get("version", "")}
+
+
+def _is_editable(pkg: dict[str, Any]) -> bool:
+    direct_url = pkg.get("direct_url")
+    return bool(direct_url and direct_url.get("dir_info", {}).get("editable"))
 
 
 def _collect_git_info(*, package_name: str, location: str) -> GitRepoInfo | None:
