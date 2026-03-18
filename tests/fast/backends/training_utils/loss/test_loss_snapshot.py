@@ -19,20 +19,17 @@ from pathlib import Path
 import pytest
 import torch
 
+from miles.backends.training_utils.loss_hub.corrections import icepop_function, vanilla_tis_function
+from miles.backends.training_utils.loss_hub.loss_algorithms import (
+    policy_loss_function,
+    sft_loss_function,
+    value_loss_function,
+)
 from miles.backends.training_utils.loss_new import (
     compute_advantages_and_returns,
     get_log_probs_and_entropy,
     get_values,
     loss_function,
-)
-from miles.backends.training_utils.loss_hub.corrections import (
-    icepop_function,
-    vanilla_tis_function,
-)
-from miles.backends.training_utils.loss_hub.loss_algorithms import (
-    policy_loss_function,
-    sft_loss_function,
-    value_loss_function,
 )
 
 from .loss_test_utils import (
@@ -56,40 +53,48 @@ SEED = 42
 # ---------------------------------------------------------------------------
 
 CONFIGS = [
-    ("grpo_b3",
-     dict(advantage_estimator="grpo", loss_type="policy_loss"),
-     3, [20, 64, 40], [10, 48, 32]),
-    ("grpo_tis_b3",
-     dict(advantage_estimator="grpo", loss_type="policy_loss", use_tis=True, get_mismatch_metrics=True),
-     3, [20, 64, 40], [10, 48, 32]),
-    ("gspo_b1",
-     dict(advantage_estimator="gspo", loss_type="policy_loss"),
-     1, [32], [16]),
-    ("reinforce_pp_baseline_b2",
-     dict(advantage_estimator="reinforce_plus_plus_baseline", loss_type="policy_loss"),
-     2, [50, 80], [30, 60]),
-    ("opd_b2",
-     dict(advantage_estimator="on_policy_distillation", loss_type="policy_loss"),
-     2, [40, 60], [20, 40]),
-    ("value_loss_b2",
-     dict(advantage_estimator="grpo", loss_type="value_loss"),
-     2, [30, 50], [15, 35]),
-    ("sft_loss_b2",
-     dict(advantage_estimator="grpo", loss_type="sft_loss"),
-     2, [64, 128], [32, 64]),
-    ("grpo_kl_loss_b2",
-     dict(advantage_estimator="grpo", loss_type="policy_loss", use_kl_loss=True, kl_loss_coef=0.1),
-     2, [40, 60], [20, 40]),
+    ("grpo_b3", dict(advantage_estimator="grpo", loss_type="policy_loss"), 3, [20, 64, 40], [10, 48, 32]),
+    (
+        "grpo_tis_b3",
+        dict(advantage_estimator="grpo", loss_type="policy_loss", use_tis=True, get_mismatch_metrics=True),
+        3,
+        [20, 64, 40],
+        [10, 48, 32],
+    ),
+    ("gspo_b1", dict(advantage_estimator="gspo", loss_type="policy_loss"), 1, [32], [16]),
+    (
+        "reinforce_pp_baseline_b2",
+        dict(advantage_estimator="reinforce_plus_plus_baseline", loss_type="policy_loss"),
+        2,
+        [50, 80],
+        [30, 60],
+    ),
+    ("opd_b2", dict(advantage_estimator="on_policy_distillation", loss_type="policy_loss"), 2, [40, 60], [20, 40]),
+    ("value_loss_b2", dict(advantage_estimator="grpo", loss_type="value_loss"), 2, [30, 50], [15, 35]),
+    ("sft_loss_b2", dict(advantage_estimator="grpo", loss_type="sft_loss"), 2, [64, 128], [32, 64]),
+    (
+        "grpo_kl_loss_b2",
+        dict(advantage_estimator="grpo", loss_type="policy_loss", use_kl_loss=True, kl_loss_coef=0.1),
+        2,
+        [40, 60],
+        [20, 40],
+    ),
     # bshd format (padded sequences)
-    ("grpo_bshd_b3",
-     dict(advantage_estimator="grpo", loss_type="policy_loss", qkv_format="bshd"),
-     3, [20, 64, 40], [10, 48, 32]),
-    ("sft_bshd_b2",
-     dict(advantage_estimator="grpo", loss_type="sft_loss", qkv_format="bshd"),
-     2, [64, 128], [32, 64]),
-    ("value_bshd_b2",
-     dict(advantage_estimator="grpo", loss_type="value_loss", qkv_format="bshd"),
-     2, [30, 50], [15, 35]),
+    (
+        "grpo_bshd_b3",
+        dict(advantage_estimator="grpo", loss_type="policy_loss", qkv_format="bshd"),
+        3,
+        [20, 64, 40],
+        [10, 48, 32],
+    ),
+    ("sft_bshd_b2", dict(advantage_estimator="grpo", loss_type="sft_loss", qkv_format="bshd"), 2, [64, 128], [32, 64]),
+    (
+        "value_bshd_b2",
+        dict(advantage_estimator="grpo", loss_type="value_loss", qkv_format="bshd"),
+        2,
+        [30, 50],
+        [15, 35],
+    ),
 ]
 
 
@@ -97,9 +102,11 @@ CONFIGS = [
 # pytest hooks & fixtures
 # ---------------------------------------------------------------------------
 
+
 def pytest_addoption(parser):
     parser.addoption("--snapshot", action="store_true", help="Generate snapshots from current code")
     parser.addoption("--compare", action="store_true", help="Compare current code against saved snapshots")
+
 
 @pytest.fixture
 def mode(request):
@@ -117,11 +124,17 @@ def mode(request):
 # Runners: call each function and collect outputs
 # ---------------------------------------------------------------------------
 
+
 def _get_sum_of_sample_mean(batch, args, parallel_state):
     from miles.backends.training_utils.cp_utils import get_sum_of_sample_mean
+
     return get_sum_of_sample_mean(
-        batch["total_lengths"], batch["response_lengths"], batch["loss_masks"],
-        parallel_state, args.calculate_per_token_loss, args.qkv_format,
+        batch["total_lengths"],
+        batch["response_lengths"],
+        batch["loss_masks"],
+        parallel_state,
+        args.calculate_per_token_loss,
+        args.qkv_format,
         batch.get("max_seq_lens", None),
     )
 
@@ -138,7 +151,8 @@ def run_mismatch_helpers(args, inputs):
 
     def _call(fn):
         return fn(
-            args=args, pg_loss=pg_loss.clone(),
+            args=args,
+            pg_loss=pg_loss.clone(),
             train_log_probs=deep_clone(inputs["log_probs"]),
             rollout_log_probs=deep_clone(inputs["rollout_log_probs"]),
             loss_masks=deep_clone(inputs["loss_masks"]),
@@ -149,18 +163,25 @@ def run_mismatch_helpers(args, inputs):
 
 def run_get_log_probs_and_entropy(args, parallel_state, inputs):
     return get_log_probs_and_entropy(
-        deep_clone(inputs["policy_logits"]), args=args, parallel_state=parallel_state,
+        deep_clone(inputs["policy_logits"]),
+        args=args,
+        parallel_state=parallel_state,
         unconcat_tokens=deep_clone(inputs["unconcat_tokens"]),
-        total_lengths=list(inputs["total_lens"]), response_lengths=list(inputs["response_lens"]),
-        with_entropy=True, max_seq_lens=inputs.get("max_seq_lens"),
+        total_lengths=list(inputs["total_lens"]),
+        response_lengths=list(inputs["response_lens"]),
+        with_entropy=True,
+        max_seq_lens=inputs.get("max_seq_lens"),
     )
 
 
 def run_get_values(args, parallel_state, inputs):
     return get_values(
-        deep_clone(inputs["value_logits"]), args=args, parallel_state=parallel_state,
+        deep_clone(inputs["value_logits"]),
+        args=args,
+        parallel_state=parallel_state,
         unconcat_tokens=deep_clone(inputs["unconcat_tokens"]),
-        total_lengths=list(inputs["total_lens"]), response_lengths=list(inputs["response_lens"]),
+        total_lengths=list(inputs["total_lens"]),
+        response_lengths=list(inputs["response_lens"]),
         max_seq_lens=inputs.get("max_seq_lens"),
     )
 
@@ -170,7 +191,9 @@ def run_loss_fn(args, parallel_state, inputs):
     batch = make_batch(inputs, loss_type)
     logits = deep_clone(inputs["policy_logits"] if loss_type != "value_loss" else inputs["value_logits"])
     som = _get_sum_of_sample_mean(batch, args, parallel_state)
-    fn = {"policy_loss": policy_loss_function, "value_loss": value_loss_function, "sft_loss": sft_loss_function}[loss_type]
+    fn = {"policy_loss": policy_loss_function, "value_loss": value_loss_function, "sft_loss": sft_loss_function}[
+        loss_type
+    ]
     loss, metrics = fn(args, parallel_state, batch, logits, som)
     return {"loss": loss.detach(), "metrics": {k: v.detach() for k, v in metrics.items()}}
 
@@ -203,6 +226,7 @@ def run_all(args, parallel_state, inputs):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("config", CONFIGS, ids=[c[0] for c in CONFIGS])
 class TestLossSnapshot:
 
@@ -214,9 +238,12 @@ class TestLossSnapshot:
         args = make_args(global_batch_size=batch_size, **args_overrides)
         parallel_state = make_parallel_state()
         inputs = make_inputs(
-            seed=SEED, batch_size=batch_size,
-            prompt_lens=prompt_lens, response_lens=response_lens,
-            vocab_size=VOCAB_SIZE, args=args,
+            seed=SEED,
+            batch_size=batch_size,
+            prompt_lens=prompt_lens,
+            response_lens=response_lens,
+            vocab_size=VOCAB_SIZE,
+            args=args,
         )
         return args, parallel_state, inputs
 

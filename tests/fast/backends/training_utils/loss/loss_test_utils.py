@@ -34,13 +34,23 @@ from miles.backends.training_utils.parallel import ParallelState
 # ParallelState (single-process, no distributed)
 # ---------------------------------------------------------------------------
 
+
 def make_parallel_state() -> ParallelState:
     return ParallelState(
-        dp_rank=0, dp_src_rank=0, dp_size=1,
-        cp_rank=0, cp_size=1,
-        dp_cp_rank=0, dp_cp_size=1,
-        dp_group=None, dp_cp_group=None, dp_cp_group_gloo=None, cp_group=None,
-        tp_size=1, tp_rank=0, tp_group=None,
+        dp_rank=0,
+        dp_src_rank=0,
+        dp_size=1,
+        cp_rank=0,
+        cp_size=1,
+        dp_cp_rank=0,
+        dp_cp_size=1,
+        dp_group=None,
+        dp_cp_group=None,
+        dp_cp_group_gloo=None,
+        cp_group=None,
+        tp_size=1,
+        tp_rank=0,
+        tp_group=None,
         is_pp_last_stage=True,
     )
 
@@ -106,6 +116,7 @@ def args_from_dict(d: dict) -> Namespace:
 # Input generation
 # ---------------------------------------------------------------------------
 
+
 def make_inputs(
     seed: int,
     batch_size: int,
@@ -116,7 +127,7 @@ def make_inputs(
 ) -> dict:
     """Generate deterministic test inputs from a seed."""
     assert len(prompt_lens) == len(response_lens) == batch_size
-    total_lens = [p + r for p, r in zip(prompt_lens, response_lens)]
+    total_lens = [p + r for p, r in zip(prompt_lens, response_lens, strict=True)]
 
     g = torch.Generator()
     g.manual_seed(seed)
@@ -181,6 +192,7 @@ def make_inputs(
 # Batch assembly
 # ---------------------------------------------------------------------------
 
+
 def make_rollout_data(inputs: dict) -> dict:
     """Build the rollout_data dict consumed by compute_advantages_and_returns."""
     d = dict(
@@ -223,6 +235,7 @@ def make_batch(inputs: dict, loss_type: str) -> dict:
 # Deep clone / comparison
 # ---------------------------------------------------------------------------
 
+
 def deep_clone(obj):
     """Recursively clone tensors so in-place ops don't corrupt shared state."""
     if isinstance(obj, torch.Tensor):
@@ -258,7 +271,7 @@ def assert_outputs_equal(actual, expected, path: str = "root"):
     elif isinstance(expected, (list, tuple)):
         assert isinstance(actual, (list, tuple)), f"{path}: expected list/tuple, got {type(actual)}"
         assert len(actual) == len(expected), f"{path}: length mismatch {len(actual)} vs {len(expected)}"
-        for i, (a, e) in enumerate(zip(actual, expected)):
+        for i, (a, e) in enumerate(zip(actual, expected, strict=True)):
             assert_outputs_equal(a, e, path=f"{path}[{i}]")
     else:
         assert actual == expected, f"{path}: {actual} != {expected}"
@@ -267,6 +280,7 @@ def assert_outputs_equal(actual, expected, path: str = "root"):
 # ---------------------------------------------------------------------------
 # Snapshot save / load
 # ---------------------------------------------------------------------------
+
 
 def save_snapshot(path: str | Path, inputs: dict, outputs: dict) -> None:
     path = Path(path)
