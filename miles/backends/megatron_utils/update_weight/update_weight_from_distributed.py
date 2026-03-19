@@ -11,12 +11,12 @@ from ray import ObjectRef
 from ray.actor import ActorHandle
 from tqdm import tqdm
 
-from miles.utils.distributed_utils import get_gloo_group, init_process_group
+from miles.utils.distributed_utils import init_process_group
 
-from .bucketed_weight_gather_mixin import BucketedWeightGatherMixin
+from .distributed_mixin import DistBucketedWeightUpdateMixin
 
 
-class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
+class UpdateWeightFromDistributed(DistBucketedWeightUpdateMixin):
     """
     Update distributed engines via NCCL. Each PP rank: group "miles-pp_{pp_rank}",
     only DP=TP=0 broadcasts. Non-expert (TP) and expert (EP) params separate.
@@ -73,55 +73,6 @@ class UpdateWeightFromDistributed(BucketedWeightGatherMixin):
         return (
             mpu.get_data_parallel_rank(with_context_parallel=True) == 0 and mpu.get_tensor_model_parallel_rank() == 0
         )
-
-    def _pause_and_prepare_engines(self) -> None:
-        """Pause rollout engines, flush cache, and run pre-process if needed."""
-        if dist.get_rank() == 0:
-            ray.get([engine.pause_generation.remote() for engine in self.rollout_engines])
-            ray.get([engine.flush_cache.remote() for engine in self.rollout_engines])
-
-            # int4/fp4 pre_process
-            if self.quantization_config and self.quantization_config["quant_method"] in ["compressed-tensors"]:
-                post_process_weights(
-                    restore_weights_before_load=True,
-                    post_process_quantization=False,
-                    rollout_engines=self.rollout_engines,
-                )
-
-    def _finalize_and_resume_engines(self) -> None:
-        """Run post-process if needed and resume rollout engines."""
-        if dist.get_rank() == 0:
-            # int4/fp4 post_process, mxfp8 post-process (swizzle MoE scales).
-            if self.quantization_config and self.quantization_config["quant_method"] in [
-                "compressed-tensors",
-                "mxfp8",
-            ]:
-                post_process_weights(
-                    restore_weights_before_load=False,
-                    post_process_quantization=True,
-                    rollout_engines=self.rollout_engines,
-                )
-            ray.get([engine.continue_generation.remote() for engine in self.rollout_engines])
-
-    @torch.no_grad()
-    def update_weights(self) -> None:
-        """
-        Pause → flush → non-expert (TP) → expert (EP) → continue. Progress on PP source.
-        """
-        self.weight_version += 1
-
-        self._pause_and_prepare_engines()
-        dist.barrier(group=get_gloo_group())
-
-        pbar = tqdm(desc=f"[{self._group_name}] Update weights", total=0) if self._is_pp_src_rank else None
-
-        self._gather_and_update_non_expert_weights(self._update_weight_implementation, pbar)
-        dist.barrier(group=get_gloo_group())
-        self._gather_and_update_expert_weights(self._update_weight_implementation, pbar)
-        dist.barrier(group=get_gloo_group())
-
-        self._finalize_and_resume_engines()
-        dist.barrier(group=get_gloo_group())
 
     def _update_weight_implementation(
         self, converted_named_tensors: list[tuple[str, torch.Tensor]], pbar: tqdm | None = None
@@ -217,20 +168,4 @@ def update_weights_from_distributed(
     return refs
 
 
-def post_process_weights(
-    restore_weights_before_load: bool,
-    post_process_quantization: bool,
-    rollout_engines: Sequence[ActorHandle],
-):
-    """
-    Trigger post-process for int4/fp4 quantization on all rollout engines.
-    """
-    ray.get(
-        [
-            engine.post_process_weights.remote(
-                restore_weights_before_load=restore_weights_before_load,
-                post_process_quantization=post_process_quantization,
-            )
-            for engine in rollout_engines
-        ]
-    )
+#
