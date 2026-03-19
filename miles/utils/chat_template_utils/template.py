@@ -8,9 +8,9 @@ subsequent calls read from disk without network access.
 without depending on a HuggingFace tokenizer, equivalent to
 ``tokenizer.apply_chat_template(..., tokenize=False)``.
 
-``apply_chat_template`` is the unified entry point that normalizes tool
-arguments, extracts tool dicts, and applies the template with fallback —
-works with both a tokenizer object and a raw Jinja2 template string.
+``apply_chat_template`` applies via an HF tokenizer object (returns
+``str`` or ``list[int]``).  Both functions normalize tool arguments,
+canonicalize tool definitions, and fall back between tool dict formats.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import json
 from typing import Any
 
 from huggingface_hub import hf_hub_download
+from jinja2 import TemplateError
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 
@@ -132,9 +133,24 @@ def apply_chat_template_from_str(
     tools: list[dict] | None = None,
     **kwargs,
 ) -> str:
-    """Render a Jinja2 chat template string (tokenize=False equivalent)."""
+    """Render a Jinja2 chat template string in SGLang style (tokenize=False equivalent)."""
     messages = _normalize_tool_arguments(messages)
-    return _render_jinja(chat_template, messages, add_generation_prompt, tools, **kwargs)
+    tool_defs = extract_tool_dicts(tools)
+    try:
+        return _render_jinja(chat_template, messages, add_generation_prompt, tool_defs, **kwargs)
+    except Exception:
+        if tool_defs is not None:
+            try:
+                return _render_jinja(
+                    chat_template,
+                    messages,
+                    add_generation_prompt,
+                    [{"function": t} for t in tool_defs],
+                    **kwargs,
+                )
+            except TemplateError as e:
+                raise ValueError(str(e)) from e
+        raise
 
 
 _TEMPLATE_RELEVANT_KEYS = ("role", "content", "reasoning_content", "tool_calls")
@@ -229,41 +245,28 @@ def _hf_apply(tokenizer, messages, tools, *, tokenize, **kwargs):
 def apply_chat_template(
     messages: list[dict],
     *,
-    tokenizer=None,
-    chat_template: str | None = None,
+    tokenizer,
     tools: list[dict] | None = None,
     add_generation_prompt: bool = True,
     tokenize: bool = False,
     **kwargs,
 ) -> str | list[int]:
-    """Apply chat template in SGLang style so results match token-for-token.
-
-    Mirrors SGLang's ``serving_chat.py`` preprocessing:
-    1. Normalize messages (JSON-string arguments → dict, ``content: null`` → ``""``).
-    2. Canonicalize tool definitions (via SGLang's ``protocol.Tool`` Pydantic model).
-    3. Render with function-only dicts; fall back to ``{"function": ...}``
-       wrapper on failure (templates vary in which format they expect).
-
-    Supports two rendering paths: ``tokenizer`` (HF) or ``chat_template`` (Jinja2).
-    """
-    if tokenizer is None and chat_template is None:
-        raise ValueError("Either tokenizer or chat_template must be provided")
-
+    """Apply chat template via HF tokenizer in SGLang style."""
     messages = _normalize_tool_arguments(messages)
     tool_defs = extract_tool_dicts(tools)
     render_kwargs = dict(add_generation_prompt=add_generation_prompt, **kwargs)
-
-    def _render(td):
-        # If tokenizer is provided, use HF's apply_chat_template.
-        # Otherwise, render the chat template using Jinja2.
-        if tokenizer is not None:
-            return _hf_apply(tokenizer, messages, td, tokenize=tokenize, **render_kwargs)
-        return _render_jinja(chat_template, messages, add_generation_prompt, td, **kwargs)
-
-    # Try function-only tool format first, fall back to wrapped format.
     try:
-        return _render(tool_defs)
+        return _hf_apply(tokenizer, messages, tool_defs, tokenize=tokenize, **render_kwargs)
     except Exception:
         if tool_defs is not None:
-            return _render([{"function": t} for t in tool_defs])
+            try:
+                return _hf_apply(
+                    tokenizer,
+                    messages,
+                    [{"function": t} for t in tool_defs],
+                    tokenize=tokenize,
+                    **render_kwargs,
+                )
+            except TemplateError as e:
+                raise ValueError(str(e)) from e
         raise
