@@ -23,11 +23,6 @@ from huggingface_hub import hf_hub_download
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 
-# ---------------------------------------------------------------------------
-# Load
-# ---------------------------------------------------------------------------
-
-
 def load_hf_chat_template(model_id: str) -> str:
     """Load an original chat template from HuggingFace (cached locally).
 
@@ -50,11 +45,6 @@ def load_hf_chat_template(model_id: str) -> str:
     jinja_path = hf_hub_download(model_id, "chat_template.jinja")
     with open(jinja_path) as f:
         return f.read()
-
-
-# ---------------------------------------------------------------------------
-# Render
-# ---------------------------------------------------------------------------
 
 
 def _tojson(value, ensure_ascii=True, indent=None):
@@ -147,10 +137,6 @@ def apply_chat_template_from_str(
     return _render_jinja(chat_template, messages, add_generation_prompt, tools, **kwargs)
 
 
-# ---------------------------------------------------------------------------
-# Message comparison utilities (used by TITO tokenizer and trajectory manager)
-# ---------------------------------------------------------------------------
-
 _TEMPLATE_RELEVANT_KEYS = ("role", "content", "reasoning_content", "tool_calls")
 
 
@@ -160,6 +146,10 @@ def _normalize_value(value: Any) -> Any:
     None, "" and [] are all falsy in Jinja2 and render the same way,
     but client libraries may interchange them (e.g. content: null vs ""
     for tool-call-only responses, or tool_calls: null vs []).
+
+    Only collapses falsy values — non-falsy content (including whitespace
+    like trailing newlines) is returned as-is.  Message boundary characters
+    must be preserved exactly so they tokenize identically across turns.
     """
     if value is None or value == "" or value == []:
         return None
@@ -221,9 +211,19 @@ def assert_messages_append_only(
             )
 
 
-# ---------------------------------------------------------------------------
-# Apply
-# ---------------------------------------------------------------------------
+def _hf_apply(tokenizer, messages, tools, *, tokenize, **kwargs):
+    """Call ``tokenizer.apply_chat_template`` and normalize the return type.
+
+    HF tokenizers may return ``dict``, ``BatchEncoding``, or ``list`` depending
+    on the tokenizer version and ``return_tensors`` setting.  This helper
+    always returns ``str`` (tokenize=False) or ``list[int]`` (tokenize=True).
+    """
+    result = tokenizer.apply_chat_template(messages, tokenize=tokenize, tools=tools, **kwargs)
+    if tokenize and not isinstance(result, list):
+        result = result["input_ids"]
+        if result and hasattr(result[0], "ids"):
+            result = result[0].ids
+    return result
 
 
 def apply_chat_template(
@@ -236,59 +236,34 @@ def apply_chat_template(
     tokenize: bool = False,
     **kwargs,
 ) -> str | list[int]:
-    """Apply a chat template with normalization, tool extraction, and fallback.
+    """Apply chat template in SGLang style so results match token-for-token.
 
-    Unified entry point that handles:
-    - Normalizing tool_call arguments (JSON string -> dict)
-    - Extracting tool dicts from OpenAI format (function-only)
-    - Fallback: tries function-only format first, then wrapped ``{"function": t}``
+    Mirrors SGLang's ``serving_chat.py`` preprocessing:
+    1. Normalize messages (JSON-string arguments → dict, ``content: null`` → ``""``).
+    2. Canonicalize tool definitions (via SGLang's ``protocol.Tool`` Pydantic model).
+    3. Render with function-only dicts; fall back to ``{"function": ...}``
+       wrapper on failure (templates vary in which format they expect).
 
-    Two rendering paths:
-    - **Tokenizer path** (``tokenizer`` provided): calls
-      ``tokenizer.apply_chat_template`` — supports ``tokenize=True/False``.
-    - **String path** (``chat_template`` provided): renders Jinja2 directly —
-      always returns ``str``.  ``tokenize=True`` raises ``ValueError``.
-
-    Args:
-        messages: OpenAI-format message list.
-        tokenizer: HuggingFace tokenizer object (mutually exclusive with
-            *chat_template*).
-        chat_template: Jinja2 template string (mutually exclusive with
-            *tokenizer*).
-        tools: Tool definitions in OpenAI format
-            (``[{"type": "function", "function": {...}}]``).  Also accepts
-            already-extracted function-only dicts.
-        add_generation_prompt: Whether to append the generation prompt.
-        tokenize: If True and using the tokenizer path, return token IDs
-            instead of a string.
-        **kwargs: Forwarded to the template (e.g. ``enable_thinking``).
+    Supports two rendering paths: ``tokenizer`` (HF) or ``chat_template`` (Jinja2).
     """
     if tokenizer is None and chat_template is None:
         raise ValueError("Either tokenizer or chat_template must be provided")
 
     messages = _normalize_tool_arguments(messages)
     tool_defs = extract_tool_dicts(tools)
+    render_kwargs = dict(add_generation_prompt=add_generation_prompt, **kwargs)
 
     def _render(td):
+        # If tokenizer is provided, use HF's apply_chat_template.
+        # Otherwise, render the chat template using Jinja2.
         if tokenizer is not None:
-            result = tokenizer.apply_chat_template(
-                messages,
-                tokenize=tokenize,
-                add_generation_prompt=add_generation_prompt,
-                tools=td,
-                **kwargs,
-            )
-            if tokenize and not isinstance(result, list):
-                result = result["input_ids"]
-                if result and hasattr(result[0], "ids"):
-                    result = result[0].ids
-            return result
+            return _hf_apply(tokenizer, messages, td, tokenize=tokenize, **render_kwargs)
         return _render_jinja(chat_template, messages, add_generation_prompt, td, **kwargs)
 
+    # Try function-only tool format first, fall back to wrapped format.
     try:
         return _render(tool_defs)
     except Exception:
         if tool_defs is not None:
-            wrapped = [{"function": t} for t in tool_defs]
-            return _render(wrapped)
+            return _render([{"function": t} for t in tool_defs])
         raise
