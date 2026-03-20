@@ -9,6 +9,7 @@ import ray
 import torch
 import torch.distributed as dist
 from megatron.core import mpu
+from mooncake.engine import TransferEngine
 from ray.actor import ActorHandle
 from sglang.srt.server_args import ServerArgs
 
@@ -19,8 +20,11 @@ logger = logging.getLogger(__name__)
 class TransferTaskP2PMeta:
     """Specifies a engine rollout rank to connect to."""
 
+    # The index of the target rollout engine.
     engine_ind: int
+    # The rank of the target shard within the rollout engine (corresponds to `sglang_tp_rank`).
     engine_rank: int
+    # The source pp shard index.
     source_shard: int = 0
 
 
@@ -56,42 +60,65 @@ class RemoteTransferPlan:
 
         self._rollout_pp_size = args.sglang_pp_size
         if self._rollout_pp_size != 1:
-            raise NotImplementedError("Rollout pipeline parallelism is not supported yet.")
+            raise NotImplementedError("Rollout pipeline parallelism is not tested yet.")
         self._rollout_num_gpu_per_engine = args.rollout_num_gpus_per_engine
         self._rollout_engine_count = args.rollout_num_gpus // self._rollout_num_gpu_per_engine
         self._rollout_num_gpus = args.rollout_num_gpus
 
     def plan_p2p(self) -> list[TransferTaskP2PMeta]:
         """
-        Plan P2P transfer tasks mapping source dp ranks to target (engine, rank) pairs.
+        Plan P2P transfer within each pp_group -> all target engine ranks.
+
+        For each pp shard source rank, it plans the mapping relationship between n source dp ranks, m target rollout engines with k ranks each.
+        The Transfer Plan Mapping Heuristics works as follows:
+        1. for each target engine (idx, rank), assign source ranks in a round-robin manner until all source ranks are assigned at least once.
+        2. for the reminder target (idx, rank), assign them to source ranks by priotizing the source with existing assignmeng of same rank.
+
+        For example, 4 source ranks (0,1,2,3), 2 target engines with 3 ranks each (0,0),(0,1),(0,2),(1,0),(1,1),(1,2).
+        The first round of assignment:
+        source_rank=0 -> target (0,0)
+        source_rank=1 -> target (0,1)
+        source_rank=2 -> target (0,2)
+        source_rank=3 -> target (1,0)
+        The reminder assignment:
+        source_rank=1 -> target (1,1)  # prioritize source_rank=1 as it had (0,1) assigned already.
+        source_rank=2 -> target (1,2)
+
+        Finally extract the transfer tasks matching the current dp_rank(self._gathered_dp_rank).
+
         """
         all_targets = [
-            (m_idx, k_idx)
-            for m_idx in range(self._rollout_engine_count)
-            for k_idx in range(self._rollout_num_gpu_per_engine)
+            (engine_idx, engine_rank)
+            for engine_idx in range(self._rollout_engine_count)
+            for engine_rank in range(self._rollout_num_gpu_per_engine)
         ]
         assignments = defaultdict(lambda: defaultdict(list))
 
-        i = -1
-        for source_rank, (idx, target) in zip(range(self._gathered_dp_size), enumerate(all_targets), strict=False):
-            i = idx
-            m_idx, k_idx = target
-            assignments[source_rank][k_idx].append(m_idx)
+        # Total number of source-to-target P2P connections established.
+        p2p_count = 0
+        # step 1: assign engine ranks in a round-robin way
+        for source_rank, (_, target) in zip(range(self._gathered_dp_size), enumerate(all_targets), strict=False):
+            p2p_count += 1
+            engine_idx, engine_rank = target
+            assignments[source_rank][engine_rank].append(engine_idx)
 
-        def count_engine_index_assignments(k_idx: int) -> list[int]:
-            return [len(assignments[source][k_idx]) for source in range(self._gathered_dp_size)]
+        def count_engine_index_assignments(engine_rank: int) -> list[int]:
+            return [len(assignments[source][engine_rank]) for source in range(self._gathered_dp_size)]
 
         cur_source_index = 0
-        if i < len(all_targets) - 1:
-            for target in all_targets[i + 1 :]:
-                m_idx, k_idx = target
-                counted = count_engine_index_assignments(k_idx)
+        # step 2: assign the left engine ranks.
+        if p2p_count < len(all_targets):
+            for target in all_targets[p2p_count:]:
+                engine_idx, engine_rank = target
+                counted = count_engine_index_assignments(engine_rank)
                 if max(counted) > 0:
+                    # assign it to existing source rank assigned to the same target engine_tp_rank, with lowest load
                     _, select_source = min((val, idx) for (idx, val) in enumerate(counted) if val > 0)
                 else:
+                    # otherwise round robin
                     select_source = cur_source_index % self._gathered_dp_size
                     cur_source_index += 1
-                assignments[select_source][k_idx].append(m_idx)
+                assignments[select_source][engine_rank].append(engine_rank)
 
         transfer_tasks = []
         for engine_rank, engine_indices in assignments[self._gathered_dp_rank].items():
@@ -100,14 +127,15 @@ class RemoteTransferPlan:
                     TransferTaskP2PMeta(source_shard=self._pp_rank, engine_ind=engine_ind, engine_rank=engine_rank)
                 )
 
-        by_rank = defaultdict(list)
-        for t in transfer_tasks:
-            by_rank[t.engine_rank].append(t.engine_ind)
         return transfer_tasks
 
 
 @dataclasses.dataclass
 class RemoteWeightInfo:
+    """
+    The remote weight info related to one specific engine_rank.
+    """
+
     session_id: str
     weights_info: dict[str, tuple[int, int, int]]  # name -> (remote_address, numel, element_size)
 
@@ -126,6 +154,7 @@ class P2PTransferManager:
 
     def ensure_started(self) -> None:
         if self.executor is None:
+            # NOTE: RDMA ops won't be affected by the python GIL
             self.executor = ThreadPoolExecutor(max_workers=self.num_workers)
 
     def submit(self, fn: Callable, *args) -> None:
@@ -157,7 +186,7 @@ class EngineRankInfo:
     """Per-engine-rank metadata: unique model replica (weight_loaders), shared CPU pinned buffers."""
 
     engine_rank: int
-    model_replica: torch.nn.Module  # shares CPU pinned buffers, has unique weight_loaders
+    model_replica: torch.nn.Module  # single CPU replica shared among all sessions
     remote_weight_infos: list[RemoteWeightInfo]
 
     def add_remote_session(self, remote_info: RemoteWeightInfo) -> None:
@@ -170,24 +199,24 @@ def create_server_args_from_dict(data_dict: dict) -> ServerArgs:
     return ServerArgs(**filtered_data)
 
 
-def register_cpu_memory_region(params_dict: dict, transfer_engine) -> dict:
+def register_cpu_memory(params_dict: dict, transfer_engine) -> dict:
     """Register CPU pinned memory with the transfer engine."""
-    weight_mr_dict = {}
+    weight_dict = {}
 
     for name, cpu_tensor in params_dict.items():
         addr = cpu_tensor.data_ptr()
         size = cpu_tensor.numel() * cpu_tensor.element_size()
+        # NOTE: theoretically using huge page allocator
+        # in torch backend could imporve registration speed.
         ret = transfer_engine.register_memory(addr, size)
         if ret != 0:
             raise RuntimeError(f"register CPU memory failed for weight {name}, error: {ret}")
-        weight_mr_dict[name] = (addr, cpu_tensor.numel(), cpu_tensor.element_size())
+        weight_dict[name] = (addr, cpu_tensor.numel(), cpu_tensor.element_size())
 
-    return weight_mr_dict
+    return weight_dict
 
 
 def create_transfer_engine():
-    from mooncake.engine import TransferEngine
-
     transfer_engine = TransferEngine()
     local_ip = ray._private.services.get_node_ip_address()
     transfer_engine.initialize(local_ip, "P2PHANDSHAKE", "rdma", "")

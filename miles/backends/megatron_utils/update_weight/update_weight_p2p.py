@@ -26,7 +26,7 @@ from .p2p_transfer_utils import (
     RemoteWeightInfo,
     create_transfer_engine,
     query_remote_weight_infos,
-    register_cpu_memory_region,
+    register_cpu_memory,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,10 +63,10 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
         self.transfer_plan = RemoteTransferPlan(args, model)
         self.global_rank = dist.get_rank(group=get_gloo_group())
         self._model_registered = False
-        self._update_pending: dict[str, int] = {}
+        self._tensor_update_pending: dict[str, int] = {}
 
         self._staged_tensors: dict[str, list[tuple[str, torch.Tensor]]] = {}
-        num_workers = getattr(args, "p2p_transfer_workers", 4)
+        num_workers = 4
         self.transfer_manager = P2PTransferManager(num_workers=num_workers)
 
     @property
@@ -79,9 +79,10 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
         if not self._is_source:
             return
         self.transfer_manager.wait_transfers()
-        self._update_pending = {}
-        if self._staged_tensors:
-            self._staged_tensors.clear()
+        assert len(self._tensor_update_pending) == 0 and len(self._staged_tensors) == 0, (
+            f"Some tensors were not transferred during P2P weight update. "
+            f"Pending: {self._tensor_update_pending}, Staged: {self._staged_tensors}"
+        )
 
     def _pause_and_prepare_engines(self):
         """Register shared CPU pinned memory with P2P on first call."""
@@ -90,10 +91,11 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
             return
 
         if not self._model_registered:
-            self._weight_memory_registry = register_cpu_memory_region(self._shared_params_dict, self._engine)
+            self._weight_memory_registry = register_cpu_memory(self._shared_params_dict, self._engine)
         self._model_registered = True
 
     def _finalize_and_resume_engines(self):
+        # The `update_weight_version` here is necessary because the engine was not aware that the write has happened
         if dist.get_rank() == 0:
             ray.get(
                 [
@@ -115,7 +117,7 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
         """
         if not self._is_source or not converted_named_tensors:
             return
-
+        # `ready_hf_tensors`` here are the complete tensors ready to be transferred.
         transfer_ready_params, ready_hf_tensors = self._get_transfer_ready_params(converted_named_tensors)
 
         if transfer_ready_params and ready_hf_tensors:
@@ -246,9 +248,16 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
     ) -> tuple[list[str], list[tuple[str, torch.Tensor]]]:
         """Determine which sglang params have all shards present, returning their accumulated tensors.
 
-        Stages incoming HF tensors in self._staged_tensors until all shards for a
+        Some parameters are trained separately on the training side but fused into a
+        single tensor on the rollout side (e.g., Q/K/V projections are separate in
+        Megatron but merged into one qkv_proj in sglang). This function stages
+        incoming HF tensors in self._staged_tensors until all shards for a
         sglang param are collected. Only returns tensors for fully-ready params,
         preventing partial load_weights() calls that would corrupt the shared buffer.
+
+        Return:
+            transfer_ready_params: tensors' names for the ones ready to be transferred.
+            ready_hf_tensor: corresponding complete tensors ready to be transferred.
         """
         transfer_ready_params = []
         params_dict = self._shared_params_dict
@@ -274,18 +283,18 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
             if total_expected == 1:
                 transfer_ready_params.append(mapped)
             else:
-                if mapped not in self._update_pending:
-                    self._update_pending[mapped] = total_expected - 1
+                if mapped not in self._tensor_update_pending:
+                    self._tensor_update_pending[mapped] = total_expected - 1
                 else:
-                    self._update_pending[mapped] -= 1
-                if self._update_pending[mapped] == 0:
+                    self._tensor_update_pending[mapped] -= 1
+                if self._tensor_update_pending[mapped] == 0:
                     transfer_ready_params.append(mapped)
 
         ready_hf_tensors: list[tuple[str, torch.Tensor]] = []
         for param_name in transfer_ready_params:
             staged = self._staged_tensors.pop(param_name, [])
             ready_hf_tensors.extend(staged)
-            self._update_pending.pop(param_name, None)
+            self._tensor_update_pending.pop(param_name, None)
 
         return transfer_ready_params, ready_hf_tensors
 

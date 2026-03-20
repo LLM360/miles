@@ -274,6 +274,7 @@ class SGLangEngine(RayActor):
         )
 
     def get_remote_instance_transfer_engine_info(self, rank: int):
+        # TODO: will be changed to `remote_instance_transfer_engine_info` when the sglang side is ready.
         response = requests.get(
             f"http://{self.server_host}:{self.server_port}/get_remote_instance_transfer_engine_info",
             params={"rank": rank},
