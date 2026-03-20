@@ -2,12 +2,12 @@
 
 ## Files
 
-* `test_qwen3_4b_p2p.py`: single-node test with Qwen3-4B using P2P weight transfer.
+* `test_qwen3_4B_p2p.py`: single-node test with Qwen3-4B using P2P weight transfer.
 
 ## Quick Start
 
 ```bash
-python examples/p2p_weight_transfer/test_qwen3_4b_p2p.py
+python examples/p2p_weight_transfer/test_qwen3_4B_p2p.py
 ```
 
 This script will:
