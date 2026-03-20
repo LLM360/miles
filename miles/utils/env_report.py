@@ -86,8 +86,7 @@ def _collect_pip_info() -> tuple[list[EditablePackageInfo], list[dict[str, str]]
     Returns (editable_packages, full_pip_list).
     """
     try:
-        env = dict(os.environ)
-        env.pop("PYTHONPATH", None)
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
         result = subprocess.run(
             ["pip", "inspect"],
             capture_output=True,
