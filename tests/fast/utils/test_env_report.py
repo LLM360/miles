@@ -119,6 +119,40 @@ class TestCollectPipInfo:
         assert editable == []
         assert full_list == []
 
+    def test_pip_inspect_excludes_pythonpath_from_env(self) -> None:
+        """PYTHONPATH must be excluded when running pip inspect, otherwise pip
+        misses editable packages whose source is on the PYTHONPATH."""
+        mock_result = subprocess.CompletedProcess(
+            args=["pip", "inspect"],
+            returncode=0,
+            stdout=json.dumps(_SAMPLE_PIP_INSPECT),
+            stderr="",
+        )
+        with patch.dict(os.environ, {"PYTHONPATH": "/workspace/Megatron-LM"}):
+            with patch("miles.utils.env_report.subprocess.run", return_value=mock_result) as mock_run:
+                _collect_pip_info()
+
+        passed_env = mock_run.call_args.kwargs.get("env")
+        assert passed_env is not None, "subprocess.run must be called with explicit env"
+        assert "PYTHONPATH" not in passed_env
+
+
+class TestDecodeEnvReport:
+    def test_decodes_base64_json(self) -> None:
+        import base64
+        data = {"flavor": "test"}
+        encoded = base64.b64encode(json.dumps(data).encode()).decode()
+        assert decode_env_report(encoded) == data
+
+    def test_decodes_raw_json(self) -> None:
+        assert decode_env_report('{"x": 1}') == {"x": 1}
+
+    def test_returns_none_for_empty(self) -> None:
+        assert decode_env_report("") is None
+
+    def test_returns_none_for_invalid(self) -> None:
+        assert decode_env_report("not json at all!!!") is None
+
 
 class TestCollectGitInfo:
     def test_collects_commit_and_diff(self, tmp_path) -> None:

@@ -177,9 +177,12 @@ eval:
             perf_args = "--use-dynamic-batch-size " "--max-tokens-per-gpu 32768 "
 
         case "megatron":
-            is_small_model = args.model_name in ("Qwen3-0.6B",)
-            tp_size = 1 if is_small_model else (2 if args.num_gpus_per_node == 8 else 1)
-            cp_size = 1 if is_small_model else (4 if args.num_gpus_per_node == 8 else 1)
+            if args.model_name in ("Qwen3-0.6B",):
+                tp_size = 1
+                cp_size = 1
+            else:
+                tp_size = 2 if args.num_gpus_per_node == 8 else 1
+                cp_size = 4 if args.num_gpus_per_node == 8 else 1
             train_backend_args = (
                 f"--tensor-model-parallel-size {tp_size} "
                 "--sequence-parallel "

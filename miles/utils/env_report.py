@@ -35,6 +35,21 @@ class NodeEnvReport:
     full_pip_list: list[dict[str, str]]
 
 
+def decode_env_report(raw: str) -> dict[str, Any] | None:
+    """Decode an env report string (base64-encoded JSON or raw JSON)."""
+    if not raw:
+        return None
+    try:
+        decoded = base64.b64decode(raw).decode()
+        return json.loads(decoded)
+    except Exception:
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse env report", exc_info=True)
+            return None
+
+
 def collect_and_print_node_env_report(
     *,
     role: str,
@@ -50,16 +65,7 @@ def collect_and_print_node_env_report(
         rank: Actor rank
         partial_env_report: JSON string from launcher (may contain launch config info)
     """
-    launcher_report = None
-    if partial_env_report:
-        try:
-            decoded = base64.b64decode(partial_env_report).decode()
-            launcher_report = json.loads(decoded)
-        except Exception:
-            try:
-                launcher_report = json.loads(partial_env_report)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse partial_env_report", exc_info=True)
+    launcher_report = decode_env_report(partial_env_report)
 
     editable_packages, full_pip_list = _collect_pip_info()
 

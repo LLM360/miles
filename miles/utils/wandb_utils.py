@@ -1,5 +1,3 @@
-import base64
-import json
 import logging
 import os
 from copy import deepcopy
@@ -90,15 +88,12 @@ def _compute_config_for_logging(args):
     ]
     output["env_vars"] = {k: v for k, v in os.environ.items() if k in whitelist_env_vars}
 
-    if env_report_raw := getattr(args, "env_report", "") or os.environ.get("MILES_SCRIPT_ENV_REPORT", ""):
-        try:
-            decoded = base64.b64decode(env_report_raw).decode()
-            output["launcher_env_report"] = json.loads(decoded)
-        except Exception:
-            try:
-                output["launcher_env_report"] = json.loads(env_report_raw)
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse env_report", exc_info=True)
+    if env_report_raw := args.env_report:
+        from miles.utils.env_report import decode_env_report
+
+        launcher_report = decode_env_report(env_report_raw)
+        if launcher_report is not None:
+            output["launcher_env_report"] = launcher_report
 
     return output
 
