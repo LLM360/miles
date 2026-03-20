@@ -17,6 +17,7 @@ from miles.utils.env_report import (
     _is_editable,
     _parse_pip_entry,
     collect_and_print_node_env_report,
+    decode_env_report,
 )
 
 _SAMPLE_PIP_INSPECT = {
