@@ -86,11 +86,14 @@ def _collect_pip_info() -> tuple[list[EditablePackageInfo], list[dict[str, str]]
     Returns (editable_packages, full_pip_list).
     """
     try:
+        env = dict(os.environ)
+        env.pop("PYTHONPATH", None)
         result = subprocess.run(
             ["pip", "inspect"],
             capture_output=True,
             text=True,
             timeout=60,
+            env=env,
         )
         if result.returncode != 0:
             logger.warning("pip inspect failed: %s", result.stderr)
