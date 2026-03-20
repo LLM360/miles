@@ -8,7 +8,7 @@ Loss:
 
 Usage:
     --loss-type custom_loss
-    --custom-loss-function-path examples.reinforce_icepop_loss.reinforce_icepop_loss
+    --custom-loss-function-path examples.async_icepop.reinforce_icepop_loss.reinforce_icepop_loss
     --eps-clip 0.2        # ε_l
     --eps-clip-high 0.28  # ε_h
     --advantage-estimator grpo
@@ -32,9 +32,16 @@ def reinforce_icepop_loss(
     logits: torch.Tensor,
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    assert not args.use_kl_loss, (
-        "reinforce_icepop_loss does not support KL loss."
-    )
+    """Double-sided IS masking for async RL (GLM-5 Section 4.1.2).
+
+    L(θ) = -E[f(r, ε_l, ε_h) · Â]
+    r = π_θ / π_rollout
+    f(r) = r if 1 - ε_l < r < 1 + ε_h, else 0
+
+    Gradient flows through r, giving: ∇L = -f(r) · A · ∇log π_θ
+    with denominator π_rollout (fixed), avoiding 1/π_θ amplification.
+    """
+    assert not args.use_kl_loss, "reinforce_icepop_loss does not support KL loss."
 
     advantages = torch.cat(batch["advantages"], dim=0)
     rollout_log_probs = torch.cat(batch["rollout_log_probs"], dim=0)
@@ -51,19 +58,32 @@ def reinforce_icepop_loss(
     )
     log_probs = torch.cat(log_probs_and_entropy["log_probs"], dim=0)
 
-    assert log_probs.shape == rollout_log_probs.shape, (
-        f"Shape mismatch: log_probs {log_probs.shape} vs rollout_log_probs {rollout_log_probs.shape}"
-    )
+    assert (
+        log_probs.shape == rollout_log_probs.shape
+    ), f"Shape mismatch: log_probs {log_probs.shape} vs rollout_log_probs {rollout_log_probs.shape}"
 
-    # r = π_θ / π_rollout
+    # r = π_θ / π_rollout (gradient flows through r)
     r = torch.exp(log_probs - rollout_log_probs)
 
     # f(r, ε_l, ε_h): double-sided calibration mask
     in_range = (r > 1 - args.eps_clip) & (r < 1 + args.eps_clip_high)
     f_r = torch.where(in_range, r, torch.zeros_like(r))
 
-    # REINFORCE: -f(r) · Â · log π_θ   (f_r detached to block gradient through IS weight)
-    pg_loss = sum_of_sample_mean(-(f_r.detach() * advantages * log_probs))
+    # Verify: |hard mask per-token loss| <= |PPO clip per-token loss| for every token
+    with torch.no_grad():
+        from miles.utils.ppo_utils import compute_policy_loss
+
+        ppo_kl = rollout_log_probs - log_probs
+        ppo_per_token, _ = compute_policy_loss(ppo_kl, advantages, args.eps_clip, args.eps_clip_high)
+        mask_per_token = -(f_r * advantages)
+
+        assert (mask_per_token.abs() <= ppo_per_token.abs() + 1e-6).all(), (
+            f"Violation: max excess = {(mask_per_token.abs() - ppo_per_token.abs()).max().item():.6f}"
+        )
+        print("[reinforce_icepop_loss] runtime checker passed: |mask| <= |PPO clip| for all tokens")
+
+    # Surrogate: -f(r) · Â   (NOT detached, gradient flows through r → ∇log π_θ)
+    pg_loss = sum_of_sample_mean(-(f_r * advantages))
 
     # Entropy bonus
     entropy = torch.cat(log_probs_and_entropy["entropy"], dim=0)
@@ -75,7 +95,7 @@ def reinforce_icepop_loss(
     if log_probs.numel() == 0:
         loss += 0 * logits.sum()
 
-    mask_frac = sum_of_sample_mean((~in_range).float())
+    mask_frac = sum_of_sample_mean((~in_range).float().detach())
 
     train_rollout_logprob_abs_diff = sum_of_sample_mean((log_probs - rollout_log_probs).abs())
 

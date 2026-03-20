@@ -10,6 +10,7 @@ import miles.utils.external_utils.command_utils as U
 class ScriptArgs(U.ExecuteTrainConfig):
     mode: Literal["normal", "debug_minimal"] = "normal"
     async_mode: bool = False
+    loss_mode: Literal["reinforce_icepop", "rollout_logprobs"] = "reinforce_icepop"
     run_id: str = U.create_run_id()
     model_org: str = "zai-org"
     model_name: str = "GLM-4.7-Flash"
@@ -116,20 +117,22 @@ def execute(args: ScriptArgs):
         )
 
     grpo_args = (
-        "--advantage-estimator grpo "
-        "--kl-coef 0 "
-        "--entropy-coef 0.00 "
-        "--eps-clip 0.2 "
-        "--eps-clip-high 0.28 "
+        "--advantage-estimator grpo " "--kl-coef 0 " "--entropy-coef 0.00 " "--eps-clip 0.2 " "--eps-clip-high 0.28 "
     )
 
-    # REINFORCE + double-sided IS masking (GLM-5 Section 4.1.2)
-    # Replaces PPO clipping with masked REINFORCE, uses r = π_θ/π_rollout directly.
-    # eps_clip (ε_l=0.2) and eps_clip_high (ε_h=0.28) define the trust region [1-ε_l, 1+ε_h].
-    loss_args = (
-        "--loss-type custom_loss "
-        "--custom-loss-function-path examples.reinforce_icepop_loss.reinforce_icepop_loss "
-    )
+    if args.loss_mode == "reinforce_icepop":
+        # REINFORCE + double-sided IS masking (GLM-5 Section 4.1.2)
+        # Replaces PPO clipping with masked REINFORCE, uses r = π_θ/π_rollout directly.
+        # eps_clip (ε_l=0.2) and eps_clip_high (ε_h=0.28) define the trust region [1-ε_l, 1+ε_h].
+        loss_args = (
+            "--loss-type custom_loss "
+            "--custom-loss-function-path examples.async_icepop.reinforce_icepop_loss.surrogate_icepop_loss "
+        )
+    elif args.loss_mode == "rollout_logprobs":
+        # PPO clipped loss with r = π_θ/π_rollout (bypassing old policy recomputation)
+        loss_args = "--use-rollout-logprobs "
+    else:
+        raise ValueError(f"Unknown loss_mode: {args.loss_mode}")
 
     optimizer_args = (
         "--optimizer adam "
