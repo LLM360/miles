@@ -5,10 +5,7 @@ import torch
 
 from miles.utils.ppo_utils import calculate_log_probs_and_entropy
 
-from ..cp_utils import (
-    _allgather_cp_redistribute,
-    get_logits_and_tokens_offset_with_cp,
-)
+from ..cp_utils import _allgather_cp_redistribute, get_logits_and_tokens_offset_with_cp
 from ..parallel import ParallelState
 
 
