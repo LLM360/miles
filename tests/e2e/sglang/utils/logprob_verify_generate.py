@@ -1,12 +1,19 @@
 """Custom generate function that wraps the agentic tool-call flow with
-re-prefill logprob verification.
+logprob equivalence verification.
 
 After the agent finishes its multi-turn conversation through the session
-server, this function re-prefills each turn's full token sequence (fresh
-prompt + session output tokens) via the SGLang ``/generate`` endpoint and
-verifies that the resulting logprobs match those collected during the
-session.  This confirms that TITO's incremental tokenization produces
-identical model states to a fresh full tokenization.
+server, this function replays each turn by sending the same messages
+directly to SGLang ``/v1/chat/completions`` with ``temperature=0``
+(greedy, no ``input_ids`` — fresh tokenization from scratch) and
+verifies that:
+
+1. **prompt_token_ids** match exactly (core TITO invariant)
+2. **output_token_logprobs** match within tolerance (same decode path,
+   same prompt → same logprobs)
+
+Both the session path and the replay path use the decode phase, so
+logprobs are computed via the same GPU kernels.  Any mismatch means
+TITO produced different prompt tokens than a fresh tokenization.
 
 When ``use_rollout_routing_replay`` is enabled (MoE models), routed
 expert arrays are also compared.
@@ -29,7 +36,6 @@ from miles.rollout.generate_utils.openai_endpoint_utils import (
     compute_samples_from_openai_records,
 )
 from miles.rollout.generate_utils.sample_utils import merge_samples
-from miles.utils.chat_template_utils import apply_chat_template
 from miles.utils.http_utils import post
 from miles.utils.misc import load_function
 from miles.utils.types import Sample
@@ -122,7 +128,12 @@ async def _verify_logprob_equivalence(
     use_r3: bool,
     turn_idx: int,
 ) -> None:
-    """Re-prefill a single turn's tokens via /generate and compare logprobs."""
+    """Replay a turn via /v1/chat/completions (fresh tokenization) and compare.
+
+    Sends the same messages directly to SGLang with temperature=0 and no
+    ``input_ids``, so SGLang tokenizes from scratch.  With greedy decoding
+    and identical prompt tokens, the output tokens and logprobs must match.
+    """
     choice = record.response["choices"][0]
     session_prompt_ids = choice["prompt_token_ids"]
     session_output_logprobs = choice["meta_info"]["output_token_logprobs"]
@@ -132,79 +143,72 @@ async def _verify_logprob_equivalence(
         logger.warning("Turn %d: no output tokens, skipping verification", turn_idx)
         return
 
-    # Step A: fresh tokenize messages
+    # Step A: replay the same messages directly to SGLang (no input_ids = fresh tokenization)
     req = record.request
-    messages = req["messages"]
-    tools = req.get("tools")
-    fresh_prompt_ids = apply_chat_template(
-        messages,
-        tokenizer=tokenizer,
-        tools=tools,
-        add_generation_prompt=True,
-        tokenize=True,
-    )
-
-    # Step B: verify prompt_token_ids match (core TITO invariant)
-    assert session_prompt_ids == fresh_prompt_ids, (
-        f"Turn {turn_idx}: prompt_token_ids mismatch — "
-        f"session has {len(session_prompt_ids)} tokens, "
-        f"fresh tokenization has {len(fresh_prompt_ids)} tokens"
-    )
-
-    # Step C: re-prefill full sequence (fresh prompt + session output) via /generate
-    full_ids = list(fresh_prompt_ids) + session_output_ids
     payload = {
-        "input_ids": full_ids,
-        "sampling_params": {"max_new_tokens": 0},
-        "return_logprob": True,
-        "logprob_start_len": len(fresh_prompt_ids),
+        "messages": req["messages"],
+        "temperature": 0,
+        "max_tokens": req.get("max_tokens", 1024),
+        "logprobs": True,
+        "return_prompt_token_ids": True,
+        "return_meta_info": True,
+        "no_stop_trim": False,
     }
+    if req.get("tools"):
+        payload["tools"] = req["tools"]
+    if req.get("tool_choice"):
+        payload["tool_choice"] = req["tool_choice"]
     if use_r3:
         payload["return_routed_experts"] = True
 
-    reprefill_resp = await post(f"{sglang_url}/generate", payload)
+    replay_resp = await post(f"{sglang_url}/v1/chat/completions", payload)
+    replay_choice = replay_resp["choices"][0]
 
-    # Step D: extract and compare logprobs
-    input_logprobs = reprefill_resp["meta_info"].get("input_token_logprobs", [])
+    # Step B: verify prompt_token_ids match (core TITO invariant)
+    replay_prompt_ids = replay_choice["prompt_token_ids"]
+    assert session_prompt_ids == replay_prompt_ids, (
+        f"Turn {turn_idx}: prompt_token_ids mismatch — "
+        f"session has {len(session_prompt_ids)} tokens, "
+        f"fresh replay has {len(replay_prompt_ids)} tokens"
+    )
 
-    assert len(input_logprobs) == len(session_output_logprobs), (
-        f"Turn {turn_idx}: logprobs length mismatch — "
-        f"re-prefill returned {len(input_logprobs)}, "
-        f"session had {len(session_output_logprobs)}"
+    # Step C: compare output_token_logprobs
+    replay_output_logprobs = replay_choice["meta_info"]["output_token_logprobs"]
+    replay_output_ids = [t[1] for t in replay_output_logprobs]
+
+    # With identical prompt and greedy decoding, output tokens must match
+    assert session_output_ids == replay_output_ids, (
+        f"Turn {turn_idx}: output token IDs mismatch — "
+        f"session={session_output_ids[:10]}..., replay={replay_output_ids[:10]}..."
     )
 
     mismatches = []
-    for j, (reprefill_entry, session_entry) in enumerate(zip(input_logprobs, session_output_logprobs, strict=True)):
-        # input_token_logprobs format: (logprob, token_id, decoded_text)
-        # output_token_logprobs format: (logprob, token_id)
-        reprefill_logprob = reprefill_entry[0]
-        reprefill_tid = reprefill_entry[1]
+    for j, (replay_entry, session_entry) in enumerate(
+        zip(replay_output_logprobs, session_output_logprobs, strict=True)
+    ):
+        replay_logprob = replay_entry[0]
         session_logprob = session_entry[0]
-        session_tid = session_entry[1]
 
-        if reprefill_tid != session_tid:
-            mismatches.append(f"  token {j}: token_id {reprefill_tid} vs {session_tid}")
-        elif reprefill_logprob is None or session_logprob is None:
-            # First token at logprob_start_len may have None logprob — skip it
+        if replay_logprob is None or session_logprob is None:
             continue
-        elif not math.isclose(reprefill_logprob, session_logprob, abs_tol=LOGPROB_TOL):
+        if not math.isclose(replay_logprob, session_logprob, abs_tol=LOGPROB_TOL):
             mismatches.append(
-                f"  token {j}: logprob {reprefill_logprob:.8f} vs {session_logprob:.8f} "
-                f"(diff={abs(reprefill_logprob - session_logprob):.2e})"
+                f"  token {j}: logprob {replay_logprob:.8f} vs {session_logprob:.8f} "
+                f"(diff={abs(replay_logprob - session_logprob):.2e})"
             )
 
     assert not mismatches, f"Turn {turn_idx}: logprob mismatches:\n" + "\n".join(mismatches)
 
-    # Step E: verify routed_experts (R3) if available
+    # Step D: verify routed_experts (R3) if available
     if use_r3:
         session_re = choice["meta_info"].get("routed_experts")
-        reprefill_re = reprefill_resp["meta_info"].get("routed_experts")
-        if session_re is not None or reprefill_re is not None:
+        replay_re = replay_choice["meta_info"].get("routed_experts")
+        if session_re is not None or replay_re is not None:
             assert (
-                session_re is not None and reprefill_re is not None
+                session_re is not None and replay_re is not None
             ), f"Turn {turn_idx}: routed_experts present on one side but not the other"
             s_arr = np.frombuffer(pybase64.b64decode(session_re.encode("ascii")), dtype=np.int32)
-            f_arr = np.frombuffer(pybase64.b64decode(reprefill_re.encode("ascii")), dtype=np.int32)
+            f_arr = np.frombuffer(pybase64.b64decode(replay_re.encode("ascii")), dtype=np.int32)
             np.testing.assert_array_equal(
                 s_arr,
                 f_arr,
@@ -214,7 +218,7 @@ async def _verify_logprob_equivalence(
     logger.info(
         "Turn %d: logprob equivalence verified (%d prompt + %d output tokens)",
         turn_idx,
-        len(fresh_prompt_ids),
+        len(session_prompt_ids),
         len(session_output_ids),
     )
 
