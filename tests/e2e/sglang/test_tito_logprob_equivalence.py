@@ -1,10 +1,12 @@
 """E2E test: verify TITO session logprobs match a fresh full re-prefill.
 
-After a multi-turn agent conversation through the session server, each
-turn's output token logprobs are compared against logprobs obtained by
-re-prefilling the entire token sequence from scratch via the /generate
-endpoint.  This confirms that the incremental TITO tokenization path
-produces identical prefill results to a full re-tokenization.
+After a multi-turn agent conversation through the session server, the
+full ``accumulated_token_ids`` (the token sequence built incrementally
+by TITO) is sent to ``/generate`` with ``max_new_tokens=0`` for a single
+prefill pass.  The resulting ``input_token_logprobs`` are compared
+per-turn against the ``output_token_logprobs`` from the session's decode
+phase.  Token IDs must match exactly; logprob values are compared with a
+tight tolerance for prefill-vs-decode numerical differences.
 
 When an MoE model is used with ``ENABLE_R3=1``, routed_experts arrays
 are also compared.

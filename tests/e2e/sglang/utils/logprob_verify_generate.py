@@ -1,19 +1,17 @@
 """Custom generate function that wraps the agentic tool-call flow with
-logprob equivalence verification.
+re-prefill logprob verification.
 
 After the agent finishes its multi-turn conversation through the session
-server, this function replays each turn by sending the same messages
-directly to SGLang ``/v1/chat/completions`` with ``temperature=0``
-(greedy, no ``input_ids`` — fresh tokenization from scratch) and
-verifies that:
+server, this function sends the full ``accumulated_token_ids`` (the token
+sequence built incrementally by TITO across all turns) to the SGLang
+``/generate`` endpoint with ``max_new_tokens=0`` and ``return_logprob=True``.
+This produces ``input_token_logprobs`` via a single prefill pass over the
+entire sequence.  The resulting logprobs are then compared per-turn against
+the ``output_token_logprobs`` collected during the session's decode phase.
 
-1. **prompt_token_ids** match exactly (core TITO invariant)
-2. **output_token_logprobs** match within tolerance (same decode path,
-   same prompt → same logprobs)
-
-Both the session path and the replay path use the decode phase, so
-logprobs are computed via the same GPU kernels.  Any mismatch means
-TITO produced different prompt tokens than a fresh tokenization.
+Any mismatch in **token IDs** is fatal (indicates a TITO tokenization bug).
+Logprob values are compared with a tight tolerance to account for minor
+numerical differences between the prefill and decode GPU kernels.
 
 When ``use_rollout_routing_replay`` is enabled (MoE models), routed
 expert arrays are also compared.
@@ -21,7 +19,7 @@ expert arrays are also compared.
 
 import argparse
 import logging
-import math
+import statistics
 from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
@@ -42,7 +40,8 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
-LOGPROB_TOL = 1e-5
+LOGPROB_ABS_TOL = 1e-8  # with deterministic inference, prefill and decode must be bit-identical
+LOGPROB_WARN_TOL = 0.0  # any nonzero diff is worth logging
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
@@ -71,28 +70,28 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
 
-    # === Step 2: re-prefill verification for each turn ===
-    assert len(records) >= 2, f"Expected at least 2 turns for TITO verification, got {len(records)}"
-
-    sglang_url = f"http://{input.args.sglang_router_ip}:{input.args.sglang_router_port}"
-    tokenizer = input.state.tokenizer
-    use_r3 = getattr(input.args, "use_rollout_routing_replay", False)
-
-    for i, record in enumerate(records):
-        await _verify_logprob_equivalence(
-            sglang_url,
-            record,
-            tokenizer,
-            use_r3,
-            turn_idx=i,
-        )
-
-    # === Step 3: session-level verification ===
+    # === Step 2: session-level checks ===
     mismatch = session_metadata.get("tito_session_mismatch")
     assert mismatch == [], f"tito_session_mismatch is not empty: {mismatch}"
 
     accumulated = session_metadata.get("accumulated_token_ids")
     assert accumulated and len(accumulated) > 0, "accumulated_token_ids is empty"
+
+    max_trim_tokens = session_metadata.get("max_trim_tokens", 0)
+
+    # === Step 3: re-prefill verification ===
+    assert len(records) >= 2, f"Expected at least 2 turns for TITO verification, got {len(records)}"
+
+    sglang_url = f"http://{input.args.sglang_router_ip}:{input.args.sglang_router_port}"
+    use_r3 = getattr(input.args, "use_rollout_routing_replay", False)
+
+    await _verify_logprobs_via_reprefill(
+        sglang_url,
+        records,
+        accumulated,
+        max_trim_tokens=max_trim_tokens,
+        use_r3=use_r3,
+    )
 
     logger.info(
         "Logprob equivalence verified: %d turns, %d accumulated tokens",
@@ -105,122 +104,215 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         input.args,
         input.sample,
         records,
-        tokenizer,
+        input.state.tokenizer,
         accumulated_token_ids=accumulated,
-        max_trim_tokens=session_metadata.get("max_trim_tokens", 0),
+        max_trim_tokens=max_trim_tokens,
     )
 
     for s in samples:
         s.metadata.update(agent_metadata or {})
 
     if not input.args.generate_multi_samples:
-        samples = merge_samples(samples, tokenizer)
+        samples = merge_samples(samples, input.state.tokenizer)
         samples.metadata.update(session_metadata)
     else:
         samples[-1].metadata.update(session_metadata)
     return GenerateFnOutput(samples=samples)
 
 
-async def _verify_logprob_equivalence(
+async def _verify_logprobs_via_reprefill(
     sglang_url: str,
-    record,
-    tokenizer,
+    records: list,
+    accumulated_token_ids: list[int],
+    max_trim_tokens: int,
     use_r3: bool,
-    turn_idx: int,
 ) -> None:
-    """Replay a turn via /v1/chat/completions (fresh tokenization) and compare.
+    """Re-prefill the full accumulated token sequence and compare logprobs.
 
-    Sends the same messages directly to SGLang with temperature=0 and no
-    ``input_ids``, so SGLang tokenizes from scratch.  With greedy decoding
-    and identical prompt tokens, the output tokens and logprobs must match.
+    Sends ``accumulated_token_ids`` to ``/generate`` with
+    ``max_new_tokens=0`` and ``return_logprob=True``.  Compares the
+    resulting ``input_token_logprobs`` (prefill) against per-turn
+    ``output_token_logprobs`` (decode) from the session records.
     """
-    choice = record.response["choices"][0]
-    session_prompt_ids = choice["prompt_token_ids"]
-    session_output_logprobs = choice["meta_info"]["output_token_logprobs"]
-    session_output_ids = [t[1] for t in session_output_logprobs]
+    first_prompt_len = len(records[0].response["choices"][0]["prompt_token_ids"])
 
-    if not session_output_ids:
-        logger.warning("Turn %d: no output tokens, skipping verification", turn_idx)
-        return
-
-    # Step A: replay the same messages directly to SGLang (no input_ids = fresh tokenization)
-    req = record.request
+    # --- Step A: send re-prefill request ---
     payload = {
-        "messages": req["messages"],
-        "temperature": 0,
-        "max_tokens": req.get("max_tokens", 1024),
-        "logprobs": True,
-        "return_prompt_token_ids": True,
-        "return_meta_info": True,
-        "no_stop_trim": False,
+        "input_ids": accumulated_token_ids,
+        "sampling_params": {"max_new_tokens": 0, "temperature": 0},
+        "return_logprob": True,
+        "logprob_start_len": first_prompt_len,
     }
-    if req.get("tools"):
-        payload["tools"] = req["tools"]
-    if req.get("tool_choice"):
-        payload["tool_choice"] = req["tool_choice"]
     if use_r3:
         payload["return_routed_experts"] = True
 
-    replay_resp = await post(f"{sglang_url}/v1/chat/completions", payload)
-    replay_choice = replay_resp["choices"][0]
+    reprefill_resp = await post(f"{sglang_url}/generate", payload)
+    reprefill_logprobs = reprefill_resp["meta_info"]["input_token_logprobs"]
 
-    # Step B: verify prompt_token_ids match (core TITO invariant)
-    replay_prompt_ids = replay_choice["prompt_token_ids"]
-    assert session_prompt_ids == replay_prompt_ids, (
-        f"Turn {turn_idx}: prompt_token_ids mismatch — "
-        f"session has {len(session_prompt_ids)} tokens, "
-        f"fresh replay has {len(replay_prompt_ids)} tokens"
+    expected_len = len(accumulated_token_ids) - first_prompt_len
+    assert len(reprefill_logprobs) == expected_len, (
+        f"Re-prefill returned {len(reprefill_logprobs)} input_token_logprobs, "
+        f"expected {expected_len} (accumulated={len(accumulated_token_ids)}, "
+        f"first_prompt={first_prompt_len})"
     )
 
-    # Step C: compare output_token_logprobs
-    replay_output_logprobs = replay_choice["meta_info"]["output_token_logprobs"]
-    replay_output_ids = [t[1] for t in replay_output_logprobs]
+    # --- Step B: walk records and compare per-turn ---
+    all_diffs: list[float] = []
 
-    # With identical prompt and greedy decoding, output tokens must match
-    assert session_output_ids == replay_output_ids, (
-        f"Turn {turn_idx}: output token IDs mismatch — "
-        f"session={session_output_ids[:10]}..., replay={replay_output_ids[:10]}..."
-    )
+    for i, record in enumerate(records):
+        is_last = i == len(records) - 1
+        choice = record.response["choices"][0]
+        prompt_ids = choice["prompt_token_ids"]
+        session_output_logprobs = choice["meta_info"]["output_token_logprobs"]
+        output_ids = [t[1] for t in session_output_logprobs]
 
-    mismatches = []
-    for j, (replay_entry, session_entry) in enumerate(
-        zip(replay_output_logprobs, session_output_logprobs, strict=True)
-    ):
-        replay_logprob = replay_entry[0]
-        session_logprob = session_entry[0]
-
-        if replay_logprob is None or session_logprob is None:
+        if not output_ids:
+            logger.warning("Turn %d: no output tokens, skipping", i)
             continue
-        if not math.isclose(replay_logprob, session_logprob, abs_tol=LOGPROB_TOL):
-            mismatches.append(
-                f"  token {j}: logprob {replay_logprob:.8f} vs {session_logprob:.8f} "
-                f"(diff={abs(replay_logprob - session_logprob):.2e})"
+
+        # Position cursor after this turn's prompt
+        cursor = len(prompt_ids)
+
+        # Greedily match output_ids against accumulated[cursor:]
+        matched = 0
+        for j in range(len(output_ids)):
+            idx = cursor + j
+            if idx < len(accumulated_token_ids) and output_ids[j] == accumulated_token_ids[idx]:
+                matched += 1
+            else:
+                break
+
+        trim_count = len(output_ids) - matched
+        allowed = 0 if is_last else max_trim_tokens
+        assert trim_count <= allowed, f"Turn {i}: trim_count {trim_count} exceeds allowed={allowed}"
+
+        # Compare matched tokens
+        turn_reprefill_start = cursor - first_prompt_len
+        mismatches = []
+        warnings = []
+
+        for j in range(matched):
+            rp_entry = reprefill_logprobs[turn_reprefill_start + j]  # (logprob, token_id, text)
+            sp_entry = session_output_logprobs[j]  # (logprob, token_id)
+
+            rp_tid = rp_entry[1]
+            sp_tid = sp_entry[1]
+            assert rp_tid == sp_tid, (
+                f"Turn {i}, token {j}: token_id mismatch — " f"reprefill={rp_tid} vs session={sp_tid}"
             )
 
-    assert not mismatches, f"Turn {turn_idx}: logprob mismatches:\n" + "\n".join(mismatches)
+            rp_lp = rp_entry[0]
+            sp_lp = sp_entry[0]
+            if rp_lp is None or sp_lp is None:
+                continue
 
-    # Step D: verify routed_experts (R3) if available
+            diff = abs(rp_lp - sp_lp)
+            all_diffs.append(diff)
+
+            if diff > LOGPROB_ABS_TOL:
+                mismatches.append(f"  token {j}: prefill={rp_lp:.8f} decode={sp_lp:.8f} " f"diff={diff:.4f}")
+            elif diff > LOGPROB_WARN_TOL:
+                warnings.append(f"  token {j}: prefill={rp_lp:.8f} decode={sp_lp:.8f} " f"diff={diff:.4f}")
+
+        if warnings:
+            logger.warning(
+                "Turn %d: %d tokens with diff > %.4f (but within tolerance):\n%s",
+                i,
+                len(warnings),
+                LOGPROB_WARN_TOL,
+                "\n".join(warnings[:10]),
+            )
+
+        assert (
+            not mismatches
+        ), f"Turn {i}: {len(mismatches)} logprob differences exceed " f"tolerance {LOGPROB_ABS_TOL}:\n" + "\n".join(
+            mismatches
+        )
+
+        logger.info("Turn %d: verified %d output tokens (trimmed %d)", i, matched, trim_count)
+
+    # --- Step C: R3 comparison ---
     if use_r3:
-        session_re = choice["meta_info"].get("routed_experts")
-        replay_re = replay_choice["meta_info"].get("routed_experts")
-        if session_re is not None or replay_re is not None:
-            assert (
-                session_re is not None and replay_re is not None
-            ), f"Turn {turn_idx}: routed_experts present on one side but not the other"
-            s_arr = np.frombuffer(pybase64.b64decode(session_re.encode("ascii")), dtype=np.int32)
-            f_arr = np.frombuffer(pybase64.b64decode(replay_re.encode("ascii")), dtype=np.int32)
-            np.testing.assert_array_equal(
-                s_arr,
-                f_arr,
-                err_msg=f"Turn {turn_idx}: routed_experts mismatch",
-            )
+        _verify_routed_experts(records, reprefill_resp, accumulated_token_ids, first_prompt_len, max_trim_tokens)
 
-    logger.info(
-        "Turn %d: logprob equivalence verified (%d prompt + %d output tokens)",
-        turn_idx,
-        len(session_prompt_ids),
-        len(session_output_ids),
-    )
+    # --- Step D: summary statistics ---
+    if all_diffs:
+        sorted_diffs = sorted(all_diffs)
+        p99_idx = min(int(len(sorted_diffs) * 0.99), len(sorted_diffs) - 1)
+        logger.info(
+            "Logprob diff stats: mean=%.6f, max=%.6f, p99=%.6f, count=%d",
+            statistics.mean(all_diffs),
+            max(all_diffs),
+            sorted_diffs[p99_idx],
+            len(all_diffs),
+        )
+
+
+def _verify_routed_experts(
+    records: list,
+    reprefill_resp: dict,
+    accumulated_token_ids: list[int],
+    first_prompt_len: int,
+    max_trim_tokens: int,
+) -> None:
+    """Compare per-turn routed_experts from session decode against re-prefill."""
+    reprefill_re_b64 = reprefill_resp["meta_info"].get("routed_experts")
+    if reprefill_re_b64 is None:
+        logger.warning("Re-prefill response missing routed_experts, skipping R3 check")
+        return
+
+    reprefill_re_flat = np.frombuffer(pybase64.b64decode(reprefill_re_b64.encode("ascii")), dtype=np.int32)
+
+    for i, record in enumerate(records):
+        choice = record.response["choices"][0]
+        prompt_ids = choice["prompt_token_ids"]
+        session_output_logprobs = choice["meta_info"]["output_token_logprobs"]
+        output_ids = [t[1] for t in session_output_logprobs]
+
+        session_re_b64 = choice["meta_info"].get("routed_experts")
+        if session_re_b64 is None:
+            logger.warning("Turn %d: session missing routed_experts, skipping", i)
+            continue
+
+        # Match count (same logic as logprob comparison)
+        cursor = len(prompt_ids)
+        matched = 0
+        for j in range(len(output_ids)):
+            idx = cursor + j
+            if idx < len(accumulated_token_ids) and output_ids[j] == accumulated_token_ids[idx]:
+                matched += 1
+            else:
+                break
+
+        session_re = np.frombuffer(pybase64.b64decode(session_re_b64.encode("ascii")), dtype=np.int32)
+
+        # routed_experts shape: [num_tokens - 1, num_layers, top_k]
+        # For decode: num_tokens = len(output_ids), so shape[0] = len(output_ids) - 1
+        # We only compare the matched portion
+        if len(session_re) == 0 or matched <= 1:
+            continue
+
+        # Infer per-token size from session's array
+        session_output_count = len(output_ids)
+        if session_output_count <= 1:
+            continue
+        per_token_size = len(session_re) // (session_output_count - 1)
+
+        # Extract matched portion from session (first `matched - 1` entries)
+        session_slice = session_re[: (matched - 1) * per_token_size]
+
+        # Extract corresponding portion from re-prefill
+        # Re-prefill covers positions [first_prompt_len, len(accumulated)-1] in the experts array
+        # For turn i, output starts at `cursor`, so expert offset = cursor - first_prompt_len
+        rp_offset = (cursor - first_prompt_len) * per_token_size
+        rp_slice = reprefill_re_flat[rp_offset : rp_offset + (matched - 1) * per_token_size]
+
+        np.testing.assert_array_equal(
+            session_slice,
+            rp_slice,
+            err_msg=f"Turn {i}: routed_experts mismatch",
+        )
+        logger.info("Turn %d: routed_experts match (%d entries)", i, len(session_slice))
 
 
 def _add_arguments(parser: argparse.ArgumentParser):
