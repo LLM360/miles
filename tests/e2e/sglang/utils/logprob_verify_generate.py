@@ -286,26 +286,24 @@ def _verify_routed_experts(
 
         session_re = np.frombuffer(pybase64.b64decode(session_re_b64.encode("ascii")), dtype=np.int32)
 
-        # routed_experts shape: [num_tokens - 1, num_layers, top_k]
-        # For decode: num_tokens = len(output_ids), so shape[0] = len(output_ids) - 1
-        # We only compare the matched portion
-        if len(session_re) == 0 or matched <= 1:
+        # routed_experts shape: [total_tokens - 1, num_layers, top_k]
+        # where total_tokens = len(prompt_ids) + len(output_ids)
+        # Entry k corresponds to routing for token at position k+1.
+        total_tokens = len(prompt_ids) + len(output_ids)
+        if total_tokens <= 1 or len(session_re) == 0 or matched == 0:
             continue
 
-        # Infer per-token size from session's array
-        session_output_count = len(output_ids)
-        if session_output_count <= 1:
-            continue
-        per_token_size = len(session_re) // (session_output_count - 1)
+        per_token_size = len(session_re) // (total_tokens - 1)
 
-        # Extract matched portion from session (first `matched - 1` entries)
-        session_slice = session_re[: (matched - 1) * per_token_size]
+        # Session: output tokens start at position P (=len(prompt_ids)),
+        # so their experts start at index P-1 in the experts array.
+        session_start = (len(prompt_ids) - 1) * per_token_size
+        session_slice = session_re[session_start : session_start + matched * per_token_size]
 
-        # Extract corresponding portion from re-prefill
-        # Re-prefill covers positions [first_prompt_len, len(accumulated)-1] in the experts array
-        # For turn i, output starts at `cursor`, so expert offset = cursor - first_prompt_len
-        rp_offset = (cursor - first_prompt_len) * per_token_size
-        rp_slice = reprefill_re_flat[rp_offset : rp_offset + (matched - 1) * per_token_size]
+        # Re-prefill: experts array covers all of accumulated_token_ids.
+        # Output at accumulated[cursor] → expert at index cursor-1.
+        rp_offset = (cursor - 1) * per_token_size
+        rp_slice = reprefill_re_flat[rp_offset : rp_offset + matched * per_token_size]
 
         np.testing.assert_array_equal(
             session_slice,
