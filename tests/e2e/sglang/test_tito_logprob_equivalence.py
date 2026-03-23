@@ -114,7 +114,7 @@ def execute():
         "--n-samples-per-prompt 1 "
         "--rollout-max-response-len 1024 "
         "--rollout-temperature 0.0 "
-        "--global-batch-size 64 "
+        "--global-batch-size 16 "
     )
 
     generate_args = (
