@@ -184,6 +184,9 @@ async def _verify_logprob_equivalence(
 
         if reprefill_tid != session_tid:
             mismatches.append(f"  token {j}: token_id {reprefill_tid} vs {session_tid}")
+        elif reprefill_logprob is None or session_logprob is None:
+            # First token at logprob_start_len may have None logprob — skip it
+            continue
         elif not math.isclose(reprefill_logprob, session_logprob, abs_tol=LOGPROB_TOL):
             mismatches.append(
                 f"  token {j}: logprob {reprefill_logprob:.8f} vs {session_logprob:.8f} "
