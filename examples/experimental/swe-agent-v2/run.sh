@@ -54,6 +54,22 @@ SGLANG_TOOL_CALL_PARSER=""
 SGLANG_REASONING_PARSER=""
 NO_WAIT=""
 
+# ── Pre-scan for --mode so debug defaults are set before arg parsing ─
+for arg in "$@"; do
+  if [[ "$prev" == "--mode" ]]; then MODE="$arg"; break; fi
+  prev="$arg"
+done
+
+# ── Debug mode overrides (applied as defaults, CLI args below win) ──
+if [[ "$MODE" == "debug" ]]; then
+  NUM_ROLLOUT=50
+  ROLLOUT_BATCH_SIZE=4
+  N_SAMPLES=4
+  MAX_RESP_LEN=4096
+  GLOBAL_BATCH=16
+  MAX_TOKENS_PER_GPU=1024
+fi
+
 # ── Parse arguments ─────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -90,16 +106,6 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
-
-# ── Debug mode overrides ────────────────────────────────────────────
-if [[ "$MODE" == "debug" ]]; then
-  NUM_ROLLOUT=50
-  ROLLOUT_BATCH_SIZE=4
-  N_SAMPLES=4
-  MAX_RESP_LEN=4096
-  GLOBAL_BATCH=16
-  MAX_TOKENS_PER_GPU=1024
-fi
 
 # ── Source model architecture ────────────────────────────────────────
 MODEL_SCRIPT_PATH="$MILES_ROOT/scripts/models/$MODEL_SCRIPT"
