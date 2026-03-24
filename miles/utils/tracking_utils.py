@@ -1,9 +1,6 @@
-from __future__ import annotations
-
 import logging
 
 import wandb
-
 from miles.utils.tensorboard_utils import _TensorboardAdapter
 
 from . import wandb_utils
@@ -12,7 +9,7 @@ from .prometheus_utils import get_prometheus, init_prometheus
 logger = logging.getLogger(__name__)
 
 
-def init_tracking(args, primary: bool = True, **kwargs) -> None:
+def init_tracking(args, primary: bool = True, **kwargs):
     if primary:
         wandb_utils.init_wandb_primary(args, **kwargs)
     else:
