@@ -41,6 +41,7 @@ class TestCheckOneCell:
         checker = RolloutCellHealth(
             cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0
         )
+        checker.start()
 
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -61,6 +62,7 @@ class TestCheckOneCell:
         checker = RolloutCellHealth(
             cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0
         )
+        checker.start()
 
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -80,6 +82,7 @@ class TestCheckOneCell:
         checker = RolloutCellHealth(
             cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0
         )
+        checker.start()
 
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -101,6 +104,7 @@ class TestCheckOneCell:
             cells=[cell], session_id="sess-1", run_name="run-1",
             check_interval=100.0, timeout=0.01,
         )
+        checker.start()
 
         await asyncio.sleep(0.1)
         await checker.shutdown()
@@ -124,6 +128,7 @@ class TestCheckOneCell:
             cells=[cell_a, cell_b], session_id="sess-1", run_name="run-1",
             check_interval=100.0,
         )
+        checker.start()
 
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -156,6 +161,7 @@ class TestPauseResume:
             cells=[cell], session_id="sess-1", run_name="run-1", check_interval=0.01,
         )
         checker.pause()
+        checker.start()
 
         mock_gauge.reset_mock()
         await asyncio.sleep(0.05)
@@ -173,6 +179,7 @@ class TestPauseResume:
             cells=[cell], session_id="sess-1", run_name="run-1", check_interval=0.01,
         )
         checker.pause()
+        checker.start()
         await asyncio.sleep(0.03)
 
         mock_gauge.reset_mock()
@@ -193,9 +200,10 @@ class TestLifecycle:
         checker = RolloutCellHealth(
             cells=[cell], session_id="sess-1", run_name="run-1", check_interval=0.01,
         )
+        checker.start()
 
         await checker.shutdown()
-        assert checker._task.cancelled() or checker._task.done()
+        assert checker._task is not None and (checker._task.cancelled() or checker._task.done())
 
     @pytest.mark.asyncio()
     async def test_check_interval_respected(self, mock_gauge: MagicMock) -> None:
@@ -206,6 +214,7 @@ class TestLifecycle:
         checker_fast = RolloutCellHealth(
             cells=[cell], session_id="sess-1", run_name="run-1", check_interval=0.01,
         )
+        checker_fast.start()
         await asyncio.sleep(0.1)
         await checker_fast.shutdown()
         fast_count = mock_gauge.call_count
@@ -215,6 +224,7 @@ class TestLifecycle:
         checker_slow = RolloutCellHealth(
             cells=[cell], session_id="sess-2", run_name="run-1", check_interval=0.05,
         )
+        checker_slow.start()
         await asyncio.sleep(0.1)
         await checker_slow.shutdown()
         slow_count = mock_gauge.call_count

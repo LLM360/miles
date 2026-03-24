@@ -39,7 +39,14 @@ class RolloutCellHealth:
         self._check_interval = check_interval
         self._timeout = timeout
         self._paused = False
-        self._task: asyncio.Task[None] = asyncio.ensure_future(self._loop())
+        self._task: asyncio.Task[None] | None = None
+
+    def start(self) -> None:
+        """Start the health check loop. Must be called from an async context."""
+        if self._task is not None:
+            return
+        self._task = asyncio.ensure_future(self._loop())
+        logger.info("rollout cell health checker started: num_cells=%d", len(self._cells))
 
     def pause(self) -> None:
         self._paused = True
@@ -48,6 +55,8 @@ class RolloutCellHealth:
         self._paused = False
 
     async def shutdown(self) -> None:
+        if self._task is None:
+            return
         self._task.cancel()
         try:
             await self._task
