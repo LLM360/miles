@@ -111,23 +111,6 @@ def _create_control_app(registry: _SubsystemRegistry) -> FastAPI:
     return app
 
 
-@runtime_checkable
-class _SubsystemHandle(Protocol):
-    @property
-    def subsystem_id(self) -> str: ...
-
-    @property
-    def subsystem_type(self) -> str: ...
-
-    async def stop(self, timeout_seconds: int) -> None: ...
-
-    async def start(self) -> None: ...
-
-    async def get_status(self) -> str: ...
-
-    async def get_node_ids(self) -> list[str]: ...
-
-
 class _SubsystemRegistry:
     def __init__(self) -> None:
         self._handles: dict[str, _SubsystemHandle] = {}
@@ -144,7 +127,24 @@ class _SubsystemRegistry:
         try:
             return self._handles[subsystem_id]
         except KeyError as e:
-            raise KeyError(f"Subsystem '{subsystem_id}' not found") from None
+            raise KeyError(f"Subsystem '{subsystem_id}' not found") from e
+
+
+@runtime_checkable
+class _SubsystemHandle(Protocol):
+    @property
+    def subsystem_id(self) -> str: ...
+
+    @property
+    def subsystem_type(self) -> str: ...
+
+    async def stop(self, timeout_seconds: int) -> None: ...
+
+    async def start(self) -> None: ...
+
+    async def get_status(self) -> str: ...
+
+    async def get_node_ids(self) -> list[str]: ...
 
 
 class _TrainingSubsystemHandle:
