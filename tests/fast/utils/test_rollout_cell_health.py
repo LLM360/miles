@@ -95,6 +95,26 @@ class TestCheckOneCell:
         )
 
     @pytest.mark.asyncio()
+    async def test_empty_engines_list_reports_dead(self, mock_gauge: MagicMock) -> None:
+        """When get_engines returns an empty list, gauge is set to 0.0."""
+        cell = CellEntry(cell_id="cell-0", get_engines=lambda: [])
+
+        checker = RolloutCellHealth(
+            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0
+        )
+        checker.start()
+
+        await asyncio.sleep(0.05)
+        await checker.shutdown()
+
+        mock_gauge.assert_called_with(
+            name="miles_rollout_cell_alive",
+            label_keys=["session_id", "run_name", "cell_id"],
+            label_values=["sess-1", "run-1", "cell-0"],
+            value=0.0,
+        )
+
+    @pytest.mark.asyncio()
     async def test_timeout_reports_dead(self, mock_gauge: MagicMock) -> None:
         """When health_generate exceeds the timeout, gauge is set to 0.0."""
         engine = _make_engine(healthy=True, delay=5.0)
