@@ -123,18 +123,30 @@ class TestGetSubsystems:
 
     @pytest.mark.asyncio
     async def test_returns_all(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
-        registry.register(_MockHandle(
-            subsystem_id="training", subsystem_type="training",
-            status="running", node_ids=["node-0", "node-1"],
-        ))
-        registry.register(_MockHandle(
-            subsystem_id="cell-0", subsystem_type="rollout",
-            status="running", node_ids=["node-2"],
-        ))
-        registry.register(_MockHandle(
-            subsystem_id="cell-1", subsystem_type="rollout",
-            status="stopped", node_ids=["node-3"],
-        ))
+        registry.register(
+            _MockHandle(
+                subsystem_id="training",
+                subsystem_type="training",
+                status="running",
+                node_ids=["node-0", "node-1"],
+            )
+        )
+        registry.register(
+            _MockHandle(
+                subsystem_id="cell-0",
+                subsystem_type="rollout",
+                status="running",
+                node_ids=["node-2"],
+            )
+        )
+        registry.register(
+            _MockHandle(
+                subsystem_id="cell-1",
+                subsystem_type="rollout",
+                status="stopped",
+                node_ids=["node-3"],
+            )
+        )
 
         resp = await async_client.get("/subsystems")
         assert resp.status_code == 200
@@ -150,9 +162,7 @@ class TestGetSubsystems:
         assert by_id["cell-1"]["status"] == "stopped"
 
     @pytest.mark.asyncio
-    async def test_reflects_status_change(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
-    ) -> None:
+    async def test_reflects_status_change(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
         handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout", status="running")
         registry.register(handle)
 
@@ -167,9 +177,7 @@ class TestGetSubsystems:
 
 class TestStopSubsystem:
     @pytest.mark.asyncio
-    async def test_default_timeout(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
-    ) -> None:
+    async def test_default_timeout(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
         handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout")
         registry.register(handle)
 
@@ -178,9 +186,7 @@ class TestStopSubsystem:
         assert handle.stop_calls == [30]
 
     @pytest.mark.asyncio
-    async def test_custom_timeout(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
-    ) -> None:
+    async def test_custom_timeout(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
         handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout")
         registry.register(handle)
 
@@ -209,7 +215,8 @@ class TestStopSubsystem:
         self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
     ) -> None:
         handle = _MockHandle(
-            subsystem_id="cell-0", subsystem_type="rollout",
+            subsystem_id="cell-0",
+            subsystem_type="rollout",
             stop_error=RuntimeError("engine crashed"),
         )
         registry.register(handle)
@@ -230,9 +237,7 @@ class TestStopSubsystem:
 
 class TestStartSubsystem:
     @pytest.mark.asyncio
-    async def test_calls_handle(
-        self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
-    ) -> None:
+    async def test_calls_handle(self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient) -> None:
         handle = _MockHandle(subsystem_id="cell-0", subsystem_type="rollout", status="stopped")
         registry.register(handle)
 
@@ -261,7 +266,8 @@ class TestStartSubsystem:
         self, registry: _SubsystemRegistry, async_client: httpx.AsyncClient
     ) -> None:
         handle = _MockHandle(
-            subsystem_id="cell-0", subsystem_type="rollout",
+            subsystem_id="cell-0",
+            subsystem_type="rollout",
             start_error=RuntimeError("engine crashed"),
         )
         registry.register(handle)

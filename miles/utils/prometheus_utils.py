@@ -50,9 +50,7 @@ def get_prometheus() -> Any:
     return _collector_handle
 
 
-def set_prometheus_gauge(
-    name: str, label_keys: list[str], label_values: list[str], value: float
-) -> None:
+def set_prometheus_gauge(name: str, label_keys: list[str], label_values: list[str], value: float) -> None:
     """Set a gauge with custom labels via the collector actor. No-op if Prometheus is not enabled."""
     handle = get_prometheus()
     if handle is None:
@@ -106,9 +104,7 @@ class _PrometheusCollector:
             )
         self._gauges[name].labels(*self._label_vals).set(value)
 
-    def set_gauge_with_labels(
-        self, name: str, label_keys: list[str], label_values: list[str], value: float
-    ) -> None:
+    def set_gauge_with_labels(self, name: str, label_keys: list[str], label_values: list[str], value: float) -> None:
         """Set a gauge with custom labels (different from the default run_name labels)."""
         if name not in self._custom_gauges:
             self._custom_gauges[name] = self._Gauge(name, name, label_keys)

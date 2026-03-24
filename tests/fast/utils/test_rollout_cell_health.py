@@ -9,14 +9,18 @@ from miles.utils.rollout_cell_health import CellEntry, RolloutCellHealth
 def _make_engine(*, healthy: bool = True, delay: float = 0.0) -> MagicMock:
     engine = MagicMock()
     if healthy:
+
         async def _remote() -> bool:
             if delay:
                 await asyncio.sleep(delay)
             return True
+
         engine.health_generate.remote = _remote
     else:
+
         async def _remote_fail() -> bool:
             raise RuntimeError("engine dead")
+
         engine.health_generate.remote = _remote_fail
     return engine
 
@@ -38,9 +42,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0
-        )
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0)
         checker.start()
 
         await asyncio.sleep(0.05)
@@ -59,9 +61,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=False)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0
-        )
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0)
         checker.start()
 
         await asyncio.sleep(0.05)
@@ -79,9 +79,7 @@ class TestCheckOneCell:
         """When the lead engine is None, gauge is set to 0.0."""
         cell = _make_cell("cell-0", [None])  # type: ignore[list-item]
 
-        checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0
-        )
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0)
         checker.start()
 
         await asyncio.sleep(0.05)
@@ -99,9 +97,7 @@ class TestCheckOneCell:
         """When get_engines returns an empty list, gauge is set to 0.0."""
         cell = CellEntry(cell_id="cell-0", get_engines=lambda: [])
 
-        checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0
-        )
+        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", run_name="run-1", check_interval=100.0)
         checker.start()
 
         await asyncio.sleep(0.05)
@@ -121,8 +117,11 @@ class TestCheckOneCell:
         cell = _make_cell("cell-0", [engine])
 
         checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1",
-            check_interval=100.0, timeout=0.01,
+            cells=[cell],
+            session_id="sess-1",
+            run_name="run-1",
+            check_interval=100.0,
+            timeout=0.01,
         )
         checker.start()
 
@@ -145,7 +144,9 @@ class TestCheckOneCell:
         cell_b = _make_cell("cell-b", [engine_b])
 
         checker = RolloutCellHealth(
-            cells=[cell_a, cell_b], session_id="sess-1", run_name="run-1",
+            cells=[cell_a, cell_b],
+            session_id="sess-1",
+            run_name="run-1",
             check_interval=100.0,
         )
         checker.start()
@@ -178,7 +179,10 @@ class TestPauseResume:
         cell = _make_cell("cell-0", [engine])
 
         checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=0.01,
+            cells=[cell],
+            session_id="sess-1",
+            run_name="run-1",
+            check_interval=0.01,
         )
         checker.pause()
         checker.start()
@@ -196,7 +200,10 @@ class TestPauseResume:
         cell = _make_cell("cell-0", [engine])
 
         checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=0.01,
+            cells=[cell],
+            session_id="sess-1",
+            run_name="run-1",
+            check_interval=0.01,
         )
         checker.pause()
         checker.start()
@@ -218,7 +225,10 @@ class TestLifecycle:
         cell = _make_cell("cell-0", [engine])
 
         checker = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=0.01,
+            cells=[cell],
+            session_id="sess-1",
+            run_name="run-1",
+            check_interval=0.01,
         )
         checker.start()
 
@@ -232,7 +242,10 @@ class TestLifecycle:
         cell = _make_cell("cell-0", [engine])
 
         checker_fast = RolloutCellHealth(
-            cells=[cell], session_id="sess-1", run_name="run-1", check_interval=0.01,
+            cells=[cell],
+            session_id="sess-1",
+            run_name="run-1",
+            check_interval=0.01,
         )
         checker_fast.start()
         await asyncio.sleep(0.1)
@@ -242,7 +255,10 @@ class TestLifecycle:
         mock_gauge.reset_mock()
 
         checker_slow = RolloutCellHealth(
-            cells=[cell], session_id="sess-2", run_name="run-1", check_interval=0.05,
+            cells=[cell],
+            session_id="sess-2",
+            run_name="run-1",
+            check_interval=0.05,
         )
         checker_slow.start()
         await asyncio.sleep(0.1)

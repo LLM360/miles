@@ -40,9 +40,7 @@ class TestSetGaugeWithLabels:
 
         assert len(collector._custom_gauges) == 1
 
-    def test_set_gauge_with_labels_different_label_values(
-        self, collector: _PrometheusCollector
-    ) -> None:
+    def test_set_gauge_with_labels_different_label_values(self, collector: _PrometheusCollector) -> None:
         """Same gauge name but different label values should work (multi-cell scenario)."""
         collector.set_gauge_with_labels(
             name="miles_rollout_cell_alive",

@@ -20,10 +20,12 @@ def start_control_server(actor_model: object, rollout_manager: object, port: int
 
     cell_infos = ray.get(rollout_manager.list_cells.remote())
     for cell_info in cell_infos:
-        registry.register(_RolloutSubsystemHandle(
-            rollout_manager=rollout_manager,
-            cell_id=cell_info["cell_id"],
-        ))
+        registry.register(
+            _RolloutSubsystemHandle(
+                rollout_manager=rollout_manager,
+                cell_id=cell_info["cell_id"],
+            )
+        )
 
     _start_control_server_raw(registry=registry, port=port)
 
@@ -68,9 +70,7 @@ def _create_control_app(registry: _SubsystemRegistry) -> FastAPI:
         handles = registry.get_all()
 
         async def _fetch(handle: _SubsystemHandle) -> _SubsystemInfo:
-            status, node_ids = await asyncio.gather(
-                handle.get_status(), handle.get_node_ids()
-            )
+            status, node_ids = await asyncio.gather(handle.get_status(), handle.get_node_ids())
             return _SubsystemInfo(
                 subsystem_id=handle.subsystem_id,
                 subsystem_type=handle.subsystem_type,
@@ -88,15 +88,15 @@ def _create_control_app(registry: _SubsystemRegistry) -> FastAPI:
         try:
             handle = registry.get(subsystem_id)
         except KeyError:
-            raise HTTPException(status_code=404, detail=f"Subsystem '{subsystem_id}' not found")
+            raise HTTPException(status_code=404, detail=f"Subsystem '{subsystem_id}' not found") from None
 
         try:
             await handle.stop(timeout_seconds=body.timeout_seconds)
         except NotImplementedError as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
         except Exception:
             logger.error("Failed to stop subsystem %s", subsystem_id, exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to stop subsystem '{subsystem_id}'")
+            raise HTTPException(status_code=500, detail=f"Failed to stop subsystem '{subsystem_id}'") from None
 
         return _OkResponse()
 
@@ -105,15 +105,15 @@ def _create_control_app(registry: _SubsystemRegistry) -> FastAPI:
         try:
             handle = registry.get(subsystem_id)
         except KeyError:
-            raise HTTPException(status_code=404, detail=f"Subsystem '{subsystem_id}' not found")
+            raise HTTPException(status_code=404, detail=f"Subsystem '{subsystem_id}' not found") from None
 
         try:
             await handle.start()
         except NotImplementedError as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
         except Exception:
             logger.error("Failed to start subsystem %s", subsystem_id, exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to start subsystem '{subsystem_id}'")
+            raise HTTPException(status_code=500, detail=f"Failed to start subsystem '{subsystem_id}'") from None
 
         return _OkResponse()
 
@@ -208,6 +208,4 @@ class _RolloutSubsystemHandle:
         return await asyncio.to_thread(ray.get, self._rollout_manager.get_cell_status.remote(self._cell_id))
 
     async def get_node_ids(self) -> list[str]:
-        return await asyncio.to_thread(
-            ray.get, self._rollout_manager.get_cell_node_ids.remote(self._cell_id)
-        )
+        return await asyncio.to_thread(ray.get, self._rollout_manager.get_cell_node_ids.remote(self._cell_id))

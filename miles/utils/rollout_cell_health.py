@@ -68,8 +68,12 @@ class RolloutCellHealth:
             while True:
                 if not self._paused:
                     await asyncio.gather(
-                        *(_check_one_cell(entry=e, session_id=self._session_id, run_name=self._run_name, timeout=self._timeout)
-                          for e in self._cells.values())
+                        *(
+                            _check_one_cell(
+                                entry=e, session_id=self._session_id, run_name=self._run_name, timeout=self._timeout
+                            )
+                            for e in self._cells.values()
+                        )
                     )
                 await asyncio.sleep(self._check_interval)
         except asyncio.CancelledError:

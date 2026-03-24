@@ -7,9 +7,9 @@ import ray
 
 from miles.utils.placement_group_utils import PlacementGroupSlice, create_placement_group_info
 
+from ..utils.control_server_utils import start_control_server
 from .actor_group import RayTrainGroup
 from .rollout import RolloutManager
-from ..utils.control_server_utils import start_control_server
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,9 @@ def create_training_models(args, pgs, rollout_manager):
 
     if args.use_control_server:
         start_control_server(
-            actor_model=actor_model, rollout_manager=rollout_manager, port=args.control_server_port,
+            actor_model=actor_model,
+            rollout_manager=rollout_manager,
+            port=args.control_server_port,
         )
 
     return actor_model, critic_model
