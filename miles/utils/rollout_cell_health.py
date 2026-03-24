@@ -69,7 +69,10 @@ class RolloutCellHealth:
 
     async def _loop(self) -> None:
         while True:
-            if not self._paused:
+            if self._paused:
+                for entry in self._cells.values():
+                    self._report(cell_id=entry.cell_id, is_healthy=None)
+            else:
                 await asyncio.gather(*(self._check_one_cell(e) for e in self._cells.values()))
 
             await asyncio.sleep(self._check_interval)
@@ -83,7 +86,7 @@ class RolloutCellHealth:
 
         self._report(cell_id=entry.cell_id, is_healthy=is_healthy)
 
-    def _report(self, *, cell_id: str, is_healthy: bool) -> None:
+    def _report(self, *, cell_id: str, is_healthy: bool | None) -> None:
         handle = get_prometheus()
         if handle is None:
             return
@@ -91,7 +94,7 @@ class RolloutCellHealth:
         try:
             handle.set_gauge.remote(
                 _METRIC_NAME,
-                1.0 if is_healthy else 0.0,
+                -1.0 if is_healthy is None else (1.0 if is_healthy else 0.0),
                 extra_labels={"session_id": self._session_id, "cell_id": cell_id},
             )
         except Exception:

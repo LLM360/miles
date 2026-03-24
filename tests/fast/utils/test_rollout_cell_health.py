@@ -172,18 +172,26 @@ class TestCheckOneCell:
 
 class TestPauseResume:
     @pytest.mark.asyncio()
-    async def test_pause_skips_check(self, mock_prom: _MockHandle) -> None:
+    async def test_pause_reports_minus_one(self, mock_prom: _MockHandle) -> None:
         engine = _make_engine(healthy=True)
-        cell = _make_cell("cell-0", [engine])
+        cell_a = _make_cell("cell-a", [engine])
+        cell_b = _make_cell("cell-b", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=0.01)
+        checker = RolloutCellHealth(cells=[cell_a, cell_b], session_id="sess-1", check_interval=0.01)
         checker.pause()
         checker.start()
 
         await asyncio.sleep(0.05)
         await checker.shutdown()
 
-        assert len(mock_prom.set_gauge_calls) == 0
+        assert len(mock_prom.set_gauge_calls) > 0
+        for call in mock_prom.set_gauge_calls:
+            assert call["value"] == -1.0
+
+        ca = _find_call(mock_prom, "cell-a")
+        cb = _find_call(mock_prom, "cell-b")
+        assert ca is not None
+        assert cb is not None
 
     @pytest.mark.asyncio()
     async def test_resume_re_enables_check(self, mock_prom: _MockHandle) -> None:
