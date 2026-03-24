@@ -294,7 +294,6 @@ Arguments for handling server failures during rollout.
 | Argument | Description | Default | Options | Source |
 | :--- | :--- | :--- | :--- | :--- |
 | `--use-fault-tolerance` | Enable fault tolerance for rollout engines. Periodically sends `/health_generate` heartbeats. | `False` | bool flag (set to enable) | Miles Native |
-| `--ft-mode` | Select fault-tolerance mode. `rollout` (rollout-restart mode) or `external` (external control mode). | `rollout` | `rollout`, `external` | Miles Native |
 | `--rollout-health-check-interval` | Interval in seconds between rollout engine `/health_generate` checks during generate/eval. | `30.0` | Type: float | Miles Native |
 | `--rollout-health-check-timeout` | Timeout in seconds to wait for a rollout engine `/health_generate` response before killing it. | `30.0` | Type: float | Miles Native |
 | `--rollout-health-check-first-wait` | Initial grace period (in seconds) before starting health checks. This allows time for model compilation and initialization. Increase this value significantly when using deepgemm. | `0.0` | Type: float | Miles Native |
