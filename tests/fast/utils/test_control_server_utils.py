@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 import miles.utils.control_server_utils as control_server_mod
 from miles.utils.control_server_utils import (
-    _SubsystemRegistry,
-    _RolloutSubsystemHandle,
-    _TrainingSubsystemHandle,
-    _StopRequest,
     _create_control_app,
+    _RolloutSubsystemHandle,
+    _SubsystemRegistry,
+    _TrainingSubsystemHandle,
 )
 
 

@@ -28,7 +28,7 @@ def start_control_server(actor_model: object, rollout_manager: object, port: int
     _start_control_server_raw(registry=registry, port=port)
 
 
-def _start_control_server_raw(registry: "_SubsystemRegistry", port: int) -> None:
+def _start_control_server_raw(registry: _SubsystemRegistry, port: int) -> None:
     app = _create_control_app(registry)
 
     def _run() -> None:
@@ -60,7 +60,7 @@ class _OkResponse(BaseModel):
     status: str = "ok"
 
 
-def _create_control_app(registry: "_SubsystemRegistry") -> FastAPI:
+def _create_control_app(registry: _SubsystemRegistry) -> FastAPI:
     app = FastAPI()
 
     @app.get("/subsystems")

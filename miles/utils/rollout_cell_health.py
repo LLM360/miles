@@ -1,7 +1,7 @@
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from miles.utils.prometheus_utils import set_prometheus_gauge
 

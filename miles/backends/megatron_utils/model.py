@@ -25,7 +25,12 @@ from miles.utils.memory_utils import clear_memory
 
 from ..training_utils.ci_utils import check_grad_norm, check_kl
 from ..training_utils.data import DataIterator, get_batch
-from ..training_utils.log_utils import TrainingPrometheusReporter, aggregate_forward_results, aggregate_train_losses, log_train_step
+from ..training_utils.log_utils import (
+    TrainingPrometheusReporter,
+    aggregate_forward_results,
+    aggregate_train_losses,
+    log_train_step,
+)
 from ..training_utils.loss import loss_function
 from ..training_utils.parallel import ParallelState
 from .checkpoint import load_checkpoint, save_checkpoint, save_checkpoint_with_lora
