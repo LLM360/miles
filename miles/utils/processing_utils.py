@@ -1,4 +1,5 @@
 import base64
+import inspect
 import io
 import logging
 import os
@@ -24,6 +25,47 @@ def load_tokenizer(name_or_path: str, chat_template_path: str = None, **kwargs):
             tokenizer.chat_template = f.read()
         logger.info("Loaded custom chat template from %s", chat_template_path)
     return tokenizer
+
+
+def build_processor_kwargs(multimodal_inputs: dict | None = None) -> dict:
+
+    modality_forced = {"return_tensors": "pt"}
+
+    result = dict(multimodal_inputs) if multimodal_inputs else {}
+
+    # return_tensors=None for text (input_ids as lists), "pt" for modality-specific outputs
+    result["text_kwargs"] = {**result.get("text_kwargs", {}), "return_tensors": None}
+    for key in ("audio_kwargs", "images_kwargs", "videos_kwargs"):
+        if key in result:
+            result[key] = {**result[key], **modality_forced}
+        else:
+            result[key] = modality_forced.copy()
+
+    return result
+
+
+def processor_requires_medias(processor) -> bool:
+    try:
+        params = inspect.signature(processor.__call__).parameters
+        return "medias" in params and "text" in params
+    except (TypeError, ValueError):
+        return hasattr(processor, "media_processor")
+
+
+def call_processor(processor, text, multimodal_inputs: dict | None = None):
+    multimodal_inputs = multimodal_inputs or {}
+
+    # for kimi-vl & kimi-2.5
+    if processor_requires_medias(processor):
+        medias = []
+        if images := multimodal_inputs.get("images"):
+            medias.extend({"type": "image", "image": image} for image in images)
+        if videos := multimodal_inputs.get("videos"):
+            medias.extend({"type": "video", "video": video} for video in videos)
+        return processor(text=text, medias=medias)
+
+    kwargs = build_processor_kwargs(multimodal_inputs)
+    return processor(text=text, **kwargs)
 
 
 def load_processor(name_or_path: str, **kwargs):
