@@ -333,3 +333,74 @@ def test_rollout_handle_subsystem_type_is_rollout() -> None:
     handle = _RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0", node_ids=[])
     assert handle.subsystem_type == "rollout"
     assert handle.subsystem_id == "cell-0"
+
+
+# ── _TrainingSubsystemHandle tests ──
+
+
+@pytest.mark.asyncio
+async def test_training_handle_stop_raises() -> None:
+    from miles.utils.control_server_utils import _TrainingSubsystemHandle
+
+    handle = _TrainingSubsystemHandle(node_ids=["n0"])
+    with pytest.raises(NotImplementedError, match="managed by the platform"):
+        await handle.stop(timeout_seconds=30)
+
+
+@pytest.mark.asyncio
+async def test_training_handle_start_raises() -> None:
+    from miles.utils.control_server_utils import _TrainingSubsystemHandle
+
+    handle = _TrainingSubsystemHandle(node_ids=["n0"])
+    with pytest.raises(NotImplementedError, match="managed by the platform"):
+        await handle.start()
+
+
+@pytest.mark.asyncio
+async def test_training_handle_get_status_always_running() -> None:
+    from miles.utils.control_server_utils import _TrainingSubsystemHandle
+
+    handle = _TrainingSubsystemHandle(node_ids=[])
+    assert await handle.get_status() == "running"
+
+
+@pytest.mark.asyncio
+async def test_training_handle_get_node_ids() -> None:
+    from miles.utils.control_server_utils import _TrainingSubsystemHandle
+
+    handle = _TrainingSubsystemHandle(node_ids=["n0", "n1", "n2"])
+    assert await handle.get_node_ids() == ["n0", "n1", "n2"]
+
+
+def test_training_handle_subsystem_type_is_training() -> None:
+    from miles.utils.control_server_utils import _TrainingSubsystemHandle
+
+    handle = _TrainingSubsystemHandle(node_ids=[])
+    assert handle.subsystem_type == "training"
+    assert handle.subsystem_id == "training"
+
+
+@pytest.mark.asyncio
+async def test_stop_training_subsystem_returns_error(
+    registry: SubsystemRegistry, async_client: httpx.AsyncClient
+) -> None:
+    from miles.utils.control_server_utils import _TrainingSubsystemHandle
+
+    registry.register(_TrainingSubsystemHandle(node_ids=["n0"]))
+
+    resp = await async_client.post("/subsystems/training/stop")
+    assert resp.status_code == 500
+    assert "managed by the platform" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_start_training_subsystem_returns_error(
+    registry: SubsystemRegistry, async_client: httpx.AsyncClient
+) -> None:
+    from miles.utils.control_server_utils import _TrainingSubsystemHandle
+
+    registry.register(_TrainingSubsystemHandle(node_ids=["n0"]))
+
+    resp = await async_client.post("/subsystems/training/start")
+    assert resp.status_code == 500
+    assert "managed by the platform" in resp.json()["detail"]

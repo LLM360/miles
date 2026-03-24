@@ -110,6 +110,35 @@ def _create_control_app(registry: SubsystemRegistry) -> FastAPI:
     return app
 
 
+class _TrainingSubsystemHandle:
+    def __init__(self, node_ids: list[str]) -> None:
+        self._node_ids = node_ids
+
+    @property
+    def subsystem_id(self) -> str:
+        return "training"
+
+    @property
+    def subsystem_type(self) -> str:
+        return "training"
+
+    async def stop(self, timeout_seconds: int) -> None:
+        raise NotImplementedError(
+            "Training subsystem lifecycle is managed by the platform (kill/relaunch pod), not via control server API"
+        )
+
+    async def start(self) -> None:
+        raise NotImplementedError(
+            "Training subsystem lifecycle is managed by the platform (kill/relaunch pod), not via control server API"
+        )
+
+    async def get_status(self) -> str:
+        return "running"
+
+    async def get_node_ids(self) -> list[str]:
+        return self._node_ids
+
+
 class _RolloutSubsystemHandle:
     def __init__(self, rollout_manager: object, cell_id: str, node_ids: list[str]) -> None:
         self._rollout_manager = rollout_manager
