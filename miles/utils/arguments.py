@@ -1668,22 +1668,16 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
-_FT_MODE_TO_COMPONENTS: dict[str, frozenset[str]] = {
-    "rollout": frozenset({"rollout"}),
-    "external": frozenset({"rollout", "train"}),
-}
-
-_FT_DEFAULT_COMPONENTS: frozenset[str] = _FT_MODE_TO_COMPONENTS["rollout"]
-
-
 def _resolve_ft_components(args: argparse.Namespace) -> frozenset[str]:
     if not args.use_fault_tolerance:
         if args.ft_mode is not None:
             logger.warning("--ft-mode is ignored without --use-fault-tolerance")
         return frozenset()
     if args.ft_mode is not None:
-        return _FT_MODE_TO_COMPONENTS[args.ft_mode]
-    return _FT_DEFAULT_COMPONENTS
+        if args.ft_mode == "external":
+            return frozenset({"rollout", "train"})
+        return frozenset({"rollout"})
+    return frozenset({"rollout"})
 
 
 def miles_validate_args(args):
