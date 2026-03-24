@@ -4,6 +4,8 @@ import time
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+from miles.utils.misc import get_current_node_ip
+
 logger = logging.getLogger(__name__)
 
 _METRIC_PREFIX = "miles_metric_"
@@ -85,8 +87,6 @@ class _PrometheusCollector:
 
         port = args.prometheus_port
         start_http_server(port)
-
-        from miles.utils.misc import get_current_node_ip
 
         bind_ip = get_current_node_ip()
         logger.info("Prometheus metrics server started on %s:%d, run_name=%s", bind_ip, port, self._run_name)
