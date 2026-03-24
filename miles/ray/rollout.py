@@ -397,9 +397,9 @@ class RolloutManager:
             except Exception as e:
                 logger.warning(f"CI Fault Injection failed: {e}")
 
-    def dispose(self):
+    async def dispose(self):
         if self._cell_health is not None:
-            asyncio.get_event_loop().run_until_complete(self._cell_health.shutdown())
+            await self._cell_health.shutdown()
         if self._metric_checker is not None:
             self._metric_checker.dispose()
         for monitor in self._health_monitors:
