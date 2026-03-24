@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from miles.utils.rollout_cell_health import CellEntry, RolloutCellHealthChecker
+from miles.utils.rollout_cell_health_checker import CellEntry, RolloutCellHealthChecker
 
 
 def _make_engine(*, healthy: bool = True, delay: float = 0.0) -> MagicMock:
