@@ -80,6 +80,7 @@ def build_and_push(
         "docker",
         "buildx",
         "build",
+        "--platform", "linux/amd64",
         "-f",
         dockerfile,
     ]
