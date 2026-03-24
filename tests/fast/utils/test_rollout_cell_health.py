@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from miles.utils.rollout_cell_health import CellEntry, RolloutCellHealth
+from miles.utils.rollout_cell_health import CellEntry, RolloutCellHealthChecker
 
 
 def _make_engine(*, healthy: bool = True, delay: float = 0.0) -> MagicMock:
@@ -68,7 +68,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -83,7 +83,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=False)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -96,7 +96,7 @@ class TestCheckOneCell:
     async def test_none_engine_reports_dead(self, mock_prom: _MockHandle) -> None:
         cell = _make_cell("cell-0", [None])  # type: ignore[list-item]
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -109,7 +109,7 @@ class TestCheckOneCell:
     async def test_empty_engines_list_reports_dead(self, mock_prom: _MockHandle) -> None:
         cell = CellEntry(cell_id="cell-0", get_engines=lambda: [])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -123,7 +123,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=True, delay=5.0)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(
+        checker = RolloutCellHealthChecker(
             cells=[cell], session_id="sess-1",
             check_interval=100.0, timeout=0.01,
         )
@@ -142,7 +142,7 @@ class TestCheckOneCell:
         cell_a = _make_cell("cell-a", [engine_a])
         cell_b = _make_cell("cell-b", [engine_b])
 
-        checker = RolloutCellHealth(
+        checker = RolloutCellHealthChecker(
             cells=[cell_a, cell_b], session_id="sess-1",
             check_interval=100.0,
         )
@@ -160,7 +160,7 @@ class TestCheckOneCell:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="my-sess", check_interval=100.0)
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="my-sess", check_interval=100.0)
         checker.start()
         await asyncio.sleep(0.05)
         await checker.shutdown()
@@ -177,7 +177,7 @@ class TestPauseResume:
         cell_a = _make_cell("cell-a", [engine])
         cell_b = _make_cell("cell-b", [engine])
 
-        checker = RolloutCellHealth(cells=[cell_a, cell_b], session_id="sess-1", check_interval=0.01)
+        checker = RolloutCellHealthChecker(cells=[cell_a, cell_b], session_id="sess-1", check_interval=0.01)
         checker.pause()
         checker.start()
 
@@ -198,7 +198,7 @@ class TestPauseResume:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=0.01)
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=0.01)
         checker.pause()
         checker.start()
         await asyncio.sleep(0.03)
@@ -217,7 +217,7 @@ class TestLifecycle:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=0.01)
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=0.01)
         checker.start()
         await checker.shutdown()
 
@@ -228,7 +228,7 @@ class TestLifecycle:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=100.0)
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=100.0)
         checker.start()
         await checker.shutdown()
 
@@ -244,7 +244,7 @@ class TestLifecycle:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
 
-        checker_fast = RolloutCellHealth(cells=[cell], session_id="sess-1", check_interval=0.01)
+        checker_fast = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=0.01)
         checker_fast.start()
         await asyncio.sleep(0.1)
         await checker_fast.shutdown()
@@ -252,7 +252,7 @@ class TestLifecycle:
 
         mock_prom.set_gauge_calls.clear()
 
-        checker_slow = RolloutCellHealth(cells=[cell], session_id="sess-2", check_interval=0.05)
+        checker_slow = RolloutCellHealthChecker(cells=[cell], session_id="sess-2", check_interval=0.05)
         checker_slow.start()
         await asyncio.sleep(0.1)
         await checker_slow.shutdown()

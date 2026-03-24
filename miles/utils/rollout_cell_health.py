@@ -18,7 +18,7 @@ class CellEntry:
     get_engines: Callable[[], list[object]]
 
 
-class RolloutCellHealth:
+class RolloutCellHealthChecker:
     """Async health checker that periodically probes rollout cells and reports a Prometheus gauge.
 
     Each cell's lead engine is probed via ``engine.health_generate.remote()``.
