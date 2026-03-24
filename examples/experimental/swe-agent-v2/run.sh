@@ -41,6 +41,7 @@ SGLANG_REASONING_PARSER=""
 NO_WAIT=""
 
 # ── Pre-scan for --mode so debug defaults are set before arg parsing ─
+prev=""
 for arg in "$@"; do
   if [[ "$prev" == "--mode" ]]; then MODE="$arg"; break; fi
   prev="$arg"
