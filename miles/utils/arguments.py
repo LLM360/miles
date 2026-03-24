@@ -1668,16 +1668,23 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
-def _resolve_ft_components(args: argparse.Namespace) -> frozenset[str]:
+def _resolve_ft_mode(args: argparse.Namespace) -> None:
     if not args.use_fault_tolerance:
         if args.ft_mode is not None:
             logger.warning("--ft-mode is ignored without --use-fault-tolerance")
-        return frozenset()
+        args.ft_rollout_enabled = False
+        args.ft_train_enabled = False
+        return
     if args.ft_mode is not None:
         if args.ft_mode == "external":
-            return frozenset({"rollout", "train"})
-        return frozenset({"rollout"})
-    return frozenset({"rollout"})
+            args.ft_rollout_enabled = True
+            args.ft_train_enabled = True
+            return
+        args.ft_rollout_enabled = True
+        args.ft_train_enabled = False
+        return
+    args.ft_rollout_enabled = True
+    args.ft_train_enabled = False
 
 
 def miles_validate_args(args):
@@ -1949,7 +1956,7 @@ def miles_validate_args(args):
             getattr(args, "placement_persist_path", None) is not None
         ), "--use-fault-tolerance requires --placement-persist-path (or --save to auto-derive it)"
 
-    args.ft_components = _resolve_ft_components(args)
+    _resolve_ft_mode(args)
 
 
 def hf_validate_args(args, hf_config):

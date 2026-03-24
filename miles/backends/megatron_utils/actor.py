@@ -112,9 +112,9 @@ class MegatronTrainRayActor(TrainRayActor):
         self._ft_agent = build_training_rank_agent(
             rank=dist.get_rank(),
             world_size=dist.get_world_size(),
-            enabled="train" in getattr(self.args, "ft_components", []),
+            enabled=bool(self.args.ft_train_enabled),
         )
-        if "train" in getattr(self.args, "ft_components", []):
+        if self.args.ft_train_enabled:
             ensure_node_agent()
 
         if role == "critic":
@@ -502,7 +502,7 @@ class MegatronTrainRayActor(TrainRayActor):
         if self.args.debug_train_only or self.args.debug_rollout_only:
             return
 
-        if "rollout" in self.args.ft_components:
+        if self.args.ft_rollout_enabled:
             if dist.get_rank() == 0:
                 ray.get(self.rollout_manager.recover_updatable_engines.remote())
             dist.barrier(group=get_gloo_group())
