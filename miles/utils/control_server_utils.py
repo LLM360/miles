@@ -140,10 +140,9 @@ class TrainingSubsystemHandle:
 
 
 class RolloutSubsystemHandle:
-    def __init__(self, rollout_manager: object, cell_id: str, node_ids: list[str]) -> None:
+    def __init__(self, rollout_manager: object, cell_id: str) -> None:
         self._rollout_manager = rollout_manager
         self._cell_id = cell_id
-        self._node_ids = node_ids
 
     @property
     def subsystem_id(self) -> str:
@@ -163,7 +162,9 @@ class RolloutSubsystemHandle:
         return await asyncio.to_thread(ray.get, self._rollout_manager.get_cell_status.remote(self._cell_id))
 
     async def get_node_ids(self) -> list[str]:
-        return self._node_ids
+        return await asyncio.to_thread(
+            ray.get, self._rollout_manager.get_cell_node_ids.remote(self._cell_id)
+        )
 
 
 def start_control_server(registry: SubsystemRegistry, port: int) -> threading.Thread:

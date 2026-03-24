@@ -792,6 +792,9 @@ class RolloutManager:
     def get_cell_status(self, cell_id: str) -> str:
         raise NotImplementedError("Pending PR #729")
 
+    def get_cell_node_ids(self, cell_id: str) -> list[str]:
+        raise NotImplementedError("Pending PR #729")
+
     def list_cells(self) -> list[dict]:
         raise NotImplementedError("Pending PR #729")
 

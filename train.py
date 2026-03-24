@@ -36,7 +36,6 @@ def train(args):
             registry.register(RolloutSubsystemHandle(
                 rollout_manager=rollout_manager,
                 cell_id=cell_info["cell_id"],
-                node_ids=cell_info.get("node_ids", []),
             ))
 
         start_control_server(registry=registry, port=args.control_server_port)

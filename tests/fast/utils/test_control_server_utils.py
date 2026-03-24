@@ -299,7 +299,7 @@ async def test_rollout_handle_stop_delegates_to_manager(monkeypatch: pytest.Monk
     manager = _MockRolloutManager()
     monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
-    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
     await handle.stop(timeout_seconds=45)
 
     assert manager.stop_cell.calls == [(("cell-0", 45), {})]
@@ -310,7 +310,7 @@ async def test_rollout_handle_start_delegates_to_manager(monkeypatch: pytest.Mon
     manager = _MockRolloutManager()
     monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
-    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
     await handle.start()
 
 
@@ -319,19 +319,23 @@ async def test_rollout_handle_get_status_delegates_to_manager(monkeypatch: pytes
     manager = _MockRolloutManager(status_return="stopped")
     monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
 
-    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
     status = await handle.get_status()
     assert status == "stopped"
 
 
 @pytest.mark.asyncio
-async def test_rollout_handle_get_node_ids() -> None:
-    handle = RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0", node_ids=["n0", "n1"])
+async def test_rollout_handle_get_node_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    manager = _MockRolloutManager()
+    manager.get_cell_node_ids = _MockRemoteCall(["n0", "n1"])
+    monkeypatch.setattr(control_server_mod.ray, "get", lambda ref: ref)
+
+    handle = RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0")
     assert await handle.get_node_ids() == ["n0", "n1"]
 
 
 def test_rollout_handle_subsystem_type_is_rollout() -> None:
-    handle = RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0", node_ids=[])
+    handle = RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0")
     assert handle.subsystem_type == "rollout"
     assert handle.subsystem_id == "cell-0"
 
