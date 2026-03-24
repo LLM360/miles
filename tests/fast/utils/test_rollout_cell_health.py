@@ -157,6 +157,18 @@ class TestCheckOneCell:
         assert cb is not None and cb["value"] == 0.0
 
     @pytest.mark.asyncio()
+    async def test_report_noop_when_prometheus_none(self) -> None:
+        """When get_prometheus() returns None, _report() is a no-op (no error raised)."""
+        engine = _make_engine(healthy=True)
+        cell = _make_cell("cell-0", [engine])
+
+        with patch("miles.utils.rollout_cell_health.get_prometheus", return_value=None):
+            checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=100.0)
+            checker.start()
+            await asyncio.sleep(0.05)
+            await checker.shutdown()
+
+    @pytest.mark.asyncio()
     async def test_extra_labels_contain_session_id(self, mock_prom: _MockHandle) -> None:
         engine = _make_engine(healthy=True)
         cell = _make_cell("cell-0", [engine])
@@ -210,6 +222,9 @@ class TestPauseResume:
         await checker.shutdown()
 
         assert len(mock_prom.set_gauge_calls) > 0
+        c = _find_call(mock_prom, "cell-0")
+        assert c is not None
+        assert c["value"] == 1.0
 
 
 class TestLifecycle:
@@ -223,6 +238,20 @@ class TestLifecycle:
         await checker.shutdown()
 
         assert checker._task is None
+
+    @pytest.mark.asyncio()
+    async def test_double_start_is_idempotent(self, mock_prom: _MockHandle) -> None:
+        engine = _make_engine(healthy=True)
+        cell = _make_cell("cell-0", [engine])
+
+        checker = RolloutCellHealthChecker(cells=[cell], session_id="sess-1", check_interval=0.01)
+        checker.start()
+        first_task = checker._task
+
+        checker.start()
+        assert checker._task is first_task
+
+        await checker.shutdown()
 
     @pytest.mark.asyncio()
     async def test_restart_after_shutdown(self, mock_prom: _MockHandle) -> None:
