@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from typing import Protocol, runtime_checkable
+import abc
+from typing import Literal
 
 import ray
 import uvicorn
@@ -45,8 +46,8 @@ class _SubsystemInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     subsystem_id: str
-    subsystem_type: str
-    status: str
+    subsystem_type: Literal["training", "rollout"]
+    status: Literal["running", "stopped", "pending", "failed"]
     node_ids: list[str]
 
 
@@ -130,24 +131,29 @@ class _SubsystemRegistry:
             raise KeyError(f"Subsystem '{subsystem_id}' not found") from e
 
 
-@runtime_checkable
-class _SubsystemHandle(Protocol):
+class _SubsystemHandle(abc.ABC):
     @property
+    @abc.abstractmethod
     def subsystem_id(self) -> str: ...
 
     @property
+    @abc.abstractmethod
     def subsystem_type(self) -> str: ...
 
+    @abc.abstractmethod
     async def stop(self, timeout_seconds: int) -> None: ...
 
+    @abc.abstractmethod
     async def start(self) -> None: ...
 
+    @abc.abstractmethod
     async def get_status(self) -> str: ...
 
+    @abc.abstractmethod
     async def get_node_ids(self) -> list[str]: ...
 
 
-class _TrainingSubsystemHandle:
+class _TrainingSubsystemHandle(_SubsystemHandle):
     def __init__(self, node_ids: list[str]) -> None:
         self._node_ids = node_ids
 
@@ -176,7 +182,7 @@ class _TrainingSubsystemHandle:
         return self._node_ids
 
 
-class _RolloutSubsystemHandle:
+class _RolloutSubsystemHandle(_SubsystemHandle):
     def __init__(self, rollout_manager: object, cell_id: str) -> None:
         self._rollout_manager = rollout_manager
         self._cell_id = cell_id
@@ -190,13 +196,13 @@ class _RolloutSubsystemHandle:
         return "rollout"
 
     async def stop(self, timeout_seconds: int) -> None:
-        await asyncio.to_thread(ray.get, self._rollout_manager.stop_cell.remote(self._cell_id, timeout_seconds))
+        await self._rollout_manager.stop_cell.remote(self._cell_id, timeout_seconds)
 
     async def start(self) -> None:
-        await asyncio.to_thread(ray.get, self._rollout_manager.start_cell.remote(self._cell_id))
+        await self._rollout_manager.start_cell.remote(self._cell_id)
 
     async def get_status(self) -> str:
-        return await asyncio.to_thread(ray.get, self._rollout_manager.get_cell_status.remote(self._cell_id))
+        return await self._rollout_manager.get_cell_status.remote(self._cell_id)
 
     async def get_node_ids(self) -> list[str]:
-        return await asyncio.to_thread(ray.get, self._rollout_manager.get_cell_node_ids.remote(self._cell_id))
+        return await self._rollout_manager.get_cell_node_ids.remote(self._cell_id)
