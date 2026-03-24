@@ -13,11 +13,35 @@ from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step
 from miles.utils.types import RolloutBatch
 
 from ...utils import tracking_utils
+from ...utils.prometheus_utils import get_prometheus
 from .cp_utils import get_sum_of_sample_mean
 from .data import DataIterator
 from .parallel import ParallelState
 
 logger = logging.getLogger(__name__)
+
+
+class TrainingPrometheusReporter:
+    """Reports training phase and heartbeat to the Prometheus collector actor.
+
+    All calls are fire-and-forget (.remote(), no ray.get()) to avoid
+    blocking the training loop.
+    """
+
+    def __init__(self) -> None:
+        self._handle = get_prometheus()
+
+    @property
+    def enabled(self) -> bool:
+        return self._handle is not None
+
+    def set_phase(self, phase: int) -> None:
+        if self._handle is not None:
+            self._handle.set_training_phase.remote(phase)
+
+    def bump_heartbeat(self) -> None:
+        if self._handle is not None:
+            self._handle.bump_heartbeat.remote()
 
 
 def gather_log_data(

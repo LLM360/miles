@@ -16,7 +16,7 @@ from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
 from miles.utils.context_utils import with_defer
 from miles.utils.distributed_utils import get_gloo_group, init_process_group
-from miles.utils.ft.factories.embedded_agent import build_training_rank_agent, ensure_node_agent
+from miles.backends.training_utils.log_utils import TrainingPrometheusReporter
 from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.ray_utils import Box
@@ -90,7 +90,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         if self.args.debug_rollout_only:
             self.parallel_state = create_megatron_parallel_state(model=None)
-            self._ft_agent = None
+            self._prometheus_reporter = TrainingPrometheusReporter()
             return 0
 
         if role == "critic":
@@ -109,13 +109,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         self.parallel_state = create_megatron_parallel_state(model=self.model)
 
-        self._ft_agent = build_training_rank_agent(
-            rank=dist.get_rank(),
-            world_size=dist.get_world_size(),
-            enabled=bool(self.args.ft_train_enabled),
-        )
-        if self.args.ft_train_enabled:
-            ensure_node_agent()
+        self._prometheus_reporter = TrainingPrometheusReporter()
 
         if role == "critic":
             if self.args.offload_train:
@@ -349,15 +343,14 @@ class MegatronTrainRayActor(TrainRayActor):
             data_iterator,
             num_microbatches,
             self.parallel_state,
-            ft_agent=self._ft_agent,
+            prometheus_reporter=self._prometheus_reporter,
         )
 
     def _use_rollout_replay(self, m) -> bool:
         return getattr(self.args, f"use_rollout_{m.name}_replay")
 
     def train_actor(self, rollout_id: int, rollout_data: RolloutBatch) -> None:
-        if (x := self._ft_agent) is not None:
-            x.set_phase("training")
+        self._prometheus_reporter.set_phase(1)
 
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, self.parallel_state, rollout_data)
@@ -434,7 +427,7 @@ class MegatronTrainRayActor(TrainRayActor):
                     data_iterator,
                     num_microbatches,
                     self.parallel_state,
-                    ft_agent=self._ft_agent,
+                    prometheus_reporter=self._prometheus_reporter,
                 )
 
             self.prof.step(rollout_id=rollout_id)
@@ -461,8 +454,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         log_perf_data(rollout_id, self.args, self.parallel_state)
 
-        if (x := self._ft_agent) is not None:
-            x.set_phase("idle")
+        self._prometheus_reporter.set_phase(0)
 
     @timer
     def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
@@ -478,13 +470,9 @@ class MegatronTrainRayActor(TrainRayActor):
 
             maybe_finalize_async_save(blocking=True)
 
-        if (x := self._ft_agent) is not None:
-            x.set_phase("checkpoint_saving")
-
+        self._prometheus_reporter.set_phase(2)
         save(rollout_id, self.model, self.optimizer, self.opt_param_scheduler)
-
-        if (x := self._ft_agent) is not None:
-            x.set_phase("idle")
+        self._prometheus_reporter.set_phase(0)
 
         if force_sync and self.args.async_save:
             maybe_finalize_async_save(blocking=True)
