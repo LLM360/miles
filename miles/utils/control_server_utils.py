@@ -3,6 +3,7 @@ import logging
 import threading
 from typing import Protocol, runtime_checkable
 
+import ray
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -107,6 +108,33 @@ def _create_control_app(registry: SubsystemRegistry) -> FastAPI:
         return {"status": "ok"}
 
     return app
+
+
+class _RolloutSubsystemHandle:
+    def __init__(self, rollout_manager: object, cell_id: str, node_ids: list[str]) -> None:
+        self._rollout_manager = rollout_manager
+        self._cell_id = cell_id
+        self._node_ids = node_ids
+
+    @property
+    def subsystem_id(self) -> str:
+        return self._cell_id
+
+    @property
+    def subsystem_type(self) -> str:
+        return "rollout"
+
+    async def stop(self, timeout_seconds: int) -> None:
+        await asyncio.to_thread(ray.get, self._rollout_manager.stop_cell.remote(self._cell_id))
+
+    async def start(self) -> None:
+        await asyncio.to_thread(ray.get, self._rollout_manager.start_cell.remote(self._cell_id))
+
+    async def get_status(self) -> str:
+        return await asyncio.to_thread(ray.get, self._rollout_manager.get_cell_status.remote(self._cell_id))
+
+    async def get_node_ids(self) -> list[str]:
+        return self._node_ids
 
 
 def start_control_server(registry: SubsystemRegistry, port: int) -> threading.Thread:

@@ -775,6 +775,18 @@ class RolloutManager:
             rollout_data_refs.append(Box(ray.put(rollout_data)))
         return rollout_data_refs
 
+    def start_cell(self, cell_id: str) -> int:
+        raise NotImplementedError("Pending PR #729")
+
+    def stop_cell(self, cell_id: str) -> None:
+        raise NotImplementedError("Pending PR #729")
+
+    def get_cell_status(self, cell_id: str) -> str:
+        raise NotImplementedError("Pending PR #729")
+
+    def list_cells(self) -> list[dict]:
+        raise NotImplementedError("Pending PR #729")
+
 
 # ---------------------------------------------------------------------------
 # Port allocation helpers

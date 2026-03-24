@@ -257,3 +257,79 @@ async def test_start_handle_raises_returns_500(
 
     resp = await async_client.post("/subsystems/cell-0/start")
     assert resp.status_code == 500
+
+
+# ── _RolloutSubsystemHandle tests ──
+
+
+class _MockRemoteCall:
+    """Simulates `actor.method.remote(arg)` returning a value that `ray.get` resolves."""
+
+    def __init__(self, return_value: object) -> None:
+        self._return_value = return_value
+
+    def remote(self, *args: object, **kwargs: object) -> object:
+        return self._return_value
+
+
+class _MockRolloutManager:
+    def __init__(
+        self,
+        stop_return: object = None,
+        start_return: object = None,
+        status_return: str = "running",
+    ) -> None:
+        self.stop_cell = _MockRemoteCall(stop_return)
+        self.start_cell = _MockRemoteCall(start_return)
+        self.get_cell_status = _MockRemoteCall(status_return)
+        self.stopped_calls: list[str] = []
+
+
+@pytest.mark.asyncio
+async def test_rollout_handle_stop_delegates_to_manager(monkeypatch: pytest.MonkeyPatch) -> None:
+    import miles.utils.control_server_utils as mod
+
+    manager = _MockRolloutManager()
+    monkeypatch.setattr(mod.ray, "get", lambda ref: ref)
+
+    handle = mod._RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    await handle.stop(timeout_seconds=45)
+
+
+@pytest.mark.asyncio
+async def test_rollout_handle_start_delegates_to_manager(monkeypatch: pytest.MonkeyPatch) -> None:
+    import miles.utils.control_server_utils as mod
+
+    manager = _MockRolloutManager()
+    monkeypatch.setattr(mod.ray, "get", lambda ref: ref)
+
+    handle = mod._RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    await handle.start()
+
+
+@pytest.mark.asyncio
+async def test_rollout_handle_get_status_delegates_to_manager(monkeypatch: pytest.MonkeyPatch) -> None:
+    import miles.utils.control_server_utils as mod
+
+    manager = _MockRolloutManager(status_return="stopped")
+    monkeypatch.setattr(mod.ray, "get", lambda ref: ref)
+
+    handle = mod._RolloutSubsystemHandle(rollout_manager=manager, cell_id="cell-0", node_ids=["n0"])
+    status = await handle.get_status()
+    assert status == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_rollout_handle_get_node_ids() -> None:
+    from miles.utils.control_server_utils import _RolloutSubsystemHandle
+
+    handle = _RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0", node_ids=["n0", "n1"])
+    assert await handle.get_node_ids() == ["n0", "n1"]
+
+
+def test_rollout_handle_subsystem_type_is_rollout() -> None:
+    from miles.utils.control_server_utils import _RolloutSubsystemHandle
+
+    handle = _RolloutSubsystemHandle(rollout_manager=object(), cell_id="cell-0", node_ids=[])
+    assert handle.subsystem_type == "rollout"
+    assert handle.subsystem_id == "cell-0"
