@@ -28,7 +28,7 @@ class RolloutCellHealthChecker:
     @classmethod
     def maybe_create(cls, servers: dict, args: object) -> RolloutCellHealthChecker | None:
         """Create and start a checker if prometheus is enabled and there are cells to monitor."""
-        if not getattr(args, "use_prometheus", False):
+        if not args.use_prometheus:
             return None
 
         cells = [
@@ -44,9 +44,9 @@ class RolloutCellHealthChecker:
 
         checker = cls(
             cells=cells,
-            session_id=getattr(args, "session_id", "unknown"),
-            check_interval=getattr(args, "rollout_health_check_interval", 30.0),
-            timeout=getattr(args, "rollout_health_check_timeout", 30.0),
+            session_id=args.session_id,
+            check_interval=args.rollout_health_check_interval,
+            timeout=args.rollout_health_check_timeout,
         )
         checker.start()
         return checker
