@@ -25,6 +25,32 @@ class RolloutCellHealthChecker:
     The gauge ``miles_rollout_cell_alive`` is set to 1.0 (healthy) or 0.0 (unhealthy).
     """
 
+    @classmethod
+    def maybe_create(cls, servers: dict, args: object) -> RolloutCellHealthChecker | None:
+        """Create and start a checker if prometheus is enabled and there are cells to monitor."""
+        if not getattr(args, "use_prometheus", False):
+            return None
+
+        cells = [
+            CellEntry(
+                cell_id=f"{srv_name}-{group.worker_type}",
+                get_engines=lambda g=group: g.engines,
+            )
+            for srv_name, srv in servers.items()
+            for group in srv.server_groups
+        ]
+        if not cells:
+            return None
+
+        checker = cls(
+            cells=cells,
+            session_id=getattr(args, "session_id", "unknown"),
+            check_interval=getattr(args, "rollout_health_check_interval", 30.0),
+            timeout=getattr(args, "rollout_health_check_timeout", 30.0),
+        )
+        checker.start()
+        return checker
+
     def __init__(
         self,
         *,

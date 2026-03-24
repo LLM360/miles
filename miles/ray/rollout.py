@@ -26,6 +26,7 @@ from miles.rollout.inference_rollout.compatibility import call_rollout_function,
 from miles.utils import tracking_utils
 from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.health_monitor import RolloutHealthMonitor
+from miles.utils.rollout_cell_health import RolloutCellHealthChecker
 from miles.utils.http_utils import _wrap_ipv6, find_available_port, get_host_info, init_http_client
 from miles.utils.iter_utils import group_by
 from miles.utils.logging_utils import configure_logger
@@ -365,26 +366,7 @@ class RolloutManager:
         self.rollout_id = -1
 
         self._metric_checker = MetricChecker.maybe_create(args)
-        self._cell_health_checker = None
-        if args.use_prometheus and not self.args.debug_train_only:
-            from miles.utils.rollout_cell_health import CellEntry, RolloutCellHealthChecker
-
-            cells = [
-                CellEntry(
-                    cell_id=f"{srv_name}-{group.worker_type}",
-                    get_engines=lambda g=group: g.engines,
-                )
-                for srv_name, srv in self.servers.items()
-                for group in srv.server_groups
-            ]
-            if cells:
-                self._cell_health_checker = RolloutCellHealthChecker(
-                    cells=cells,
-                    session_id=getattr(args, "session_id", "unknown"),
-                    check_interval=getattr(args, "rollout_health_check_interval", 30.0),
-                    timeout=getattr(args, "rollout_health_check_timeout", 30.0),
-                )
-                self._cell_health_checker.start()
+        self._cell_health_checker = RolloutCellHealthChecker.maybe_create(servers=self.servers, args=args)
 
         self._health_monitors = []
         if not self.args.debug_train_only and self.args.use_fault_tolerance:
