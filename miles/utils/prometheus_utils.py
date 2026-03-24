@@ -78,13 +78,7 @@ class _PrometheusCollector:
             if not isinstance(value, (int, float)):
                 continue
             safe_key = _METRIC_PREFIX + (key.replace("/", "_").replace("-", "_").replace("@", "_at_"))
-            if safe_key not in self._gauges:
-                self._gauges[safe_key] = self._Gauge(
-                    safe_key,
-                    key,
-                    self._label_keys,
-                )
-            self._gauges[safe_key].labels(*self._label_vals).set(value)
+            self.set_gauge(safe_key, value)
 
     def set_gauge(self, name: str, value: float):
         """Set a named gauge to the given value."""
