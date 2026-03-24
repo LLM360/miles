@@ -135,5 +135,9 @@ class RayTrainGroup:
             ]
         )
 
+    def get_node_ids(self) -> list[str]:
+        node_ips = ray.get([actor.get_node_ip.remote() for actor in self._actor_handlers])
+        return sorted(set(node_ips))
+
     def set_rollout_manager(self, rollout_manager):
         return ray.get([actor.set_rollout_manager.remote(rollout_manager) for actor in self._actor_handlers])

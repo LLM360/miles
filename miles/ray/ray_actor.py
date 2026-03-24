@@ -8,3 +8,7 @@ class RayActor:
 
     def get_master_addr_and_port(self):
         return self.master_addr, self.master_port
+
+    @staticmethod
+    def get_node_ip() -> str:
+        return get_current_node_ip()

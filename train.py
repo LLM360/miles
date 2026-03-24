@@ -29,14 +29,7 @@ def train(args):
 
     if args.use_control_server:
         registry = SubsystemRegistry()
-        def _get_training_node_ids() -> list[str]:
-            actor_pg = pgs.get("actor")
-            if actor_pg is None:
-                return []
-            snapshots = actor_pg._owner._bundle_location_snapshots  # noqa: SLF001
-            return sorted({s.node_ip for s in snapshots})
-
-        registry.register(TrainingSubsystemHandle(get_node_ids=_get_training_node_ids))
+        registry.register(TrainingSubsystemHandle(node_ids=actor_model.get_node_ids()))
 
         cell_infos = ray.get(rollout_manager.list_cells.remote())
         for cell_info in cell_infos:

@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import threading
-from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 import ray
@@ -112,8 +111,8 @@ def _create_control_app(registry: SubsystemRegistry) -> FastAPI:
 
 
 class TrainingSubsystemHandle:
-    def __init__(self, get_node_ids: Callable[[], list[str]]) -> None:
-        self._get_node_ids = get_node_ids
+    def __init__(self, node_ids: list[str]) -> None:
+        self._node_ids = node_ids
 
     @property
     def subsystem_id(self) -> str:
@@ -137,7 +136,7 @@ class TrainingSubsystemHandle:
         return "running"
 
     async def get_node_ids(self) -> list[str]:
-        return self._get_node_ids()
+        return self._node_ids
 
 
 class RolloutSubsystemHandle:
