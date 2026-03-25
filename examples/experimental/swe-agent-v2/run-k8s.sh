@@ -56,6 +56,7 @@ ROUTER_EXTERNAL_HOST="${MILES_ROUTER_EXTERNAL_HOST:-}"
 SGLANG_ROUTER_PORT=30000
 SGLANG_TOOL_CALL_PARSER=""
 SGLANG_REASONING_PARSER=""
+SGLANG_MEM_FRACTION=0.5
 NO_WAIT=""
 
 # ── Pre-scan for --mode so debug defaults are set before arg parsing ─
@@ -108,6 +109,7 @@ while [[ $# -gt 0 ]]; do
     --sglang-router-port) SGLANG_ROUTER_PORT="$2";  shift 2 ;;
     --sglang-tool-call-parser)  SGLANG_TOOL_CALL_PARSER="$2"; shift 2 ;;
     --sglang-reasoning-parser)  SGLANG_REASONING_PARSER="$2"; shift 2 ;;
+    --sglang-mem-fraction-static) SGLANG_MEM_FRACTION="$2"; shift 2 ;;
     --no-wait)            NO_WAIT="--no-wait";      shift ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
@@ -180,7 +182,7 @@ fi
 # ── Build SGLang args ────────────────────────────────────────────────
 SGLANG_ARGS=(
   --rollout-num-gpus-per-engine 1
-  --sglang-mem-fraction-static 0.5
+  --sglang-mem-fraction-static "$SGLANG_MEM_FRACTION"
   --use-miles-router
   --sglang-router-port "$SGLANG_ROUTER_PORT"
 )
