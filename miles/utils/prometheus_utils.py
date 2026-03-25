@@ -81,10 +81,8 @@ class _PrometheusCollector:
 
         self._Gauge = Gauge
         self._gauges: dict = {}
-        self._run_name = (
-            getattr(args, "prometheus_run_name", None) or getattr(args, "wandb_group", None) or "miles_training"
-        )
-        self._session_id = getattr(args, "session_id", None) or uuid4().hex
+        self._run_name = args.prometheus_run_name or args.wandb_group or "miles_training"
+        self._session_id = args.session_id
 
         port = args.prometheus_port
         start_http_server(port)
