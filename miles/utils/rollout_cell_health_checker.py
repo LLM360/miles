@@ -44,7 +44,6 @@ class RolloutCellHealthChecker:
 
         checker = cls(
             cells=cells,
-            session_id=args.session_id,
             check_interval=args.rollout_health_check_interval,
             timeout=args.rollout_health_check_timeout,
         )
@@ -55,12 +54,10 @@ class RolloutCellHealthChecker:
         self,
         *,
         cells: list[CellEntry],
-        session_id: str,
         check_interval: float = 30.0,
         timeout: float = 30.0,
     ) -> None:
         self._cells = {entry.cell_id: entry for entry in cells}
-        self._session_id = session_id
         self._check_interval = check_interval
         self._timeout = timeout
         self._paused = False
@@ -121,7 +118,7 @@ class RolloutCellHealthChecker:
             handle.set_gauge.remote(
                 _METRIC_NAME,
                 -1.0 if is_healthy is None else (1.0 if is_healthy else 0.0),
-                extra_labels={"session_id": self._session_id, "cell_id": cell_id},
+                extra_labels={"cell_id": cell_id},
             )
         except Exception:
             logger.warning("Failed to report cell health for %s", cell_id, exc_info=True)
