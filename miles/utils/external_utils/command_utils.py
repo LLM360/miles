@@ -93,7 +93,7 @@ class ExecuteTrainConfig:
     extra_env_vars: str = ""
     output_dir: str = "/root/shared_data"
     external_ft_dir: str | None = None
-    session_id: str | None = os.environ.get("MILES_SCRIPT_SESSION_ID")
+    session_id: str | None = None
 
 
 def execute_train(
@@ -171,7 +171,6 @@ def execute_train(
                     if config.cuda_core_dump
                     else {}
                 ),
-                **({"MILES_SCRIPT_SESSION_ID": config.session_id} if config.session_id else {}),
                 **extra_env_vars,
                 **_parse_extra_env_vars(config.extra_env_vars),
             }
@@ -192,6 +191,7 @@ def execute_train(
             f"-- python3 {train_script} "
             f"{'${MODEL_ARGS[@]}' if megatron_model_type is not None else ''} "
             f"""{f'--use-prometheus --use-control-server --placement-persist-path {config.external_ft_dir}/pg_snapshot.json ' if config.external_ft_dir else ''}"""
+            f"""{f'--session-id {x} ' if (x := config.session_id) else ''}"""
             f"{train_args}"
         )
 
