@@ -1,6 +1,7 @@
 import logging
 import time
 from typing import Any
+from uuid import uuid4
 
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -83,12 +84,16 @@ class _PrometheusCollector:
         self._run_name = (
             getattr(args, "prometheus_run_name", None) or getattr(args, "wandb_group", None) or "miles_training"
         )
+        self._session_id = getattr(args, "session_id", None) or uuid4().hex
 
         port = args.prometheus_port
         start_http_server(port)
 
         bind_ip = get_current_node_ip()
-        logger.info("Prometheus metrics server started on %s:%d, run_name=%s", bind_ip, port, self._run_name)
+        logger.info(
+            "Prometheus metrics server started on %s:%d, run_name=%s, session_id=%s",
+            bind_ip, port, self._run_name, self._session_id,
+        )
 
     def update(self, metrics: dict):
         """Set gauge values for all numeric metrics."""
@@ -100,7 +105,7 @@ class _PrometheusCollector:
 
     def set_gauge(self, name: str, value: float, extra_labels: dict[str, str] | None = None) -> None:
         """Set a named gauge. Always includes run_name; extra_labels are merged in."""
-        labels = (extra_labels or {}) | {"run_name": self._run_name}
+        labels = (extra_labels or {}) | {"run_name": self._run_name, "session_id": self._session_id}
 
         label_keys = sorted(labels.keys())
         cache_key = (name, tuple(label_keys))
