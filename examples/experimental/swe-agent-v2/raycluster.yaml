@@ -1,0 +1,200 @@
+# RayCluster for GLM-4.7-Flash agent training — 16 H200 nodes (128 GPUs).
+# Cluster: sci-h200 (scitix). Defaults aligned with radix_cli preset.
+# Shared storage: hostPath /storage mounted on all nodes.
+---
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: glm47-flash
+  namespace: glm47-flash-shi
+  labels:
+    app: glm47-flash-training
+spec:
+  rayVersion: "2.44.0"
+  enableInTreeAutoscaling: false
+
+  # ── Head node (1 pod, 8 GPUs — counts toward the 16 GPU nodes) ────
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: "0.0.0.0"
+      dashboard-port: "8265"
+      num-gpus: "8"
+      disable-usage-stats: "true"
+    template:
+      metadata:
+        labels:
+          app: glm47-flash
+          role: head
+      spec:
+        hostIPC: true
+        serviceAccountName: tailscale
+        imagePullSecrets:
+          - name: dockerhub-creds
+        nodeSelector:
+          scitix.ai/gpu-type: h20xnvlink141
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchLabels:
+                    app: glm47-flash
+                topologyKey: kubernetes.io/hostname
+        containers:
+          - name: ray-head
+            image: radixark/miles:glm-transformers
+            command: ["/bin/bash", "-c"]
+            args:
+              - "apt-get update -qq && apt-get install -y -qq fish emacs-nox > /dev/null 2>&1; exec /bin/bash -lc -- \"$KUBERAY_GEN_RAY_START_CMD\""
+            securityContext:
+              privileged: true
+              capabilities:
+                add: ["SYS_PTRACE", "SYS_ADMIN"]
+            ports:
+              - name: gcs
+                containerPort: 6379
+              - name: dashboard
+                containerPort: 8265
+              - name: client
+                containerPort: 10001
+              - name: router
+                containerPort: 30000
+            env:
+              - name: PYTHONUNBUFFERED
+                value: "1"
+              - name: NCCL_DEBUG
+                value: WARN
+              - name: WANDB_API_KEY
+                value: "72dd5a4603de3157bf6e82b23d57b16fde415583"
+            resources:
+              limits:
+                nvidia.com/gpu: "8"
+            volumeMounts:
+              - name: shared-data
+                mountPath: /storage
+              - name: dshm
+                mountPath: /dev/shm
+          - name: tailscale
+            image: ghcr.io/tailscale/tailscale:latest
+            securityContext:
+              capabilities:
+                add: ["NET_ADMIN", "NET_RAW"]
+            env:
+              - name: TS_AUTHKEY
+                valueFrom:
+                  secretKeyRef:
+                    name: tailscale-auth
+                    key: TS_AUTHKEY
+              - name: TS_KUBE_SECRET
+                value: tailscale-state
+              - name: TS_USERSPACE
+                value: "false"
+              - name: TS_HOSTNAME
+                value: glm47-flash-head
+            volumeMounts:
+              - name: dev-tun
+                mountPath: /dev/net/tun
+        volumes:
+          - name: shared-data
+            hostPath:
+              path: /storage
+              type: Directory
+          - name: dshm
+            emptyDir:
+              medium: Memory
+              sizeLimit: 128Gi
+          - name: dev-tun
+            hostPath:
+              path: /dev/net/tun
+              type: CharDevice
+        tolerations:
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
+
+  # ── Worker nodes (15 pods × 8 GPUs = 120 GPUs; head adds 8 → 128 total) ──
+  workerGroupSpecs:
+    - groupName: gpu-workers
+      replicas: 15
+      minReplicas: 15
+      maxReplicas: 15
+      rayStartParams:
+        num-gpus: "8"
+      template:
+        metadata:
+          labels:
+            app: glm47-flash
+            role: worker
+        spec:
+          hostIPC: true
+          imagePullSecrets:
+            - name: dockerhub-creds
+          nodeSelector:
+            scitix.ai/gpu-type: h20xnvlink141
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      app: glm47-flash
+                  topologyKey: kubernetes.io/hostname
+          containers:
+            - name: ray-worker
+              image: radixark/miles:glm-transformers
+              securityContext:
+                privileged: true
+                capabilities:
+                  add: ["SYS_PTRACE", "SYS_ADMIN"]
+              env:
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+                - name: NCCL_DEBUG
+                  value: WARN
+                - name: WANDB_KEY
+                  value: "72dd5a4603de3157bf6e82b23d57b16fde415583"
+              resources:
+                limits:
+                  nvidia.com/gpu: "8"
+              volumeMounts:
+                - name: shared-data
+                  mountPath: /storage
+                - name: dshm
+                  mountPath: /dev/shm
+            - name: tailscale
+              image: ghcr.io/tailscale/tailscale:latest
+              securityContext:
+                capabilities:
+                  add: ["NET_ADMIN", "NET_RAW"]
+              env:
+                - name: TS_AUTHKEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: tailscale-auth
+                      key: TS_AUTHKEY
+                - name: TS_KUBE_SECRET
+                  value: ""
+                - name: TS_USERSPACE
+                  value: "false"
+                - name: TS_HOSTNAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+              volumeMounts:
+                - name: dev-tun
+                  mountPath: /dev/net/tun
+          volumes:
+            - name: shared-data
+              hostPath:
+                path: /storage
+                type: Directory
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: 128Gi
+            - name: dev-tun
+              hostPath:
+                path: /dev/net/tun
+                type: CharDevice
+          tolerations:
+            - key: nvidia.com/gpu
+              operator: Exists
+              effect: NoSchedule
