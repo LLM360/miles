@@ -1171,6 +1171,14 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "Prometheus metrics. Used to distinguish runs in Grafana. "
                 "Defaults to --wandb-group if set.",
             )
+            parser.add_argument(
+                "--session-id",
+                type=str,
+                default=os.environ.get("MILES_SCRIPT_SESSION_ID"),
+                help="Unique session identifier attached as a 'session_id' label to all "
+                "Prometheus metrics. Used by FT controller to scope metric queries. "
+                "Defaults to MILES_SCRIPT_SESSION_ID env var, or auto-generated UUID if neither is set.",
+            )
             return parser
 
         def add_control_server_arguments(parser):
