@@ -4,6 +4,7 @@ import socket
 import ray
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy, PlacementGroupSchedulingStrategy
+from ray.util.state import list_nodes
 
 from .actor_group import RayTrainGroup
 from .rollout import RolloutManager
@@ -167,8 +168,6 @@ def create_training_models(args, pgs, rollout_manager):
 
 
 def _get_head_node_id() -> str:
-    from ray.util.state import list_nodes
-
     for node in list_nodes():
         if node.is_head_node:
             return node.node_id
