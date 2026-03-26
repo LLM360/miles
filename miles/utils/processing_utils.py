@@ -68,6 +68,7 @@ def call_processor(processor, text, multimodal_inputs: dict | None = None):
     return processor(text=text, **kwargs)
 
 
+
 def load_processor(name_or_path: str, **kwargs):
     try:
         proc = AutoProcessor.from_pretrained(name_or_path, **kwargs)
@@ -83,15 +84,15 @@ def load_processor(name_or_path: str, **kwargs):
 
 
 def process_vision_info(prompt, processor):
-    # temporary solution, will write image utils for miles later
-    from qwen_vl_utils import process_vision_info
+    # TODO: temporary solution, will write image utils for miles later
+    from qwen_vl_utils import process_vision_info as qwen_process_vision_info
 
     if hasattr(processor.image_processor, "patch_size"):
         image_patch_size = processor.image_processor.patch_size
     else:
         logger.info(f"Using default patch size: {DEFAULT_PATCH_SIZE}")
         image_patch_size = DEFAULT_PATCH_SIZE
-    images, videos = process_vision_info(prompt, image_patch_size=image_patch_size)
+    images, videos = qwen_process_vision_info(prompt, image_patch_size=image_patch_size)
     multimodal_inputs = {"images": images, "videos": videos}
     return multimodal_inputs
 
@@ -102,4 +103,5 @@ def encode_image_for_rollout_engine(image) -> str:
     if image.mode != "RGB":
         image = image.convert("RGB")
     image.save(buffer, format="PNG")
-    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+    image_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return f"data:image/png;base64,{image_base64}"

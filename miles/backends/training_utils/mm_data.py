@@ -181,4 +181,3 @@ def expand_multimodal_rollout_data_in_place(
             f"total_lengths_changed={expanded_total_lengths != old_total_lengths}, "
             f"response_lengths_changed={expanded_response_lengths != old_response_lengths}"
         )
-
