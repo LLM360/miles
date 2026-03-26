@@ -1144,6 +1144,27 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
 
             return parser
 
+        # prometheus
+        def add_prometheus_arguments(parser):
+            parser.add_argument("--use-prometheus", action="store_true", default=False)
+            parser.add_argument(
+                "--prometheus-port",
+                type=int,
+                default=int(os.environ.get("PROMETHEUS_PORT", "9090")),
+                help="Port for the Prometheus metrics HTTP server. "
+                "Prometheus scrapes /metrics on this port. "
+                "Defaults to PROMETHEUS_PORT env var or 9090.",
+            )
+            parser.add_argument(
+                "--prometheus-run-name",
+                type=str,
+                default=None,
+                help="Human-readable run name attached as a 'run_name' label to all "
+                "Prometheus metrics. Used to distinguish runs in Grafana. "
+                "Defaults to --wandb-group if set.",
+            )
+            return parser
+
         # debug
         def add_debug_arguments(parser):
             parser.add_argument(
@@ -1229,6 +1250,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default="torch",
             )
             parser.add_argument("--check-weight-update-equal", action="store_true")
+            parser.add_argument(
+                "--env-report",
+                type=str,
+                default=os.environ.get("MILES_SCRIPT_ENV_REPORT", ""),
+                help="JSON string containing environment report from external launcher.",
+            )
             return parser
 
         def add_network_arguments(parser):
@@ -1493,6 +1520,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
         parser = add_lora_arguments(parser)
         parser = add_wandb_arguments(parser)
         parser = add_tensorboard_arguments(parser)
+        parser = add_prometheus_arguments(parser)
         parser = add_router_arguments(parser)
         parser = add_debug_arguments(parser)
         parser = add_sglang_arguments(parser)
@@ -1505,6 +1533,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
         parser = add_custom_megatron_plugins_arguments(parser)
         if enable_experimental_rollout_refactor():
             parser = add_user_provided_function_arguments(parser)
+
         reset_arg(
             parser,
             "--custom-config-path",
