@@ -199,7 +199,9 @@ async def run_agent(base_url, prompt, request_kwargs, metadata, **kwargs):
                     )
                 else:
                     messages.append(assistant_msg)
-                    messages.append({"role": "tool", "content": RETRY_TOOL_MESSAGE})
+                    messages.append(
+                        {"role": "tool", "content": RETRY_TOOL_MESSAGE, "tool_call_id": "invalid_tool_call"}
+                    )
                     total_tool_retries += 1
                     logger.info(
                         "Turn %d: kept assistant + appended tool retry message (%d/%d)",
