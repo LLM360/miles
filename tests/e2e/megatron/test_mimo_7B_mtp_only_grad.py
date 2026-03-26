@@ -103,6 +103,7 @@ def execute():
 
     ci_args = (
         "--ci-test "
+        "--check-weight-update-equal "
         "--ci-disable-kl-checker "
         # MTP grad check is automatically triggered when ci_test and enable_mtp_training are both set
     )

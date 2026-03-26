@@ -156,7 +156,7 @@ def execute():
         "--sglang-watchdog-timeout 3600 "
     )
 
-    ci_args = "--ci-test --ci-disable-logprobs-checker "
+    ci_args = "--ci-test --check-weight-update-equal --ci-disable-logprobs-checker "
 
     misc_args = (
         # default dropout in megatron is 0.1

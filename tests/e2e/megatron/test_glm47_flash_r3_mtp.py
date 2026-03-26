@@ -107,7 +107,7 @@ def execute():
 
     mtp_args = "--enable-mtp-training " "--mtp-loss-scaling-factor 0.2 "
 
-    ci_args = "--ci-test "
+    ci_args = "--ci-test --check-weight-update-equal "
 
     misc_args = (
         "--attention-dropout 0.0 "

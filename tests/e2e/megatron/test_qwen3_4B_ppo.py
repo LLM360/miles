@@ -89,7 +89,7 @@ def execute():
         "--sglang-enable-metrics "
     )
 
-    ci_args = "--ci-test "
+    ci_args = "--ci-test --check-weight-update-equal "
 
     misc_args = (
         # default dropout in megatron is 0.1
