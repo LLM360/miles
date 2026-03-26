@@ -132,9 +132,7 @@ async def run_agent(base_url, prompt, request_kwargs, metadata, **kwargs):
     total_system_retries = 0
     consecutive_retries = 0
 
-    async with httpx.AsyncClient(
-        timeout=180, limits=httpx.Limits(max_connections=1000, max_keepalive_connections=100)
-    ) as client:
+    async with httpx.AsyncClient(timeout=180) as client:
         for turn in range(1, MAX_TOOL_TURNS + 1):
             label = f"Session Turn {turn}"
             resp_data = await _chat(
