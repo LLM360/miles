@@ -51,8 +51,7 @@ def _blockwise_cast_to_fp8_triton(
     x = tl.load(X + off_m[:, None] * stride_xm + off_n[None, :] * stride_xn, mask=mask, other=0.0).to(tl.float32)
     _absmax = tl.maximum(tl.max(tl.abs(x)), eps)
     x_s = _absmax / fp8_max
-    s_inv = 1.0 / x_s
-    y_q = tl.clamp(x * s_inv, fp8_min, fp8_max).to(Y.dtype.element_ty)
+    y_q = (x / x_s).to(Y.dtype.element_ty)
 
     tl.store(Y + off_m[:, None] * stride_ym + off_n[None, :] * stride_yn, y_q, mask=mask)
     tl.store(S + pid_m * stride_sm + pid_n * stride_sn, x_s)
