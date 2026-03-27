@@ -6,16 +6,16 @@ Kimi K2.5 VL Training Script
 Args:
   --model-name: Model variant to use.
       Kimi-K2.5       Full model (requires multi-node)
-      Kimi-K2.5-5layer  5-layer pruned model (single-node testing)
+      Kimi-K2.5-4layer  4-layer pruned model (single-node testing)
   --num-nodes: Number of nodes for training.
-      1  -> for Kimi-K2.5-5layer minimal test
+      1  -> for Kimi-K2.5-4layer minimal test
       4+ -> for full Kimi-K2.5 model
   --mode: "normal" or "debug_minimal" (shorter response length for quick testing)
 
 =====================
 
-Usage for single node minimal test (5-layer):
-  python scripts/run_kimi_k25_vl.py --model-name Kimi-K2.5-5layer --num-nodes 1
+Usage for single node minimal test (4-layer):
+  python scripts/run_kimi_k25_vl.py --model-name Kimi-K2.5-4layer --num-nodes 1
 """
 
 import re
@@ -221,7 +221,7 @@ def execute(args: ScriptArgs):
                 }
 
     if args.num_nodes == 1:
-        assert _is_pruned(args), "num_nodes=1 only supports 5-layer model." "Full model requires num_nodes >= 32."
+        assert _is_pruned(args), "num_nodes=1 only supports pruned model. " "Full model requires num_nodes >= 32."
         sglang_world_size = min(8, args.num_gpus_per_node)
         perf_args += (
             f"--tensor-model-parallel-size {args.num_gpus_per_node} "
