@@ -221,10 +221,7 @@ def execute(args: ScriptArgs):
                 }
 
     if args.num_nodes == 1:
-        assert _is_pruned(args), (
-            "num_nodes=1 only supports 5-layer model."
-            "Full model requires num_nodes >= 32."
-        )
+        assert _is_pruned(args), "num_nodes=1 only supports 5-layer model." "Full model requires num_nodes >= 32."
         sglang_world_size = min(8, args.num_gpus_per_node)
         perf_args += (
             f"--tensor-model-parallel-size {args.num_gpus_per_node} "

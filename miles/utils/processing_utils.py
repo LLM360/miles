@@ -68,7 +68,6 @@ def call_processor(processor, text, multimodal_inputs: dict | None = None):
     return processor(text=text, **kwargs)
 
 
-
 def load_processor(name_or_path: str, **kwargs):
     try:
         proc = AutoProcessor.from_pretrained(name_or_path, **kwargs)
