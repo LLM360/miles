@@ -101,6 +101,7 @@ AGENT_ARGS=(
   --custom-rm-path generate.reward_func
   --rollout-function-path generate.RolloutFn
   --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted
+  --use-session-server
   --generate-multi-samples
 )
 

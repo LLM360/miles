@@ -44,6 +44,9 @@ logger = logging.getLogger(__name__)
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
+    assert getattr(
+        input.args, "use_session_server", False
+    ), "agentic_tool_call.generate requires --use-session-server to be enabled."
     tracer = await OpenAIEndpointTracer.create(input.args)
 
     custom_agent_function: Callable = load_function(input.args.custom_agent_function_path)
