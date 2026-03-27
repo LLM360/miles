@@ -51,9 +51,13 @@ async def run(
     request = {
         **metadata,
         "base_url": session_url,
-        "model": f"hosted_vllm/{model_name}",
+        "model": f"openai/{model_name}",
         "sampling_params": request_kwargs,
     }
+
+    max_seq_len = metadata.get("max_seq_len")
+    if max_seq_len is not None:
+        request["max_seq_len"] = int(max_seq_len)
 
     try:
         response = await post(f"{agent_server_url}/run", request)

@@ -9,7 +9,8 @@
 
 <% set megatron_tests = [
     {'test_file': 'e2e/megatron/test_quick_start_glm4_9B.py', 'num_gpus': 8},
-    {'test_file': 'e2e/megatron/test_qwen3_30B_A3B.py', 'num_gpus': 8, 'use_deepep': '1', 'use_fp8_rollout': '1'},
+    {'name': 'qwen3-30B-A3B-deepep-fp8', 'test_file': 'e2e/megatron/test_qwen3_30B_A3B.py', 'num_gpus': 8, 'use_deepep': '1', 'use_fp8_rollout': '1'},
+    {'name': 'qwen3-30B-A3B-bridge', 'test_file': 'e2e/megatron/test_qwen3_30B_A3B.py', 'num_gpus': 8, 'use_bridge': '1'},
     {'test_file': 'e2e/megatron/test_qwen3_30B_A3B_r3.py', 'num_gpus': 8, 'use_deepep': '1', 'use_fp8_rollout': '1', 'enable_eval': '0'},
     {'test_file': 'e2e/megatron/test_qwen3_30B_A3B_r3.py', 'num_gpus': 8, 'enable_eval': '0'},
     {'test_file': 'e2e/megatron/test_qwen3_4B_ppo.py', 'num_gpus': 8},
@@ -27,6 +28,9 @@
     {'test_file': 'e2e/short/test_qwen2.5_0.5B_gsm8k_async_short.py', 'num_gpus': 8},
     {'test_file': 'e2e/short/test_qwen2.5_0.5B_gsm8k_short.py', 'num_gpus': 8},
     {'test_file': 'e2e/short/test_qwen3_0.6B_fsdp_colocated_2xGPU.py', 'num_gpus': 8},
+    {'test_file': 'e2e/sglang_config/test_sglang_config.py', 'num_gpus': 8},
+    {'test_file': 'e2e/sglang_config/test_sglang_config_mixed_offload.py', 'num_gpus': 8},
+    {'test_file': 'e2e/sglang_config/test_sglang_config_mixed_offload_ft.py', 'num_gpus': 8},
 ] %>
 
 <% set precision_tests = [
@@ -60,6 +64,7 @@
       'test_executor': 'pytest',
       'tests': [
         {'test_file': 'fast', 'num_gpus': 0},
+        {'test_file': 'utils/test_sglang_config.py', 'num_gpus': 0},
       ],
     },
     'unit-test': {
@@ -180,12 +185,15 @@ jobs:
     env:
       GITHUB_COMMIT_NAME: ${{ github.sha }}_${{ github.event.pull_request.number || 'non-pr' }}
       WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
       MILES_TEST_ENABLE_INFINITE_RUN: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.infinite_run) || 'false' }}
       MILES_TEST_USE_DEEPEP: ${{ matrix.info.use_deepep || '0' }}
       MILES_TEST_USE_FP8_ROLLOUT: ${{ matrix.info.use_fp8_rollout || '0' }}
       MILES_TEST_USE_INT4_ROLLOUT: ${{ matrix.info.use_int4_rollout || '0' }}
+      MILES_TEST_USE_BRIDGE: ${{ matrix.info.use_bridge || '0' }}
       MILES_TEST_ENABLE_EVAL: ${{ matrix.info.enable_eval || '1' }}
       MILES_TEST_FEW_GPU: '0'
+      SESSION_TEST_MODEL_FAMILY: ${{ matrix.info.model_family || '' }}
 
     steps:
       - name: Checkout repository

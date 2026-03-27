@@ -55,6 +55,7 @@ class RunRequest(BaseModel):
 
     instance_id: str = ""
     agent_name: str = "mini-swe-agent"
+    max_seq_len: int | None = None
 
     model_config = {"extra": "allow"}
 
@@ -72,6 +73,7 @@ def get_semaphore() -> asyncio.Semaphore:
 
 
 _TIMEOUT_EXCEPTIONS = {"AgentTimeoutError", "VerifierTimeoutError", "EnvironmentStartTimeoutError"}
+_OUTPUT_LIMIT_EXCEPTIONS = {"MaxSeqLenExceededError"}
 
 _HOST_PROCESS_AGENTS = {"terminus-2", "terminus-1", "terminus"}
 
@@ -84,7 +86,9 @@ def _extract_exit_status(result) -> str:
     if exc is not None:
         exc_type = getattr(exc, "exception_type", "")
         if exc_type in _TIMEOUT_EXCEPTIONS:
-            return "LimitsExceeded"
+            return "TimeLimitExceeded"
+        if exc_type in _OUTPUT_LIMIT_EXCEPTIONS:
+            return "SequenceLengthLimitExceeded"
         return "AgentError"
     if getattr(result, "verifier_result", None) is not None:
         return "Submitted"
@@ -193,7 +197,7 @@ async def _run_trial(request: RunRequest) -> dict[str, Any]:
 
         is_host_agent = request.agent_name in _HOST_PROCESS_AGENTS
 
-        if "hosted_vllm" in request.model:
+        if "hosted_vllm" in request.model or "openai" in request.model:
             agent_kwargs["model_info"] = {
                 "max_input_tokens": int(os.getenv("AGENT_MAX_INPUT_TOKENS", "32768")),
                 "max_output_tokens": int(os.getenv("AGENT_MAX_OUTPUT_TOKENS", "8192")),
@@ -201,15 +205,24 @@ async def _run_trial(request: RunRequest) -> dict[str, Any]:
                 "output_cost_per_token": 0.0,
             }
 
+        if request.max_seq_len is not None:
+            agent_kwargs["max_seq_len"] = request.max_seq_len
+
         if is_host_agent:
             agent_kwargs["api_base"] = request.base_url
+            agent_kwargs["api_key"] = request.api_key or "dummy"
             agent_kwargs["enable_summarize"] = False
+            agent_env = {
+                "OPENAI_API_KEY": request.api_key or "dummy",
+                "OPENAI_API_BASE": request.base_url,
+            }
         else:
             agent_env = {
                 "OPENAI_API_BASE": request.base_url,
                 "OPENAI_API_KEY": request.api_key,
                 "HOSTED_VLLM_API_BASE": request.base_url,
                 "HOSTED_VLLM_API_KEY": request.api_key,
+                "MSWEA_COST_TRACKING": "ignore_errors",
             }
 
         config = TrialConfig(
@@ -222,7 +235,7 @@ async def _run_trial(request: RunRequest) -> dict[str, Any]:
             ),
             environment=EnvironmentConfig(
                 type="docker",
-                delete=True,
+                delete=os.getenv("HARBOR_DELETE_CONTAINERS", "false").lower() in ("true", "1", "t"),
             ),
         )
 
