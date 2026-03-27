@@ -175,7 +175,11 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
         converted_named_tensors.clear()
 
     def connect_rollout_engines(
-        self, rollout_engines: Sequence[ActorHandle], rollout_engine_lock: ActorHandle
+        self,
+        rollout_engines: Sequence[ActorHandle],
+        rollout_engine_lock: ActorHandle,
+        engine_gpu_counts: Sequence[int] | None = None,
+        engine_gpu_offsets: Sequence[int] | None = None,
     ) -> None:
         """The ``connect_rollout_engines`` here will:
 
