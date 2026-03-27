@@ -102,6 +102,11 @@ RUN pip install "numpy<2"
 
 RUN rm -rf /root/.cache/pip /root/flash-attention
 
+# ====================================== Install Rust toolchain ============================================
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # ====================================== Install sglang-miles ============================================
 
 # Install sglang from sglang-miles branch
@@ -113,6 +118,13 @@ RUN cd /sgl-workspace/sglang && \
       git checkout FETCH_HEAD; \
     fi && \
     pip install -e "python[all]" --no-deps
+
+# Build and install sglang-router from source
+RUN pip install maturin && \
+    cd /sgl-workspace/sglang/sgl-model-gateway/bindings/python && \
+    ulimit -n 65536 && maturin build --release --features vendored-openssl --out dist && \
+    pip install --force-reinstall dist/*.whl && \
+    rm -rf dist
 
 # ====================================== Install main package ============================================
 

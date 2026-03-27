@@ -89,6 +89,10 @@ RUN cd $(python -c "import transformers, os; print(os.path.dirname(os.path.dirna
     patch -p2 < /tmp/transformers.patch && \
     rm /tmp/transformers.patch
 
+# Install Rust toolchain for building sglang-router from source
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Install sglang from sglang-miles branch
 RUN cd /sgl-workspace/sglang && \
     git fetch origin ${SGLANG_BRANCH} && \
@@ -98,6 +102,13 @@ RUN cd /sgl-workspace/sglang && \
       git checkout FETCH_HEAD; \
     fi && \
     pip install -e "python[all]" --no-deps
+
+# Build and install sglang-router from source
+RUN pip install maturin && \
+    cd /sgl-workspace/sglang/sgl-model-gateway/bindings/python && \
+    ulimit -n 65536 && maturin build --release --features vendored-openssl --out dist && \
+    pip install --force-reinstall dist/*.whl && \
+    rm -rf dist
 
 # ====================================== Install main package ============================================
 

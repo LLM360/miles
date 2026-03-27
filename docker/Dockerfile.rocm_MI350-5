@@ -264,9 +264,16 @@ done
 
 
 ########################################
-#### Install additional packages########
+#### Install sglang-router from source##
 ########################################
-RUN pip install sglang-router --force-reinstall
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    export PATH="/root/.cargo/bin:${PATH}" && \
+    pip install maturin && \
+    cd /app/sglang/sgl-model-gateway/bindings/python && \
+    ulimit -n 65536 && maturin build --release --features vendored-openssl --out dist && \
+    pip install --force-reinstall dist/*.whl && \
+    rm -rf dist
+ENV PATH="/root/.cargo/bin:${PATH}"
 ########################################
 ########################################
 ########################################

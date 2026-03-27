@@ -99,7 +99,6 @@ def execute():
         "--attention-softmax-in-fp32 "
         "--attention-backend flash "
         "--calculate-per-token-loss "
-        "--use-miles-router "
         "--actor-num-nodes 1 "
         "--actor-num-gpus-per-node 8 "
         "--colocate "

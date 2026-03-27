@@ -80,7 +80,7 @@ def execute():
         "--adam-beta2 0.98 "
     )
 
-    sglang_args = "--rollout-num-gpus-per-engine 2 " "--use-miles-router "
+    sglang_args = "--rollout-num-gpus-per-engine 2 "
 
     ci_args = "--ci-test "
 

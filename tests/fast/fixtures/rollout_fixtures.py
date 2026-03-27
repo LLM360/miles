@@ -66,7 +66,6 @@ def _build_args(*, data_path: str, router_port: int, extra_argv: list[str] | Non
         "--eval-prompt-data",
         "toy",
         data_path,
-        "--use-miles-router",
         "--sglang-router-ip",
         "127.0.0.1",
         "--sglang-router-port",

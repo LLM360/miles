@@ -108,7 +108,6 @@ def execute(mode: str = "", ckpt_step: int | None = None):
         "--eps-clip 0.2 "
         "--eps-clip-high 0.28 "
         "--use-rollout-routing-replay "
-        "--use-miles-router "
     )
 
     optimizer_args = (

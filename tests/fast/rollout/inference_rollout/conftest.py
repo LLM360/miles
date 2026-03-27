@@ -30,7 +30,6 @@ def _build_mock_args(extra_argv: list[str] | None = None):
         "label",
         "--rm-type",
         "math",
-        "--use-miles-router",
         "--sglang-router-ip",
         "127.0.0.1",
         "--sglang-router-port",
