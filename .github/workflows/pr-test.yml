@@ -59,7 +59,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request)
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -169,7 +169,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-unit-test'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -279,7 +279,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-sglang'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -389,7 +389,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-short'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -499,7 +499,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-fsdp'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -609,7 +609,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-megatron'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -719,7 +719,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-precision'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -829,7 +829,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-ckpt'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -939,7 +939,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-long'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -1049,7 +1049,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-lora'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -1159,7 +1159,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-low-precision'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host
@@ -1334,7 +1334,7 @@ jobs:
     if: (github.event_name == 'workflow_dispatch') || (github.event.pull_request && contains(github.event.pull_request.labels.*.name, 'run-ci-image'))
     runs-on: self-hosted
     container:
-      image: radixark/miles:dev
+      image: radixark/miles:test-20260327
       options: >
         --gpus all
         --ipc=host

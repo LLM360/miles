@@ -6,12 +6,12 @@
 #    build-arg:SGLANG_IMAGE_TAG=v0.5.9-cu130-arm64 \
 #    build-arg:WHEELS_TAG=cu130-aarch64 \
 
-ARG SGLANG_IMAGE_TAG=v0.5.9
+ARG SGLANG_IMAGE_TAG=dev
 FROM lmsysorg/sglang:${SGLANG_IMAGE_TAG} AS sglang
 
 # ======================================== Arguments =============================================
 
-ARG SGLANG_BRANCH=sglang-miles
+ARG SGLANG_BRANCH=sglang-miles-20260327
 ARG SGLANG_COMMIT=""
 
 ARG MEGATRON_REPO=radixark/Megatron-LM
