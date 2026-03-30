@@ -128,7 +128,9 @@ def distributed_masked_whiten(
     )
 
     # Aggregate via all_reduce within the DP group
-    dist.all_reduce(stats_tensor, group=process_group)
+    opts = dist.AllreduceOptions()
+    opts.reduceOp = dist.ReduceOp.SUM
+    process_group.allreduce([stats_tensor], opts).wait()
 
     # Calculate global stats from aggregated results
     global_sum, global_sum_sq, global_mask_sum = stats_tensor
