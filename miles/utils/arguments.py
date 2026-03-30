@@ -1750,7 +1750,9 @@ def miles_validate_args(args):
         logger.info("trainer_ft is enabled. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
 
     if args.indep_dp:
-        per_replica = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
+        from miles.utils.megatron_args_utils import compute_megatron_world_size_per_replica
+
+        per_replica = compute_megatron_world_size_per_replica(args)
         logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica} (per-cell)")
         args.world_size = per_replica
 
