@@ -35,6 +35,7 @@ class RayTrainGroup:
         num_gpus_per_actor: float = 1,
         role: str = "actor",
     ) -> None:
+        self.args = args
         self._cell_kwargs: dict[str, Any] = dict(
             args=args,
             num_nodes=num_nodes,
@@ -53,6 +54,7 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
+        assert args is self.args
         TODO
 
     def async_train(self, rollout_id, rollout_data_ref):
@@ -167,7 +169,6 @@ class RayTrainCell:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        assert args is self.args
         return [actor.init.remote(args, role, with_ref=with_ref) for actor in self._actor_handles]
 
     def async_train(self, rollout_id, rollout_data_ref):
