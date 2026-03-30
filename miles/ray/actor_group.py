@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import ray
 from ray.util.placement_group import PlacementGroup
@@ -7,6 +8,11 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils.megatron_args_utils import compute_megatron_dp_size
+
+
+if TYPE_CHECKING:
+    import torch
+
 
 logger = logging.getLogger(__name__)
 
