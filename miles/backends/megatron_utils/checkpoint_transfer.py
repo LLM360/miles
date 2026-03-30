@@ -9,19 +9,17 @@ from miles.utils.process_group_utils import GroupInfo
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TIMEOUT_SECONDS = 120
+_DEFAULT_TIMEOUT = timedelta(seconds=120)
 
 
-def _create_transport(indep_dp: GroupInfo, timeout_seconds: int) -> tuple:
+def _create_transport(indep_dp: GroupInfo, timeout: timedelta):
     from torchft.checkpointing.pg_transport import PGTransport
 
-    timeout = timedelta(seconds=timeout_seconds)
-    transport = PGTransport(
+    return PGTransport(
         pg=indep_dp.group,
         timeout=timeout,
         device=torch.device("cuda"),
     )
-    return transport, timeout
 
 
 def send_ckpt(
@@ -32,7 +30,7 @@ def send_ckpt(
     opt_param_scheduler: object,
     iteration: int,
     dst_rank: int,
-    timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
+    timeout: timedelta = _DEFAULT_TIMEOUT,
 ) -> None:
     """Send in-memory checkpoint to a destination cell via torchft PGTransport.
 
@@ -43,7 +41,7 @@ def send_ckpt(
         opt_param_scheduler: LR scheduler.
         iteration: Current training iteration / rollout_id.
         dst_rank: Destination cell_id in the indep_dp process group.
-        timeout_seconds: Timeout for the NCCL send operation.
+        timeout: Timeout for the NCCL send operation.
     """
     state_dict = save_to_memory(
         iteration=iteration,
@@ -53,7 +51,7 @@ def send_ckpt(
     )
 
     payload = {"iteration": iteration, "state_dict": state_dict}
-    transport, timeout = _create_transport(indep_dp, timeout_seconds)
+    transport = _create_transport(indep_dp, timeout)
     transport.send_checkpoint(
         dst_ranks=[dst_rank],
         step=iteration,
@@ -68,7 +66,7 @@ def recv_ckpt(
     *,
     indep_dp: GroupInfo,
     src_rank: int,
-    timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
+    timeout: timedelta = _DEFAULT_TIMEOUT,
 ) -> InMemoryCheckpointManager:
     """Receive checkpoint from a healthy cell via torchft PGTransport.
 
@@ -78,13 +76,13 @@ def recv_ckpt(
     Args:
         indep_dp: Independent DP group info (provides the torchft PG).
         src_rank: Source cell_id in the indep_dp process group.
-        timeout_seconds: Timeout for the NCCL recv operation.
+        timeout: Timeout for the NCCL recv operation.
 
     Returns:
         InMemoryCheckpointManager with state_dict loaded, ready for
         initialize_model_and_optimizer to consume.
     """
-    transport, timeout = _create_transport(indep_dp, timeout_seconds)
+    transport = _create_transport(indep_dp, timeout)
     payload = transport.recv_checkpoint(
         src_rank=src_rank,
         metadata=transport.metadata(),

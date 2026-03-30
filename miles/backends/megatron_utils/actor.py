@@ -596,7 +596,7 @@ class MegatronTrainRayActor(TrainRayActor):
         self.weights_backuper.backup(model_tag)
         self._active_model_tag = model_tag
 
-    def send_ckpt(self, dst_rank: int, timeout_seconds: int = 120) -> None:
+    def send_ckpt(self, dst_rank: int) -> None:
         from miles.backends.megatron_utils.checkpoint_transfer import send_ckpt
 
         send_ckpt(
@@ -606,7 +606,6 @@ class MegatronTrainRayActor(TrainRayActor):
             opt_param_scheduler=self.opt_param_scheduler,
             iteration=self._last_rollout_id if hasattr(self, '_last_rollout_id') else 0,
             dst_rank=dst_rank,
-            timeout_seconds=timeout_seconds,
         )
 
     def connect_actor_critic(
