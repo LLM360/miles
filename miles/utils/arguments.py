@@ -1650,14 +1650,14 @@ def parse_args(add_custom_arguments=None):
             hf_validate_args(args, hf_config)
 
         args.rank = 0
-        args.world_size = _compute_world_size(args)
+        args.world_size = args.actor_num_nodes * args.actor_num_gpus_per_node
         args = set_default_megatron_args(args)
     else:
         from miles.backends.fsdp_utils.arguments import load_fsdp_args
 
         args = load_fsdp_args(extra_args_provider=add_miles_arguments)
         args.rank = 0  # Primary process rank for wandb initialization
-        args.world_size = _compute_world_size(args)
+        args.world_size = args.actor_num_nodes * args.actor_num_gpus_per_node
 
         assert args.context_parallel_size == 1, "Context parallelism is not supported for FSDP backend."
 
@@ -1739,15 +1739,6 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
-def _compute_world_size(args) -> int:
-    total_gpus = args.actor_num_nodes * args.actor_num_gpus_per_node
-    if getattr(args, "indep_dp", False):
-        per_replica = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
-        logger.info(f"indep_dp: world_size set to {per_replica} (per-cell, total_gpus={total_gpus})")
-        return per_replica
-    return total_gpus
-
-
 def miles_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
@@ -1755,6 +1746,11 @@ def miles_validate_args(args):
         args.indep_dp = True
         args.delay_split_train_data_by_dp = True
         logger.info("trainer_ft is enabled. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
+
+    if args.indep_dp:
+        per_replica = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
+        logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica} (per-cell)")
+        args.world_size = per_replica
 
     if args.chat_template_path == "autofix":
         from miles.utils.chat_template_utils import try_get_fixed_chat_template
