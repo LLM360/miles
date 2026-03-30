@@ -824,9 +824,7 @@ def initialize_model_and_optimizer(
     Args:
         args (Namespace): Runtime arguments.
         role (str): Logical role of the model (e.g., "actor", "critic").
-        in_memory_ckpt_manager: If provided, load checkpoint from this in-memory
-            manager instead of from disk. Used during stop/start recovery when
-            receiving checkpoint from a healthy cell.
+        checkpointing_context: pass-through checkpointing context
 
     Returns:
         tuple[list[DDP], MegatronOptimizer, OptimizerParamScheduler, int]:
