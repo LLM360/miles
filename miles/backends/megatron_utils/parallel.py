@@ -31,6 +31,8 @@ def create_megatron_parallel_state() -> ParallelState:
         tp_size=mpu.get_tensor_model_parallel_world_size(),
         tp_rank=mpu.get_tensor_model_parallel_rank(),
         tp_group=mpu.get_tensor_model_parallel_group(),
+        indep_dp_rank=0,
+        indep_dp_size=1,
         is_pp_last_stage=mpu.is_pipeline_last_stage(),
         vpp_size=vpp_size,
         microbatch_group_size_per_vp_stage=microbatch_group_size_per_vp_stage,

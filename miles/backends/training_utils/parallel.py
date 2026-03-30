@@ -36,6 +36,25 @@ class ParallelState:
     tp_size: int
     tp_rank: int
     tp_group: dist.ProcessGroup | None
+    indep_dp_rank: int
+    indep_dp_size: int
     is_pp_last_stage: bool = True
     vpp_size: int | None = 1
     microbatch_group_size_per_vp_stage: int | None = None
+
+    def __post_init__(self) -> None:
+        intra_trivial = self.intra_dp_rank == 0 and self.intra_dp_size == 1
+        indep_trivial = self.indep_dp_rank == 0 and self.indep_dp_size == 1
+        assert intra_trivial or indep_trivial, (
+            f"intra_dp and indep_dp cannot both be non-trivial: "
+            f"intra_dp=({self.intra_dp_rank}/{self.intra_dp_size}), "
+            f"indep_dp=({self.indep_dp_rank}/{self.indep_dp_size})"
+        )
+
+    @property
+    def effective_dp_rank(self) -> int:
+        return self.indep_dp_rank if self.indep_dp_size > 1 else self.intra_dp_rank
+
+    @property
+    def effective_dp_size(self) -> int:
+        return self.indep_dp_size if self.indep_dp_size > 1 else self.intra_dp_size

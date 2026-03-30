@@ -61,6 +61,11 @@ class MegatronTrainRayActor(TrainRayActor):
 
         init(args)
 
+        if self._num_cells > 1:
+            ps = get_parallel_state()
+            ps.indep_dp_rank = self._cell_id
+            ps.indep_dp_size = self._num_cells
+
         if args.dumper_enable:
             from sglang.srt.debug_utils.dumper import dumper
 
@@ -83,7 +88,7 @@ class MegatronTrainRayActor(TrainRayActor):
             dist.barrier(group=get_gloo_group())
 
         self.train_parallel_config = {
-            "dp_size": get_parallel_state().intra_dp_size,
+            "dp_size": get_parallel_state().effective_dp_size,
         }
         dist.barrier(group=get_gloo_group())
 

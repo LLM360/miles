@@ -51,6 +51,8 @@ def create_fsdp_parallel_state(args: Namespace) -> ParallelState:
         tp_size=1,
         tp_rank=0,
         tp_group=dist.new_group([rank]),
+        indep_dp_rank=0,
+        indep_dp_size=1,
     )
 
     parallel_state.dp_mesh = mesh["dp"]
