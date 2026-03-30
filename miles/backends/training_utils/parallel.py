@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import torch.distributed as dist
 
 
+# TODO decide whether to fully use global variable or fully remove it
 _parallel_state: "ParallelState | None" = None
 
 
