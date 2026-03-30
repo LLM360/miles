@@ -20,7 +20,7 @@ def split_train_data_by_dp(args, data, *, dp_size: int, dynamic_global_batch_siz
     else:
         partitions = [range(i, len(total_lengths), dp_size) for i in range(dp_size)]
 
-    rollout_data_refs = []
+    ans = []
 
     for i in range(dp_size):
         rollout_data = {}
@@ -55,5 +55,5 @@ def split_train_data_by_dp(args, data, *, dp_size: int, dynamic_global_batch_siz
         # Pass dynamic global_batch_size to training side
         if (x := dynamic_global_batch_size) is not None:
             rollout_data["dynamic_global_batch_size"] = x
-        rollout_data_refs.append(Box(ray.put(rollout_data)))
-    return rollout_data_refs
+        ans.append(Box(ray.put(rollout_data)))
+    return ans

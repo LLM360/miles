@@ -201,6 +201,11 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Launch each DP replica as an independent Megatron instance instead of using Megatron-internal data parallelism.",
             )
             parser.add_argument(
+                "--delay-split-train-data-by-dp",
+                action="store_true",
+                default=False,
+            )
+            parser.add_argument(
                 "--allgather-cp",
                 action="store_true",
                 default=False,

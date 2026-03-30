@@ -444,8 +444,14 @@ class RolloutManager:
         self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=False)
         _log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = self._convert_samples_to_train_data(data)
-        data = split_train_data_by_dp(self.args, data, dp_size=self.train_parallel_config["dp_size"],
-                                      dynamic_global_batch_size=getattr(self, "_dynamic_global_batch_size", None))
+
+        if self.args.delay_split_train_data_by_dp:
+            data = Box(ray.put(data))
+        else:
+            data = split_train_data_by_dp(self.args, data, dp_size=self.train_parallel_config["dp_size"],
+                                          dynamic_global_batch_size=getattr(self, "_dynamic_global_batch_size", None))
+            data = [Box(ray.put(x)) for x in data]
+
         return data
 
     def eval(self, rollout_id):
