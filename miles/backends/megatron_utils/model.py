@@ -504,6 +504,7 @@ def train_one_step(
 def _allreduce_grads_across_replicas(model: Sequence[DDP], parallel_state: ParallelState) -> None:
     pg = parallel_state.indep_dp.group
     util = GeneralPGUtil.create(pg)
+
     for model_chunk in model:
         # mimic: DistributedDataParallel.start_grad_sync
         for bucket_group in model_chunk.bucket_groups + model_chunk.expert_parallel_bucket_groups:
