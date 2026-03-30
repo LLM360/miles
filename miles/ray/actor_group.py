@@ -64,7 +64,6 @@ class RayTrainGroup:
     def async_init(self, args, role: str, with_ref: bool = False):
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
-        Returns list of object refs (caller is responsible for ray.get).
         """
         assert args is self.args
         return self._async_execute("init", args, role, with_ref=with_ref)
