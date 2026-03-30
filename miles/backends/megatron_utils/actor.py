@@ -70,7 +70,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
             dumper.apply_source_patches()
 
-        self._is_main_rank = is_megatron_main_rank(dp_cp_group=TODO)
+        self._is_main_rank = is_megatron_main_rank()
 
         if self._is_main_rank:
             init_tracking(args, primary=False)
@@ -449,7 +449,7 @@ class MegatronTrainRayActor(TrainRayActor):
             and "ref" in self.weights_backuper.backup_tags
         ):
             with timer("ref_model_update"):
-                if is_megatron_main_rank(dp_cp_group=TODO):
+                if is_megatron_main_rank():
                     logger.info(f"Updating ref model at rollout_id {rollout_id}")
                 self.weights_backuper.backup("ref")
 
