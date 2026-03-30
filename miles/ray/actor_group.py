@@ -112,6 +112,7 @@ class RayTrainGroup:
 class RayTrainCell:
     def __init__(
         self,
+        *,
         args,
         gpus_per_cell: int,
         pg: tuple[PlacementGroup, list[int], list[int]],
