@@ -42,11 +42,7 @@ def _compute_vpp_fields() -> tuple[int, int | None]:
     if vpp_size_value is None or vpp_size_value <= 1:
         return 1, None
 
-    args = get_args()
-    microbatch_group_size = getattr(args, "microbatch_group_size_per_vp_stage", None)
-    if microbatch_group_size is None:
-        microbatch_group_size = args.pipeline_model_parallel_size
-    return vpp_size_value, microbatch_group_size
+    return vpp_size_value, get_args().pipeline_model_parallel_size
 
 
 def verify_megatron_parallel_state(
