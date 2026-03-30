@@ -52,15 +52,16 @@ def send_ckpt(
         opt_param_scheduler=opt_param_scheduler,
     )
 
+    payload = {"iteration": iteration, "state_dict": state_dict}
     transport, timeout = _create_transport(indep_dp, timeout_seconds)
     transport.send_checkpoint(
         dst_ranks=[dst_rank],
         step=iteration,
-        state_dict=state_dict,
+        state_dict=payload,
         timeout=timeout,
     )
     transport.disallow_checkpoint()
-    logger.info(f"Sent checkpoint to cell {dst_rank}")
+    logger.info(f"Sent checkpoint (iteration={iteration}) to cell {dst_rank}")
 
 
 def recv_ckpt(
@@ -84,15 +85,17 @@ def recv_ckpt(
         initialize_model_and_optimizer to consume.
     """
     transport, timeout = _create_transport(indep_dp, timeout_seconds)
-    state_dict = transport.recv_checkpoint(
+    payload = transport.recv_checkpoint(
         src_rank=src_rank,
         metadata=transport.metadata(),
         step=0,
         timeout=timeout,
     )
-    logger.info(f"Received checkpoint from cell {src_rank}")
+    iteration = payload["iteration"]
+    state_dict = payload["state_dict"]
+    logger.info(f"Received checkpoint (iteration={iteration}) from cell {src_rank}")
 
     manager = InMemoryCheckpointManager()
     manager._state_dict = state_dict
-    manager.latest_iteration = 0
+    manager.latest_iteration = iteration
     return manager
