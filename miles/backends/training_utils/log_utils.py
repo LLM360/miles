@@ -15,7 +15,7 @@ from miles.utils.types import RolloutBatch
 from ...utils import tracking_utils
 from .cp_utils import get_sum_of_sample_mean
 from .data import DataIterator
-from .parallel import ParallelState, all_reduce_multi
+from .parallel import ParallelState
 
 logger = logging.getLogger(__name__)
 
@@ -392,7 +392,7 @@ def aggregate_train_losses(
 
     assert len(keys) + 1 == values.numel(), f"Expected {len(keys) + 1} values, got {values.numel()}"
 
-    all_reduce_multi(values, parallel_state.effective_dp_cp.groups_inner_to_outer, op=dist.ReduceOp.SUM)
+    parallel_state.effective_dp_cp.all_reduce(values, op=dist.ReduceOp.SUM)
 
     loss_reduced = {}
     values = values.tolist()

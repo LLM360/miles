@@ -39,15 +39,13 @@ class GroupInfo:
     def _verify_group(self, group: dist.ProcessGroup | None, name: str) -> None:
         if group is None:
             return
-        if not _is_native_process_group(group):
-            return
-        actual_rank = dist.get_rank(group)
-        actual_size = dist.get_world_size(group)
+        actual_rank = _GeneralProcessGroupUtil.get_rank(group)
+        actual_size = _GeneralProcessGroupUtil.get_size(group)
         assert actual_rank == self.rank, f"{name}: rank mismatch: expected {self.rank}, got {actual_rank}"
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
 
     def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
-        _all_reduce(tensor, self.group, op)
+        _GeneralProcessGroupUtil.all_reduce(tensor, self.group, op)
 
 
 @dataclass(frozen=True)
@@ -69,7 +67,7 @@ class GroupsInfo:
         )
 
     def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
-        all_reduce_multi(tensor, self.groups_inner_to_outer, op)
+        _all_reduce_multi(tensor, self.groups_inner_to_outer, op)
 
 
 
@@ -108,7 +106,7 @@ class ParallelState:
         }[self._dp_mode]
 
 
-def all_reduce_multi(
+def _all_reduce_multi(
     tensor: torch.Tensor,
     groups_inner_to_outer: Sequence[dist.ProcessGroup],
     op: dist.ReduceOp,
@@ -121,34 +119,52 @@ def all_reduce_multi(
     floating-point non-determinism in the reduce path.
     """
     for group in groups_inner_to_outer:
-        _reduce_on_group(tensor, group, op)
+        _GeneralProcessGroupUtil.reduce(tensor, group, op)
 
     for group in reversed(groups_inner_to_outer):
-        _broadcast_on_group(tensor, group)
+        _GeneralProcessGroupUtil.broadcast(tensor, group)
 
 
 class _GeneralProcessGroupUtil:
-    """Support both native ProcessGroup and torchft's custom process groups"""
+    """Support both native ProcessGroup and torchft's custom process groups."""
 
     @classmethod
-    def _is_native(cls, group: dist.ProcessGroup) -> bool:
+    def is_native(cls, group: dist.ProcessGroup) -> bool:
         return not hasattr(group, "_replica_id")
 
     @classmethod
-    def _all_reduce(cls, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        if cls._is_native(group):
+    def get_rank(cls, group: dist.ProcessGroup) -> int:
+        if cls.is_native(group):
+            return dist.get_rank(group)
+        else:
+            return group._rank
+
+    @classmethod
+    def get_size(cls, group: dist.ProcessGroup) -> int:
+        if cls.is_native(group):
+            return dist.get_world_size(group)
+        else:
+            return group.size()
+
+    @classmethod
+    def all_reduce(cls, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        if cls.is_native(group):
             dist.all_reduce(tensor, op=op, group=group)
         else:
             group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)).wait()
 
     @classmethod
-    def _reduce_on_group(cls, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-        TODO
-        group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)).wait()
+    def reduce(cls, tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+        if cls.is_native(group):
+            dist.reduce(tensor, dst=0, op=op, group=group)
+        else:
+            group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)).wait()
 
     @classmethod
-    def _broadcast_on_group(cls, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
-        TODO
-        group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
+    def broadcast(cls, tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
+        if cls.is_native(group):
+            dist.broadcast(tensor, src=0, group=group)
+        else:
+            group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
 
 
