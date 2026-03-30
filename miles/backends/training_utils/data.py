@@ -344,7 +344,7 @@ def get_data_iterator(
     - `num_microbatches`: list[int], one per local step in the rollout (length = steps)
     """
     dp_size = parallel_state.effective_dp.size
-    dp_group = parallel_state.effective_dp
+    dp_group = parallel_state.effective_dp.group
     vpp_size = parallel_state.vpp_size
     microbatch_group_size_per_vp_stage = parallel_state.microbatch_group_size_per_vp_stage
 
@@ -384,7 +384,7 @@ def get_data_iterator(
             )
 
         num_microbatches = torch.tensor(num_microbatches, dtype=torch.int, device=torch.cuda.current_device())
-        GeneralPGUtil.all_reduce(num_microbatches, dp_group.group, op=dist.ReduceOp.MAX)
+        GeneralPGUtil.all_reduce(num_microbatches, dp_group, op=dist.ReduceOp.MAX)
 
         if vpp_size > 1:
             # vpp requies the number of microbatches to be divisible by vpp_size
