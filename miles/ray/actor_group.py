@@ -6,7 +6,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 
-
 class RayTrainGroup:
     """
     A group of ray actors
@@ -26,6 +25,10 @@ class RayTrainGroup:
             See https://docs.ray.io/en/latest/ray-core/scheduling/resources.html
     """
 
+    TODO
+
+
+class RayTrainCell:
     def __init__(
         self,
         args,
