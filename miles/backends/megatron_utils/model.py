@@ -46,8 +46,6 @@ from .lora_utils import is_lora_enabled, is_lora_model
 from .model_provider import get_model_provider_func
 from .parallel import get_packed_seq_params
 
-if TYPE_CHECKING:
-    from .in_memory_checkpoint import InMemoryCheckpointManager
 
 logger = logging.getLogger(__name__)
 
@@ -819,7 +817,7 @@ def save_hf_model(args, rollout_id: int, model: Sequence[DDP]) -> None:
 def initialize_model_and_optimizer(
     args: Namespace,
     role: str = "actor",
-    in_memory_ckpt_manager: "InMemoryCheckpointManager | None" = None,
+    checkpointing_context = None,
 ) -> tuple[list[DDP], MegatronOptimizer, OptimizerParamScheduler, int]:
     """Initialize model(s), optimizer, scheduler, and load from checkpoint.
 
@@ -846,9 +844,6 @@ def initialize_model_and_optimizer(
     model[0].role = role
     clear_memory()
 
-    checkpointing_context = (
-        {'local_checkpoint_manager': x} if (x := in_memory_ckpt_manager) is not None else {}
-    )
     iteration, _ = load_checkpoint(
         model,
         optimizer,
