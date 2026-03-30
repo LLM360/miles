@@ -1747,6 +1747,11 @@ def miles_validate_args(args):
         args.delay_split_train_data_by_dp = True
         logger.info("trainer_ft is enabled. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
 
+    if args.indep_dp:
+        per_replica = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
+        logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica} (per-cell)")
+        args.world_size = per_replica
+
     if args.chat_template_path == "autofix":
         from miles.utils.chat_template_utils import try_get_fixed_chat_template
 

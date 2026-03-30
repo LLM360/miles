@@ -47,8 +47,8 @@ class RayTrainGroup:
     ) -> None:
         self.args = args
 
-        num_cells = compute_megatron_dp_size(args) if args.indep_dp else 1
         total_gpus = num_nodes * num_gpus_per_node
+        num_cells = compute_megatron_dp_size(args, total_gpus=total_gpus) if args.indep_dp else 1
         gpus_per_cell = total_gpus // num_cells
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
