@@ -145,7 +145,7 @@ class RayTrainCell:
         self.num_cells = num_cells
         self.role = role
 
-        self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor, indep_dp_store_addr)
+        self._actor_handles = self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor, indep_dp_store_addr)
 
     def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor, indep_dp_store_addr: str):
         world_size = gpus_per_cell
@@ -193,7 +193,7 @@ class RayTrainCell:
         TrainRayActor = ray.remote(num_gpus=1, runtime_env={"env_vars": env_vars})(actor_impl)
 
         # Create worker actors
-        self._actor_handles = []
+        actor_handles = []
         master_addr, master_port = None, None
         for rank in range(world_size):
             actor = TrainRayActor.options(
@@ -214,7 +214,9 @@ class RayTrainCell:
             )
             if rank == 0:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
-            self._actor_handles.append(actor)
+            actor_handles.append(actor)
+
+        return actor_handles
 
     def async_execute(self, fn_name, *args, **kwargs):
         return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in self._actor_handles]
