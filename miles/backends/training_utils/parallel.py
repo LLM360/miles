@@ -90,7 +90,7 @@ class ParallelState:
 def all_reduce_multi(
     tensor: torch.Tensor,
     groups: Sequence[dist.ProcessGroup],
-    op: dist.ReduceOp = dist.ReduceOp.SUM,
+    op: dist.ReduceOp,
 ) -> None:
     for group in groups:
         dist.all_reduce(tensor, op=op, group=group)
