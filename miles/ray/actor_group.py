@@ -7,13 +7,6 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils.megatron_args_utils import compute_megatron_dp_size
 
-PGTuple = tuple[PlacementGroup, list[int], list[int]]
-
-
-def _slice_pg(pg: PGTuple, start: int, end: int) -> PGTuple:
-    placement_group, bundle_indices, gpu_ids = pg
-    return (placement_group, bundle_indices[start:end], gpu_ids[start:end])
-
 
 class RayTrainGroup:
     """
@@ -202,3 +195,11 @@ class RayTrainCell:
             actor.connect_actor_critic.remote(critic)
             for actor, critic in zip(self._actor_handles, critic_group._actor_handles, strict=False)
         ]
+
+
+PGTuple = tuple[PlacementGroup, list[int], list[int]]
+
+
+def _slice_pg(pg: PGTuple, start: int, end: int) -> PGTuple:
+    placement_group, bundle_indices, gpu_ids = pg
+    return (placement_group, bundle_indices[start:end], gpu_ids[start:end])
