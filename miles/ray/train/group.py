@@ -15,17 +15,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 class RayTrainGroup:
     """A group of RayTrainCells, each an independent megatron instance."""
 
     def __init__(
-            self,
-            args,
-            num_nodes: int,
-            num_gpus_per_node: int,
-            pg: tuple[PlacementGroup, list[int], list[int]],
-            num_gpus_per_actor: float = 1,
-            role: str = "actor",
+        self,
+        args,
+        num_nodes: int,
+        num_gpus_per_node: int,
+        pg: tuple[PlacementGroup, list[int], list[int]],
+        num_gpus_per_actor: float = 1,
+        role: str = "actor",
     ) -> None:
         self.args = args
 

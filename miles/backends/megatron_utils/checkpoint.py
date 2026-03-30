@@ -9,7 +9,6 @@ import torch.distributed as dist
 from megatron.training.checkpointing import load_checkpoint as _load_checkpoint_megatron
 from megatron.training.checkpointing import save_checkpoint
 from megatron.training.global_vars import get_args
-from miles.backends.megatron_utils.in_memory_checkpoint import _assert_args_for_in_memory_checkpoint
 
 from miles.utils import megatron_bridge_utils
 

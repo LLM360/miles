@@ -59,7 +59,7 @@ def save_to_memory(
         model=model,
         optimizer=optimizer,
         opt_param_scheduler=opt_param_scheduler,
-        checkpointing_context={'local_checkpoint_manager': manager},
+        checkpointing_context={"local_checkpoint_manager": manager},
         non_persistent_ckpt=True,
     )
     state_dict, _ = manager.load()
@@ -67,10 +67,7 @@ def save_to_memory(
 
 
 def _assert_args_for_in_memory_checkpoint(args: Any) -> None:
-    assert args.non_persistent_ckpt_type == 'local', (
-        f"Expected non_persistent_ckpt_type='local', "
-        f"got {getattr(args, 'non_persistent_ckpt_type', None)!r}"
+    assert args.non_persistent_ckpt_type == "local", (
+        f"Expected non_persistent_ckpt_type='local', " f"got {getattr(args, 'non_persistent_ckpt_type', None)!r}"
     )
-    assert args.non_persistent_local_ckpt_algo is not None, (
-        "args.non_persistent_local_ckpt_algo must be set"
-    )
+    assert args.non_persistent_local_ckpt_algo is not None, "args.non_persistent_local_ckpt_algo must be set"

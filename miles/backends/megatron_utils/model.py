@@ -816,7 +816,7 @@ def save_hf_model(args, rollout_id: int, model: Sequence[DDP]) -> None:
 def initialize_model_and_optimizer(
     args: Namespace,
     role: str = "actor",
-    checkpointing_context = None,
+    checkpointing_context=None,
 ) -> tuple[list[DDP], MegatronOptimizer, OptimizerParamScheduler, int]:
     """Initialize model(s), optimizer, scheduler, and load from checkpoint.
 

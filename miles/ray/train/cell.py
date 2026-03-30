@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import TYPE_CHECKING, Literal, Union
+from typing import Literal, Union
 
 import ray
 from pydantic import ConfigDict
@@ -11,8 +11,6 @@ from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
-
-
 
 
 class _StatePending(StrictBaseModel):
@@ -34,16 +32,16 @@ _CellState = Union[_StatePending, _StateRunning, _StateStopped]
 
 class RayTrainCell:
     def __init__(
-            self,
-            *,
-            args,
-            gpus_per_cell: int,
-            pg: tuple[PlacementGroup, list[int], list[int]],
-            num_gpus_per_actor: float,
-            role: str,
-            cell_id: int,
-            num_cells: int,
-            indep_dp_store_addr: str,
+        self,
+        *,
+        args,
+        gpus_per_cell: int,
+        pg: tuple[PlacementGroup, list[int], list[int]],
+        num_gpus_per_actor: float,
+        role: str,
+        cell_id: int,
+        num_cells: int,
+        indep_dp_store_addr: str,
     ) -> None:
         self.args = args
         self.cell_id = cell_id
@@ -74,9 +72,9 @@ class RayTrainCell:
         logger.info(f"Killed all actors in cell {self.cell_id}")
 
     def recreate_actors(self) -> None:
-        assert isinstance(self._state, _StateStopped), (
-            f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
-        )
+        assert isinstance(
+            self._state, _StateStopped
+        ), f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
         actor_handles = self._create_actors()
         self._state = _StateRunning(actor_handles=actor_handles)
         logger.info(f"Recreated actors for cell {self.cell_id}")
@@ -89,8 +87,7 @@ class RayTrainCell:
         handles = self._get_actor_handles()
         critic_handles = critic_cell._get_actor_handles()
         return [
-            actor.connect_actor_critic.remote(critic)
-            for actor, critic in zip(handles, critic_handles, strict=False)
+            actor.connect_actor_critic.remote(critic) for actor, critic in zip(handles, critic_handles, strict=False)
         ]
 
     def _create_actors(self) -> list:
@@ -159,5 +156,3 @@ class RayTrainCell:
             actor_handles.append(actor)
 
         return actor_handles
-
-

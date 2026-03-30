@@ -32,11 +32,12 @@ from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollou
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint
-from .checkpoint_transfer import recv_ckpt, send_ckpt as _send_ckpt
+from .checkpoint_transfer import recv_ckpt
+from .checkpoint_transfer import send_ckpt as _send_ckpt
+from .indep_dp import reconfigure_indep_dp_group
 from .initialize import init, is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled
 from .model import forward_only, initialize_model_and_optimizer, save, train
-from .indep_dp import reconfigure_indep_dp_group
 from .parallel import verify_megatron_parallel_state
 from .replay_utils import get_register_replay_list_func
 from .update_weight.common import named_params_and_buffers
@@ -132,7 +133,7 @@ class MegatronTrainRayActor(TrainRayActor):
                 indep_dp=get_parallel_state().indep_dp,
                 src_rank=recv_ckpt_src_rank,
             )
-            checkpointing_context = {'local_checkpoint_manager': ckpt_manager}
+            checkpointing_context = {"local_checkpoint_manager": ckpt_manager}
 
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
             args, role, checkpointing_context=checkpointing_context
