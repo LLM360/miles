@@ -615,13 +615,14 @@ def _create_independent_dp_pg(
     from torchft.process_group import ProcessGroupNCCL
 
     pg = ProcessGroupNCCL(timeout=timedelta(seconds=60))
-    prefixed_store_addr = f"{store_addr}/independent_dp/0/{megatron_rank}"
+    quorum_id = 0
+    prefixed_store_addr = f"{store_addr}/independent_dp/{quorum_id}/{megatron_rank}"
     pg.configure(
         store_addr=prefixed_store_addr,
         replica_id=str(cell_id),
         rank=cell_id,
         world_size=num_cells,
-        quorum_id=0,
+        quorum_id=quorum_id,
         group_rank=megatron_rank,
         group_world_size=megatron_world_size,
     )
