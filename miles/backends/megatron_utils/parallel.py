@@ -1,8 +1,10 @@
 import logging
 from argparse import Namespace
 from collections.abc import Sequence
+from datetime import timedelta
 
 import torch
+import torch.distributed as dist
 from megatron.core import mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import get_model_config
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 def create_megatron_parallel_state(
     indep_dp_rank: int,
     indep_dp_size: int,
+    indep_dp_group: "dist.ProcessGroup | None",
 ) -> ParallelState:
     vpp_size, microbatch_group_size_per_vp_stage = _compute_vpp_fields()
 
@@ -36,6 +39,7 @@ def create_megatron_parallel_state(
         tp_group=mpu.get_tensor_model_parallel_group(),
         indep_dp_rank=indep_dp_rank,
         indep_dp_size=indep_dp_size,
+        indep_dp_group=indep_dp_group,
         is_pp_last_stage=mpu.is_pipeline_last_stage(),
         vpp_size=vpp_size,
         microbatch_group_size_per_vp_stage=microbatch_group_size_per_vp_stage,
@@ -48,6 +52,36 @@ def _compute_vpp_fields() -> tuple[int, int | None]:
         return 1, None
 
     return vpp_size_value, get_args().pipeline_model_parallel_size
+
+
+def _create_indep_dp_pg(
+    store_addr: str | None,
+    cell_id: int,
+    num_cells: int,
+    megatron_rank: int,
+    megatron_world_size: int,
+) -> dist.ProcessGroup | None:
+    if num_cells <= 1:
+        return None
+
+    from torchft.process_group import ProcessGroupNCCL
+
+    pg = ProcessGroupNCCL(timeout=timedelta(seconds=60))
+    quorum_id = 0
+    pg.configure(
+        store_addr=f"{store_addr}/indep_dp/{quorum_id}/{megatron_rank}",
+        replica_id=str(cell_id),
+        rank=cell_id,
+        world_size=num_cells,
+        quorum_id=quorum_id,
+        group_rank=megatron_rank,
+        group_world_size=megatron_world_size,
+    )
+    logger.info(
+        f"Configured independent DP PG: cell_id={cell_id}, num_cells={num_cells}, "
+        f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}"
+    )
+    return pg
 
 
 def verify_megatron_parallel_state(

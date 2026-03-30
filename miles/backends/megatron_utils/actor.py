@@ -10,7 +10,6 @@ import torch.distributed as dist
 from ray.actor import ActorHandle
 from torch_memory_saver import torch_memory_saver
 from transformers import AutoConfig
-from datetime import timedelta
 
 from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
@@ -59,7 +58,12 @@ class MegatronTrainRayActor(TrainRayActor):
 
         super().init(args, role, with_ref)
 
-        init(args, cell_id=self._cell_id, num_cells=self._num_cells)
+        init(
+            args,
+            cell_id=self._cell_id,
+            num_cells=self._num_cells,
+            indep_dp_store_addr=self._indep_dp_store_addr,
+        )
 
         if args.dumper_enable:
             from sglang.srt.debug_utils.dumper import dumper
@@ -154,14 +158,6 @@ class MegatronTrainRayActor(TrainRayActor):
             model_name=type(self.hf_config).__name__.lower() if self.args.model_name is None else self.args.model_name,
             quantization_config=getattr(self.hf_config, "quantization_config", None),
             is_lora=is_lora_enabled(args),
-        )
-
-        self._indep_dp_pg = _create_indep_dp_pg(
-            store_addr=self._indep_dp_store_addr,
-            cell_id=self._cell_id,
-            num_cells=self._num_cells,
-            megatron_rank=self._rank,
-            megatron_world_size=self._world_size,
         )
 
         # empty cache after initialization
@@ -602,31 +598,3 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
 
-def _create_indep_dp_pg(
-    store_addr: str | None,
-    cell_id: int,
-    num_cells: int,
-    megatron_rank: int,
-    megatron_world_size: int,
-) -> "ProcessGroupNCCL | None":
-    if num_cells <= 1:
-        return None
-
-    from torchft.process_group import ProcessGroupNCCL
-
-    pg = ProcessGroupNCCL(timeout=timedelta(seconds=60))
-    quorum_id = 0
-    pg.configure(
-        store_addr=f"{store_addr}/indep_dp/{quorum_id}/{megatron_rank}",
-        replica_id=str(cell_id),
-        rank=cell_id,
-        world_size=num_cells,
-        quorum_id=quorum_id,
-        group_rank=megatron_rank,
-        group_world_size=megatron_world_size,
-    )
-    logger.info(
-        f"Configured independent DP PG: cell_id={cell_id}, num_cells={num_cells}, "
-        f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}"
-    )
-    return pg

@@ -10,7 +10,7 @@ from megatron.training.global_vars import _build_tokenizer, set_args
 
 from miles.backends.training_utils.parallel import get_parallel_state, set_parallel_state
 
-from .parallel import create_megatron_parallel_state
+from .parallel import _create_indep_dp_pg, create_megatron_parallel_state
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,12 @@ def _initialize_distributed(args, get_embedding_ranks=None, get_position_embeddi
     )
 
 
-def init(args, cell_id: int, num_cells: int):
+def init(
+    args,
+    cell_id: int,
+    num_cells: int,
+    indep_dp_store_addr: str | None,
+):
     set_args(args)
     if args.enable_experimental:
         logger.info("Enable megatron experimental")
@@ -66,7 +71,19 @@ def init(args, cell_id: int, num_cells: int):
     # Pytorch distributed.
     _initialize_distributed(args)
 
-    set_parallel_state(create_megatron_parallel_state(indep_dp_rank=cell_id, indep_dp_size=num_cells))
+    indep_dp_group = _create_indep_dp_pg(
+        store_addr=indep_dp_store_addr,
+        cell_id=cell_id,
+        num_cells=num_cells,
+        megatron_rank=dist.get_rank(),
+        megatron_world_size=dist.get_world_size(),
+    )
+
+    set_parallel_state(create_megatron_parallel_state(
+        indep_dp_rank=cell_id,
+        indep_dp_size=num_cells,
+        indep_dp_group=indep_dp_group,
+    ))
 
     # https://github.com/NVIDIA/Megatron-LM/issues/1563
     assert np.__version__.startswith("1."), "Megatron does not support numpy 2.x"

@@ -25,7 +25,7 @@ def add_checkpoint_args(parser):
 
 
 def main(args):
-    megatron_utils.init(args, cell_id=0, num_cells=1)
+    megatron_utils.init(args, cell_id=0, num_cells=1, indep_dp_store_addr=None)
 
     pp_size = mpu.get_pipeline_model_parallel_world_size()
     ep_size = mpu.get_expert_model_parallel_world_size()
