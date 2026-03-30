@@ -597,16 +597,6 @@ class MegatronTrainRayActor(TrainRayActor):
         self.weights_backuper.backup(model_tag)
         self._active_model_tag = model_tag
 
-    def send_ckpt(self, dst_rank: int) -> None:
-        _send_ckpt(
-            indep_dp=self.parallel_state.indep_dp,
-            model=self.model,
-            optimizer=self.optimizer,
-            opt_param_scheduler=self.opt_param_scheduler,
-            iteration=self._last_rollout_id,
-            dst_rank=dst_rank,
-        )
-
     def connect_actor_critic(
         self,
         actor_handle: ActorHandle | None = None,
@@ -628,6 +618,16 @@ class MegatronTrainRayActor(TrainRayActor):
             world_size=world_size,
             rank=0 if self.role == "actor" else 1,
             group_name=group_name,
+        )
+
+    def send_ckpt(self, dst_rank: int) -> None:
+        _send_ckpt(
+            indep_dp=self.parallel_state.indep_dp,
+            model=self.model,
+            optimizer=self.optimizer,
+            opt_param_scheduler=self.opt_param_scheduler,
+            iteration=self._last_rollout_id,
+            dst_rank=dst_rank,
         )
 
     def reconfigure_indep_dp(self, indep_dp_quorum_id: int) -> None:
