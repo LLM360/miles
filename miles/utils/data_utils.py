@@ -1,7 +1,5 @@
 from typing import Optional
 
-import ray
-from miles.utils.ray_utils import Box
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 
 
@@ -55,5 +53,5 @@ def split_train_data_by_dp(args, data, *, dp_size: int, dynamic_global_batch_siz
         # Pass dynamic global_batch_size to training side
         if (x := dynamic_global_batch_size) is not None:
             rollout_data["dynamic_global_batch_size"] = x
-        ans.append(Box(ray.put(rollout_data)))
+        ans.append(rollout_data)
     return ans
