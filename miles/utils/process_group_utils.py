@@ -34,10 +34,16 @@ class GroupsInfo:
     rank: int
     size: int
     groups_inner_to_outer: list[dist.ProcessGroup]
+    gloo_groups_inner_to_outer: list[dist.ProcessGroup]
 
     @classmethod
     def from_single(cls, info: GroupInfo) -> "GroupsInfo":
-        return cls(rank=info.rank, size=info.size, groups_inner_to_outer=[info.group])
+        return cls(
+            rank=info.rank,
+            size=info.size,
+            groups_inner_to_outer=[info.group],
+            gloo_groups_inner_to_outer=[info.gloo_group],
+        )
 
     @classmethod
     def from_pair(cls, *, inner: GroupInfo, outer: GroupInfo) -> "GroupsInfo":
@@ -45,6 +51,7 @@ class GroupsInfo:
             rank=outer.rank * inner.size + inner.rank,
             size=outer.size * inner.size,
             groups_inner_to_outer=[inner.group, outer.group],
+            gloo_groups_inner_to_outer=[inner.gloo_group, outer.gloo_group],
         )
 
 
