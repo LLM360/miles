@@ -318,22 +318,6 @@ def forward_only(
     return rollout_data
 
 
-def _allreduce_grads_across_replicas(model: Sequence[DDP], parallel_state: ParallelState) -> None:
-    """AllReduce gradients across independent DP replicas via torchft PG.
-
-    Called after forward_backward_func (which completes intra-replica TP/PP/EP
-    grad sync) and before prepare_grads. Uses SUM because the loss function
-    already applies 1/global_batch_size scaling.
-    """
-    from miles.utils.process_group_utils import GeneralPGUtil
-
-    pg = parallel_state.indep_dp.group
-    util = GeneralPGUtil.create(pg)
-    for model_chunk in model:
-        for buffer in model_chunk.buffers:
-            util.all_reduce(buffer.grad_data, pg, op=dist.ReduceOp.SUM)
-
-
 def train_one_step(
     args: Namespace,
     rollout_id: int,
@@ -514,6 +498,22 @@ def train_one_step(
         loss_reduced = aggregate_train_losses(losses_reduced, parallel_state)
         return loss_reduced, grad_norm
     return {}, grad_norm
+
+
+def _allreduce_grads_across_replicas(model: Sequence[DDP], parallel_state: ParallelState) -> None:
+    """AllReduce gradients across independent DP replicas via torchft PG.
+
+    Called after forward_backward_func (which completes intra-replica TP/PP/EP
+    grad sync) and before prepare_grads. Uses SUM because the loss function
+    already applies 1/global_batch_size scaling.
+    """
+    from miles.utils.process_group_utils import GeneralPGUtil
+
+    pg = parallel_state.indep_dp.group
+    util = GeneralPGUtil.create(pg)
+    for model_chunk in model:
+        for buffer in model_chunk.buffers:
+            util.all_reduce(buffer.grad_data, pg, op=dist.ReduceOp.SUM)
 
 
 def finalize_model_grads_with_empty_cache(*args, **kwargs):
