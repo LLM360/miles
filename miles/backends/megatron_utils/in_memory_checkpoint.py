@@ -27,11 +27,15 @@ class InMemoryCheckpointManager:
 
     def save(self, state_dict: object, iteration: int, is_async: bool = False) -> None:
         """Store state_dict object reference in memory."""
+        assert not is_async
+
         assert self._state_dict is None
         self._state_dict = state_dict
         self.latest_iteration = iteration
+
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
+
         return None
 
     def find_latest(self) -> int:
@@ -42,6 +46,7 @@ class InMemoryCheckpointManager:
         assert self._state_dict is not None
         ans = self._state_dict
         self._state_dict = None
+
         return ans, f"in-memory-ckpt-iter-{self.latest_iteration}"
 
 
