@@ -125,7 +125,7 @@ def init(
 
 
 # TODO shall we use a simpler method to determine which rank to init wandb?
-def is_megatron_main_rank():
+def is_first_replica_megatron_main_rank():
     return (
         get_parallel_state().effective_dp_cp.rank == 0
         and mpu.get_tensor_model_parallel_rank() == 0

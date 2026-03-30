@@ -32,7 +32,7 @@ from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollou
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint
-from .initialize import init, is_megatron_main_rank
+from .initialize import init, is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled
 from .model import forward_only, initialize_model_and_optimizer, save, train
 from .parallel import verify_megatron_parallel_state
@@ -70,9 +70,9 @@ class MegatronTrainRayActor(TrainRayActor):
 
             dumper.apply_source_patches()
 
-        self._is_main_rank = is_megatron_main_rank()
+        self._is_first_replica_megatron_main_rank = is_first_replica_megatron_main_rank()
 
-        if self._is_main_rank:
+        if self._is_first_replica_megatron_main_rank:
             init_tracking(args, primary=False)
 
         self.prof = TrainProfiler(args)
@@ -190,7 +190,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         print_memory("after offload model")
 
-        if self._is_main_rank and hasattr(self, "_last_rollout_id"):
+        if self._is_first_replica_megatron_main_rank and hasattr(self, "_last_rollout_id"):
             log_cpu_memory(self._last_rollout_id, self.args, "after_offload_train")
 
     @timer
@@ -449,7 +449,7 @@ class MegatronTrainRayActor(TrainRayActor):
             and "ref" in self.weights_backuper.backup_tags
         ):
             with timer("ref_model_update"):
-                if is_megatron_main_rank():
+                if is_first_replica_megatron_main_rank():
                     logger.info(f"Updating ref model at rollout_id {rollout_id}")
                 self.weights_backuper.backup("ref")
 
