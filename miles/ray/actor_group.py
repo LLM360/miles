@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -16,24 +17,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RayTrainGroup:
-    """
-    A group of ray actors
-    Functions start with 'async' should return list of object refs
 
-    Args:
-        args (Namespace): Arguments for the actor group.
-        num_nodes (int): Number of nodes for this actor group.
-        num_gpus_per_node (int): Number of gpus for this actor group.
-        pg (PlacementGroup, optional): Placement group to schedule actor on.
-            If none, create new placement group automatically. Defaults to None.
-        num_gpus_per_actor (float, optional): Number of gpus allocated for each actor.
-            If < 1.0, multiple models can share same gpu. Defaults to 1.
-        resources (Dict[str, float], optional): Custom resources to allocate for each actor.
-            See https://docs.ray.io/en/latest/ray-core/scheduling/resources.html
-        num_resources_per_node (int, optional): Number of custom resources to allocate for each node.
-            See https://docs.ray.io/en/latest/ray-core/scheduling/resources.html
-    """
+class RayTrainGroup:
+    """A group of RayTrainCells, each an independent megatron instance."""
 
     def __init__(
         self,
@@ -79,46 +65,39 @@ class RayTrainGroup:
         for cell in self._cells:
             assert cell.is_running, f"Cell {cell.cell_id} is stopped, all cells must be running"
 
-    def _execute(self, fn_name, *args, **kwargs):
-        return ray.get(self._async_execute(fn_name, *args, **kwargs))
-
-    def _execute_first_cell(self, fn_name, *args, **kwargs):
+    def _refs_all_cells(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
         self._assert_all_running()
-        return ray.get(self._cells[0].async_execute(fn_name, *args, **kwargs))
+        return [ref for cell in self._cells for ref in cell.refs(fn_name, *args, **kwargs)]
 
-    def _async_execute(self, fn_name, *args, **kwargs):
+    def _refs_first_cell(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
         self._assert_all_running()
-        return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
+        return self._cells[0].refs(fn_name, *args, **kwargs)
 
-    def async_init(self, args, role: str, with_ref: bool = False):
-        """
-        Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
-        """
+    # --- public sync API (unchanged signatures for callers) ---
+
+    def async_init(self, args, role: str, with_ref: bool = False) -> list[ray.ObjectRef]:
         assert args is self.args
-        return self._async_execute("init", args, role, with_ref=with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id)
+        return self._refs_all_cells("init", args, role, with_ref=with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id)
 
-    def async_train(self, rollout_id: int, rollout_data_ref):
-        """Do one rollout training"""
-        return self._async_execute("train", rollout_id, rollout_data_ref)
+    def async_train(self, rollout_id: int, rollout_data_ref) -> list[ray.ObjectRef]:
+        return self._refs_all_cells("train", rollout_id, rollout_data_ref)
 
-    def save_model(self, rollout_id: int, force_sync: bool = False):
-        """Save actor model. Only cell 0 saves to avoid file write conflicts."""
-        self._execute_first_cell("save_model", rollout_id, force_sync=force_sync)
+    def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
+        ray.get(self._refs_first_cell("save_model", rollout_id, force_sync=force_sync))
 
-    def update_weights(self):
-        """Broadcast weights to rollout engines. Only cell 0 pushes (all cells have identical weights)."""
-        self._execute_first_cell("update_weights")
+    def update_weights(self) -> None:
+        ray.get(self._refs_first_cell("update_weights"))
 
-    def onload(self):
-        self._execute("wake_up")
+    def onload(self) -> None:
+        ray.get(self._refs_all_cells("wake_up"))
 
-    def offload(self):
-        self._execute("sleep")
+    def offload(self) -> None:
+        ray.get(self._refs_all_cells("sleep"))
 
-    def clear_memory(self):
-        self._execute("clear_memory")
+    def clear_memory(self) -> None:
+        ray.get(self._refs_all_cells("clear_memory"))
 
-    def connect(self, critic_group: "RayTrainGroup"):
+    def connect(self, critic_group: "RayTrainGroup") -> None:
         self._assert_all_running()
         assert len(self._cells) == len(critic_group._cells), (
             f"Actor and critic must have the same number of cells: "
@@ -126,32 +105,35 @@ class RayTrainGroup:
         )
         ray.get(
             [
-                future
+                ref
                 for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
-                for future in cell.async_connect(critic_cell)
+                for ref in cell.refs_connect(critic_cell)
             ]
         )
 
-    def set_rollout_manager(self, rollout_manager):
-        self._execute("set_rollout_manager", rollout_manager)
+    def set_rollout_manager(self, rollout_manager) -> None:
+        ray.get(self._refs_all_cells("set_rollout_manager", rollout_manager))
 
     def stop(self, cell_id: int) -> None:
-        """Stop a cell by killing all its actors."""
         cell = self._cells[cell_id]
         assert cell.is_running, f"Cell {cell_id} is already stopped"
         cell.stop()
         logger.info(f"Stopped cell {cell_id}")
 
     def start(self, cell_id: int, role: str, with_ref: bool = False) -> None:
+        coro = self._start_async(cell_id, role, with_ref)
+        asyncio.get_event_loop().run_until_complete(coro)
+
+    async def _start_async(self, cell_id: int, role: str, with_ref: bool) -> None:
         """Restart a stopped cell, recovering checkpoint from a healthy cell.
 
-        The flow:
+        Flow:
         1. Recreate actors for the stopped cell
-        2. Increment indep_dp_quorum_id for fresh indep_dp PG
+        2. All healthy cells reconfigure indep_dp PG (new quorum_id)
         3. In parallel:
-           - New cell: init(recv_ckpt_src_rank=src_cell_id, indep_dp_quorum_id=new)
-           - Src cell: reconfigure_indep_dp(indep_dp_quorum_id=new) then send_ckpt(dst)
-           - Other cells: reconfigure_indep_dp(indep_dp_quorum_id=new)
+           - Src cell sends ckpt
+           - New cell init (blocks on recv until send arrives)
+        4. Wait for everything to complete
         """
         target_cell = self._cells[cell_id]
         assert not target_cell.is_running, f"Cell {cell_id} is already running"
@@ -160,32 +142,29 @@ class RayTrainGroup:
         target_cell.recreate_actors()
 
         self._indep_dp_quorum_id += 1
-        logger.info(f"Starting cell {cell_id} from cell {src_cell_id}, indep_dp_quorum_id={self._indep_dp_quorum_id}")
+        qid = self._indep_dp_quorum_id
+        logger.info(f"Starting cell {cell_id} from cell {src_cell_id}, indep_dp_quorum_id={qid}")
 
-        futures = []
-
-        # Step 3a: New cell init (will recv ckpt from src_cell during init)
-        futures.extend(
-            target_cell.async_execute(
-                "init",
-                self.args,
-                role,
-                with_ref=with_ref,
-                recv_ckpt_src_rank=src_cell_id,
-                indep_dp_quorum_id=self._indep_dp_quorum_id,
-            )
-        )
-
-        # Step 3b: Src cell reconfigure + send ckpt (must be parallel with 3a)
-        src_cell = self._cells[src_cell_id]
-        futures.extend(src_cell.async_execute("reconfigure_indep_dp_and_send_ckpt", self._indep_dp_quorum_id, cell_id))
-
-        # Step 3c: Other healthy cells just reconfigure
+        # Step 2: All healthy cells reconfigure indep_dp PG (must complete before send/recv)
+        reconfigure_refs = []
         for cell in self._cells:
-            if cell.cell_id != cell_id and cell.cell_id != src_cell_id and cell.is_running:
-                futures.extend(cell.async_execute("reconfigure_indep_dp", self._indep_dp_quorum_id))
+            if cell.cell_id != cell_id and cell.is_running:
+                reconfigure_refs.extend(cell.refs("reconfigure_indep_dp", qid))
+        await asyncio.gather(reconfigure_refs)
 
-        ray.get(futures)
+        # Step 3: Send + recv in parallel
+        src_cell = self._cells[src_cell_id]
+        send_refs = src_cell.refs("send_ckpt", cell_id)
+        init_refs = target_cell.refs(
+            "init",
+            self.args,
+            role,
+            with_ref=with_ref,
+            recv_ckpt_src_rank=src_cell_id,
+            indep_dp_quorum_id=qid,
+        )
+        await asyncio.gather(send_refs + init_refs)
+
         logger.info(f"Cell {cell_id} started successfully")
 
     def _pick_healthy_cell(self, exclude: int) -> int:
@@ -235,6 +214,16 @@ class RayTrainCell:
         assert self._actor_handles is None, "Cannot recreate actors while cell is running"
         self._actor_handles = self._create_actors()
         logger.info(f"Recreated actors for cell {self.cell_id}")
+
+    def refs(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
+        assert self._actor_handles is not None, f"Cell {self.cell_id} is stopped"
+        return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in self._actor_handles]
+
+    def refs_connect(self, critic_cell: "RayTrainCell") -> list[ray.ObjectRef]:
+        return [
+            actor.connect_actor_critic.remote(critic)
+            for actor, critic in zip(self._actor_handles, critic_cell._actor_handles, strict=False)
+        ]
 
     def _create_actors(self) -> list:
         world_size = self._gpus_per_cell
@@ -302,16 +291,6 @@ class RayTrainCell:
             actor_handles.append(actor)
 
         return actor_handles
-
-    def async_execute(self, fn_name, *args, **kwargs):
-        assert self._actor_handles is not None, f"Cell {self.cell_id} is stopped"
-        return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in self._actor_handles]
-
-    def async_connect(self, critic_group):
-        return [
-            actor.connect_actor_critic.remote(critic)
-            for actor, critic in zip(self._actor_handles, critic_group._actor_handles, strict=False)
-        ]
 
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
