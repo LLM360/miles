@@ -47,12 +47,18 @@ class GroupInfo:
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
 
     def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
-        dist.all_reduce(tensor, op=op, group=self.group)
+        _all_reduce(tensor, self.group, op)
 
 
 def _is_native_process_group(group: dist.ProcessGroup) -> bool:
-    # torchft's ProcessGroup
     return not hasattr(group, "_replica_id")
+
+
+def _all_reduce(tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
+    if _is_native_process_group(group):
+        dist.all_reduce(tensor, op=op, group=group)
+    else:
+        group.allreduce([tensor], dist.AllreduceOptions(reduceOp=op)).wait()
 
 
 @dataclass(frozen=True)
