@@ -719,6 +719,7 @@ class RolloutManager:
             train_data["teacher_log_probs"] = [sample.teacher_log_probs for sample in samples]
 
         # Pass dynamic global_batch_size to training side
+        assert self.args.use_dynamic_global_batch_size == hasattr(self, "_dynamic_global_batch_size")
         if hasattr(self, "_dynamic_global_batch_size"):
             train_data["dynamic_global_batch_size"] = self._dynamic_global_batch_size
 
