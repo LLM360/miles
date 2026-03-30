@@ -3,6 +3,7 @@ import random
 
 import numpy as np
 import torch
+import torch.distributed as dist
 from megatron.core import mpu, tensor_parallel
 from megatron.core.config import set_experimental_flag
 from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
@@ -79,11 +80,13 @@ def init(
         megatron_world_size=dist.get_world_size(),
     )
 
-    set_parallel_state(create_megatron_parallel_state(
-        indep_dp_rank=cell_id,
-        indep_dp_size=num_cells,
-        indep_dp_group=indep_dp_group,
-    ))
+    set_parallel_state(
+        create_megatron_parallel_state(
+            indep_dp_rank=cell_id,
+            indep_dp_size=num_cells,
+            indep_dp_group=indep_dp_group,
+        )
+    )
 
     # https://github.com/NVIDIA/Megatron-LM/issues/1563
     assert np.__version__.startswith("1."), "Megatron does not support numpy 2.x"

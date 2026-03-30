@@ -105,8 +105,7 @@ def verify_megatron_parallel_state(
         expected = config.microbatch_group_size_per_vp_stage
         actual = parallel_state.microbatch_group_size_per_vp_stage
         assert actual == expected, (
-            f"microbatch_group_size_per_vp_stage mismatch: "
-            f"ParallelState has {actual}, model config has {expected}"
+            f"microbatch_group_size_per_vp_stage mismatch: " f"ParallelState has {actual}, model config has {expected}"
         )
 
 
