@@ -9,6 +9,7 @@ import torch.distributed as dist
 from megatron.training.checkpointing import load_checkpoint as _load_checkpoint_megatron
 from megatron.training.checkpointing import save_checkpoint
 from megatron.training.global_vars import get_args
+from miles.backends.megatron_utils.in_memory_checkpoint import _assert_args_for_in_memory_checkpoint
 
 from miles.utils import megatron_bridge_utils
 
@@ -101,19 +102,6 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, checkpointing_con
     # ref: how megatron `load_checkpoint` gets directory
     args = get_args()
 
-    if in_memory:
-        from miles.backends.megatron_utils.in_memory_checkpoint import _assert_args_for_in_memory_checkpoint
-
-        _assert_args_for_in_memory_checkpoint(args)
-        assert 'local_checkpoint_manager' in checkpointing_context
-        return _load_checkpoint_megatron(
-            ddp_model=ddp_model,
-            optimizer=optimizer,
-            opt_param_scheduler=opt_param_scheduler,
-            checkpointing_context=checkpointing_context,
-            skip_load_to_model_and_opt=skip_load_to_model_and_opt,
-        )
-
     load_path = args.load
 
     assert Path(load_path).exists() and _is_dir_nonempty(
@@ -121,6 +109,10 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, checkpointing_con
     ), f"{args.load=} does not exist or is an empty directory. Did you specify the wrong folder?"
 
     if _is_megatron_checkpoint(load_path):
+        if in_memory:
+            _assert_args_for_in_memory_checkpoint(args)
+            assert 'local_checkpoint_manager' in checkpointing_context
+
         result = _load_checkpoint_megatron(
             ddp_model=ddp_model,
             optimizer=optimizer,
