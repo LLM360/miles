@@ -35,7 +35,7 @@ class TrainRayActor(RayActor):
         master_port,
         cell_id: int,
         num_cells: int,
-        cross_replica_store_addr: str,
+        independent_dp_store_addr: str,
     ):
         configure_logger()
 
@@ -43,7 +43,7 @@ class TrainRayActor(RayActor):
         self._rank = rank
         self._cell_id = cell_id
         self._num_cells = num_cells
-        self._cross_replica_store_addr = cross_replica_store_addr
+        self._independent_dp_store_addr = independent_dp_store_addr
         if master_addr:
             self.master_addr, self.master_port = master_addr, master_port
         else:

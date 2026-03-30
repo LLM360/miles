@@ -48,11 +48,11 @@ class RayTrainGroup:
             f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
         )
 
-        self._store = None
-        store_addr = ""
+        self._independent_dp_store = None
+        independent_dp_store_addr = ""
         if num_cells > 1:
-            self._store, store_addr = _create_tcp_store()
-            logger.info(f"Created TCPStore for independent DP at {store_addr}")
+            self._independent_dp_store, independent_dp_store_addr = _create_tcp_store()
+            logger.info(f"Created TCPStore for independent DP at {independent_dp_store_addr}")
 
         self._cells: list[RayTrainCell] = []
         for cell_id in range(num_cells):
@@ -65,7 +65,7 @@ class RayTrainGroup:
                 role=role,
                 cell_id=cell_id,
                 num_cells=num_cells,
-                cross_replica_store_addr=store_addr,
+                independent_dp_store_addr=independent_dp_store_addr,
             ))
 
     def _execute(self, fn_name, *args, **kwargs):
@@ -128,16 +128,16 @@ class RayTrainCell:
         role: str,
         cell_id: int,
         num_cells: int,
-        cross_replica_store_addr: str,
+        independent_dp_store_addr: str,
     ) -> None:
         self.args = args
         self.cell_id = cell_id
         self.num_cells = num_cells
         self.role = role
 
-        self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor, cross_replica_store_addr)
+        self._allocate_gpus_for_actor(gpus_per_cell, pg, num_gpus_per_actor, independent_dp_store_addr)
 
-    def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor, cross_replica_store_addr: str):
+    def _allocate_gpus_for_actor(self, gpus_per_cell: int, pg, num_gpus_per_actor, independent_dp_store_addr: str):
         world_size = gpus_per_cell
 
         # Use placement group to lock resources for models of same type
@@ -196,7 +196,7 @@ class RayTrainCell:
             ).remote(
                 world_size, rank, master_addr, master_port,
                 cell_id=self.cell_id, num_cells=self.num_cells,
-                cross_replica_store_addr=cross_replica_store_addr,
+                independent_dp_store_addr=independent_dp_store_addr,
             )
             if rank == 0:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
