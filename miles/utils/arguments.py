@@ -1741,7 +1741,7 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
 
 def _compute_world_size(args) -> int:
     total_gpus = args.actor_num_nodes * args.actor_num_gpus_per_node
-    if args.indep_dp or args.trainer_ft:
+    if getattr(args, "indep_dp", False):
         per_replica = args.tensor_model_parallel_size * args.pipeline_model_parallel_size * args.context_parallel_size
         logger.info(f"indep_dp: world_size set to {per_replica} (per-cell, total_gpus={total_gpus})")
         return per_replica
