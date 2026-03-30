@@ -50,7 +50,7 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
         max_seq_len = max(rollout_data["total_lengths"])
 
         # pad to reduce memory fragmentation and maybe make the computation faster
-        pad_size = parallel_state.tp_size * args.data_pad_size_multiplier
+        pad_size = parallel_state.tp.size * args.data_pad_size_multiplier
         max_seq_len = (max_seq_len + pad_size - 1) // pad_size * pad_size
 
         rollout_data["max_seq_lens"] = [max_seq_len] * len(rollout_data["tokens"])
@@ -122,12 +122,12 @@ def get_batch(
     tokens = batch["tokens"]
     # use 0 as the pad token id should be fine?
     pad_token_id = 0
-    pad_size = parallel_state.tp_size * pad_multiplier
+    pad_size = parallel_state.tp.size * pad_multiplier
 
     # for cp, we need all tokens to calculate logprob
     batch["unconcat_tokens"] = tokens
 
-    cp_size = parallel_state.cp_size
+    cp_size = parallel_state.cp.size
 
     if qkv_format == "bshd":
         max_seqlen = batch["max_seq_lens"][0]
@@ -136,7 +136,7 @@ def get_batch(
         tokens = torch.stack(tokens)
 
     elif qkv_format == "thd":
-        cp_rank = parallel_state.cp_rank
+        cp_rank = parallel_state.cp.rank
 
         if allgather_cp:
             # DSA mode: concatenate all sequences first, then slice once with CP.
@@ -343,11 +343,11 @@ def get_data_iterator(
     - `num_microbatches`: list[int], one per local step in the rollout (length = steps)
     """
     dp_size = parallel_state.effective_dp_size
-    dp_group = parallel_state.intra_dp_group
+    dp_group = parallel_state.intra_dp.group
     vpp_size = parallel_state.vpp_size
     microbatch_group_size_per_vp_stage = parallel_state.microbatch_group_size_per_vp_stage
 
-    cp_size = parallel_state.cp_size
+    cp_size = parallel_state.cp.size
 
     num_local_samples = len(rollout_data["total_lengths"])
     assert args.use_dynamic_global_batch_size == ("dynamic_global_batch_size" in rollout_data)
