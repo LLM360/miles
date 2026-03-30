@@ -44,7 +44,7 @@ class GroupInfo:
         assert actual_rank == self.rank, f"{name}: rank mismatch: expected {self.rank}, got {actual_rank}"
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
 
-    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
+    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp) -> None:
         _GeneralProcessGroupUtil.all_reduce(tensor, self.group, op)
 
 
@@ -66,7 +66,7 @@ class GroupsInfo:
             groups_inner_to_outer=[inner.group, outer.group],
         )
 
-    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
+    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp) -> None:
         _all_reduce_multi(tensor, self.groups_inner_to_outer, op)
 
 
