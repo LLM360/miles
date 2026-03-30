@@ -846,24 +846,18 @@ def initialize_model_and_optimizer(
     model[0].role = role
     clear_memory()
 
-    if in_memory_ckpt_manager is not None:
-        checkpointing_context = {'local_checkpoint_manager': in_memory_ckpt_manager}
-        iteration, _ = load_checkpoint(
-            model,
-            optimizer,
-            opt_param_scheduler,
-            checkpointing_context=checkpointing_context,
-            skip_load_to_model_and_opt=False,
-            in_memory=True,
-        )
-    else:
-        iteration, _ = load_checkpoint(
-            model,
-            optimizer,
-            opt_param_scheduler,
-            checkpointing_context={},
-            skip_load_to_model_and_opt=False,
-        )
+    use_in_memory = in_memory_ckpt_manager is not None
+    checkpointing_context = (
+        {'local_checkpoint_manager': in_memory_ckpt_manager} if use_in_memory else {}
+    )
+    iteration, _ = load_checkpoint(
+        model,
+        optimizer,
+        opt_param_scheduler,
+        checkpointing_context=checkpointing_context,
+        skip_load_to_model_and_opt=False,
+        in_memory=use_in_memory,
+    )
 
     check_peak_gpu_memory_after_load(args)
     clear_memory()

@@ -58,6 +58,4 @@ class ParallelState:
         }[self._dp_mode]
 
     def replace_indep_dp(self, indep_dp: GroupInfo) -> "ParallelState":
-        new_state = replace(self, indep_dp=indep_dp)
-        set_parallel_state(new_state)
-        return new_state
+        return replace(self, indep_dp=indep_dp)

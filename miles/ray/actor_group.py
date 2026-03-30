@@ -80,7 +80,6 @@ class RayTrainGroup:
             assert cell.is_running, f"Cell {cell.cell_id} is stopped, all cells must be running"
 
     def _execute(self, fn_name, *args, **kwargs):
-        self._assert_all_running()
         return ray.get(self._async_execute(fn_name, *args, **kwargs))
 
     def _execute_first_cell(self, fn_name, *args, **kwargs):

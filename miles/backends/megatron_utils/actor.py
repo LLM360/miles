@@ -648,7 +648,10 @@ class MegatronTrainRayActor(TrainRayActor):
             megatron_world_size=dist.get_world_size(),
             quorum_id=quorum_id,
         )
+        from miles.backends.training_utils.parallel import set_parallel_state
+
         self.parallel_state = self.parallel_state.replace_indep_dp(indep_dp)
+        set_parallel_state(self.parallel_state)
         logger.info(f"Reconfigured indep_dp PG with quorum_id={quorum_id}")
 
     def reconfigure_indep_dp_and_send_ckpt(self, quorum_id: int, dst_cell_id: int) -> None:

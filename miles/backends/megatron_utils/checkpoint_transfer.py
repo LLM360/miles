@@ -5,12 +5,23 @@ from datetime import timedelta
 import torch
 
 from miles.backends.megatron_utils.in_memory_checkpoint import InMemoryCheckpointManager, save_to_memory
-from miles.backends.training_utils.parallel import ParallelState
 from miles.utils.process_group_utils import GroupInfo
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_SECONDS = 120
+
+
+def _create_transport(indep_dp: GroupInfo, timeout_seconds: int) -> tuple:
+    from torchft.checkpointing.pg_transport import PGTransport
+
+    timeout = timedelta(seconds=timeout_seconds)
+    transport = PGTransport(
+        pg=indep_dp.group,
+        timeout=timeout,
+        device=torch.device("cuda"),
+    )
+    return transport, timeout
 
 
 def send_ckpt(
@@ -34,8 +45,6 @@ def send_ckpt(
         dst_rank: Destination cell_id in the indep_dp process group.
         timeout_seconds: Timeout for the NCCL send operation.
     """
-    from torchft.checkpointing.pg_transport import PGTransport
-
     state_dict = save_to_memory(
         iteration=iteration,
         model=model,
@@ -43,12 +52,7 @@ def send_ckpt(
         opt_param_scheduler=opt_param_scheduler,
     )
 
-    timeout = timedelta(seconds=timeout_seconds)
-    transport = PGTransport(
-        pg=indep_dp.group,
-        timeout=timeout,
-        device=torch.device("cuda"),
-    )
+    transport, timeout = _create_transport(indep_dp, timeout_seconds)
     transport.send_checkpoint(
         dst_ranks=[dst_rank],
         step=iteration,
@@ -79,14 +83,7 @@ def recv_ckpt(
         InMemoryCheckpointManager with state_dict loaded, ready for
         initialize_model_and_optimizer to consume.
     """
-    from torchft.checkpointing.pg_transport import PGTransport
-
-    timeout = timedelta(seconds=timeout_seconds)
-    transport = PGTransport(
-        pg=indep_dp.group,
-        timeout=timeout,
-        device=torch.device("cuda"),
-    )
+    transport, timeout = _create_transport(indep_dp, timeout_seconds)
     state_dict = transport.recv_checkpoint(
         src_rank=src_rank,
         metadata=transport.metadata(),
