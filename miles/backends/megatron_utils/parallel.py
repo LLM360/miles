@@ -67,12 +67,46 @@ def _create_indep_dp_group(
     if num_cells <= 1:
         return GroupInfo(rank=0, size=1, group=None)
 
-    from torchft.process_group import ProcessGroupNCCL
+    from torchft.process_group import ProcessGroupGloo, ProcessGroupNCCL
 
-    pg = ProcessGroupNCCL(timeout=timedelta(seconds=60))
+    nccl_pg = _create_torchft_pg(
+        pg_cls=ProcessGroupNCCL,
+        store_addr=store_addr,
+        backend_name="nccl",
+        cell_id=cell_id,
+        num_cells=num_cells,
+        megatron_rank=megatron_rank,
+        megatron_world_size=megatron_world_size,
+    )
+    gloo_pg = _create_torchft_pg(
+        pg_cls=ProcessGroupGloo,
+        store_addr=store_addr,
+        backend_name="gloo",
+        cell_id=cell_id,
+        num_cells=num_cells,
+        megatron_rank=megatron_rank,
+        megatron_world_size=megatron_world_size,
+    )
+    logger.info(
+        f"Configured independent DP PG: cell_id={cell_id}, num_cells={num_cells}, "
+        f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}"
+    )
+    return GroupInfo(rank=cell_id, size=num_cells, group=nccl_pg, gloo_group=gloo_pg)
+
+
+def _create_torchft_pg(
+    pg_cls: type,
+    store_addr: str,
+    backend_name: str,
+    cell_id: int,
+    num_cells: int,
+    megatron_rank: int,
+    megatron_world_size: int,
+) -> dist.ProcessGroup:
+    pg = pg_cls(timeout=timedelta(seconds=60))
     quorum_id = 0
     pg.configure(
-        store_addr=f"{store_addr}/indep_dp/{quorum_id}/{megatron_rank}",
+        store_addr=f"{store_addr}/indep_dp/{backend_name}/{quorum_id}/{megatron_rank}",
         replica_id=str(cell_id),
         rank=cell_id,
         world_size=num_cells,
@@ -80,11 +114,7 @@ def _create_indep_dp_group(
         group_rank=megatron_rank,
         group_world_size=megatron_world_size,
     )
-    logger.info(
-        f"Configured independent DP PG: cell_id={cell_id}, num_cells={num_cells}, "
-        f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}"
-    )
-    return GroupInfo(rank=cell_id, size=num_cells, group=pg)
+    return pg
 
 
 def verify_megatron_parallel_state(
