@@ -10,10 +10,10 @@ import torch.multiprocessing as mp
 from torch.distributed.device_mesh import init_device_mesh
 
 from miles.utils.process_group_utils import (
+    GeneralPGUtil,
     GroupInfo,
     GroupsInfo,
     MultiPGUtil,
-    _gather_object_via_util,
     _NativePGUtil,
     _RawPGUtil,
 )
@@ -146,8 +146,8 @@ def test_pg_util_ops() -> None:
     _run(_worker_pg_util_ops)
 
 
-def _worker_gather_object_native_vs_torchft(rank: int, world_size: int) -> None:
-    """Verify _NativePGUtil.gather_object and _RawPGUtil.gather_object produce identical results."""
+def _worker_gather_object_native_vs_raw(rank: int, world_size: int) -> None:
+    """Verify _NativePGUtil and _RawPGUtil gather_object produce identical results."""
     _init_gloo(rank, world_size)
     try:
         group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
@@ -159,39 +159,26 @@ def _worker_gather_object_native_vs_torchft(rank: int, world_size: int) -> None:
             (rank, {"nested": True}),
         ]
 
-        for obj in test_objects:
-            for util_cls in UTIL_CLASSES:
-                util = util_cls()
-                if rank == 0:
-                    result: list[Any] = [None] * world_size
-                    util.gather_object(obj, result, dst=0, group=group)
-                else:
-                    util.gather_object(obj, None, dst=0, group=group)
-
-            # Both paths ran; on rank 0, verify they produced the same result
-            # (We can't easily compare across util_cls in the loop since gather
-            # is collective, but we verify each path individually succeeds and
-            # produces correct content)
+        def _gather(util: GeneralPGUtil, obj: Any) -> list[Any] | None:
             if rank == 0:
-                expected_result: list[Any] = [None] * world_size
-                _NativePGUtil().gather_object(obj, expected_result, dst=0, group=group)
-
-                actual_result: list[Any] = [None] * world_size
-                _gather_object_via_util(_RawPGUtil(), obj, actual_result, dst=0, group=group)
+                result: list[Any] = [None] * world_size
+                util.gather_object(obj, result, dst=0, group=group)
+                return result
             else:
-                _NativePGUtil().gather_object(obj, None, dst=0, group=group)
-                _gather_object_via_util(_RawPGUtil(), obj, None, dst=0, group=group)
+                util.gather_object(obj, None, dst=0, group=group)
+                return None
 
+        for obj in test_objects:
+            native_result = _gather(_NativePGUtil(), obj)
+            raw_result = _gather(_RawPGUtil(), obj)
             if rank == 0:
-                assert (
-                    expected_result == actual_result
-                ), f"Mismatch for obj={obj}: native={expected_result}, torchft={actual_result}"
+                assert native_result == raw_result, f"Mismatch for obj={obj}: native={native_result}, raw={raw_result}"
     finally:
         dist.destroy_process_group()
 
 
-def test_gather_object_native_vs_torchft() -> None:
-    _run(_worker_gather_object_native_vs_torchft)
+def test_gather_object_native_vs_raw() -> None:
+    _run(_worker_gather_object_native_vs_raw)
 
 
 # -- MultiPGUtil tests --
