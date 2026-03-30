@@ -1,6 +1,7 @@
 """Tests for process_group_utils: GroupInfo, GroupsInfo, GeneralPGUtil, MultiPGUtil."""
 
 import os
+from typing import Any
 
 import torch
 import torch.distributed as dist
@@ -12,6 +13,7 @@ from miles.utils.process_group_utils import (
     GroupInfo,
     GroupsInfo,
     MultiPGUtil,
+    _gather_object_non_native,
 )
 
 
@@ -97,11 +99,12 @@ def _worker_general_pg_util(rank: int, world_size: int) -> None:
 
         # Step 3: GroupInfo verification fails with wrong rank
         wrong_rank = (rank + 1) % world_size
+        raised = False
         try:
             GroupInfo(rank=wrong_rank, size=world_size, group=group)
-            assert False, "Should have raised AssertionError"
         except AssertionError:
-            pass
+            raised = True
+        assert raised, "Should have raised AssertionError"
 
         # Step 4: all_reduce SUM
         tensor = torch.tensor([float(rank + 1)])
@@ -204,3 +207,44 @@ def _worker_multi_pg_util_gather_object(rank: int, world_size: int) -> None:
 
 def test_multi_pg_util_gather_object() -> None:
     _run(_worker_multi_pg_util_gather_object)
+
+
+def _worker_gather_object_native_vs_non_native(rank: int, world_size: int) -> None:
+    """Verify _gather_object_non_native produces identical results to dist.gather_object."""
+    _init_gloo(rank, world_size)
+    try:
+        group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
+
+        test_objects = [
+            {"rank": rank, "value": rank * 10},
+            [rank, rank + 1, "hello"],
+            f"string_from_rank_{rank}",
+            (rank, {"nested": True}),
+        ]
+
+        for obj in test_objects:
+            # Step 1: native gather
+            if rank == 0:
+                native_result: list[Any] = [None] * world_size
+                dist.gather_object(obj, native_result, dst=0, group=group)
+            else:
+                dist.gather_object(obj, None, dst=0, group=group)
+
+            # Step 2: non-native gather
+            if rank == 0:
+                non_native_result: list[Any] = [None] * world_size
+                _gather_object_non_native(obj, non_native_result, dst=0, group=group)
+            else:
+                _gather_object_non_native(obj, None, dst=0, group=group)
+
+            # Step 3: compare on root
+            if rank == 0:
+                assert (
+                    native_result == non_native_result
+                ), f"Mismatch for obj={obj}: native={native_result}, non_native={non_native_result}"
+    finally:
+        dist.destroy_process_group()
+
+
+def test_gather_object_native_vs_non_native() -> None:
+    _run(_worker_gather_object_native_vs_non_native)

@@ -4,6 +4,7 @@ from typing import Any
 
 import torch
 import torch.distributed as dist
+from torch.distributed.distributed_c10d import _object_to_tensor, _tensor_to_object
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,19 @@ class GeneralPGUtil:
         else:
             group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
 
+    @classmethod
+    def gather_object(
+        cls,
+        obj: Any,
+        object_gather_list: list[Any] | None,
+        dst: int,
+        group: dist.ProcessGroup,
+    ) -> None:
+        if cls.is_native(group):
+            dist.gather_object(obj, object_gather_list, dst=dst, group=group)
+        else:
+            _gather_object_non_native(obj, object_gather_list, dst=dst, group=group)
+
 
 class MultiPGUtil:
     """Operations across multiple process groups (inner-to-outer)."""
@@ -121,10 +135,77 @@ class MultiPGUtil:
             size = GeneralPGUtil.get_size(group)
             if rank == 0:
                 gathered: list[Any] = [None] * size
-                dist.gather_object(objects, gathered, dst=0, group=group)
+                GeneralPGUtil.gather_object(objects, gathered, dst=0, group=group)
                 objects = [item for sublist in gathered for item in sublist]
             else:
-                dist.gather_object(objects, None, dst=0, group=group)
+                GeneralPGUtil.gather_object(objects, None, dst=0, group=group)
                 return None
 
         return objects
+
+
+def _gather_object_non_native(
+    obj: Any,
+    object_gather_list: list[Any] | None,
+    dst: int,
+    group: dist.ProcessGroup,
+) -> None:
+    """gather_object for non-native (e.g. torchft) process groups.
+
+    Copied from torch.distributed.distributed_c10d.gather_object (PyTorch v2.11.0)
+    with the following modifications:
+    - Replaced dist.get_rank()/get_world_size() with GeneralPGUtil (torchft PG
+      returns wrong values from the C++ base class)
+    - Replaced dist.all_gather()/dist.gather() with direct group.allgather()/
+      group.gather() calls
+    - Removed _rank_not_in_group check, _get_object_coll_device (use cpu),
+      _validate_output_list_for_rank (inline assert), group_dst parameter
+    - Simplified _object_to_tensor/_tensor_to_object calls (no group param
+      needed since we always use cpu device)
+    """
+    # --- Begin: adapted from PyTorch v2.11.0 gather_object ---
+
+    my_group_rank = GeneralPGUtil.get_rank(group)  # was: group.rank()
+    if my_group_rank == dst:
+        assert object_gather_list is not None
+    else:
+        assert object_gather_list is None
+
+    current_device = torch.device("cpu")  # was: _get_object_coll_device(group)
+    input_tensor, local_size = _object_to_tensor(obj, current_device)
+
+    # Gather all local sizes. This is so that we can find the max size, and index
+    # until the correct size when deserializing the tensors.
+    group_size = GeneralPGUtil.get_size(group)  # was: get_world_size(group=group)
+    object_sizes_tensor = torch.zeros(group_size, dtype=torch.long, device=current_device)
+    object_size_list = [object_sizes_tensor[i].unsqueeze(dim=0) for i in range(group_size)]
+    # Allgather tensor sizes. An all-gather is needed here despite this being a
+    # gather, since each rank needs to broadcast a tensor of the same (maximal)
+    # size.
+    group.allgather([object_size_list], [[local_size]]).wait()  # was: all_gather(..., group=group)
+    max_object_size = int(max(object_size_list).item())
+    # Resize tensor to max size across all ranks.
+    input_tensor.resize_(max_object_size)
+    # Avoid populating output tensors if the result won't be gathered on this rank.
+    if my_group_rank == dst:
+        coalesced_output_tensor = torch.empty(max_object_size * group_size, dtype=torch.uint8, device=current_device)
+        # Output tensors are nonoverlapping views of coalesced_output_tensor
+        output_tensors = [
+            coalesced_output_tensor[max_object_size * i : max_object_size * (i + 1)] for i in range(group_size)
+        ]
+    # All ranks call gather with equal-sized tensors.
+    # was: gather(input_tensor, gather_list=..., group_dst=dst, group=group)
+    if my_group_rank == dst:
+        group.gather([output_tensors], [[input_tensor]], dist.GatherOptions(rootRank=dst)).wait()
+    else:
+        group.gather([], [[input_tensor]], dist.GatherOptions(rootRank=dst)).wait()
+
+    if my_group_rank != dst:
+        return
+
+    for i, tensor in enumerate(output_tensors):
+        tensor = tensor.type(torch.uint8)
+        tensor_size = object_size_list[i]
+        object_gather_list[i] = _tensor_to_object(tensor, tensor_size)
+
+    # --- End: adapted from PyTorch v2.11.0 gather_object ---
