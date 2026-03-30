@@ -841,7 +841,6 @@ def initialize_model_and_optimizer(
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(args, role)
     model[0].role = role
     clear_memory()
-
     iteration, _ = load_checkpoint(
         model,
         optimizer,
@@ -849,7 +848,6 @@ def initialize_model_and_optimizer(
         checkpointing_context=checkpointing_context,
         skip_load_to_model_and_opt=False,
     )
-
     check_peak_gpu_memory_after_load(args)
     clear_memory()
 
