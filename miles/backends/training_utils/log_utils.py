@@ -10,6 +10,7 @@ import torch.distributed as dist
 from miles.utils import train_metric_utils
 from miles.utils.flops_utils import calculate_fwd_flops
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step
+from miles.utils.process_group_utils import MultiPGUtil
 from miles.utils.types import RolloutBatch
 
 from ...utils import tracking_utils
@@ -382,7 +383,7 @@ def aggregate_train_losses(
 
     assert len(keys) + 1 == values.numel(), f"Expected {len(keys) + 1} values, got {values.numel()}"
 
-    parallel_state.effective_dp_cp.all_reduce(values, op=dist.ReduceOp.SUM)
+    MultiPGUtil.all_reduce(values, parallel_state.effective_dp_cp.groups_inner_to_outer, op=dist.ReduceOp.SUM)
 
     loss_reduced = {}
     values = values.tolist()

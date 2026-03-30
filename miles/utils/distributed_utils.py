@@ -13,7 +13,7 @@ from torch.distributed.distributed_c10d import (
     rendezvous,
 )
 
-from miles.utils.process_group_utils import GeneralProcessGroupUtil
+from miles.utils.process_group_utils import GeneralPGUtil
 
 GLOO_GROUP = None
 
@@ -129,7 +129,7 @@ def distributed_masked_whiten(
     )
 
     # Aggregate via all_reduce within the DP group
-    GeneralProcessGroupUtil.all_reduce(stats_tensor, process_group, op=dist.ReduceOp.SUM)
+    GeneralPGUtil.all_reduce(stats_tensor, process_group, op=dist.ReduceOp.SUM)
 
     # Calculate global stats from aggregated results
     global_sum, global_sum_sq, global_mask_sum = stats_tensor

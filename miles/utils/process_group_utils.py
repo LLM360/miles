@@ -21,13 +21,10 @@ class GroupInfo:
     def _verify_group(self, group: dist.ProcessGroup | None, name: str) -> None:
         if group is None:
             return
-        actual_rank = GeneralProcessGroupUtil.get_rank(group)
-        actual_size = GeneralProcessGroupUtil.get_size(group)
+        actual_rank = GeneralPGUtil.get_rank(group)
+        actual_size = GeneralPGUtil.get_size(group)
         assert actual_rank == self.rank, f"{name}: rank mismatch: expected {self.rank}, got {actual_rank}"
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
-
-    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp) -> None:
-        GeneralProcessGroupUtil.all_reduce(tensor, self.group, op)
 
 
 @dataclass(frozen=True)
@@ -48,31 +45,8 @@ class GroupsInfo:
             groups_inner_to_outer=[inner.group, outer.group],
         )
 
-    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp) -> None:
-        _all_reduce_multi(tensor, self.groups_inner_to_outer, op)
 
-    def gather_object(self, obj: Any, group_infos_inner_to_outer: list[GroupInfo]) -> list[Any] | None:
-        """Gather objects across multiple groups. Returns full list on rank 0, None on others.
-
-        Uses gloo_group from each GroupInfo for gather_object (which requires gloo).
-        """
-        assert len(group_infos_inner_to_outer) == len(self.groups_inner_to_outer)
-
-        objects = [obj]
-        for info in group_infos_inner_to_outer:
-            assert info.gloo_group is not None, f"gloo_group required for gather_object, but {info} has None"
-            if info.rank == 0:
-                gathered: list[Any] = [None] * info.size
-                dist.gather_object(objects, gathered, dst=0, group=info.gloo_group)
-                objects = [item for sublist in gathered for item in sublist]
-            else:
-                dist.gather_object(objects, None, dst=0, group=info.gloo_group)
-                return None
-
-        return objects
-
-
-class GeneralProcessGroupUtil:
+class GeneralPGUtil:
     """Support both native ProcessGroup and torchft's custom process groups."""
 
     @classmethod
@@ -113,20 +87,46 @@ class GeneralProcessGroupUtil:
             group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
 
 
-def _all_reduce_multi(
-    tensor: torch.Tensor,
-    groups_inner_to_outer: Sequence[dist.ProcessGroup],
-    op: dist.ReduceOp,
-) -> None:
-    """Reduce then broadcast across multiple groups for bitwise-equal results.
+class MultiPGUtil:
+    """Operations across multiple process groups (inner-to-outer)."""
 
-    Inner-to-outer reduce collapses values to the global root (rank 0 in every
-    group). Outer-to-inner broadcast fans the result back out. Because broadcast
-    is a pure copy, all ranks receive a bitwise-identical result regardless of
-    floating-point non-determinism in the reduce path.
-    """
-    for group in groups_inner_to_outer:
-        GeneralProcessGroupUtil.reduce(tensor, group, op)
+    @staticmethod
+    def all_reduce(
+        tensor: torch.Tensor,
+        groups_inner_to_outer: Sequence[dist.ProcessGroup],
+        op: dist.ReduceOp,
+    ) -> None:
+        """Reduce then broadcast across multiple groups for bitwise-equal results.
 
-    for group in reversed(groups_inner_to_outer):
-        GeneralProcessGroupUtil.broadcast(tensor, group)
+        Inner-to-outer reduce collapses values to the global root (rank 0 in every
+        group). Outer-to-inner broadcast fans the result back out. Because broadcast
+        is a pure copy, all ranks receive a bitwise-identical result regardless of
+        floating-point non-determinism in the reduce path.
+        """
+        for group in groups_inner_to_outer:
+            GeneralPGUtil.reduce(tensor, group, op)
+
+        for group in reversed(groups_inner_to_outer):
+            GeneralPGUtil.broadcast(tensor, group)
+
+    @staticmethod
+    def gather_object(
+        obj: Any,
+        group_infos_inner_to_outer: list[GroupInfo],
+    ) -> list[Any] | None:
+        """Gather objects across multiple groups. Returns full list on rank 0, None on others.
+
+        Uses gloo_group from each GroupInfo for gather_object (which requires gloo).
+        """
+        objects = [obj]
+        for info in group_infos_inner_to_outer:
+            assert info.gloo_group is not None, f"gloo_group required for gather_object, but {info} has None"
+            if info.rank == 0:
+                gathered: list[Any] = [None] * info.size
+                dist.gather_object(objects, gathered, dst=0, group=info.gloo_group)
+                objects = [item for sublist in gathered for item in sublist]
+            else:
+                dist.gather_object(objects, None, dst=0, group=info.gloo_group)
+                return None
+
+        return objects

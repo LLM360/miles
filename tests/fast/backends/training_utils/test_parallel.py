@@ -1,4 +1,4 @@
-"""Tests for GroupsInfo and _all_reduce_multi using real Gloo process groups."""
+"""Tests for GroupsInfo and MultiPGUtil using real Gloo process groups."""
 
 import os
 
@@ -7,7 +7,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.distributed.device_mesh import init_device_mesh
 
-from miles.utils.process_group_utils import GroupInfo, GroupsInfo, _all_reduce_multi  # noqa: F401
+from miles.utils.process_group_utils import GroupInfo, GroupsInfo, MultiPGUtil
 
 
 class TestGroupsInfo:
@@ -52,7 +52,7 @@ class TestGroupsInfo:
 
 
 class TestAllReduceMulti:
-    """Test _all_reduce_multi with real Gloo groups via 2D DeviceMesh.
+    """Test MultiPGUtil.all_reduce with real Gloo groups via 2D DeviceMesh.
 
     Uses a (2, 2) mesh with dimensions ("outer", "inner") on 4 ranks.
 
@@ -79,14 +79,14 @@ class TestAllReduceMulti:
 
     @staticmethod
     def _worker_single_group(rank: int, world_size: int) -> None:
-        """_all_reduce_multi with one inner group == allreduce within row."""
+        """MultiPGUtil.all_reduce with one inner group == allreduce within row."""
         TestAllReduceMulti._init_gloo(rank, world_size)
         try:
             mesh = init_device_mesh("cpu", mesh_shape=(2, 2), mesh_dim_names=("outer", "inner"))
             inner_group = mesh.get_group("inner")
 
             tensor = torch.tensor([float(rank + 1)])
-            _all_reduce_multi(tensor, [inner_group], op=dist.ReduceOp.SUM)
+            MultiPGUtil.all_reduce(tensor, [inner_group], op=dist.ReduceOp.SUM)
 
             # inner groups (same row): {0,1} sum=1+2=3, {2,3} sum=3+4=7
             expected = {0: 3.0, 1: 3.0, 2: 7.0, 3: 7.0}[rank]
@@ -99,7 +99,7 @@ class TestAllReduceMulti:
 
     @staticmethod
     def _worker_two_groups(rank: int, world_size: int) -> None:
-        """_all_reduce_multi([inner, outer]) should produce the global sum on all ranks."""
+        """MultiPGUtil.all_reduce([inner, outer]) should produce the global sum on all ranks."""
         TestAllReduceMulti._init_gloo(rank, world_size)
         try:
             mesh = init_device_mesh("cpu", mesh_shape=(2, 2), mesh_dim_names=("outer", "inner"))
@@ -107,7 +107,7 @@ class TestAllReduceMulti:
             outer_group = mesh.get_group("outer")
 
             tensor = torch.tensor([float(rank + 1)])
-            _all_reduce_multi(tensor, [inner_group, outer_group], op=dist.ReduceOp.SUM)
+            MultiPGUtil.all_reduce(tensor, [inner_group, outer_group], op=dist.ReduceOp.SUM)
 
             # Step 1 inner SUM (same row): {0,1}->3, {2,3}->7
             # Step 2 outer SUM (same col): {0,2}->3+7=10, {1,3}->3+7=10
@@ -124,7 +124,7 @@ class TestAllReduceMulti:
         TestAllReduceMulti._init_gloo(rank, world_size)
         try:
             tensor = torch.tensor([42.0])
-            _all_reduce_multi(tensor, [], op=dist.ReduceOp.SUM)
+            MultiPGUtil.all_reduce(tensor, [], op=dist.ReduceOp.SUM)
             assert tensor.item() == 42.0
         finally:
             TestAllReduceMulti._cleanup()
