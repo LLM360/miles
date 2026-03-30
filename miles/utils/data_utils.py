@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Any
 
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 

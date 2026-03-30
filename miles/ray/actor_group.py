@@ -44,9 +44,7 @@ class RayTrainGroup:
         num_cells = compute_megatron_dp_size(args) if args.independent_dp else 1
         total_gpus = num_nodes * num_gpus_per_node
         gpus_per_cell = total_gpus // num_cells
-        assert total_gpus % num_cells == 0, (
-            f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
-        )
+        assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
         if num_cells > 1:
             self._independent_dp_store, independent_dp_store_addr = _create_tcp_store()
@@ -57,26 +55,24 @@ class RayTrainGroup:
         self._cells: list[RayTrainCell] = []
         for cell_id in range(num_cells):
             cell_pg = _slice_pg(pg, start=cell_id * gpus_per_cell, end=(cell_id + 1) * gpus_per_cell)
-            self._cells.append(RayTrainCell(
-                args=args,
-                gpus_per_cell=gpus_per_cell,
-                pg=cell_pg,
-                num_gpus_per_actor=num_gpus_per_actor,
-                role=role,
-                cell_id=cell_id,
-                num_cells=num_cells,
-                independent_dp_store_addr=independent_dp_store_addr,
-            ))
+            self._cells.append(
+                RayTrainCell(
+                    args=args,
+                    gpus_per_cell=gpus_per_cell,
+                    pg=cell_pg,
+                    num_gpus_per_actor=num_gpus_per_actor,
+                    role=role,
+                    cell_id=cell_id,
+                    num_cells=num_cells,
+                    independent_dp_store_addr=independent_dp_store_addr,
+                )
+            )
 
     def _execute(self, fn_name, *args, **kwargs):
         return ray.get(self._async_execute(fn_name, *args, **kwargs))
 
     def _async_execute(self, fn_name, *args, **kwargs):
-        return [
-            future
-            for cell in self._cells
-            for future in cell.async_execute(fn_name, *args, **kwargs)
-        ]
+        return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
 
     def async_init(self, args, role: str, with_ref: bool = False):
         """
@@ -107,11 +103,13 @@ class RayTrainGroup:
         self._execute("clear_memory")
 
     def connect(self, critic_group: "RayTrainGroup"):
-        ray.get([
-            future
-            for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
-            for future in cell.async_connect(critic_cell)
-        ])
+        ray.get(
+            [
+                future
+                for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
+                for future in cell.async_connect(critic_cell)
+            ]
+        )
 
     def set_rollout_manager(self, rollout_manager):
         self._execute("set_rollout_manager", rollout_manager)
@@ -194,8 +192,12 @@ class RayTrainCell:
                     placement_group_bundle_index=reordered_bundle_indices[rank],
                 ),
             ).remote(
-                world_size, rank, master_addr, master_port,
-                cell_id=self.cell_id, num_cells=self.num_cells,
+                world_size,
+                rank,
+                master_addr,
+                master_port,
+                cell_id=self.cell_id,
+                num_cells=self.num_cells,
                 independent_dp_store_addr=independent_dp_store_addr,
             )
             if rank == 0:
