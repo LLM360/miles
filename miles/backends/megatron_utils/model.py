@@ -561,7 +561,7 @@ def train(
     pre_hook_enabled = False
 
     if args.reset_optimizer_states:
-        if is_megatron_main_rank():
+        if is_megatron_main_rank(dp_cp_group=TODO):
             print("Reset optimizer states")
         for chained_optimizer in optimizer.chained_optimizers:
             for group in chained_optimizer.optimizer.param_groups:
@@ -640,7 +640,7 @@ def train(
                     check_mtp_loss(mtp_losses)
 
         # per train step log.
-        if is_megatron_main_rank():
+        if is_megatron_main_rank(dp_cp_group=TODO):
             accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
             role = getattr(model[0], "role", "actor")
             role_tag = "" if role == "actor" else f"{role}-"

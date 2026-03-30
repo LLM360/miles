@@ -12,6 +12,7 @@ from megatron.training.global_vars import _build_tokenizer, set_args
 from miles.backends.training_utils.parallel import get_parallel_state, set_parallel_state
 
 from .parallel import _create_indep_dp_group, create_megatron_parallel_state
+from ...utils.process_group_utils import GroupsInfo, GroupInfo
 
 logger = logging.getLogger(__name__)
 
@@ -125,9 +126,9 @@ def init(
 
 
 # TODO shall we use a simpler method to determine which rank to init wandb?
-def is_megatron_main_rank():
+def is_megatron_main_rank(*, dp_cp_group: GroupInfo | GroupsInfo):
     return (
-        get_parallel_state().effective_dp_cp.rank == 0
+        dp_cp_group.rank == 0
         and mpu.get_tensor_model_parallel_rank() == 0
         and mpu.get_pipeline_model_parallel_rank() == mpu.get_pipeline_model_parallel_world_size() - 1
     )
