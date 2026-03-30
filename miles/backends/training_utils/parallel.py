@@ -47,7 +47,7 @@ class GroupInfo:
         assert actual_size == self.size, f"{name}: size mismatch: expected {self.size}, got {actual_size}"
 
     def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
-        all_reduce_multi(tensor, [self.group], op)
+        dist.all_reduce(tensor, op=op, group=self.group)
 
 
 def _is_native_process_group(group: dist.ProcessGroup) -> bool:
@@ -114,16 +114,11 @@ class ParallelState:
 
 
 def _reduce_on_group(tensor: torch.Tensor, group: dist.ProcessGroup, op: dist.ReduceOp) -> None:
-    opts = dist.ReduceOptions()
-    opts.reduceOp = op
-    opts.rootRank = 0
-    group.reduce([tensor], opts).wait()
+    group.reduce([tensor], dist.ReduceOptions(reduceOp=op, rootRank=0)).wait()
 
 
 def _broadcast_on_group(tensor: torch.Tensor, group: dist.ProcessGroup) -> None:
-    opts = dist.BroadcastOptions()
-    opts.rootRank = 0
-    group.broadcast([tensor], opts).wait()
+    group.broadcast([tensor], dist.BroadcastOptions(rootRank=0)).wait()
 
 
 def all_reduce_multi(
