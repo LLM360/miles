@@ -72,5 +72,5 @@ def save_to_memory(
         checkpointing_context={'local_checkpoint_manager': manager},
         non_persistent_ckpt=True,
     )
-    state, _ = manager.load()
-    return state
+    state_dict, _ = manager.load()
+    return state_dict
