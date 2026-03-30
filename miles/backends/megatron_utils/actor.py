@@ -3,6 +3,7 @@ import random
 import socket
 from argparse import Namespace
 from contextlib import nullcontext
+from datetime import timedelta
 
 import ray
 import torch
@@ -53,7 +54,20 @@ class MegatronTrainRayActor(TrainRayActor):
         args: Namespace,
         role: str,
         with_ref: bool = False,
+        recv_ckpt_src_rank: int | None = None,
+        quorum_id: int = 0,
     ) -> int | None:
+        """Initialize the actor.
+
+        Args:
+            args: Runtime arguments.
+            role: Logical role ("actor" or "critic").
+            with_ref: Whether to load a reference model.
+            recv_ckpt_src_rank: If not None, receive checkpoint from this cell_id
+                via PGTransport instead of loading from disk.
+            quorum_id: Quorum ID for the indep_dp process group. Incremented on
+                each stop/start cycle to create fresh groups.
+        """
         monkey_patch_torch_dist()
 
         super().init(args, role, with_ref)
@@ -63,6 +77,7 @@ class MegatronTrainRayActor(TrainRayActor):
             cell_id=self._cell_id,
             num_cells=self._num_cells,
             indep_dp_store_addr=self._indep_dp_store_addr,
+            quorum_id=quorum_id,
         )
 
         if args.dumper_enable:
@@ -115,6 +130,9 @@ class MegatronTrainRayActor(TrainRayActor):
 
         self.parallel_state = get_parallel_state()
         verify_megatron_parallel_state(self.parallel_state, self.model)
+
+        if recv_ckpt_src_rank is not None:
+            loaded_rollout_id = self._recv_ckpt_from_peer(recv_ckpt_src_rank)
 
         if role == "critic":
             if self.args.offload_train:
@@ -177,6 +195,50 @@ class MegatronTrainRayActor(TrainRayActor):
         self.prof.on_init_end()
 
         return start_rollout_id
+
+    def _recv_ckpt_from_peer(self, src_rank: int, timeout_seconds: int = 120) -> int:
+        """Receive checkpoint from a healthy cell via torchft PGTransport.
+
+        Args:
+            src_rank: Source cell_id in the indep_dp process group.
+            timeout_seconds: Timeout for the NCCL recv operation.
+
+        Returns:
+            The iteration (rollout_id) from the received checkpoint.
+        """
+        from miles.backends.megatron_utils.in_memory_checkpoint import InMemoryCheckpointManager
+        from torchft.checkpointing.pg_transport import PGTransport
+
+        timeout = timedelta(seconds=timeout_seconds)
+        transport = PGTransport(
+            pg=self.parallel_state.indep_dp.group,
+            timeout=timeout,
+            device=torch.device("cuda"),
+        )
+        state_dict = transport.recv_checkpoint(
+            src_rank=src_rank,
+            metadata=transport.metadata(),
+            step=0,
+            timeout=timeout,
+        )
+        logger.info(f"Received checkpoint from cell {src_rank}")
+
+        manager = InMemoryCheckpointManager()
+        manager._state_dict = state_dict
+        manager.latest_iteration = 0
+
+        _, _ = load_checkpoint(
+            self.model,
+            self.optimizer,
+            self.opt_param_scheduler,
+            checkpointing_context={'local_checkpoint_manager': manager},
+            skip_load_to_model_and_opt=False,
+            in_memory=True,
+        )
+
+        iteration = manager.latest_iteration
+        logger.info(f"Loaded received checkpoint at iteration {iteration}")
+        return iteration
 
     @timer
     def sleep(self) -> None:
@@ -571,6 +633,38 @@ class MegatronTrainRayActor(TrainRayActor):
 
         self.weights_backuper.backup(model_tag)
         self._active_model_tag = model_tag
+
+    def send_ckpt(self, dst_rank: int, timeout_seconds: int = 120) -> None:
+        """Send in-memory checkpoint to a destination cell via torchft PGTransport.
+
+        Args:
+            dst_rank: Destination cell_id in the indep_dp process group.
+            timeout_seconds: Timeout for the NCCL send operation.
+        """
+        from miles.backends.megatron_utils.in_memory_checkpoint import save_to_memory
+        from torchft.checkpointing.pg_transport import PGTransport
+
+        state_dict = save_to_memory(
+            iteration=self._last_rollout_id if hasattr(self, '_last_rollout_id') else 0,
+            model=self.model,
+            optimizer=self.optimizer,
+            opt_param_scheduler=self.opt_param_scheduler,
+        )
+
+        timeout = timedelta(seconds=timeout_seconds)
+        transport = PGTransport(
+            pg=self.parallel_state.indep_dp.group,
+            timeout=timeout,
+            device=torch.device("cuda"),
+        )
+        transport.send_checkpoint(
+            dst_ranks=[dst_rank],
+            step=self._last_rollout_id if hasattr(self, '_last_rollout_id') else 0,
+            state_dict=state_dict,
+            timeout=timeout,
+        )
+        transport.disallow_checkpoint()
+        logger.info(f"Sent checkpoint to cell {dst_rank}")
 
     def connect_actor_critic(
         self,

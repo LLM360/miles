@@ -63,6 +63,7 @@ def init(
     cell_id: int,
     num_cells: int,
     indep_dp_store_addr: str | None,
+    quorum_id: int = 0,
 ):
     set_args(args)
     if args.enable_experimental:
@@ -78,6 +79,7 @@ def init(
         num_cells=num_cells,
         megatron_rank=dist.get_rank(),
         megatron_world_size=dist.get_world_size(),
+        quorum_id=quorum_id,
     )
 
     set_parallel_state(create_megatron_parallel_state(indep_dp=indep_dp))
