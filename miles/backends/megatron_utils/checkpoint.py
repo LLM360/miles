@@ -101,7 +101,11 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, checkpointing_con
     # ref: how megatron `load_checkpoint` gets directory
     args = get_args()
 
-    def _do_load_megatron():
+    if in_memory:
+        from miles.backends.megatron_utils.in_memory_checkpoint import _assert_args_for_in_memory_checkpoint
+
+        _assert_args_for_in_memory_checkpoint(args)
+        assert 'local_checkpoint_manager' in checkpointing_context
         return _load_checkpoint_megatron(
             ddp_model=ddp_model,
             optimizer=optimizer,
@@ -110,13 +114,6 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, checkpointing_con
             skip_load_to_model_and_opt=skip_load_to_model_and_opt,
         )
 
-    if in_memory:
-        from miles.backends.megatron_utils.in_memory_checkpoint import _assert_args_for_in_memory_checkpoint
-
-        _assert_args_for_in_memory_checkpoint(args)
-        assert 'local_checkpoint_manager' in checkpointing_context
-        return _do_load_megatron()
-
     load_path = args.load
 
     assert Path(load_path).exists() and _is_dir_nonempty(
@@ -124,7 +121,13 @@ def load_checkpoint(ddp_model, optimizer, opt_param_scheduler, checkpointing_con
     ), f"{args.load=} does not exist or is an empty directory. Did you specify the wrong folder?"
 
     if _is_megatron_checkpoint(load_path):
-        result = _do_load_megatron()
+        result = _load_checkpoint_megatron(
+            ddp_model=ddp_model,
+            optimizer=optimizer,
+            opt_param_scheduler=opt_param_scheduler,
+            checkpointing_context=checkpointing_context,
+            skip_load_to_model_and_opt=skip_load_to_model_and_opt,
+        )
     else:
         result = _load_checkpoint_hf(
             ddp_model=ddp_model,
