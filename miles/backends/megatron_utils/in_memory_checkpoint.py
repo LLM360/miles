@@ -35,11 +35,9 @@ class InMemoryCheckpointManager:
         return None
 
     def find_latest(self) -> int:
-        """Return latest stored iteration. -1 if nothing stored."""
         return self.latest_iteration
 
     def load(self) -> tuple[object, str]:
-        """Return stored state_dict object."""
         assert self.latest_iteration >= 0, "No in-memory checkpoint available"
         assert self._state_dict is not None
         ans = self._state_dict
