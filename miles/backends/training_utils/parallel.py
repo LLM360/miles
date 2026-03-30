@@ -33,6 +33,13 @@ class GroupInfo:
     src_rank: int | None = None
 
 
+@dataclass(frozen=True)
+class GroupsInfo:
+    rank: int
+    size: int
+    groups: list[dist.ProcessGroup]
+
+
 @dataclass
 class ParallelState:
     """Core parallel state shared across all backends.
@@ -57,38 +64,21 @@ class ParallelState:
         return _DPMode.INTRA if indep_trivial else _DPMode.INDEP
 
     @property
-    def effective_dp_rank(self) -> int:
-        return {_DPMode.INTRA: self.intra_dp.rank, _DPMode.INDEP: self.indep_dp.rank}[self._dp_mode]
+    def effective_dp(self) -> GroupInfo:
+        return {_DPMode.INTRA: self.intra_dp, _DPMode.INDEP: self.indep_dp}[self._dp_mode]
 
     @property
-    def effective_dp_size(self) -> int:
-        return {_DPMode.INTRA: self.intra_dp.size, _DPMode.INDEP: self.indep_dp.size}[self._dp_mode]
-
-    @property
-    def effective_dp_cp_rank(self) -> int:
-        return self.indep_dp.rank * self.intra_dp_cp.size + self.intra_dp_cp.rank
-
-    @property
-    def effective_dp_cp_size(self) -> int:
-        return self.indep_dp.size * self.intra_dp_cp.size
-
-    @property
-    def effective_dp_group(self) -> list["dist.ProcessGroup"]:
-        groups: list[dist.ProcessGroup] = []
-        if self.intra_dp.size > 1:
-            groups.append(self.intra_dp.group)
-        if self.indep_dp.size > 1:
-            groups.append(self.indep_dp.group)
-        return groups
-
-    @property
-    def effective_dp_cp_group(self) -> list["dist.ProcessGroup"]:
+    def effective_dp_cp(self) -> GroupsInfo:
         groups: list[dist.ProcessGroup] = []
         if self.intra_dp_cp.size > 1:
             groups.append(self.intra_dp_cp.group)
         if self.indep_dp.size > 1:
             groups.append(self.indep_dp.group)
-        return groups
+        return GroupsInfo(
+            rank=self.indep_dp.rank * self.intra_dp_cp.size + self.intra_dp_cp.rank,
+            size=self.indep_dp.size * self.intra_dp_cp.size,
+            groups=groups,
+        )
 
 
 def all_reduce_multi(

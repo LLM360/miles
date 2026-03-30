@@ -87,7 +87,7 @@ class MegatronTrainRayActor(TrainRayActor):
             dist.barrier(group=get_gloo_group())
 
         self.train_parallel_config = {
-            "dp_size": get_parallel_state().effective_dp_size,
+            "dp_size": get_parallel_state().effective_dp.size,
         }
         dist.barrier(group=get_gloo_group())
 
