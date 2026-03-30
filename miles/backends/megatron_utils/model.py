@@ -741,7 +741,9 @@ def save(
             optimizer,
             opt_param_scheduler,
             num_floating_point_operations_so_far=0,
-            checkpointing_context=checkpointing_context or {},
+            train_data_iterator=None,
+            preprocess_common_state_dict_fn=None,
+            checkpointing_context=checkpointing_context,
             non_persistent_ckpt=non_persistent_ckpt,
         )
 
