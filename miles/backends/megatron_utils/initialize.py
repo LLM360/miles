@@ -57,7 +57,7 @@ def _initialize_distributed(args, get_embedding_ranks=None, get_position_embeddi
     )
 
 
-def init(args):
+def init(args, cell_id: int, num_cells: int):
     set_args(args)
     if args.enable_experimental:
         logger.info("Enable megatron experimental")
@@ -66,7 +66,7 @@ def init(args):
     # Pytorch distributed.
     _initialize_distributed(args)
 
-    set_parallel_state(create_megatron_parallel_state())
+    set_parallel_state(create_megatron_parallel_state(indep_dp_rank=cell_id, indep_dp_size=num_cells))
 
     # https://github.com/NVIDIA/Megatron-LM/issues/1563
     assert np.__version__.startswith("1."), "Megatron does not support numpy 2.x"

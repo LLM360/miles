@@ -59,12 +59,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         super().init(args, role, with_ref)
 
-        init(args)
-
-        if self._num_cells > 1:
-            ps = get_parallel_state()
-            ps.indep_dp_rank = self._cell_id
-            ps.indep_dp_size = self._num_cells
+        init(args, cell_id=self._cell_id, num_cells=self._num_cells)
 
         if args.dumper_enable:
             from sglang.srt.debug_utils.dumper import dumper
