@@ -3,8 +3,6 @@ from typing import Any
 
 import torch
 import torch.distributed as dist
-
-from miles.backends.training_utils.parallel import GeneralProcessGroupUtil
 from torch.distributed.distributed_c10d import (
     Backend,
     PrefixStore,
@@ -15,6 +13,7 @@ from torch.distributed.distributed_c10d import (
     rendezvous,
 )
 
+from miles.utils.process_group_utils import GeneralProcessGroupUtil
 
 GLOO_GROUP = None
 

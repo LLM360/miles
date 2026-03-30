@@ -49,8 +49,7 @@ def gather_log_data(
         )
 
         reduced_log_dict = {
-            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / effective_dp_cp_size
-            for key in log_dict
+            f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / effective_dp_cp_size for key in log_dict
         }
 
         if effective_dp_cp.rank == 0:
@@ -326,7 +325,9 @@ def log_perf_data(rollout_id: int, args: Namespace, parallel_state: ParallelStat
         rollout_id=rollout_id,
         args=args,
         is_primary_rank=(
-            parallel_state.tp.rank == 0 and parallel_state.is_pp_last_stage and parallel_state.effective_dp_cp.rank == 0
+            parallel_state.tp.rank == 0
+            and parallel_state.is_pp_last_stage
+            and parallel_state.effective_dp_cp.rank == 0
         ),
         compute_total_fwd_flops=lambda seq_lens: calculate_fwd_flops(seqlens=seq_lens, args=args)
         / dist.get_world_size()
