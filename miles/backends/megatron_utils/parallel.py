@@ -57,15 +57,15 @@ def _compute_vpp_fields() -> tuple[int, int | None]:
     return vpp_size_value, get_args().pipeline_model_parallel_size
 
 
-def _create_indep_dp_pg(
+def _create_indep_dp_group(
     store_addr: str | None,
     cell_id: int,
     num_cells: int,
     megatron_rank: int,
     megatron_world_size: int,
-) -> dist.ProcessGroup | None:
+) -> GroupInfo:
     if num_cells <= 1:
-        return None
+        return GroupInfo(rank=0, size=1, group=None)
 
     from torchft.process_group import ProcessGroupNCCL
 
@@ -84,7 +84,7 @@ def _create_indep_dp_pg(
         f"Configured independent DP PG: cell_id={cell_id}, num_cells={num_cells}, "
         f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}"
     )
-    return pg
+    return GroupInfo(rank=cell_id, size=num_cells, group=pg)
 
 
 def verify_megatron_parallel_state(

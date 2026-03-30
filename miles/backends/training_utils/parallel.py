@@ -69,16 +69,21 @@ class ParallelState:
 
     @property
     def effective_dp_cp(self) -> GroupsInfo:
-        groups: list[dist.ProcessGroup] = []
-        if self.intra_dp_cp.size > 1:
-            groups.append(self.intra_dp_cp.group)
-        if self.indep_dp.size > 1:
-            groups.append(self.indep_dp.group)
-        return GroupsInfo(
-            rank=self.indep_dp.rank * self.intra_dp_cp.size + self.intra_dp_cp.rank,
-            size=self.indep_dp.size * self.intra_dp_cp.size,
-            groups=groups,
-        )
+        return {
+            _DPMode.INTRA: GroupsInfo(
+                rank=self.intra_dp_cp.rank,
+                size=self.intra_dp_cp.size,
+                groups=[self.intra_dp_cp.group] if self.intra_dp_cp.size > 1 else [],
+            ),
+            _DPMode.INDEP: GroupsInfo(
+                rank=self.indep_dp.rank * self.intra_dp_cp.size + self.intra_dp_cp.rank,
+                size=self.indep_dp.size * self.intra_dp_cp.size,
+                groups=[g for g in [
+                    self.intra_dp_cp.group if self.intra_dp_cp.size > 1 else None,
+                    self.indep_dp.group,
+                ] if g is not None],
+            ),
+        }[self._dp_mode]
 
 
 def all_reduce_multi(
