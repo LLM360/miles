@@ -44,7 +44,7 @@ class GroupsInfo:
         return cls(rank=info.rank, size=info.size, groups=[info.group])
 
     @classmethod
-    def from_pair(cls, inner: GroupInfo, outer: GroupInfo) -> "GroupsInfo":
+    def from_pair(cls, *, inner: GroupInfo, outer: GroupInfo) -> "GroupsInfo":
         return cls(
             rank=outer.rank * inner.size + inner.rank,
             size=outer.size * inner.size,
