@@ -27,6 +27,7 @@ class InMemoryCheckpointManager:
 
     def save(self, state_dict: object, iteration: int, is_async: bool = False) -> None:
         """Store state_dict object reference in memory."""
+        assert self._state_dict is None
         self._state_dict = state_dict
         self.latest_iteration = iteration
         if torch.distributed.is_initialized():
@@ -40,7 +41,10 @@ class InMemoryCheckpointManager:
     def load(self) -> tuple[object, str]:
         """Return stored state_dict object."""
         assert self.latest_iteration >= 0, "No in-memory checkpoint available"
-        return self._state_dict, f"<in-memory-iter-{self.latest_iteration}>"
+        assert self._state_dict is not None
+        ans = self._state_dict
+        self._state_dict = None
+        return ans, f"<in-memory-iter-{self.latest_iteration}>"
 
 
 def _assert_args_for_in_memory_checkpoint(args: object) -> None:
