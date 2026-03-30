@@ -8,7 +8,6 @@ from argparse import Namespace
 from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import torch
 import torch.distributed as dist

@@ -189,7 +189,9 @@ class _StateRunning(StrictBaseModel):
 class _StateStopped(StrictBaseModel):
     type: Literal["stopped"] = "stopped"
 
-_CellState = Union[what]
+
+_CellState = Union[_StatePending, _StateRunning, _StateStopped]
+
 
 class RayTrainCell:
     def __init__(
@@ -214,32 +216,42 @@ class RayTrainCell:
         self._num_gpus_per_actor = num_gpus_per_actor
         self._indep_dp_store_addr = indep_dp_store_addr
 
-        self._actor_handles: list | None = self._create_actors()
+        actor_handles = self._create_actors()
+        self._state: _CellState = _StateRunning(actor_handles=actor_handles)
 
     @property
     def is_running(self) -> bool:
-        return self._actor_handles is not None
+        return isinstance(self._state, _StateRunning)
+
+    def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
+        assert isinstance(self._state, _StateRunning), f"Cell {self.cell_id} is not running (state={self._state.type})"
+        return self._state.actor_handles
 
     def stop(self) -> None:
-        assert self._actor_handles is not None
-        for actor in self._actor_handles:
+        handles = self._get_actor_handles()
+        for actor in handles:
             ray.kill(actor)
-        self._actor_handles = None
+        self._state = _StateStopped()
         logger.info(f"Killed all actors in cell {self.cell_id}")
 
     def recreate_actors(self) -> None:
-        assert self._actor_handles is None, "Cannot recreate actors while cell is running"
-        self._actor_handles = self._create_actors()
+        assert isinstance(self._state, _StateStopped), (
+            f"Cannot recreate actors for cell {self.cell_id} (state={self._state.type})"
+        )
+        actor_handles = self._create_actors()
+        self._state = _StateRunning(actor_handles=actor_handles)
         logger.info(f"Recreated actors for cell {self.cell_id}")
 
     def refs(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
-        assert self._actor_handles is not None, f"Cell {self.cell_id} is stopped"
-        return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in self._actor_handles]
+        handles = self._get_actor_handles()
+        return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles]
 
     def refs_connect(self, critic_cell: "RayTrainCell") -> list[ray.ObjectRef]:
+        handles = self._get_actor_handles()
+        critic_handles = critic_cell._get_actor_handles()
         return [
             actor.connect_actor_critic.remote(critic)
-            for actor, critic in zip(self._actor_handles, critic_cell._actor_handles, strict=False)
+            for actor, critic in zip(handles, critic_handles, strict=False)
         ]
 
     def _create_actors(self) -> list:
