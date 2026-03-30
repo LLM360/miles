@@ -16,9 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_megatron_parallel_state(
-    indep_dp_rank: int,
-    indep_dp_size: int,
-    indep_dp_group: "dist.ProcessGroup | None",
+    indep_dp: GroupInfo,
 ) -> ParallelState:
     vpp_size, microbatch_group_size_per_vp_stage = _compute_vpp_fields()
 
@@ -44,11 +42,7 @@ def create_megatron_parallel_state(
             size=mpu.get_tensor_model_parallel_world_size(),
             group=mpu.get_tensor_model_parallel_group(),
         ),
-        indep_dp=GroupInfo(
-            rank=indep_dp_rank,
-            size=indep_dp_size,
-            group=indep_dp_group,
-        ),
+        indep_dp=indep_dp,
         is_pp_last_stage=mpu.is_pipeline_last_stage(),
         vpp_size=vpp_size,
         microbatch_group_size_per_vp_stage=microbatch_group_size_per_vp_stage,

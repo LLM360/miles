@@ -9,7 +9,7 @@ from megatron.core.config import set_experimental_flag
 from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
 from megatron.training.global_vars import _build_tokenizer, set_args
 
-from miles.backends.training_utils.parallel import get_parallel_state, set_parallel_state
+from miles.backends.training_utils.parallel import GroupInfo, get_parallel_state, set_parallel_state
 
 from .parallel import _create_indep_dp_pg, create_megatron_parallel_state
 
@@ -82,9 +82,7 @@ def init(
 
     set_parallel_state(
         create_megatron_parallel_state(
-            indep_dp_rank=cell_id,
-            indep_dp_size=num_cells,
-            indep_dp_group=indep_dp_group,
+            indep_dp=GroupInfo(rank=cell_id, size=num_cells, group=indep_dp_group),
         )
     )
 
