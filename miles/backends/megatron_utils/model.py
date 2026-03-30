@@ -829,7 +829,7 @@ def initialize_model_and_optimizer(
         model,
         optimizer,
         opt_param_scheduler,
-        checkpointing_context={},
+        checkpointing_context={'local_checkpoint_manager': TODO} if TODO else {},
         skip_load_to_model_and_opt=False,
     )
     check_peak_gpu_memory_after_load(args)
