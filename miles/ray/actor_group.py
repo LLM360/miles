@@ -76,6 +76,9 @@ class RayTrainGroup:
     def _execute(self, fn_name, *args, **kwargs):
         return ray.get(self._async_execute(fn_name, *args, **kwargs))
 
+    def _execute_first_cell(self, fn_name, *args, **kwargs):
+        return ray.get(self._cells[0].async_execute(fn_name, *args, **kwargs))
+
     def _async_execute(self, fn_name, *args, **kwargs):
         return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
 
@@ -91,20 +94,12 @@ class RayTrainGroup:
         return self._async_execute("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False):
-        """Save actor model.
-
-        In indep_dp mode, all cells have identical weights, so only cell 0
-        saves to avoid file write conflicts.
-        """
-        ray.get(self._cells[0].async_execute("save_model", rollout_id, force_sync=force_sync))
+        """Save actor model. Only cell 0 saves to avoid file write conflicts."""
+        self._execute_first_cell("save_model", rollout_id, force_sync=force_sync)
 
     def update_weights(self):
-        """Broadcast weights from rank 0 to all other ranks.
-
-        In indep_dp mode, all cells have identical weights after gradient
-        allreduce, so only cell 0 pushes to rollout engines.
-        """
-        ray.get(self._cells[0].async_execute("update_weights"))
+        """Broadcast weights to rollout engines. Only cell 0 pushes (all cells have identical weights)."""
+        self._execute_first_cell("update_weights")
 
     def onload(self):
         self._execute("wake_up")
