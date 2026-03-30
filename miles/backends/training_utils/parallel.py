@@ -37,18 +37,18 @@ class GroupInfo:
 class GroupsInfo:
     rank: int
     size: int
-    groups: list[dist.ProcessGroup]
+    groups_inner_to_outer: list[dist.ProcessGroup]
 
     @classmethod
     def from_single(cls, info: GroupInfo) -> "GroupsInfo":
-        return cls(rank=info.rank, size=info.size, groups=[info.group])
+        return cls(rank=info.rank, size=info.size, groups_inner_to_outer=[info.group])
 
     @classmethod
     def from_pair(cls, *, inner: GroupInfo, outer: GroupInfo) -> "GroupsInfo":
         return cls(
             rank=outer.rank * inner.size + inner.rank,
             size=outer.size * inner.size,
-            groups=[inner.group, outer.group],
+            groups_inner_to_outer=[inner.group, outer.group],
         )
 
 
@@ -89,8 +89,8 @@ class ParallelState:
 
 def all_reduce_multi(
     tensor: torch.Tensor,
-    groups: Sequence[dist.ProcessGroup],
+    groups_inner_to_outer: Sequence[dist.ProcessGroup],
     op: dist.ReduceOp,
 ) -> None:
-    for group in groups:
+    for group in groups_inner_to_outer:
         dist.all_reduce(tensor, op=op, group=group)
