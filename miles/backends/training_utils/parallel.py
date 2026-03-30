@@ -73,6 +73,9 @@ class GroupsInfo:
             groups_inner_to_outer=[inner.group, outer.group],
         )
 
+    def all_reduce(self, tensor: torch.Tensor, op: dist.ReduceOp = dist.ReduceOp.SUM) -> None:
+        all_reduce_multi(tensor, self.groups_inner_to_outer, op)
+
 
 
 @dataclass
