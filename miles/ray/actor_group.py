@@ -25,7 +25,29 @@ class RayTrainGroup:
             See https://docs.ray.io/en/latest/ray-core/scheduling/resources.html
     """
 
-    TODO
+    def __init__(
+        self,
+        args,
+        num_nodes,
+        num_gpus_per_node,
+        pg: tuple[PlacementGroup, list[int], list[int]],
+        num_gpus_per_actor: float = 1,
+        role: str = "actor",
+    ) -> None:
+        self._cell_kwargs = dict(
+            args=args,
+            num_nodes=num_nodes,
+            num_gpus_per_node=num_gpus_per_node,
+            pg=pg,
+            num_gpus_per_actor=num_gpus_per_actor,
+            role=role,
+        )
+        num_cells = compute_megatron_dp_size() if args.independent_dp else 1
+        self._cells = [self._create_cell(cell_id=cell_id) for cell_id in range(num_cells)]
+
+
+    def _create_cell(self):
+        return RayTrainCell(**self._cell_kwargs)
 
 
 class RayTrainCell:
@@ -35,8 +57,8 @@ class RayTrainCell:
         num_nodes,
         num_gpus_per_node,
         pg: tuple[PlacementGroup, list[int], list[int]],
-        num_gpus_per_actor: float = 1,
-        role: str = "actor",
+        num_gpus_per_actor: float,
+        role: str,
     ) -> None:
         self.args = args
         self._num_nodes = num_nodes
