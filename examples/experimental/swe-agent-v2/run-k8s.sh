@@ -57,6 +57,7 @@ SGLANG_ROUTER_PORT=30000
 SGLANG_TOOL_CALL_PARSER=""
 SGLANG_REASONING_PARSER=""
 SGLANG_MEM_FRACTION=0.5
+MAX_SEQ_LEN=""
 NO_WAIT=""
 
 # ── Pre-scan for --mode so debug defaults are set before arg parsing ─
@@ -110,6 +111,7 @@ while [[ $# -gt 0 ]]; do
     --sglang-tool-call-parser)  SGLANG_TOOL_CALL_PARSER="$2"; shift 2 ;;
     --sglang-reasoning-parser)  SGLANG_REASONING_PARSER="$2"; shift 2 ;;
     --sglang-mem-fraction-static) SGLANG_MEM_FRACTION="$2"; shift 2 ;;
+    --max-seq-len)        MAX_SEQ_LEN="$2";          shift 2 ;;
     --no-wait)            NO_WAIT="--no-wait";      shift ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
@@ -276,4 +278,5 @@ ray job submit \
   --rollout-function-path generate.RolloutFn \
   --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_aborted \
   "${WANDB_ARGS[@]}" \
+  ${MAX_SEQ_LEN:+--max-seq-len "$MAX_SEQ_LEN"} \
   --generate-multi-samples
