@@ -72,41 +72,46 @@ class RayTrainGroup:
     def _has_pending_cells(self) -> bool:
         return any(cell.is_pending for cell in self._cells)
 
-    def _refs_all_cells(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
-        self._assert_all_running()
-        return [ref for cell in self._cells for ref in cell.refs(fn_name, *args, **kwargs)]
+    def _execute(self, fn_name, *args, **kwargs):
+        return ray.get(self._async_execute(fn_name, *args, **kwargs))
 
-    def _refs_first_cell(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
+    def _execute_first_cell(self, fn_name, *args, **kwargs):
         self._assert_all_running()
-        return self._cells[0].refs(fn_name, *args, **kwargs)
+        return ray.get(self._cells[0].async_execute(fn_name, *args, **kwargs))
+
+    def _async_execute(self, fn_name, *args, **kwargs):
+        self._assert_all_running()
+        return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
 
     # --- public sync API (unchanged signatures for callers) ---
 
     def async_init(self, args, role: str, with_ref: bool = False) -> list[ray.ObjectRef]:
         assert args is self.args
         self._init_with_ref = with_ref
-        return self._refs_all_cells("init", args, role, with_ref=with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id)
+        return self._async_execute("init", args, role, with_ref=with_ref, indep_dp_quorum_id=self._indep_dp_quorum_id)
 
     def async_train(self, rollout_id: int, rollout_data_ref) -> list[ray.ObjectRef]:
         self._assert_all_running_or_pending()
         if self._has_pending_cells():
             asyncio.get_event_loop().run_until_complete(self._materialize_pending_cells())
-        return self._refs_all_cells("train", rollout_id, rollout_data_ref)
+        return self._async_execute("train", rollout_id, rollout_data_ref)
 
-    def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
-        ray.get(self._refs_first_cell("save_model", rollout_id, force_sync=force_sync))
+    def save_model(self, rollout_id: int, force_sync: bool = False):
+        """Save actor model. Only cell 0 saves to avoid file write conflicts."""
+        self._execute_first_cell("save_model", rollout_id, force_sync=force_sync)
 
-    def update_weights(self) -> None:
-        ray.get(self._refs_first_cell("update_weights"))
+    def update_weights(self):
+        """Broadcast weights to rollout engines. Only cell 0 pushes (all cells have identical weights)."""
+        self._execute_first_cell("update_weights")
 
-    def onload(self) -> None:
-        ray.get(self._refs_all_cells("wake_up"))
+    def onload(self):
+        self._execute("wake_up")
 
-    def offload(self) -> None:
-        ray.get(self._refs_all_cells("sleep"))
+    def offload(self):
+        self._execute("sleep")
 
-    def clear_memory(self) -> None:
-        ray.get(self._refs_all_cells("clear_memory"))
+    def clear_memory(self):
+        self._execute("clear_memory")
 
     def connect(self, critic_group: "RayTrainGroup") -> None:
         self._assert_all_running()
@@ -118,12 +123,12 @@ class RayTrainGroup:
             [
                 ref
                 for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
-                for ref in cell.refs_connect(critic_cell)
+                for ref in cell.async_connect(critic_cell)
             ]
         )
 
-    def set_rollout_manager(self, rollout_manager) -> None:
-        ray.get(self._refs_all_cells("set_rollout_manager", rollout_manager))
+    def set_rollout_manager(self, rollout_manager):
+        self._execute("set_rollout_manager", rollout_manager)
 
     def stop(self, cell_id: int) -> None:
         self._cells[cell_id].stop()
@@ -163,15 +168,15 @@ class RayTrainGroup:
         # Step 2: All previously-running cells reconfigure indep_dp PG
         reconfigure_refs = []
         for cell in running_cells:
-            reconfigure_refs.extend(cell.refs("reconfigure_indep_dp", qid))
+            reconfigure_refs.extend(cell.async_execute("reconfigure_indep_dp", qid))
         await asyncio.gather(*reconfigure_refs)
 
         # Step 3: For each pending cell, send ckpt from a running cell + init with recv
         transfer_refs: list[ray.ObjectRef] = []
         for cell in pending_cells:
             src_cell = running_cells[0]
-            transfer_refs.extend(src_cell.refs("send_ckpt", cell.cell_id))
-            transfer_refs.extend(cell.refs(
+            transfer_refs.extend(src_cell.async_execute("send_ckpt", cell.cell_id))
+            transfer_refs.extend(cell.async_execute(
                 "init",
                 self.args,
                 cell.role,

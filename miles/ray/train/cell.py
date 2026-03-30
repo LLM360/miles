@@ -90,11 +90,11 @@ class RayTrainCell:
         self._state = _StateRunning(actor_handles=actor_handles)
         logger.info(f"Recreated actors for cell {self.cell_id}")
 
-    def refs(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
+    def async_execute(self, fn_name: str, *args, **kwargs) -> list[ray.ObjectRef]:
         handles = self._get_actor_handles()
         return [getattr(actor, fn_name).remote(*args, **kwargs) for actor in handles]
 
-    def refs_connect(self, critic_cell: "RayTrainCell") -> list[ray.ObjectRef]:
+    def async_connect(self, critic_cell: "RayTrainCell") -> list[ray.ObjectRef]:
         handles = self._get_actor_handles()
         critic_handles = critic_cell._get_actor_handles()
         return [
