@@ -51,11 +51,11 @@ def gather_log_data(
             f"{metric_name}/{key}": sum([d[key] for d in gathered_log_dict]) / dp_size for key in log_dict
         }
 
-        if parallel_state.effective_dp_cp.rank == 0:
-            logger.info(f"{metric_name} {rollout_id}: {reduced_log_dict}")
-            step = compute_rollout_step(args, rollout_id)
-            reduced_log_dict["rollout/step"] = step
-            tracking_utils.log(args, reduced_log_dict, step_key="rollout/step")
+        logger.info(f"{metric_name} {rollout_id}: {reduced_log_dict}")
+
+        step = compute_rollout_step(args, rollout_id)
+        reduced_log_dict["rollout/step"] = step
+        tracking_utils.log(args, reduced_log_dict, step_key="rollout/step")
 
         return reduced_log_dict
     else:
