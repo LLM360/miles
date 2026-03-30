@@ -4,7 +4,6 @@ from typing import Any
 
 import torch
 
-from megatron.training.checkpointing import save_checkpoint
 from megatron.training.global_vars import get_args
 
 logger = logging.getLogger(__name__)
@@ -51,14 +50,15 @@ def save_to_memory(
     optimizer: object,
     opt_param_scheduler: object,
 ) -> object:
-    """Save checkpoint to in-memory manager via Megatron's save_checkpoint."""
+    """Save checkpoint to in-memory manager via model.save (with forward hook protection)."""
+    from miles.backends.megatron_utils.model import save
+
     manager = InMemoryCheckpointManager()
-    save_checkpoint(
+    save(
         iteration=iteration,
         model=model,
         optimizer=optimizer,
         opt_param_scheduler=opt_param_scheduler,
-        num_floating_point_operations_so_far=0,
         checkpointing_context={'local_checkpoint_manager': manager},
         non_persistent_ckpt=True,
     )

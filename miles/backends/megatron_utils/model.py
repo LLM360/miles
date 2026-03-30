@@ -707,7 +707,13 @@ def train(
 
 
 def save(
-    iteration: int, model: Sequence[DDP], optimizer: MegatronOptimizer, opt_param_scheduler: OptimizerParamScheduler
+    iteration: int,
+    model: Sequence[DDP],
+    optimizer: MegatronOptimizer,
+    opt_param_scheduler: OptimizerParamScheduler,
+    num_floating_point_operations_so_far: int = 0,
+    checkpointing_context: dict | None = None,
+    non_persistent_ckpt: bool = False,
 ) -> None:
     """Persist a training checkpoint safely with forward hooks disabled.
 
@@ -716,6 +722,10 @@ def save(
         model (Sequence[DDP]): Sequence of DDP-wrapped model chunks.
         optimizer (MegatronOptimizer): Optimizer instance.
         opt_param_scheduler (OptimizerParamScheduler): LR/WD scheduler.
+        num_floating_point_operations_so_far (int): FLOPs counter for checkpoint metadata.
+        checkpointing_context (dict | None): Context passed to Megatron's save_checkpoint
+            (e.g. ``{'local_checkpoint_manager': manager}`` for in-memory checkpoints).
+        non_persistent_ckpt (bool): If True, save a non-persistent (in-memory) checkpoint.
     """
     args = get_args()
     hashes = None
@@ -732,10 +742,9 @@ def save(
             model,
             optimizer,
             opt_param_scheduler,
-            num_floating_point_operations_so_far=0,
-            checkpointing_context=None,
-            train_data_iterator=None,
-            preprocess_common_state_dict_fn=None,
+            num_floating_point_operations_so_far=num_floating_point_operations_so_far,
+            checkpointing_context=checkpointing_context,
+            non_persistent_ckpt=non_persistent_ckpt,
         )
 
     if hashes is not None:
