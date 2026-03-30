@@ -82,6 +82,10 @@ def init(
 
     set_parallel_state(create_megatron_parallel_state(indep_dp=indep_dp))
 
+    # sanity check
+    if args.indep_dp:
+        assert args.data_parallel_size == 1
+
     # https://github.com/NVIDIA/Megatron-LM/issues/1563
     assert np.__version__.startswith("1."), "Megatron does not support numpy 2.x"
 
