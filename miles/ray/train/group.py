@@ -149,14 +149,14 @@ class RayTrainGroup:
         pending_cells = [cell for cell in self._cells if cell.is_pending]
         assert pending_cells, "No pending cells to materialize"
 
+        running_cells = [cell for cell in self._cells if cell.is_running]
+        assert running_cells, "No running cells to serve as checkpoint source"
+
         for cell in pending_cells:
             cell.recreate_actors()
 
         self._indep_dp_quorum_id += 1
         qid = self._indep_dp_quorum_id
-
-        running_cells = [cell for cell in self._cells if cell.is_running]
-        assert running_cells, "No running cells to serve as checkpoint source"
 
         logger.info(
             f"Materializing pending cells {[c.cell_id for c in pending_cells]}, "
