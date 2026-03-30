@@ -126,10 +126,7 @@ class RayTrainGroup:
         ray.get(self._refs_all_cells("set_rollout_manager", rollout_manager))
 
     def stop(self, cell_id: int) -> None:
-        cell = self._cells[cell_id]
-        assert cell.is_running, f"Cell {cell_id} is already stopped"
-        cell.stop()
-        logger.info(f"Stopped cell {cell_id}")
+        self._cells[cell_id].stop()
 
     def start(self, cell_id: int) -> None:
         """Mark a stopped cell as pending. Actual startup happens in async_train()."""
