@@ -55,7 +55,7 @@ class RayTrainCell:
         )
 
         self._state: _CellState = _StatePending()
-        self.materialize_pending()
+        self.allocate_for_pending()
 
     # ------------------------ lifecycle management ------------------------
 
@@ -70,10 +70,10 @@ class RayTrainCell:
 
         self._change_state("stop", (_StatePending, _StateRunning), _core)
 
-    def mark_pending(self) -> None:
-        self._change_state("mark_pending", _StateStopped, _StatePending)
+    def mark_as_pending(self) -> None:
+        self._change_state("mark_as_pending", _StateStopped, _StatePending)
 
-    def materialize_pending(self) -> None:
+    def allocate_for_pending(self) -> None:
         def _core():
             actor_handles = self._allocate_gpus_for_actor(
                 **self._creation_kwargs,
@@ -83,7 +83,7 @@ class RayTrainCell:
             )
             return _StateRunning(actor_handles=actor_handles)
 
-        self._change_state("materialize_pending", _StatePending, _core)
+        self._change_state("allocate_for_pending", _StatePending, _core)
 
     def _change_state(
         self,

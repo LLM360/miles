@@ -147,7 +147,7 @@ class RayTrainGroup:
 
     def start(self, cell_id: int) -> None:
         """Mark a stopped cell as pending. Actual startup happens in async_train()."""
-        self._cells[cell_id].mark_pending()
+        self._cells[cell_id].mark_as_pending()
 
     # ------------------------ internals for stop/start ------------------------
 
@@ -176,7 +176,7 @@ class RayTrainGroup:
 
         # Step 1: Recreate actors for each pending cell
         for cell in pending_cells:
-            cell.materialize_pending()
+            cell.allocate_for_pending()
 
         # Step 2: All previously-running cells reconfigure indep_dp PG
         refs: list[ray.ObjectRef] = []
