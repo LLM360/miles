@@ -141,8 +141,9 @@ class _NativePGUtil(GeneralPGUtil):
 def _check_wait(work: dist._Work, op_name: str) -> None:
     """Call work.wait() and raise if it returns False.
 
-    torchft ProcessGroupNCCL.wait() returns False on failure instead of raising,
-    so callers that ignore the return value silently proceed with corrupted tensors.
+    Native PyTorch Work.wait() always returns True (raises on failure).
+    torchft ProcessGroupNCCL.wait() returns False on timeout/abort instead of
+    raising, so without this check failures are silently ignored.
     """
     success = work.wait()
     if not success:
