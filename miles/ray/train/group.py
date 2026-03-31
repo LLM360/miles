@@ -147,7 +147,7 @@ class RayTrainGroup:
         ]
 
     def _async_execute_first_alive(self, fn_name, *args, **kwargs):
-        running_cells = [cell for cell in self._cells if TODO_cell_is_running]
+        running_cells = [cell for cell in self._cells if cell.is_alive]
         return running_cells[0].async_execute(fn_name, *args, **kwargs)
 
     # ------------------------ internals for stop/start ------------------------
