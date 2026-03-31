@@ -146,20 +146,6 @@ class RayTrainGroup:
 
     # ------------------------ internals for stop/start ------------------------
 
-    def _assert_all_running(self) -> None:
-        for cell in self._cells:
-            assert cell.is_running, f"Cell {cell.cell_id} is not running (state={cell._state.type})"
-
-    # TODO no need for this after allowing stopped cells
-    def _assert_all_running_or_pending(self) -> None:
-        for cell in self._cells:
-            assert (
-                cell.is_running or cell.is_pending
-            ), f"Cell {cell.cell_id} is stopped, all cells must be running or pending"
-
-    def _has_pending_cells(self) -> bool:
-        return any(cell.is_pending for cell in self._cells)
-
     async def _materialize_pending_cells(self) -> None:
         pending_cell_ids = [cell.cell_id for cell in self._cells if cell.is_pending]
         assert pending_cell_ids, "No pending cells to materialize"
@@ -183,6 +169,20 @@ class RayTrainGroup:
             )
             for cell in self._cells
         ])
+
+    def _assert_all_running(self) -> None:
+        for cell in self._cells:
+            assert cell.is_running, f"Cell {cell.cell_id} is not running (state={cell._state.type})"
+
+    # TODO no need for this after allowing stopped cells
+    def _assert_all_running_or_pending(self) -> None:
+        for cell in self._cells:
+            assert (
+                cell.is_running or cell.is_pending
+            ), f"Cell {cell.cell_id} is stopped, all cells must be running or pending"
+
+    def _has_pending_cells(self) -> bool:
+        return any(cell.is_pending for cell in self._cells)
 
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
