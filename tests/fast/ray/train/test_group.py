@@ -3,10 +3,9 @@ from unittest.mock import MagicMock
 
 import pytest
 import ray
+from tests.fast.ray.train.conftest import make_alive_cell, make_cell
 
 from miles.ray.train.group import RayTrainGroup
-from miles.utils.indep_dp import IndepDPInfo
-from tests.fast.ray.train.conftest import make_alive_cell, make_cell, make_indep_dp_info
 
 
 def _make_group_with_cells(cells: list) -> RayTrainGroup:

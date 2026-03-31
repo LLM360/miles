@@ -36,7 +36,13 @@ class TestActorCellHandle:
             "status": {
                 "phase": "Running",
                 "conditions": [
-                    {"type": "Allocated", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
+                    {
+                        "type": "Allocated",
+                        "status": "True",
+                        "reason": None,
+                        "message": None,
+                        "lastTransitionTime": None,
+                    },
                     {"type": "Ready", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
                 ],
             },
@@ -44,16 +50,18 @@ class TestActorCellHandle:
 
     @pytest.mark.asyncio
     async def test_get_cell_suspended(self) -> None:
-        group = make_mock_group([
-            MockRayTrainCell(
-                phase="Suspended",
-                conditions=[
-                    {"type": "Allocated", "status": "False"},
-                    {"type": "Ready", "status": "False"},
-                ],
-                is_stopped=True,
-            )
-        ])
+        group = make_mock_group(
+            [
+                MockRayTrainCell(
+                    phase="Suspended",
+                    conditions=[
+                        {"type": "Allocated", "status": "False"},
+                        {"type": "Ready", "status": "False"},
+                    ],
+                    is_stopped=True,
+                )
+            ]
+        )
         handle = _ActorCellHandle(group=group, cell_index=0)
         cell = await handle.get_cell()
 

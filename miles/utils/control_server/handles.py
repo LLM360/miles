@@ -4,13 +4,7 @@ import abc
 import asyncio
 
 from miles.ray.train.group import RayTrainGroup
-from miles.utils.control_server.models import (
-    Cell,
-    CellCondition,
-    CellMetadata,
-    CellSpec,
-    CellStatus,
-)
+from miles.utils.control_server.models import Cell, CellCondition, CellMetadata, CellSpec, CellStatus
 
 
 class _CellHandle(abc.ABC):

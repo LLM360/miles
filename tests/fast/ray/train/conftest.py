@@ -2,10 +2,10 @@ from unittest.mock import MagicMock
 
 import pytest
 import ray
+from tests.fast.ray.train.dummy_actor import DummyTrainActor
 
 from miles.ray.train.cell import RayTrainCell
 from miles.utils.indep_dp import IndepDPInfo
-from tests.fast.ray.train.dummy_actor import DummyTrainActor
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -55,9 +55,11 @@ def make_cell(
 def make_alive_cell(cell_index: int, *, alive_cell_indices: list[int], quorum_id: int = 0) -> RayTrainCell:
     """Create a cell and transition it to Alive state."""
     cell = make_cell(cell_index)
-    cell._mark_as_alive(indep_dp_info=make_indep_dp_info(
-        cell_index=cell_index,
-        alive_cell_indices=alive_cell_indices,
-        quorum_id=quorum_id,
-    ))
+    cell._mark_as_alive(
+        indep_dp_info=make_indep_dp_info(
+            cell_index=cell_index,
+            alive_cell_indices=alive_cell_indices,
+            quorum_id=quorum_id,
+        )
+    )
     return cell

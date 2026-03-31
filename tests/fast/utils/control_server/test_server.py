@@ -28,9 +28,7 @@ class TestGetCells:
         }
 
     @pytest.mark.asyncio
-    async def test_returns_all_cells_golden(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
+    async def test_returns_all_cells_golden(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
         """Golden test: full JSON response for GET /api/v1/cells with two cells."""
         registry.register(MockHandle(cell_id="actor-0", cell_type="actor", cell_index=0, phase="Running"))
         registry.register(
@@ -64,8 +62,20 @@ class TestGetCells:
                     "status": {
                         "phase": "Running",
                         "conditions": [
-                            {"type": "Allocated", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
-                            {"type": "Ready", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
+                            {
+                                "type": "Allocated",
+                                "status": "True",
+                                "reason": None,
+                                "message": None,
+                                "lastTransitionTime": None,
+                            },
+                            {
+                                "type": "Ready",
+                                "status": "True",
+                                "reason": None,
+                                "message": None,
+                                "lastTransitionTime": None,
+                            },
                         ],
                     },
                 },
@@ -80,8 +90,20 @@ class TestGetCells:
                     "status": {
                         "phase": "Suspended",
                         "conditions": [
-                            {"type": "Allocated", "status": "False", "reason": None, "message": None, "lastTransitionTime": None},
-                            {"type": "Ready", "status": "False", "reason": None, "message": None, "lastTransitionTime": None},
+                            {
+                                "type": "Allocated",
+                                "status": "False",
+                                "reason": None,
+                                "message": None,
+                                "lastTransitionTime": None,
+                            },
+                            {
+                                "type": "Ready",
+                                "status": "False",
+                                "reason": None,
+                                "message": None,
+                                "lastTransitionTime": None,
+                            },
                         ],
                     },
                 },
@@ -108,7 +130,13 @@ class TestGetCell:
             "status": {
                 "phase": "Running",
                 "conditions": [
-                    {"type": "Allocated", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
+                    {
+                        "type": "Allocated",
+                        "status": "True",
+                        "reason": None,
+                        "message": None,
+                        "lastTransitionTime": None,
+                    },
                     {"type": "Ready", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
                 ],
             },

@@ -361,4 +361,3 @@ def allocate_gpus_for_actor(
         actor_handles.append(actor)
 
     return actor_handles
-
