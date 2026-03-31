@@ -68,7 +68,6 @@ class _OkResponse(BaseModel):
 
 def _create_control_app(registry: _CellRegistry) -> FastAPI:
     app = FastAPI()
-    stop_lock = asyncio.Lock()
 
     @app.get("/health")
     async def health() -> _OkResponse:
@@ -108,20 +107,7 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
         if body is None:
             body = _StopRequest()
         handle = _get_handle(cell_id)
-
-        async with stop_lock:
-            if handle.cell_type == "actor":
-                status = await handle.get_status()
-                if status == "running":
-                    actor_handles = [h for h in registry.get_all() if h.cell_type == "actor"]
-                    statuses = await asyncio.gather(*(h.get_status() for h in actor_handles))
-                    running_count = sum(1 for s in statuses if s == "running")
-                    if running_count <= 1:
-                        raise HTTPException(
-                            status_code=409,
-                            detail="Cannot stop the last running actor cell",
-                        )
-            return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
+        return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
 
     @app.post("/cells/{cell_id}/start")
     async def start_cell(cell_id: str) -> _OkResponse:

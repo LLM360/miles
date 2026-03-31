@@ -220,58 +220,6 @@ class TestStopCell:
         resp = await async_client.post("/cells/cell-0/stop")
         assert resp.status_code == 500
 
-    @pytest.mark.asyncio
-    async def test_stop_last_running_actor_returns_409(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
-        """Stopping the only running actor cell must be rejected with 409."""
-        h0 = _MockHandle(cell_id="actor-0", cell_type="actor", status="running")
-        h1 = _MockHandle(cell_id="actor-1", cell_type="actor", status="stopped")
-        registry.register(h0)
-        registry.register(h1)
-
-        resp = await async_client.post("/cells/actor-0/stop")
-        assert resp.status_code == 409
-        assert h0.stop_calls == []
-
-    @pytest.mark.asyncio
-    async def test_stop_actor_when_others_running_succeeds(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
-        """Stopping one of two running actor cells succeeds."""
-        h0 = _MockHandle(cell_id="actor-0", cell_type="actor", status="running")
-        h1 = _MockHandle(cell_id="actor-1", cell_type="actor", status="running")
-        registry.register(h0)
-        registry.register(h1)
-
-        resp = await async_client.post("/cells/actor-0/stop")
-        assert resp.status_code == 200
-        assert h0.stop_calls == [30]
-
-    @pytest.mark.asyncio
-    async def test_stop_already_stopped_actor_bypasses_409(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
-        """Stopping an already-stopped actor cell succeeds even if it's the only actor."""
-        h0 = _MockHandle(cell_id="actor-0", cell_type="actor", status="stopped")
-        registry.register(h0)
-
-        resp = await async_client.post("/cells/actor-0/stop")
-        assert resp.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_stop_rollout_ignores_actor_guard(
-        self, registry: _CellRegistry, async_client: httpx.AsyncClient
-    ) -> None:
-        """Stopping a rollout cell does not trigger the actor 409 guard."""
-        h_actor = _MockHandle(cell_id="actor-0", cell_type="actor", status="running")
-        h_rollout = _MockHandle(cell_id="rollout-0", cell_type="rollout", status="running")
-        registry.register(h_actor)
-        registry.register(h_rollout)
-
-        resp = await async_client.post("/cells/rollout-0/stop")
-        assert resp.status_code == 200
-
 
 class TestHealth:
     @pytest.mark.asyncio
