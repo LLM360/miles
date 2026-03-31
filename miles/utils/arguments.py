@@ -1790,7 +1790,7 @@ def miles_validate_args(args):
 
     if args.mini_ft_controller_enable and args.control_server_port == 0:
         raise ValueError(
-            "--mini-ft-controller-enabled requires --control-server-port to be set (non-zero)"
+            "--mini-ft-controller-enable requires --control-server-port to be set (non-zero)"
         )
 
     if "train" in args.ft_components:
