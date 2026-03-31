@@ -174,17 +174,18 @@ class RayTrainGroup:
             cell.materialize_pending()
 
         # Step 2: All previously-running cells reconfigure indep_dp PG
-        reconfigure_refs = []
+        refs = []
         for cell in running_cells:
-            reconfigure_refs.extend(cell.async_execute("reconfigure_indep_dp", qid))
-        await asyncio.gather(*reconfigure_refs)
+            refs.extend(cell.async_execute("reconfigure_indep_dp", qid))
+        await asyncio.gather(*refs)
+        del refs
 
         # Step 3: For each pending cell, send ckpt from a running cell + init with recv
-        transfer_refs: list[ray.ObjectRef] = []
+        refs: list[ray.ObjectRef] = []
         for cell in pending_cells:
             src_cell = running_cells[0]
-            transfer_refs.extend(src_cell.async_execute("send_ckpt", cell.cell_id))
-            transfer_refs.extend(
+            refs.extend(src_cell.async_execute("send_ckpt", cell.cell_id))
+            refs.extend(
                 cell.async_execute(
                     "init",
                     self.args,
@@ -194,7 +195,8 @@ class RayTrainGroup:
                     indep_dp_quorum_id=qid,
                 )
             )
-        await asyncio.gather(*transfer_refs)
+        await asyncio.gather(*refs)
+        del refs
 
         logger.info("All pending cells materialized successfully")
 
