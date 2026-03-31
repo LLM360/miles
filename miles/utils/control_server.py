@@ -208,7 +208,7 @@ class _ActorCellHandle(_CellHandle):
 
     async def get_status(self) -> str:
         cell = self._group._cells[self._cell_index]
-        if cell.is_alive:
+        if cell.is_allocated:
             return "running"
         elif cell.is_pending:
             return "pending"
