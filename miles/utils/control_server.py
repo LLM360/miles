@@ -104,6 +104,7 @@ class ControlServer:
     def __init__(self, *, port: int) -> None:
         self._port = port
         self._handles: dict[str, CellHandle] = {}
+        self._stop_lock = threading.Lock()
         self._app = FastAPI()
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
@@ -149,22 +150,23 @@ class ControlServer:
         @app.post("/cells/{cell_id}/stop")
         def stop_cell(cell_id: str, request: StopRequest | None = None) -> OkResponse:
             handle = self._get_handle(cell_id)
-            info = handle.get_info()
-
-            if handle.cell_type == "actor" and info.state == "running":
-                running_actor_count = sum(
-                    1
-                    for h in self._handles.values()
-                    if h.cell_type == "actor" and h.get_info().state == "running"
-                )
-                if running_actor_count <= 1:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Cannot stop the last running actor cell",
-                    )
-
             timeout = request.timeout_seconds if request is not None else _DEFAULT_STOP_TIMEOUT_SECONDS
-            handle.stop(timeout_seconds=timeout)
+
+            with self._stop_lock:
+                info = handle.get_info()
+                if handle.cell_type == "actor" and info.state == "running":
+                    running_actor_count = sum(
+                        1
+                        for h in self._handles.values()
+                        if h.cell_type == "actor" and h.get_info().state == "running"
+                    )
+                    if running_actor_count <= 1:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Cannot stop the last running actor cell",
+                        )
+                handle.stop(timeout_seconds=timeout)
+
             return OkResponse()
 
         @app.post("/cells/{cell_id}/start")
