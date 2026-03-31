@@ -77,7 +77,7 @@ def init(
     _initialize_distributed(args)
 
     info = indep_dp_group_info or IndepDPGroupInfo(
-        cell_id=cell_id,
+        cell_index=cell_id,
         num_cells=num_cells,
         alive_rank=cell_id,
         alive_size=num_cells,

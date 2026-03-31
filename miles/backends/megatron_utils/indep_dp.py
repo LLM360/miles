@@ -29,7 +29,7 @@ def create_indep_dp_group(
         pg = pg_cls(timeout=timedelta(seconds=60))
         pg.configure(
             store_addr=f"{store_addr}/indep_dp/{backend_name}/{indep_dp_quorum_id}/{megatron_rank}",
-            replica_id=str(info.cell_id),
+            replica_id=str(info.cell_index),
             rank=info.alive_rank,
             world_size=info.alive_size,
             quorum_id=indep_dp_quorum_id,
@@ -41,7 +41,7 @@ def create_indep_dp_group(
     nccl_pg = _create(ProcessGroupNCCL, "nccl")
     gloo_pg = _create(ProcessGroupGloo, "gloo")
     logger.info(
-        f"Configured independent DP PG: cell_id={info.cell_id}, alive_rank={info.alive_rank}, "
+        f"Configured independent DP PG: cell_id={info.cell_index}, alive_rank={info.alive_rank}, "
         f"alive_size={info.alive_size}, num_cells={info.num_cells}, "
         f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}, "
         f"indep_dp_quorum_id={indep_dp_quorum_id}"

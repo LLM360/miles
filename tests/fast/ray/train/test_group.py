@@ -106,13 +106,13 @@ class TestReconfigureTriggeredOnAliveChange:
         # Verify IndepDPGroupInfo passed to cell 0
         info_0 = cells[0]._execute_calls[0][2]["indep_dp_group_info"]
         assert isinstance(info_0, IndepDPGroupInfo)
-        assert info_0.cell_id == 0
+        assert info_0.cell_index == 0
         assert info_0.alive_rank == 0
         assert info_0.alive_size == 2
 
         # Verify IndepDPGroupInfo passed to cell 2
         info_2 = cells[2]._execute_calls[0][2]["indep_dp_group_info"]
-        assert info_2.cell_id == 2
+        assert info_2.cell_index == 2
         assert info_2.alive_rank == 1
         assert info_2.alive_size == 2
 

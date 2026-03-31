@@ -186,7 +186,7 @@ class RayTrainGroup:
     def _make_indep_dp_group_info(self, cell_id: int, alive_mapping: dict[int, int]) -> IndepDPGroupInfo:
         num_cells = len(self._cells)
         return IndepDPGroupInfo(
-            cell_id=cell_id,
+            cell_index=cell_id,
             num_cells=num_cells,
             alive_rank=alive_mapping[cell_id],
             alive_size=len(alive_mapping),
