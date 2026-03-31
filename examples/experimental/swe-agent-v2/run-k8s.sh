@@ -5,9 +5,9 @@
 # This script only submits a Ray job — it does NOT start/stop Ray or kill processes.
 #
 # Usage:
-#   bash run-k8s.sh                                       # 16-node full training
-#   bash run-k8s.sh --mode debug --num-nodes 2
-#   bash run-k8s.sh --num-nodes 16 --ep 8
+#   bash run-k8s.sh --wandb-run-name my-run               # 16-node full training
+#   bash run-k8s.sh --wandb-run-name my-run --num-nodes 2
+#   bash run-k8s.sh --wandb-run-name my-run --num-nodes 16 --ep 8
 #
 # Required environment:
 #   RAY_ADDRESS          URL of the Ray dashboard (e.g. http://raycluster-head-svc:8265)
@@ -24,7 +24,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MILES_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 # ── Defaults (tuned for 16 × 8-GPU H200 nodes) ─────────────────────
-MODE="train"
 NUM_NODES=16
 NUM_GPUS_PER_NODE=8
 TP=1; PP=1; EP=8
@@ -57,29 +56,12 @@ SGLANG_ROUTER_PORT=30000
 SGLANG_TOOL_CALL_PARSER=""
 SGLANG_REASONING_PARSER=""
 SGLANG_MEM_FRACTION=0.5
+WANDB_RUN_NAME=""
 NO_WAIT=""
-
-# ── Pre-scan for --mode so debug defaults are set before arg parsing ─
-prev=""
-for arg in "$@"; do
-  if [[ "$prev" == "--mode" ]]; then MODE="$arg"; break; fi
-  prev="$arg"
-done
-
-# ── Debug mode overrides (applied as defaults, CLI args below win) ──
-if [[ "$MODE" == "debug" ]]; then
-  NUM_ROLLOUT=50
-  ROLLOUT_BATCH_SIZE=16
-  N_SAMPLES=4
-  MAX_RESP_LEN=4096
-  GLOBAL_BATCH=64
-  MAX_TOKENS_PER_GPU=1024
-fi
 
 # ── Parse arguments ─────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --mode)               MODE="$2";               shift 2 ;;
     --num-nodes)          NUM_NODES="$2";           shift 2 ;;
     --num-gpus-per-node)  NUM_GPUS_PER_NODE="$2";  shift 2 ;;
     --tp)                 TP="$2";                  shift 2 ;;
@@ -110,10 +92,18 @@ while [[ $# -gt 0 ]]; do
     --sglang-tool-call-parser)  SGLANG_TOOL_CALL_PARSER="$2"; shift 2 ;;
     --sglang-reasoning-parser)  SGLANG_REASONING_PARSER="$2"; shift 2 ;;
     --sglang-mem-fraction-static) SGLANG_MEM_FRACTION="$2"; shift 2 ;;
+    --wandb-run-name)     WANDB_RUN_NAME="$2";        shift 2 ;;
     --no-wait)            NO_WAIT="--no-wait";      shift ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
+
+# ── Validate required arguments ────────────────────────────────────
+if [[ -z "$WANDB_RUN_NAME" ]]; then
+  echo "ERROR: --wandb-run-name is required but was not set."
+  echo "  Usage: bash run-k8s.sh --wandb-run-name <name> [other options...]"
+  exit 1
+fi
 
 # ── Validate KubeRay environment ────────────────────────────────────
 RAY_ADDRESS="${RAY_ADDRESS:-}"
@@ -195,11 +185,11 @@ fi
 
 # ── W&B args ─────────────────────────────────────────────────────────
 WANDB_ARGS=()
-if [[ -n "${WANDB_KEY:-}" && "$MODE" != "debug" ]]; then
+if [[ -n "${WANDB_KEY:-}" ]]; then
   WANDB_ARGS=(
     --use-wandb
     --wandb-project "${WANDB_PROJECT:-miles-agent-v2}"
-    --wandb-group "${WANDB_GROUP:-agent-v2-k8s}"
+    --wandb-group "$WANDB_RUN_NAME"
     --wandb-key "$WANDB_KEY"
   )
   if [[ -n "${WANDB_TEAM:-}" ]]; then
@@ -209,7 +199,7 @@ fi
 
 # ── Submit ───────────────────────────────────────────────────────────
 TOTAL_GPUS=$((NUM_NODES * NUM_GPUS_PER_NODE))
-echo "Launching ${MODE} training on KubeRay cluster..."
+echo "Launching training on KubeRay cluster..."
 echo "  Ray dashboard: $RAY_ADDRESS"
 echo "  Nodes:         $NUM_NODES × $NUM_GPUS_PER_NODE GPU = $TOTAL_GPUS GPUs"
 echo "  Agent server:  $AGENT_SERVER_URL"
