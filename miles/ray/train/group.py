@@ -94,9 +94,7 @@ class RayTrainGroup:
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
         return [
-            future
-            for cell in self._cells
-            for future in cell.async_init(indep_dp_quorum_id=self._indep_dp_quorum_id)
+            future for cell in self._cells for future in cell.async_init(indep_dp_quorum_id=self._indep_dp_quorum_id)
         ]
 
     def async_train(self, rollout_id: int, rollout_data_ref):
@@ -164,18 +162,22 @@ class RayTrainGroup:
 
         # Step 3: Cooperatively prepare
         src_cell_id = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
-        await asyncio.gather(*[
-            cell.prepare_indep_dp_mode_initialized(
-                indep_dp_quorum_id=self._indep_dp_quorum_id,
-                send_ckpt_dst_ranks=was_pending_ids if cell.cell_id == src_cell_id else [],
-            )
-            if cell.cell_id in was_running_ids else
-            cell.prepare_indep_dp_mode_healing(
-                indep_dp_quorum_id=self._indep_dp_quorum_id,
-                recv_ckpt_src_rank=src_cell_id if cell.cell_id in was_pending_ids else None,
-            )
-            for cell in self._cells
-        ])
+        await asyncio.gather(
+            *[
+                (
+                    cell.prepare_indep_dp_mode_initialized(
+                        indep_dp_quorum_id=self._indep_dp_quorum_id,
+                        send_ckpt_dst_ranks=was_pending_ids if cell.cell_id == src_cell_id else [],
+                    )
+                    if cell.cell_id in was_running_ids
+                    else cell.prepare_indep_dp_mode_healing(
+                        indep_dp_quorum_id=self._indep_dp_quorum_id,
+                        recv_ckpt_src_rank=src_cell_id if cell.cell_id in was_pending_ids else None,
+                    )
+                )
+                for cell in self._cells
+            ]
+        )
 
     def _assert_all_running(self) -> None:
         for cell in self._cells:

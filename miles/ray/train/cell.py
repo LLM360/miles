@@ -120,10 +120,12 @@ class RayTrainCell:
         indep_dp_quorum_id: int,
         recv_ckpt_src_rank: int | None,
     ):
-        await asyncio.gather(*self.async_init(
-            indep_dp_quorum_id=indep_dp_quorum_id,
-            recv_ckpt_src_rank=recv_ckpt_src_rank,
-        ))
+        await asyncio.gather(
+            *self.async_init(
+                indep_dp_quorum_id=indep_dp_quorum_id,
+                recv_ckpt_src_rank=recv_ckpt_src_rank,
+            )
+        )
 
         await asyncio.gather(*self.async_set_rollout_manager())
 
@@ -249,5 +251,7 @@ class RayTrainCell:
         return isinstance(self._state, _StatePending)
 
     def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
-        assert isinstance(self._state, _StateRunning), f"Cell {self.cell_id} is not running (state={type(self._state).__name__})"
+        assert isinstance(
+            self._state, _StateRunning
+        ), f"Cell {self.cell_id} is not running (state={type(self._state).__name__})"
         return self._state.actor_handles
