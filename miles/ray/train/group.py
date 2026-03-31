@@ -86,7 +86,9 @@ class RayTrainGroup:
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
         return [
-            future for cell in self._cells for future in cell.async_init(indep_dp_quorum_id=self._indep_dp_quorum_id)
+            future
+            for cell in self._cells
+            for future in cell.async_init(indep_dp_info=self._compute_indep_dp_info(cell_index=cell.cell_index))
         ]
 
     def async_train(self, rollout_id: int, rollout_data_ref):
