@@ -16,6 +16,9 @@ from miles.ray.train.group import RayTrainGroup
 logger = logging.getLogger(__name__)
 
 
+# -------------------------- entrypoint ------------------------------
+
+
 def start_control_server(actor_model: RayTrainGroup, rollout_manager: object, port: int) -> None:
     registry = _CellRegistry()
 
@@ -45,6 +48,9 @@ def _start_control_server_raw(registry: _CellRegistry, port: int) -> None:
     logger.info("Control server started on port %d", port)
 
 
+# -------------------------- types ------------------------------
+
+
 class _CellInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -64,6 +70,9 @@ class _OkResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: str = "ok"
+
+
+# -------------------------- main app ------------------------------
 
 
 def _create_control_app(registry: _CellRegistry) -> FastAPI:
@@ -121,6 +130,9 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
     return app
 
 
+# -------------------------- registry ------------------------------
+
+
 class _CellRegistry:
     def __init__(self) -> None:
         self._handles: dict[str, _CellHandle] = {}
@@ -138,6 +150,9 @@ class _CellRegistry:
             return self._handles[cell_id]
         except KeyError as e:
             raise KeyError(f"Cell '{cell_id}' not found") from e
+
+
+# -------------------------- handle ------------------------------
 
 
 class _CellHandle(abc.ABC):
