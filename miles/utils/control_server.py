@@ -6,9 +6,9 @@ from typing import Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict
 
 from miles.ray.train.group import RayTrainGroup
+from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -16,24 +16,21 @@ logger = logging.getLogger(__name__)
 # ────────────────────── Pydantic models ──────────────────────
 
 
-class CellInfo(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class CellInfo(StrictBaseModel):
     cell_id: str
     cell_type: Literal["actor", "rollout"]
     state: Literal["running", "stopped", "pending"]
     node_ids: list[str]
 
 
-class StopRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    timeout_seconds: int = 30
+_DEFAULT_STOP_TIMEOUT_SECONDS = 30
 
 
-class OkResponse(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class StopRequest(StrictBaseModel):
+    timeout_seconds: int = _DEFAULT_STOP_TIMEOUT_SECONDS
 
+
+class OkResponse(StrictBaseModel):
     status: str = "ok"
 
 
@@ -131,6 +128,12 @@ class ControlServer:
         self._thread.start()
         logger.info(f"Control server started on port {self._port}")
 
+    def _get_handle(self, cell_id: str) -> CellHandle:
+        handle = self._handles.get(cell_id)
+        if handle is None:
+            raise HTTPException(status_code=404, detail=f"Cell {cell_id!r} not found")
+        return handle
+
     def _setup_routes(self) -> None:
         app = self._app
 
@@ -144,31 +147,27 @@ class ControlServer:
 
         @app.post("/cells/{cell_id}/stop")
         def stop_cell(cell_id: str, request: StopRequest | None = None) -> OkResponse:
-            handle = self._handles.get(cell_id)
-            if handle is None:
-                raise HTTPException(status_code=404, detail=f"Cell {cell_id!r} not found")
+            handle = self._get_handle(cell_id)
+            info = handle.get_info()
 
-            if handle.cell_type == "actor":
+            if handle.cell_type == "actor" and info.state == "running":
                 running_actor_count = sum(
                     1
                     for h in self._handles.values()
                     if h.cell_type == "actor" and h.get_info().state == "running"
                 )
-                if handle.get_info().state == "running" and running_actor_count <= 1:
+                if running_actor_count <= 1:
                     raise HTTPException(
                         status_code=409,
                         detail="Cannot stop the last running actor cell",
                     )
 
-            timeout = request.timeout_seconds if request is not None else 30
+            timeout = request.timeout_seconds if request is not None else _DEFAULT_STOP_TIMEOUT_SECONDS
             handle.stop(timeout_seconds=timeout)
             return OkResponse()
 
         @app.post("/cells/{cell_id}/start")
         def start_cell(cell_id: str) -> OkResponse:
-            handle = self._handles.get(cell_id)
-            if handle is None:
-                raise HTTPException(status_code=404, detail=f"Cell {cell_id!r} not found")
-
+            handle = self._get_handle(cell_id)
             handle.start()
             return OkResponse()
