@@ -170,10 +170,12 @@ class RayTrainGroup:
         self._indep_dp_quorum_id += 1
 
         # Step 2: Cooperatively prepare
+        # Only running_cell_ids[0] sends ckpt to all pending cells; other cells send to nobody.
+        src_cell_id = running_cell_ids[0]
         await asyncio.gather(*[
             cell.cooperatively_prepare_indep_dp_world(
                 indep_dp_quorum_id=self._indep_dp_quorum_id,
-                send_ckpt_dst_ranks=TODO,
+                send_ckpt_dst_ranks=pending_cell_ids if cell.cell_id == src_cell_id else [],
             )
             for cell in self._cells
         ])
