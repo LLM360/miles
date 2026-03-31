@@ -153,10 +153,9 @@ class RayTrainGroup:
     # ------------------------ internals for stop/start ------------------------
 
     async def _refresh_cells(self) -> None:
-        will_alive_ids = TODO
-
         was_pending_indices = [cell.cell_index for cell in self._cells if cell.is_pending]
         was_alive_indices = [cell.cell_index for cell in self._cells if cell.is_alive]
+        will_alive_indices = sorted(list(set(was_pending_indices + was_alive_indices)))
         assert len(was_alive_indices) > 0, "Cannot recover when all cells are dead"
         TODO_handle_zero_case
 
