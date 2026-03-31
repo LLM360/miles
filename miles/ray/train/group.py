@@ -191,6 +191,7 @@ class RayTrainGroup:
             alive_rank=alive_mapping[cell_index],
             alive_size=len(alive_mapping),
             quorum_id=self._indep_dp_quorum_id,
+            alive_cell_indices=TODO,
         )
 
 

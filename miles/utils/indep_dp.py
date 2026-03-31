@@ -8,3 +8,4 @@ class IndepDPInfo:
     alive_rank: int
     alive_size: int
     quorum_id: int
+    alive_cell_indices: list[int]
