@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from miles.utils.control_server.models import CellList, CellPatch, CellPatchSpec
+from miles.utils.control_server.models import Cell, CellList, CellPatch, CellPatchSpec
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -117,6 +117,16 @@ class _MiniFTController:
 # ------------------------ HTTP transport + thread runner ------------------------
 
 
+def _compute_cell_snapshot(cell: Cell) -> _CellSnapshot:
+    healthy = True
+    for condition in cell.status.conditions:
+        if condition.type == "Healthy":
+            healthy = condition.status == "True"
+            break
+
+    return _CellSnapshot(name=cell.metadata.name, healthy=healthy)
+
+
 class _MiniFTControllerRunner:
     def __init__(
         self,
@@ -145,21 +155,7 @@ class _MiniFTControllerRunner:
         resp = await self._client.get("/api/v1/cells")
         resp.raise_for_status()
         cell_list = CellList.model_validate(resp.json())
-
-        snapshots: list[_CellSnapshot] = []
-        for cell in cell_list.items:
-            healthy = True
-            for condition in cell.status.conditions:
-                if condition.type == "Healthy":
-                    healthy = condition.status == "True"
-                    break
-
-            snapshots.append(_CellSnapshot(
-                name=cell.metadata.name,
-                healthy=healthy,
-            ))
-
-        return snapshots
+        return [_compute_cell_snapshot(cell) for cell in cell_list.items]
 
     async def _suspend_cell(self, name: str) -> None:
         await self._patch_cell_suspend(name=name, suspend=True)
