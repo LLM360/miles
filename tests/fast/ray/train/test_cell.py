@@ -58,7 +58,7 @@ class TestPhaseTransitions:
         """mark_as_alive transitions from Uninitialized to Alive."""
         cell = _make_cell_with_state(_StateAllocatedUninitialized(actor_handles=[]))
 
-        cell.mark_as_alive()
+        cell._mark_as_alive()
 
         assert cell.is_running
         assert not cell.is_errored

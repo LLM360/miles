@@ -78,7 +78,7 @@ class RayTrainCell:
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
-    def mark_as_alive(self) -> None:
+    def _mark_as_alive(self) -> None:
         assert isinstance(self._state, _StateAllocatedUninitialized), (
             f"cell {self.cell_index}: mark_as_alive requires _StateUninitialized, got {self._state}"
         )
@@ -227,7 +227,7 @@ class RayTrainCell:
         indep_dp_info: IndepDPInfo,
         recv_ckpt_src_rank: int | None = None,
     ):
-        return self.async_execute(
+        handles = self.async_execute(
             "init",
             args=self.args,
             role=self.role,
@@ -235,6 +235,8 @@ class RayTrainCell:
             indep_dp_info=indep_dp_info,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
+        self._mark_as_alive()
+        return handles
 
     def async_set_rollout_manager(self):
         if (m := self.rollout_manager) is not None:
