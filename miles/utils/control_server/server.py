@@ -17,16 +17,6 @@ from miles.utils.control_server.registry import _CellRegistry
 logger = logging.getLogger(__name__)
 
 
-# -------------------------- exception ------------------------------
-
-
-class _K8sError(Exception):
-    def __init__(self, *, status_code: int, reason: str, message: str) -> None:
-        self.status_code = status_code
-        self.reason = reason
-        self.message = message
-
-
 # -------------------------- entrypoint ------------------------------
 
 
@@ -73,6 +63,8 @@ def _start_control_server_raw(registry: _CellRegistry, port: int) -> None:
 
 def _create_control_app(registry: _CellRegistry) -> FastAPI:
     app = FastAPI()
+
+    # -------------------------- exceptions ------------------------------
 
     @app.exception_handler(_K8sError)
     async def _handle_k8s_error(request: Request, exc: _K8sError) -> JSONResponse:
@@ -123,3 +115,13 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
             raise _K8sError(status_code=404, reason="NotFound", message=f"Cell '{name}' not found") from None
 
     return app
+
+
+# -------------------------- exception ------------------------------
+
+
+class _K8sError(Exception):
+    def __init__(self, *, status_code: int, reason: str, message: str) -> None:
+        self.status_code = status_code
+        self.reason = reason
+        self.message = message
