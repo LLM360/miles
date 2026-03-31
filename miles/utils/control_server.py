@@ -51,7 +51,7 @@ class _CellInfo(BaseModel):
 
     cell_id: str
     cell_type: Literal["actor", "rollout"]
-    status: Literal["running", "stopped", "pending"]
+    status: Literal["running", "stopped", "pending", "errored"]
     node_ids: list[str]
 
 
@@ -197,7 +197,9 @@ class _ActorCellHandle(_CellHandle):
 
     async def get_status(self) -> str:
         cell = self._group._cells[self._cell_index]
-        if cell.is_running:
+        if cell.is_errored:
+            return "errored"
+        elif cell.is_running:
             return "running"
         elif cell.is_pending:
             return "pending"
