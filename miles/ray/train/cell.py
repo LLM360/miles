@@ -41,6 +41,7 @@ class RayTrainCell:
             indep_dp_store_addr=indep_dp_store_addr,
         )
 
+        # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
         self._state: _CellState = _StatePending()
         self.allocate_for_pending()
 
