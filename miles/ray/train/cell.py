@@ -83,7 +83,7 @@ class RayTrainCell:
         self._change_state(
             "_mark_as_alive",
             _StateAllocatedUninitialized,
-            lambda: _StateAllocatedAlive.copy_from(self._state),
+            lambda: _StateAllocatedAlive(actor_handles=self._state.actor_handles),
         )
 
     # TODO call this function (probably within cell?)
@@ -91,7 +91,7 @@ class RayTrainCell:
         self._change_state(
             "_mark_as_errored",
             _StateAllocatedBase,
-            lambda: _StateAllocatedErrored.copy_from(self._state),
+            lambda: _StateAllocatedErrored(actor_handles=self._state.actor_handles),
         )
 
     def _change_state(
@@ -286,11 +286,6 @@ class _StatePending(_StateBase):
 class _StateAllocatedBase(_StateBase):
     actor_handles: list[ray.actor.ActorHandle]
 
-    @classmethod
-    def copy_from(cls, another: "_StateAllocatedBase"):
-        return cls(
-            actor_handles=another.actor_handles,
-        )
 
 class _StateAllocatedUninitialized(_StateAllocatedBase):
     pass
