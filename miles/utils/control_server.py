@@ -46,8 +46,8 @@ class _CellInfo(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cell_id: str
-    cell_type: Literal["training", "rollout"]
-    status: Literal["running", "stopped", "pending", "failed"]
+    cell_type: Literal["actor", "rollout"]
+    status: Literal["running", "stopped", "pending"]
     node_ids: list[str]
 
 

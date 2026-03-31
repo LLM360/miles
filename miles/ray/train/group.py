@@ -99,9 +99,7 @@ class RayTrainGroup:
 
     def async_train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
-        if self._has_pending_cells():
-            asyncio.get_event_loop().run_until_complete(self._materialize_pending_cells())
-        self._snapshot_alive_and_maybe_reconfigure()
+        self._refresh_cells()
         return self._async_execute("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False):

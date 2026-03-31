@@ -128,8 +128,8 @@ class TestGetCells:
     async def test_returns_all(self, registry: _CellRegistry, async_client: httpx.AsyncClient) -> None:
         registry.register(
             _MockHandle(
-                cell_id="training",
-                cell_type="training",
+                cell_id="actor",
+                cell_type="actor",
                 status="running",
                 node_ids=["node-0", "node-1"],
             )
@@ -157,9 +157,9 @@ class TestGetCells:
         assert len(data) == 3
 
         by_id = {d["cell_id"]: d for d in data}
-        assert by_id["training"]["cell_type"] == "training"
-        assert by_id["training"]["status"] == "running"
-        assert by_id["training"]["node_ids"] == ["node-0", "node-1"]
+        assert by_id["actor"]["cell_type"] == "actor"
+        assert by_id["actor"]["status"] == "running"
+        assert by_id["actor"]["node_ids"] == ["node-0", "node-1"]
         assert by_id["cell-0"]["cell_type"] == "rollout"
         assert by_id["cell-0"]["status"] == "running"
         assert by_id["cell-1"]["status"] == "stopped"
@@ -352,5 +352,5 @@ class TestActorCellHandle:
 
     def test_cell_type_is_training(self) -> None:
         handle = _ActorCellHandle(node_ids=[])
-        assert handle.cell_type == "training"
-        assert handle.cell_id == "training"
+        assert handle.cell_type == "actor"
+        assert handle.cell_id == "actor"
