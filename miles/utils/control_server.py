@@ -207,17 +207,7 @@ class _ActorCellHandle(_CellHandle):
         self._group.start_cell(self._cell_index)
 
     async def get_status(self) -> str:
-        cell = self._group._cells[self._cell_index]
-        if cell.is_alive or cell.is_allocated_uninitialized:
-            return "running"
-        elif cell.is_pending:
-            return "pending"
-        elif cell.is_stopped:
-            return "stopped"
-        elif cell.is_errored:
-            return "errored"
-        else:
-            raise NotImplementedError
+        return self._group._cells[self._cell_index].status
 
     async def get_node_ids(self) -> list[str]:
         return []
