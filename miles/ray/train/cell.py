@@ -199,16 +199,42 @@ class RayTrainCell:
         return isinstance(self._state, _StateStopped)
 
     @property
-    def status(self) -> str:
+    def phase(self) -> str:
         match self._state:
             case _StateAllocatedAlive() | _StateAllocatedUninitialized():
-                return "running"
+                return "Running"
             case _StatePending():
-                return "pending"
+                return "Pending"
             case _StateStopped():
-                return "stopped"
+                return "Suspended"
             case _StateAllocatedErrored():
-                return "errored"
+                return "Running"
+            case _:
+                raise NotImplementedError(f"Unknown state: {self._state}")
+
+    @property
+    def conditions(self) -> list[dict[str, str | None]]:
+        match self._state:
+            case _StateAllocatedAlive():
+                return [
+                    {"type": "Allocated", "status": "True"},
+                    {"type": "Ready", "status": "True"},
+                ]
+            case _StateAllocatedUninitialized():
+                return [
+                    {"type": "Allocated", "status": "True"},
+                    {"type": "Ready", "status": "False"},
+                ]
+            case _StateAllocatedErrored():
+                return [
+                    {"type": "Allocated", "status": "True"},
+                    {"type": "Ready", "status": "False"},
+                ]
+            case _StatePending() | _StateStopped():
+                return [
+                    {"type": "Allocated", "status": "False"},
+                    {"type": "Ready", "status": "False"},
+                ]
             case _:
                 raise NotImplementedError(f"Unknown state: {self._state}")
 
