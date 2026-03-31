@@ -15,9 +15,9 @@ from miles.utils.process_group_utils import (
     GroupInfo,
     GroupsInfo,
     MultiPGUtil,
+    _check_wait,
     _NativePGUtil,
     _RawPGUtil,
-    _check_wait,
 )
 
 
