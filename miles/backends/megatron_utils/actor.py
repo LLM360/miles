@@ -14,6 +14,7 @@ from transformers import AutoConfig
 from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
 from miles.utils.context_utils import with_defer
+from miles.utils.indep_dp_group_info import IndepDPGroupInfo
 from miles.utils.distributed_utils import get_gloo_group, init_process_group
 from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.processing_utils import load_tokenizer
@@ -59,6 +60,7 @@ class MegatronTrainRayActor(TrainRayActor):
         with_ref: bool = False,
         recv_ckpt_src_rank: int | None = None,
         indep_dp_quorum_id: int,
+        indep_dp_group_info: IndepDPGroupInfo | None = None,
     ) -> int | None:
         """Initialize the actor.
 
@@ -70,6 +72,8 @@ class MegatronTrainRayActor(TrainRayActor):
                 via PGTransport instead of loading from disk.
             indep_dp_quorum_id: Quorum ID for the indep_dp process group. Incremented on
                 each stop/start cycle to create fresh groups.
+            indep_dp_group_info: If provided, use this for the indep_dp process group
+                configuration. Otherwise, defaults to alive_rank=cell_id, alive_size=num_cells.
         """
         monkey_patch_torch_dist()
 
@@ -81,6 +85,7 @@ class MegatronTrainRayActor(TrainRayActor):
             num_cells=self._num_cells,
             indep_dp_store_addr=self._indep_dp_store_addr,
             indep_dp_quorum_id=indep_dp_quorum_id,
+            indep_dp_group_info=indep_dp_group_info,
         )
 
         if args.dumper_enable:
@@ -631,12 +636,15 @@ class MegatronTrainRayActor(TrainRayActor):
             dst_rank=dst_rank,
         )
 
-    def reconfigure_indep_dp(self, indep_dp_quorum_id: int) -> None:
+    def reconfigure_indep_dp(
+        self,
+        indep_dp_quorum_id: int,
+        indep_dp_group_info: IndepDPGroupInfo,
+    ) -> None:
         reconfigure_indep_dp_group(
             parallel_state=self.parallel_state,
             store_addr=self._indep_dp_store_addr,
-            cell_id=self._cell_id,
-            num_cells=self._num_cells,
+            indep_dp_group_info=indep_dp_group_info,
             megatron_rank=dist.get_rank(),
             megatron_world_size=dist.get_world_size(),
             indep_dp_quorum_id=indep_dp_quorum_id,

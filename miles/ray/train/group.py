@@ -6,6 +6,7 @@ import ray
 from ray.util.placement_group import PlacementGroup
 
 from miles.ray.train.cell import RayTrainCell
+from miles.utils.indep_dp_group_info import IndepDPGroupInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
 if TYPE_CHECKING:
@@ -151,6 +152,19 @@ class RayTrainGroup:
 
     # ------------------------ internals for stop/start ------------------------
 
+    def _compute_alive_mapping(self) -> dict[int, int]:
+        running = sorted(cell.cell_id for cell in self._cells if cell.is_running)
+        return {cell_id: rank for rank, cell_id in enumerate(running)}
+
+    def _make_indep_dp_group_info(self, cell_id: int, alive_mapping: dict[int, int]) -> IndepDPGroupInfo:
+        num_cells = len(self._cells)
+        return IndepDPGroupInfo(
+            cell_id=cell_id,
+            num_cells=num_cells,
+            alive_rank=alive_mapping[cell_id],
+            alive_size=len(alive_mapping),
+        )
+
     async def _materialize_pending_cells(self) -> None:
         was_pending_ids = [cell.cell_id for cell in self._cells if cell.is_pending]
         assert was_pending_ids, "No pending cells to materialize"
@@ -165,22 +179,32 @@ class RayTrainGroup:
             if cell.cell_id in was_pending_ids:
                 cell.allocate_for_pending()
 
-        # Step 3: Cooperatively prepare
+        # Step 3: Compute alive mapping (all previously running + newly allocated are now running)
+        alive_mapping = self._compute_alive_mapping()
+
+        # Step 4: Convert ckpt transfer ranks to alive_rank
         src_cell_id = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
+        ckpt_dst_alive_ranks = [alive_mapping[cid] for cid in was_pending_ids]
+        src_alive_rank = alive_mapping[src_cell_id]
+
+        # Step 5: Cooperatively prepare
         await asyncio.gather(
             *[
                 (
                     cell.prepare_indep_dp_mode_initialized(
                         indep_dp_quorum_id=self._indep_dp_quorum_id,
-                        send_ckpt_dst_ranks=was_pending_ids if cell.cell_id == src_cell_id else [],
+                        indep_dp_group_info=self._make_indep_dp_group_info(cell.cell_id, alive_mapping),
+                        send_ckpt_dst_ranks=ckpt_dst_alive_ranks if cell.cell_id == src_cell_id else [],
                     )
                     if cell.cell_id in was_running_ids
                     else cell.prepare_indep_dp_mode_healing(
                         indep_dp_quorum_id=self._indep_dp_quorum_id,
-                        recv_ckpt_src_rank=src_cell_id if cell.cell_id in was_pending_ids else None,
+                        indep_dp_group_info=self._make_indep_dp_group_info(cell.cell_id, alive_mapping),
+                        recv_ckpt_src_rank=src_alive_rank if cell.cell_id in was_pending_ids else None,
                     )
                 )
                 for cell in self._cells
+                if cell.is_running
             ]
         )
 
