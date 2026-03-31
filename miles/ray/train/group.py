@@ -41,11 +41,13 @@ class RayTrainGroup:
         num_gpus_per_node: int,
         pg: tuple[PlacementGroup, list[int], list[int]],
         *,
+        rollout_manager: object | None,
         num_gpus_per_actor: float = 1,
         role: str,
         with_ref: bool,
     ) -> None:
         self.args = args
+        self.rollout_manager = rollout_manager
 
         total_gpus = num_nodes * num_gpus_per_node
         num_cells = (total_gpus // compute_megatron_world_size_except_dp(args)) if args.indep_dp else 1
@@ -53,7 +55,6 @@ class RayTrainGroup:
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
         self._indep_dp_quorum_id = 0
-        self._rollout_manager = None
 
         if num_cells > 1:
             self._indep_dp_store, indep_dp_store_addr = _create_tcp_store()
@@ -135,9 +136,9 @@ class RayTrainGroup:
             ]
         )
 
-    def set_rollout_manager(self, rollout_manager):
-        self._rollout_manager = rollout_manager
-        self._execute("set_rollout_manager", rollout_manager)
+    def set_rollout_manager(self):
+        assert self.rollout_manager is not None
+        self._execute("set_rollout_manager", self.rollout_manager)
 
     def stop(self, cell_id: int) -> None:
         self._cells[cell_id].stop()
@@ -175,12 +176,12 @@ class RayTrainGroup:
         ])
 
         # Step 4: Re-wire restarted cells
-        if self._rollout_manager is not None:
-            refs = []
-            for cell in self._cells:
-                if cell.cell_id in was_pending_ids:
-                    refs.extend(cell.async_execute("set_rollout_manager", self._rollout_manager))
-            ray.get(refs)
+        assert self.rollout_manager is not None
+        refs = []
+        for cell in self._cells:
+            if cell.cell_id in was_pending_ids:
+                refs.extend(cell.async_execute("set_rollout_manager", self.rollout_manager))
+        ray.get(refs)
 
     def _assert_all_running(self) -> None:
         for cell in self._cells:

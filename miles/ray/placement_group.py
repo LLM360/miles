@@ -120,7 +120,7 @@ def create_placement_groups(args):
     }
 
 
-def allocate_train_group(args, num_nodes, num_gpus_per_node, pg, role: str, with_ref: bool):
+def allocate_train_group(args, num_nodes, num_gpus_per_node, pg, role: str, with_ref: bool, rollout_manager):
     return RayTrainGroup(
         args=args,
         num_nodes=num_nodes,
@@ -129,6 +129,7 @@ def allocate_train_group(args, num_nodes, num_gpus_per_node, pg, role: str, with
         num_gpus_per_actor=0.4,
         role=role,
         with_ref=with_ref,
+        rollout_manager=rollout_manager,
     )
 
 
@@ -140,6 +141,7 @@ def create_training_models(args, pgs, rollout_manager):
         pg=pgs["actor"],
         role="actor",
         with_ref=args.kl_coef != 0 or args.use_kl_loss,
+        rollout_manager=rollout_manager,
     )
     if args.use_critic:
         critic_model = allocate_train_group(
@@ -164,7 +166,7 @@ def create_training_models(args, pgs, rollout_manager):
         ray.get(critic_init_handle)
         actor_model.connect(critic_model)
 
-    actor_model.set_rollout_manager(rollout_manager)
+    actor_model.set_rollout_manager()
     if args.rollout_global_dataset:
         ray.get(rollout_manager.load.remote(args.start_rollout_id - 1))
 
