@@ -47,7 +47,6 @@ class RayTrainGroup:
         with_ref: bool,
     ) -> None:
         self.args = args
-        self.rollout_manager = rollout_manager
 
         total_gpus = num_nodes * num_gpus_per_node
         num_cells = (total_gpus // compute_megatron_world_size_except_dp(args)) if args.indep_dp else 1
@@ -76,6 +75,7 @@ class RayTrainGroup:
                     cell_id=cell_id,
                     num_cells=num_cells,
                     indep_dp_store_addr=indep_dp_store_addr,
+                    rollout_manager=rollout_manager,
                 )
             )
 
@@ -137,8 +137,7 @@ class RayTrainGroup:
         )
 
     def set_rollout_manager(self):
-        assert self.rollout_manager is not None
-        self._execute("set_rollout_manager", self.rollout_manager)
+        ray.get([future for cell in self._cells for future in cell.async_set_rollout_manager()])
 
     def stop(self, cell_id: int) -> None:
         self._cells[cell_id].stop()
@@ -174,14 +173,6 @@ class RayTrainGroup:
             )
             for cell in self._cells
         ])
-
-        # Step 4: Re-wire restarted cells
-        assert self.rollout_manager is not None
-        refs = []
-        for cell in self._cells:
-            if cell.cell_id in was_pending_ids:
-                refs.extend(cell.async_execute("set_rollout_manager", self.rollout_manager))
-        ray.get(refs)
 
     def _assert_all_running(self) -> None:
         for cell in self._cells:

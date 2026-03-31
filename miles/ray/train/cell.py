@@ -43,12 +43,14 @@ class RayTrainCell:
         cell_id: int,
         num_cells: int,
         indep_dp_store_addr: str,
+        rollout_manager: object | None,
     ) -> None:
         self.args = args
         self.cell_id = cell_id
         self.num_cells = num_cells
         self.role = role
         self.with_ref = with_ref
+        self.rollout_manager = rollout_manager
 
         self._creation_kwargs = dict(
             gpus_per_cell=gpus_per_cell,
@@ -118,6 +120,7 @@ class RayTrainCell:
                 indep_dp_quorum_id=indep_dp_quorum_id,
                 recv_ckpt_src_rank=recv_ckpt_src_rank,
             ))
+            await asyncio.gather(*self.async_set_rollout_manager())
 
         for dst_rank in send_ckpt_dst_ranks:
             await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
@@ -227,6 +230,11 @@ class RayTrainCell:
             indep_dp_quorum_id=indep_dp_quorum_id,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
+
+    def async_set_rollout_manager(self):
+        if (m := self.rollout_manager) is not None:
+            return self.async_execute("set_rollout_manager", m)
+        return []
 
     # ------------------------ state helpers ------------------------
 

@@ -151,6 +151,7 @@ def create_training_models(args, pgs, rollout_manager):
             pg=pgs["critic"],
             role="critic",
             with_ref=False,
+            rollout_manager=None,
         )
         critic_init_handle = critic_model.async_init()
     else:
