@@ -139,7 +139,7 @@ class RayTrainGroup:
         """Mark a stopped cell as pending. Actual startup happens in async_train()."""
         self._cells[cell_id].mark_pending()
 
-    # --- internals for stop/start ---
+    # ------------------------ internals for stop/start ------------------------
 
     def _assert_all_running(self) -> None:
         for cell in self._cells:
