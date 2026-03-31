@@ -111,7 +111,6 @@ class RayTrainCell:
                 *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
             )
         elif self.is_pending:
-            await TODO_alloc_for_pending()
             await asyncio.gather(*self.async_init(indep_dp_quorum_id=indep_dp_quorum_id))
         else:
             raise NotImplementedError

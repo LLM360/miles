@@ -169,8 +169,12 @@ class RayTrainGroup:
         # Step 1: Bump states
         self._indep_dp_quorum_id += 1
 
-        # Step 2: Cooperatively prepare
-        # Only running_cell_ids[0] sends ckpt to all pending cells; other cells send to nobody.
+        # Step 2: Allocate actors
+        for cell in self._cells:
+            if cell in pending_cell_ids:
+                cell.allocate_for_pending()
+
+        # Step 3: Cooperatively prepare
         src_cell_id = running_cell_ids[0]
         await asyncio.gather(*[
             cell.cooperatively_prepare_indep_dp_world(
