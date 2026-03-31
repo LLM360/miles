@@ -135,10 +135,10 @@ class RayTrainGroup:
     def set_rollout_manager(self):
         ray.get([future for cell in self._cells for future in cell.async_set_rollout_manager()])
 
-    def stop(self, cell_index: int) -> None:
+    def stop_cell(self, cell_index: int) -> None:
         self._cells[cell_index].stop()
 
-    def start(self, cell_index: int) -> None:
+    def start_cell(self, cell_index: int) -> None:
         """Mark a stopped cell as pending. Actual startup happens in async_train()."""
         self._cells[cell_index].mark_as_pending()
 

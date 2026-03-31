@@ -201,10 +201,10 @@ class _ActorCellHandle(_CellHandle):
         return self._cell_index
 
     async def stop(self, timeout_seconds: int) -> None:
-        self._group.stop(self._cell_index)
+        self._group.stop_cell(self._cell_index)
 
     async def start(self) -> None:
-        self._group.start(self._cell_index)
+        self._group.start_cell(self._cell_index)
 
     async def get_status(self) -> str:
         cell = self._group._cells[self._cell_index]
