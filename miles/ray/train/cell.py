@@ -103,12 +103,12 @@ class RayTrainCell:
         send_ckpt_dst_ranks: list[int],
     ):
         if self.is_running:
-            if world_changed:
-                await reconfigure_indep_dp()
-        else:
-            assert self.is_pending
+            await reconfigure_indep_dp()
+        elif self.is_pending:
             await TODO_alloc_for_pending()
             await call_init()
+        else:
+            raise NotImplementedError
 
         for dst_rank in send_ckpt_dst_ranks:
             await call_send_ckpt(dst_rank=dst_rank)
