@@ -212,7 +212,7 @@ class RayTrainGroup:
             alive_rank=alive_cell_indices.index(cell_index),
             alive_size=len(alive_cell_indices),
             quorum_id=self._indep_dp_quorum_id,
-            alive_cell_indices=alive_cell_indices,
+            alive_cell_indices=tuple(alive_cell_indices),
         )
 
 
