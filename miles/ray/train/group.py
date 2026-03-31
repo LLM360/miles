@@ -165,6 +165,8 @@ class RayTrainGroup:
         )
         exists_pending_cell = len(snapshotted_pending_indices) != 0
         needs_reconfigure = exists_pending_cell or exists_alive_cell_changed_config
+        if not needs_reconfigure:
+            return
 
         # Step 1: Bump states
         self._indep_dp_quorum_id += 1
