@@ -183,7 +183,7 @@ class RayTrainGroup:
         # Step 3: For each pending cell, send ckpt from a running cell + init with recv
         refs: list[ray.ObjectRef] = []
         for cell in pending_cells:
-            src_cell = running_cells[0]
+            src_cell = running_cells[0]  # TODO support load balancing
             refs.extend(src_cell.async_execute("send_ckpt", dst_rank=cell.cell_id))
             refs.extend(
                 cell.async_execute(
