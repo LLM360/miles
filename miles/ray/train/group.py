@@ -157,7 +157,7 @@ class RayTrainGroup:
 
         # Step 2: Allocate actors
         for cell in self._cells:
-            if cell in was_pending_ids:
+            if cell.cell_id in was_pending_ids:
                 cell.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
