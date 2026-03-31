@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -24,6 +23,17 @@ def _make_cell(
     return _CellSnapshot(name=name, healthy=healthy)
 
 
+class _FakeClock:
+    def __init__(self, start: float = 0.0) -> None:
+        self.now = start
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 def _make_controller(
     *,
     get_cells: AsyncMock | None = None,
@@ -31,6 +41,7 @@ def _make_controller(
     resume_cell: AsyncMock | None = None,
     poll_interval: float = 0.01,
     resume_delay: float = 0.0,
+    clock: _FakeClock | None = None,
 ) -> _MiniFTController:
     return _MiniFTController(
         get_cells=get_cells or AsyncMock(return_value=[]),
@@ -38,6 +49,7 @@ def _make_controller(
         resume_cell=resume_cell or AsyncMock(),
         poll_interval=poll_interval,
         resume_delay=resume_delay,
+        clock=clock or _FakeClock(),
     )
 
 
@@ -210,12 +222,14 @@ class TestControllerBackoff:
     async def test_backoff_on_heal_failure(self) -> None:
         """Suspend raises → consecutive_failures increments, next_attempt_at increases."""
         unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        clock = _FakeClock(start=100.0)
         get_cells = AsyncMock()
         suspend_cell = AsyncMock(side_effect=RuntimeError("connection failed"))
 
         controller = _make_controller(
             get_cells=get_cells,
             suspend_cell=suspend_cell,
+            clock=clock,
         )
         _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
 
@@ -223,44 +237,71 @@ class TestControllerBackoff:
 
         backoff = controller._cell_backoffs["cell-0"]
         assert backoff.consecutive_failures == 1
-        assert backoff.next_attempt_at > 0
+        assert backoff.next_attempt_at == 110.0  # 100 + 5*2^1
 
     @pytest.mark.asyncio
     async def test_exponential_backoff_timing(self) -> None:
         """Verify backoff delays: 5*2^1=10, 5*2^2=20, ..., capped at 300."""
         unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        clock = _FakeClock(start=0.0)
         suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
-
-        expected_delays = [10, 20, 40, 80, 160, 300, 300]
 
         get_cells = AsyncMock()
         controller = _make_controller(
             get_cells=get_cells,
             suspend_cell=suspend_cell,
+            clock=clock,
         )
 
-        # Run one poll per iteration, resetting backoff timer each time
+        expected_delays = [10, 20, 40, 80, 160, 300, 300]
         for expected_delay in expected_delays:
+            # Advance clock past backoff window so the heal attempt is made
             backoff = controller._cell_backoffs.get("cell-0")
             if backoff:
-                backoff.next_attempt_at = 0.0
+                clock.now = backoff.next_attempt_at
 
             _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
-
-            before = time.monotonic()
             await asyncio.wait_for(controller.run(), timeout=5.0)
-            after = time.monotonic()
 
             backoff = controller._cell_backoffs["cell-0"]
-            actual_delay = backoff.next_attempt_at - after
-            assert abs(actual_delay - expected_delay) < 2.0, (
-                f"Expected delay ~{expected_delay}, got {actual_delay:.1f}"
-            )
+            assert backoff.next_attempt_at == clock.now + expected_delay
+
+    @pytest.mark.asyncio
+    async def test_skips_heal_when_within_backoff_window(self) -> None:
+        """Cell is not healed again until clock passes next_attempt_at."""
+        unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        clock = _FakeClock(start=0.0)
+        suspend_cell = AsyncMock(side_effect=RuntimeError("fail"))
+
+        get_cells = AsyncMock()
+        controller = _make_controller(
+            get_cells=get_cells,
+            suspend_cell=suspend_cell,
+            clock=clock,
+        )
+
+        # Step 1: First poll → heal attempt fails, sets next_attempt_at
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+        assert suspend_cell.call_count == 1
+
+        # Step 2: Poll again without advancing clock → should skip heal
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+        assert suspend_cell.call_count == 1  # no new call
+
+        # Step 3: Advance clock past backoff → should attempt heal again
+        backoff = controller._cell_backoffs["cell-0"]
+        clock.now = backoff.next_attempt_at
+        _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
+        await asyncio.wait_for(controller.run(), timeout=5.0)
+        assert suspend_cell.call_count == 2
 
     @pytest.mark.asyncio
     async def test_successful_heal_resets_backoff(self) -> None:
         """Successful heal resets consecutive_failures to 0."""
         unhealthy_cell = _make_cell(name="cell-0", healthy=False)
+        clock = _FakeClock(start=0.0)
 
         call_count = 0
 
@@ -275,6 +316,7 @@ class TestControllerBackoff:
             get_cells=get_cells,
             suspend_cell=AsyncMock(side_effect=failing_then_succeeding_suspend),
             resume_cell=AsyncMock(),
+            clock=clock,
         )
 
         # Step 1: First attempt fails
@@ -284,8 +326,8 @@ class TestControllerBackoff:
         backoff = controller._cell_backoffs["cell-0"]
         assert backoff.consecutive_failures == 1
 
-        # Step 2: Reset backoff timer, second attempt succeeds
-        backoff.next_attempt_at = 0.0
+        # Step 2: Advance clock past backoff, second attempt succeeds
+        clock.now = backoff.next_attempt_at
         _run_controller_for_n_polls(controller, get_cells, [[unhealthy_cell]])
         await asyncio.wait_for(controller.run(), timeout=5.0)
 

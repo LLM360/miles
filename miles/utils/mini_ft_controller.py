@@ -122,12 +122,14 @@ class _MiniFTController:
         resume_cell: Callable[[str], Awaitable[None]],
         poll_interval: float,
         resume_delay: float,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._get_cells = get_cells
         self._suspend_cell = suspend_cell
         self._resume_cell = resume_cell
         self._poll_interval = poll_interval
         self._resume_delay = resume_delay
+        self._clock = clock
 
         self._running: bool = False
         self._cell_backoffs: dict[str, _CellBackoff] = {}
@@ -136,9 +138,9 @@ class _MiniFTController:
         try:
             self._running = True
             while self._running:
-                start = time.monotonic()
+                start = self._clock()
                 await self._poll_and_heal()
-                elapsed = time.monotonic() - start
+                elapsed = self._clock() - start
                 await asyncio.sleep(max(0.0, self._poll_interval - elapsed))
         except Exception:
             logger.error("Error in run", exc_info=True)
@@ -157,7 +159,7 @@ class _MiniFTController:
 
                 backoff = self._cell_backoffs.setdefault(cell.name, _CellBackoff())
 
-                now = time.monotonic()
+                now = self._clock()
                 if now < backoff.next_attempt_at:
                     continue
 
@@ -186,7 +188,7 @@ class _MiniFTController:
         except Exception:
             backoff.consecutive_failures += 1
             delay = min(5 * (2**backoff.consecutive_failures), 300)
-            backoff.next_attempt_at = time.monotonic() + delay
+            backoff.next_attempt_at = self._clock() + delay
             logger.warning(
                 "Failed to heal cell %s (attempt %d), next attempt in %.0fs",
                 cell_name,
