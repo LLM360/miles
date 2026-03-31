@@ -133,12 +133,15 @@ class _MiniFTController:
         self._cell_backoffs: dict[str, _CellBackoff] = {}
 
     async def run(self) -> None:
-        self._running = True
-        while self._running:
-            start = time.monotonic()
-            await self._poll_and_heal()
-            elapsed = time.monotonic() - start
-            await asyncio.sleep(max(0.0, self._poll_interval - elapsed))
+        try:
+            self._running = True
+            while self._running:
+                start = time.monotonic()
+                await self._poll_and_heal()
+                elapsed = time.monotonic() - start
+                await asyncio.sleep(max(0.0, self._poll_interval - elapsed))
+        except Exception:
+            logger.error("Error in run", exc_info=True)
 
     def request_stop(self) -> None:
         self._running = False
