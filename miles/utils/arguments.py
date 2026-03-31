@@ -536,7 +536,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Port for HTTP control server. 0 = disabled.",
             )
             parser.add_argument(
-                "--mini-ft-controller-enabled",
+                "--mini-ft-controller-enable",
                 action="store_true",
                 default=False,
                 help="Enable the mini fault-tolerance controller that auto-heals Fatal cells.",
@@ -1794,7 +1794,7 @@ def miles_validate_args(args):
     args.ft_components = _resolve_ft_components(args)
     args.eval_datasets = _resolve_eval_datasets(args)
 
-    if args.mini_ft_controller_enabled and args.control_server_port == 0:
+    if args.mini_ft_controller_enable and args.control_server_port == 0:
         raise ValueError(
             "--mini-ft-controller-enabled requires --control-server-port to be set (non-zero)"
         )

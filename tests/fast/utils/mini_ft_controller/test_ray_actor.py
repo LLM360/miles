@@ -159,11 +159,11 @@ async def test_get_cells_http_error_raises() -> None:
 
 
 def test_argument_validation_requires_control_server_port() -> None:
-    """mini_ft_controller_enabled=True + control_server_port=0 → error."""
+    """mini_ft_controller_enable=True + control_server_port=0 → error."""
     from miles.utils.arguments import miles_validate_args
 
     args = argparse.Namespace(
-        mini_ft_controller_enabled=True,
+        mini_ft_controller_enable=True,
         control_server_port=0,
         use_fault_tolerance=False,
         ft_components=None,

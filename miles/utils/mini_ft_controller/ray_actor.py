@@ -81,7 +81,7 @@ class MiniFTControllerActor:
 
 
 def maybe_start_mini_ft_controller(args: Any) -> None:
-    if not args.mini_ft_controller_enabled:
+    if not args.mini_ft_controller_enable:
         return
 
     controller = MiniFTControllerActor.remote(
