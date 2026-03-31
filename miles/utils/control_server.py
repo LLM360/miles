@@ -4,6 +4,7 @@ import logging
 import threading
 from typing import Literal
 
+import ray
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
@@ -95,6 +96,42 @@ class ActorCellHandle(CellHandle):
 
     def start(self) -> None:
         self._group.start(self._cell_index)
+
+
+# ────────────────────── Rollout cell handle ──────────────────────
+
+
+class RolloutCellHandle(CellHandle):
+    """Ported from rl-resilience/miles_part_dev:_RolloutSubsystemHandle with minimal changes:
+    async→sync (ray.get), cell_id str→cell_index int, adapted to CellHandle ABC."""
+
+    def __init__(self, *, rollout_manager: object, cell_index: int) -> None:
+        self._rollout_manager = rollout_manager
+        self._cell_index = cell_index
+
+    @property
+    def cell_id(self) -> str:
+        return f"rollout-{self._cell_index}"
+
+    @property
+    def cell_type(self) -> Literal["actor", "rollout"]:
+        return "rollout"
+
+    def get_info(self) -> CellInfo:
+        status = ray.get(self._rollout_manager.get_cell_status.remote(self._cell_index))
+        node_ids = ray.get(self._rollout_manager.get_cell_node_ids.remote(self._cell_index))
+        return CellInfo(
+            cell_id=self.cell_id,
+            cell_type=self.cell_type,
+            state=status,
+            node_ids=node_ids,
+        )
+
+    def stop(self, timeout_seconds: int) -> None:
+        ray.get(self._rollout_manager.stop_cell.remote(self._cell_index, timeout_seconds))
+
+    def start(self) -> None:
+        ray.get(self._rollout_manager.start_cell.remote(self._cell_index))
 
 
 # ────────────────────── Control server ──────────────────────
