@@ -1,4 +1,9 @@
-"""Lightweight Ray actor for unit testing RayTrainCell/RayTrainGroup without GPU or real training."""
+"""Lightweight Ray actor for unit testing RayTrainCell/RayTrainGroup without GPU or real training.
+
+Records all method calls so tests can verify what was dispatched.
+"""
+
+from typing import Any
 
 import ray
 
@@ -6,32 +11,41 @@ import ray
 @ray.remote(num_gpus=0, num_cpus=0)
 class DummyTrainActor:
 
-    def init(self, **kwargs):
-        pass
+    def __init__(self):
+        self._calls: list[tuple[str, tuple, dict]] = []
 
-    def reconfigure_indep_dp(self, **kwargs):
-        pass
+    def _record(self, method: str, args: tuple, kwargs: dict) -> None:
+        self._calls.append((method, args, kwargs))
 
-    def send_ckpt(self, **kwargs):
-        pass
+    def get_calls(self) -> list[tuple[str, tuple, dict]]:
+        return list(self._calls)
 
-    def train(self, **kwargs):
-        pass
+    def init(self, *args: Any, **kwargs: Any) -> None:
+        self._record("init", args, kwargs)
 
-    def set_rollout_manager(self, manager):
-        pass
+    def reconfigure_indep_dp(self, *args: Any, **kwargs: Any) -> None:
+        self._record("reconfigure_indep_dp", args, kwargs)
 
-    def wake_up(self):
-        pass
+    def send_ckpt(self, *args: Any, **kwargs: Any) -> None:
+        self._record("send_ckpt", args, kwargs)
 
-    def sleep(self):
-        pass
+    def train(self, *args: Any, **kwargs: Any) -> None:
+        self._record("train", args, kwargs)
 
-    def clear_memory(self):
-        pass
+    def set_rollout_manager(self, *args: Any, **kwargs: Any) -> None:
+        self._record("set_rollout_manager", args, kwargs)
 
-    def save_model(self, *args, **kwargs):
-        pass
+    def wake_up(self) -> None:
+        self._record("wake_up", (), {})
 
-    def update_weights(self):
-        pass
+    def sleep(self) -> None:
+        self._record("sleep", (), {})
+
+    def clear_memory(self) -> None:
+        self._record("clear_memory", (), {})
+
+    def save_model(self, *args: Any, **kwargs: Any) -> None:
+        self._record("save_model", args, kwargs)
+
+    def update_weights(self) -> None:
+        self._record("update_weights", (), {})

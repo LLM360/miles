@@ -94,6 +94,11 @@ class TestAsyncExecuteAlive:
         assert len(refs) == 1
         ray.get(refs)
 
+        # Verify alive cell's actor received the call
+        for handle in alive_cell._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            assert any(c[0] == "train" for c in calls)
+
     def test_asserts_on_no_alive_cells(self):
         """_async_execute_alive asserts when no cells are alive."""
         stopped = _make_cell(0)
@@ -133,6 +138,12 @@ class TestRefreshCellsReconfigure:
 
         # Step 5: Stopped cell untouched
         assert cells[1].is_stopped
+
+        # Step 6: Alive cells' actors received reconfigure_indep_dp
+        for cell in [cells[0], cells[2]]:
+            for handle in cell._get_actor_handles():
+                calls = ray.get(handle.get_calls.remote())
+                assert any(c[0] == "reconfigure_indep_dp" for c in calls)
 
     def test_no_reconfigure_when_unchanged(self):
         """When alive set has not changed, no reconfiguration happens."""

@@ -238,15 +238,19 @@ class TestAsyncInit:
         assert len(refs) == 2
         assert cell.is_alive
         assert cell.indep_dp_info == info
-
-        # Verify remote calls actually complete
         ray.get(refs)
+
+        # Verify actors actually received the init call
+        for handle in cell._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            assert len(calls) == 1
+            assert calls[0][0] == "init"
 
 
 class TestPrepareIndepDPModeAlive:
     def test_reconfigure_and_update_info(self):
         """prepare_indep_dp_mode_alive reconfigures real actors and updates local indep_dp_info."""
-        cell = _make_cell(actor_count=1)
+        cell = _make_cell(actor_count=2)
         old_info = _make_indep_dp_info(alive_cell_indices=[0, 1, 2])
         cell._mark_as_alive(indep_dp_info=old_info)
 
@@ -257,6 +261,26 @@ class TestPrepareIndepDPModeAlive:
 
         assert cell.indep_dp_info == new_info
         assert cell.is_alive
+
+        # Verify actors received reconfigure_indep_dp call
+        for handle in cell._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            assert any(c[0] == "reconfigure_indep_dp" for c in calls)
+
+    def test_sends_ckpt_to_dst_ranks(self):
+        """prepare_indep_dp_mode_alive sends checkpoint to specified dst_ranks."""
+        cell = _make_cell(actor_count=1)
+        cell._mark_as_alive(indep_dp_info=_make_indep_dp_info(alive_cell_indices=[0, 1, 2]))
+
+        new_info = _make_indep_dp_info(alive_cell_indices=[0, 1, 2], quorum_id=2)
+        asyncio.get_event_loop().run_until_complete(
+            cell.prepare_indep_dp_mode_alive(indep_dp_info=new_info, send_ckpt_dst_ranks=[1, 2])
+        )
+
+        handle = cell._get_actor_handles()[0]
+        calls = ray.get(handle.get_calls.remote())
+        send_calls = [c for c in calls if c[0] == "send_ckpt"]
+        assert len(send_calls) == 2
 
 
 class TestPrepareIndepDPModeHealing:
@@ -271,6 +295,11 @@ class TestPrepareIndepDPModeHealing:
 
         assert cell.is_alive
         assert cell.indep_dp_info == info
+
+        # Verify actor received init call
+        handle = cell._get_actor_handles()[0]
+        calls = ray.get(handle.get_calls.remote())
+        assert any(c[0] == "init" for c in calls)
 
 
 class TestStatePredicates:
