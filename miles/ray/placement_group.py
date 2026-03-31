@@ -120,13 +120,14 @@ def create_placement_groups(args):
     }
 
 
-def allocate_train_group(args, num_nodes, num_gpus_per_node, pg):
+def allocate_train_group(args, num_nodes, num_gpus_per_node, pg, with_ref: bool = False):
     return RayTrainGroup(
         args=args,
         num_nodes=num_nodes,
         num_gpus_per_node=num_gpus_per_node,
         pg=pg,
         num_gpus_per_actor=0.4,
+        with_ref=with_ref,
     )
 
 
@@ -136,6 +137,7 @@ def create_training_models(args, pgs, rollout_manager):
         num_nodes=args.actor_num_nodes,
         num_gpus_per_node=args.actor_num_gpus_per_node,
         pg=pgs["actor"],
+        with_ref=args.kl_coef != 0 or args.use_kl_loss,
     )
     if args.use_critic:
         critic_model = allocate_train_group(
@@ -144,12 +146,12 @@ def create_training_models(args, pgs, rollout_manager):
             num_gpus_per_node=args.critic_num_gpus_per_node,
             pg=pgs["critic"],
         )
-        critic_init_handle = critic_model.async_init(args, role="critic", with_ref=False)
+        critic_init_handle = critic_model.async_init(args, role="critic")
     else:
         critic_model = None
 
     start_rollout_ids = ray.get(
-        actor_model.async_init(args, role="actor", with_ref=args.kl_coef != 0 or args.use_kl_loss)
+        actor_model.async_init(args, role="actor")
     )
 
     assert len(set(start_rollout_ids)) == 1

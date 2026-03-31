@@ -34,11 +34,13 @@ class RayTrainGroup:
         pg: tuple[PlacementGroup, list[int], list[int]],
         num_gpus_per_actor: float = 1,
         role: str = "actor",
+        with_ref: bool = False,
     ) -> None:
         self.args = args
         self._num_nodes = num_nodes
         self._num_gpus_per_node = num_gpus_per_node
         self.role = role
+        self.with_ref = with_ref
 
         # Allocate the GPUs for actors w/o instantiating them
         self._allocate_gpus_for_actor(pg, num_gpus_per_actor)
@@ -104,12 +106,12 @@ class RayTrainGroup:
                 master_addr, master_port = ray.get(actor.get_master_addr_and_port.remote())
             self._actor_handles.append(actor)
 
-    def async_init(self, args, role, with_ref=False):
+    def async_init(self, args, role):
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
         self.args = args
-        return [actor.init.remote(args, role, with_ref=with_ref) for actor in self._actor_handles]
+        return [actor.init.remote(args, role, with_ref=self.with_ref) for actor in self._actor_handles]
 
     def async_train(self, rollout_id, rollout_data_ref):
         """Do one rollout training"""
