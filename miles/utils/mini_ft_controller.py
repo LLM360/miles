@@ -16,6 +16,86 @@ from miles.utils.pydantic_utils import StrictBaseModel
 logger = logging.getLogger(__name__)
 
 
+# ------------------------ entrypoint ------------------------
+
+
+def maybe_start_mini_ft_controller(args: Any) -> None:
+    if not args.mini_ft_controller_enable:
+        return
+
+    runner = _MiniFTControllerRunner(
+        control_server_url=f"http://127.0.0.1:{args.control_server_port}",
+        poll_interval=args.mini_ft_controller_poll_interval,
+        resume_delay=args.mini_ft_controller_resume_delay,
+    )
+
+    def _run() -> None:
+        asyncio.run(runner.run())
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    logger.info("Started mini FT controller on daemon thread")
+
+
+# ------------------------ HTTP transport + thread runner ------------------------
+
+
+class _MiniFTControllerRunner:
+    def __init__(
+        self,
+        *,
+        control_server_url: str,
+        poll_interval: float,
+        resume_delay: float,
+    ) -> None:
+        url = control_server_url.rstrip("/")
+        self._client = httpx.AsyncClient(base_url=url, timeout=30.0)
+        self._controller = _MiniFTController(
+            get_cells=self._get_cells,
+            suspend_cell=self._suspend_cell,
+            resume_cell=self._resume_cell,
+            poll_interval=poll_interval,
+            resume_delay=resume_delay,
+        )
+
+    async def run(self) -> None:
+        try:
+            await self._controller.run()
+        finally:
+            await self._client.aclose()
+
+    async def _get_cells(self) -> list[_CellSnapshot]:
+        resp = await self._client.get("/api/v1/cells")
+        resp.raise_for_status()
+        cell_list = CellList.model_validate(resp.json())
+        return [_compute_cell_snapshot(cell) for cell in cell_list.items]
+
+    async def _suspend_cell(self, name: str) -> None:
+        await self._patch_cell_suspend(name=name, suspend=True)
+
+    async def _resume_cell(self, name: str) -> None:
+        await self._patch_cell_suspend(name=name, suspend=False)
+
+    async def _patch_cell_suspend(self, *, name: str, suspend: bool) -> None:
+        patch = CellPatch(spec=CellPatchSpec(suspend=suspend))
+        resp = await self._client.patch(
+            f"/api/v1/cells/{name}",
+            content=patch.model_dump_json(),
+            headers={"Content-Type": "application/json"},
+        )
+        resp.raise_for_status()
+
+
+def _compute_cell_snapshot(cell: Cell) -> _CellSnapshot:
+    healthy = True
+    for condition in cell.status.conditions:
+        if condition.type == "Healthy":
+            healthy = condition.status == "True"
+            break
+
+    return _CellSnapshot(name=cell.metadata.name, healthy=healthy)
+
+
 # ------------------------ data models ------------------------
 
 
@@ -53,12 +133,15 @@ class _MiniFTController:
         self._cell_backoffs: dict[str, _CellBackoff] = {}
 
     async def run(self) -> None:
-        self._running = True
-        while self._running:
-            start = time.monotonic()
-            await self._poll_and_heal()
-            elapsed = time.monotonic() - start
-            await asyncio.sleep(max(0.0, self._poll_interval - elapsed))
+        try:
+            self._running = True
+            while self._running:
+                start = time.monotonic()
+                await self._poll_and_heal()
+                elapsed = time.monotonic() - start
+                await asyncio.sleep(max(0.0, self._poll_interval - elapsed))
+        except Exception:
+            logger.error("Error in run", exc_info=True)
 
     def request_stop(self) -> None:
         self._running = False
@@ -110,83 +193,3 @@ class _MiniFTController:
                 delay,
                 exc_info=True,
             )
-
-
-# ------------------------ HTTP transport + thread runner ------------------------
-
-
-def _compute_cell_snapshot(cell: Cell) -> _CellSnapshot:
-    healthy = True
-    for condition in cell.status.conditions:
-        if condition.type == "Healthy":
-            healthy = condition.status == "True"
-            break
-
-    return _CellSnapshot(name=cell.metadata.name, healthy=healthy)
-
-
-class _MiniFTControllerRunner:
-    def __init__(
-        self,
-        *,
-        control_server_url: str,
-        poll_interval: float,
-        resume_delay: float,
-    ) -> None:
-        url = control_server_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=url, timeout=30.0)
-        self._controller = _MiniFTController(
-            get_cells=self._get_cells,
-            suspend_cell=self._suspend_cell,
-            resume_cell=self._resume_cell,
-            poll_interval=poll_interval,
-            resume_delay=resume_delay,
-        )
-
-    async def run(self) -> None:
-        try:
-            await self._controller.run()
-        finally:
-            await self._client.aclose()
-
-    async def _get_cells(self) -> list[_CellSnapshot]:
-        resp = await self._client.get("/api/v1/cells")
-        resp.raise_for_status()
-        cell_list = CellList.model_validate(resp.json())
-        return [_compute_cell_snapshot(cell) for cell in cell_list.items]
-
-    async def _suspend_cell(self, name: str) -> None:
-        await self._patch_cell_suspend(name=name, suspend=True)
-
-    async def _resume_cell(self, name: str) -> None:
-        await self._patch_cell_suspend(name=name, suspend=False)
-
-    async def _patch_cell_suspend(self, *, name: str, suspend: bool) -> None:
-        patch = CellPatch(spec=CellPatchSpec(suspend=suspend))
-        resp = await self._client.patch(
-            f"/api/v1/cells/{name}",
-            content=patch.model_dump_json(),
-            headers={"Content-Type": "application/json"},
-        )
-        resp.raise_for_status()
-
-
-# ------------------------ entrypoint ------------------------
-
-
-def maybe_start_mini_ft_controller(args: Any) -> None:
-    if not args.mini_ft_controller_enable:
-        return
-
-    runner = _MiniFTControllerRunner(
-        control_server_url=f"http://127.0.0.1:{args.control_server_port}",
-        poll_interval=args.mini_ft_controller_poll_interval,
-        resume_delay=args.mini_ft_controller_resume_delay,
-    )
-
-    def _run() -> None:
-        asyncio.run(runner.run())
-
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
-    logger.info("Started mini FT controller on daemon thread")
