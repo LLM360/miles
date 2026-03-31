@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Type, Callable, Tuple
+from collections.abc import Callable
 
 import ray
 from pydantic import ConfigDict
@@ -85,7 +85,12 @@ class RayTrainCell:
 
         self._change_state("recreate_actors", (_StatePending, _StateStopped), _core)
 
-    def _change_state(self, debug_name: str, old_state_cls: Type[_CellState] | Tuple[Type[_CellState], ...], fn: Callable[[], _CellState]):
+    def _change_state(
+        self,
+        debug_name: str,
+        old_state_cls: type[_CellState] | tuple[type[_CellState], ...],
+        fn: Callable[[], _CellState],
+    ):
         logger.info(f"{debug_name} start {self.cell_id=}")
         assert isinstance(self._state, old_state_cls), f"{self.cell_id=} {self._state=}"
         self._state = fn()
