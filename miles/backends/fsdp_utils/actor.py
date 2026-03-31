@@ -11,6 +11,7 @@ from tqdm import tqdm
 from transformers import AutoConfig
 
 from miles.ray.train_actor import TrainRayActor
+from miles.utils.indep_dp import IndepDPInfo
 from miles.utils import train_dump_utils, train_metric_utils
 from miles.utils.context_utils import with_defer
 from miles.utils.distributed_utils import get_gloo_group
@@ -60,14 +61,13 @@ class FSDPTrainRayActor(TrainRayActor):
         *,
         with_ref: bool = False,
         recv_ckpt_src_rank: int | None = None,
-        indep_dp_quorum_id: int,
-        indep_dp_info: object | None = None,
+        indep_dp_info: IndepDPInfo,
     ) -> int | None:
         super().init(args, role, with_ref)
 
         # Unsupported
         assert recv_ckpt_src_rank is None
-        assert indep_dp_quorum_id == 0
+        assert indep_dp_info.quorum_id == 0
 
         if args.dumper_enable:
             from sglang.srt.debug_utils.dumper import dumper

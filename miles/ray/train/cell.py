@@ -131,7 +131,6 @@ class RayTrainCell:
     ):
         await asyncio.gather(
             *self.async_init(
-                indep_dp_quorum_id=indep_dp_info.quorum_id,
                 indep_dp_info=indep_dp_info,
                 recv_ckpt_src_rank=recv_ckpt_src_rank,
             )
@@ -238,8 +237,7 @@ class RayTrainCell:
     def async_init(
         self,
         *,
-        indep_dp_quorum_id: int,
-        indep_dp_info: IndepDPInfo | None = None,
+        indep_dp_info: IndepDPInfo,
         recv_ckpt_src_rank: int | None = None,
     ):
         return self.async_execute(
@@ -247,7 +245,6 @@ class RayTrainCell:
             args=self.args,
             role=self.role,
             with_ref=self.with_ref,
-            indep_dp_quorum_id=indep_dp_quorum_id,
             indep_dp_info=indep_dp_info,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )

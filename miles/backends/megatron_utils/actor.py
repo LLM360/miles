@@ -59,24 +59,16 @@ class MegatronTrainRayActor(TrainRayActor):
         *,
         with_ref: bool = False,
         recv_ckpt_src_rank: int | None = None,
-        indep_dp_quorum_id: int,
-        indep_dp_info: IndepDPInfo | None = None,
+        indep_dp_info: IndepDPInfo,
     ) -> int | None:
         monkey_patch_torch_dist()
 
         super().init(args, role, with_ref)
 
-        _indep_dp_info = indep_dp_info or IndepDPInfo(
-            cell_index=self._cell_id,
-            num_cells=self._num_cells,
-            alive_rank=self._cell_id,
-            alive_size=self._num_cells,
-            quorum_id=indep_dp_quorum_id,
-        )
         init(
             args,
             indep_dp_store_addr=self._indep_dp_store_addr,
-            indep_dp_info=_indep_dp_info,
+            indep_dp_info=indep_dp_info,
         )
 
         if args.dumper_enable:

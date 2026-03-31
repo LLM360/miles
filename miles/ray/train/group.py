@@ -93,7 +93,6 @@ class RayTrainGroup:
             future
             for cell in self._cells
             for future in cell.async_init(
-                indep_dp_quorum_id=self._indep_dp_quorum_id,
                 indep_dp_info=self._make_indep_dp_info(cell.cell_id, alive_mapping),
             )
         ]
