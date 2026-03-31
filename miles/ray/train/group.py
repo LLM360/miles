@@ -6,7 +6,7 @@ import ray
 from ray.util.placement_group import PlacementGroup
 
 from miles.ray.train.cell import RayTrainCell
-from miles.utils.indep_dp_group_info import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPGroupInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
 if TYPE_CHECKING:

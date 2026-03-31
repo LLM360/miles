@@ -10,7 +10,7 @@ from megatron.core.num_microbatches_calculator import init_num_microbatches_calc
 from megatron.training.global_vars import _build_tokenizer, set_args
 
 from miles.backends.training_utils.parallel import get_parallel_state, set_parallel_state
-from miles.utils.indep_dp_group_info import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPGroupInfo
 
 from .indep_dp import create_indep_dp_group
 from .parallel import create_megatron_parallel_state

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from miles.ray.train.group import RayTrainGroup
-from miles.utils.indep_dp_group_info import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPGroupInfo
 
 
 class _MockCell:

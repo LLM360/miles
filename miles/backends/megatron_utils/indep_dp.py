@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import torch.distributed as dist
 
-from miles.utils.indep_dp_group_info import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPGroupInfo
 from miles.utils.process_group_utils import GroupInfo
 
 from ..training_utils.parallel import ParallelState

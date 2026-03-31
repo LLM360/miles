@@ -9,7 +9,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-from miles.utils.indep_dp_group_info import IndepDPGroupInfo
+from miles.utils.indep_dp import IndepDPGroupInfo
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
