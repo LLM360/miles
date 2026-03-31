@@ -167,6 +167,12 @@ class UpdateWeightFromTensor:
             if start <= dist.get_rank() < end:
                 self._ipc_engine = engine
 
+    def _get_pause_mode(self) -> str:
+        policy = getattr(self.args, "fully_async_interrupt_policy", "legacy_abort_resume")
+        if policy == "no_interrupt":
+            return getattr(self.args, "fully_async_pause_mode", "retract")
+        return "abort"
+
     @torch.no_grad()
     def update_weights(self) -> None:
         """
@@ -176,7 +182,8 @@ class UpdateWeightFromTensor:
 
         rank = dist.get_rank()
         if rank == 0:
-            ray.get([engine.pause_generation.remote() for engine in self.rollout_engines])
+            pause_mode = self._get_pause_mode()
+            ray.get([engine.pause_generation.remote(mode=pause_mode) for engine in self.rollout_engines])
             ray.get([engine.flush_cache.remote() for engine in self.rollout_engines])
             if self.quantization_config and self.quantization_config["quant_method"] in ["compressed-tensors"]:
                 post_process_weights(

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import time
 import uuid
@@ -15,6 +16,8 @@ from sglang.srt.function_call.function_call_parser import FunctionCallParser
 from miles.utils.http_utils import find_available_port
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.test_utils.uvicorn_thread_server import UvicornThreadServer
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -62,15 +65,29 @@ class MockSGLangServer:
         self.request_log: list[dict] = []
         self._concurrency = Counter()
 
+        # pause/continue/abort state
+        self._resume_event: asyncio.Event | None = None
+        self.pause_calls: int = 0
+        self.continue_calls: int = 0
+        self.abort_calls: int = 0
+        self.last_pause_mode: str | None = None
+
         self._setup_routes()
 
     @property
     def max_concurrent(self) -> int:
         return self._concurrency.max_value
 
+    def is_paused(self) -> bool:
+        return self._resume_event is not None and not self._resume_event.is_set()
+
     def reset_stats(self):
         self.request_log.clear()
         self._concurrency.reset()
+        self.pause_calls = 0
+        self.continue_calls = 0
+        self.abort_calls = 0
+        self.last_pause_mode = None
 
     def start(self):
         self._server = UvicornThreadServer(self.app, host=self.host, port=self.port)
@@ -99,9 +116,39 @@ class MockSGLangServer:
 
         @self.app.post("/abort_request")
         async def abort_request(_request: Request):
+            self.abort_calls += 1
+            return JSONResponse(content={"status": "ok"})
+
+        @self.app.post("/pause_generation")
+        async def pause_generation(request: Request):
+            payload = await request.json()
+            mode = payload.get("mode", "abort")
+            self.pause_calls += 1
+            self.last_pause_mode = mode
+            if self._resume_event is None:
+                self._resume_event = asyncio.Event()
+                self._resume_event.set()
+            self._resume_event.clear()
+            logger.info(f"MockSGLangServer: pause_generation(mode={mode}), total pauses={self.pause_calls}")
+            return JSONResponse(content={"status": "ok"})
+
+        @self.app.post("/continue_generation")
+        async def continue_generation(_request: Request):
+            self.continue_calls += 1
+            if self._resume_event is not None:
+                self._resume_event.set()
+            logger.info(f"MockSGLangServer: continue_generation, total continues={self.continue_calls}")
+            return JSONResponse(content={"status": "ok"})
+
+        @self.app.post("/flush_cache")
+        async def flush_cache(_request: Request):
             return JSONResponse(content={"status": "ok"})
 
     async def _handle_generate_like_request(self, request: Request, compute_fn: Callable[[dict], dict]):
+        # block while paused
+        if self._resume_event is not None and not self._resume_event.is_set():
+            logger.info("MockSGLangServer: request blocked, waiting for continue_generation")
+            await self._resume_event.wait()
         payload = await request.json()
         self.request_log.append(payload)
         with self._concurrency.track():

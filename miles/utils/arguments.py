@@ -376,6 +376,28 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                     "This improves pipeline utilization for long-tail generation scenarios (e.g. agentic tool call)."
                 ),
             )
+            parser.add_argument(
+                "--fully-async-interrupt-policy",
+                type=str,
+                default=os.environ.get("MILES_FULLY_ASYNC_INTERRUPT_POLICY", "legacy_abort_resume"),
+                choices=["legacy_abort_resume", "no_interrupt"],
+                help=(
+                    "Interrupt policy for fully-async rollout. "
+                    "'legacy_abort_resume': abort in-flight requests at rollout end and during weight update (default). "
+                    "'no_interrupt': keep in-flight requests alive; use pause_generation/continue_generation for weight updates."
+                ),
+            )
+            parser.add_argument(
+                "--fully-async-pause-mode",
+                type=str,
+                default=os.environ.get("MILES_FULLY_ASYNC_PAUSE_MODE", "retract"),
+                choices=["retract", "in_place"],
+                help=(
+                    "Pause mode for weight updates when fully_async_interrupt_policy=no_interrupt. "
+                    "'retract': retract in-flight tokens before pausing (default). "
+                    "'in_place': pause generation in place without retracting."
+                ),
+            )
 
             # partial rollout
             parser.add_argument(

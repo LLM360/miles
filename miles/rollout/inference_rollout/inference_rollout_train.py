@@ -139,8 +139,19 @@ async def generate_rollout_async(
         f"Finish rollout: {[str(sample.prompt) + sample.response]}, label: {sample.label}, reward: {sample.reward}",
     )
 
-    # there are still some unfinished requests, abort them
-    aborted_samples = await abort(state, pendings, rollout_id)
+    # there are still some unfinished requests
+    no_interrupt = (
+        continuous and getattr(args, "fully_async_interrupt_policy", "legacy_abort_resume") == "no_interrupt"
+    )
+    if no_interrupt:
+        # no_interrupt: leave in-flight requests alive for next rollout cycle.
+        # The pending asyncio tasks will complete in the background; SGLang
+        # keeps processing them without abort. Results are not collected here
+        # (Phase 2 will maintain a persistent queue across rollout calls).
+        logger.info(f"no_interrupt: skipping abort, {len(pendings)} requests remain in-flight")
+        aborted_samples = []
+    else:
+        aborted_samples = await abort(state, pendings, rollout_id)
 
     assert len(data) == args.rollout_batch_size, f"Got {len(data)} samples, expected {args.rollout_batch_size}"
     data = sorted(data, key=lambda group: group[0][0].index if isinstance(group[0], list) else group[0].index)
@@ -157,4 +168,8 @@ async def generate_rollout_async(
     if f := load_function(args.rollout_all_samples_process_path):
         f(args, all_samples, data_source)
 
-    return RolloutFnTrainOutput(samples=data, metrics=metric_gatherer.collect()), aborted_samples
+    metrics = metric_gatherer.collect()
+    if no_interrupt:
+        metrics["rollout/no_interrupt/pending_at_end"] = len(pendings)
+
+    return RolloutFnTrainOutput(samples=data, metrics=metrics), aborted_samples

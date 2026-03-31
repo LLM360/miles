@@ -118,3 +118,89 @@ def test_fully_async_with_staleness_filter(rollout_env):
     assert len(out.samples) == env.args.rollout_batch_size
     assert "rollout/buffer/stale_samples_discarded" in out.metrics
     assert out.metrics["rollout/buffer/stale_samples_discarded"] == 3
+
+
+# ── no_interrupt strategy tests ──────────────────────────────────────────────
+
+_NO_INTERRUPT_BASIC = integration_env_config(
+    extra_argv=[
+        "--fully-async-rollout",
+        "--fully-async-interrupt-policy",
+        "no_interrupt",
+        "--fully-async-pause-mode",
+        "retract",
+        "--rollout-batch-size",
+        "2",
+        "--over-sampling-batch-size",
+        "4",
+    ],
+)
+
+
+@pytest.mark.parametrize("rollout_env", [_NO_INTERRUPT_BASIC], indirect=True)
+def test_no_interrupt_strategy_no_rollout_end_abort(rollout_env):
+    """When no_interrupt + continuous, abort_request should NOT be sent to workers."""
+    env = rollout_env
+    out = _load_and_call_train(env.args, env.data_source)
+    assert len(out.samples) == env.args.rollout_batch_size
+
+    # no_interrupt skips abort() entirely, so no /abort_request POST should reach the mock server
+    assert (
+        env.mock_server.abort_calls == 0
+    ), f"Expected 0 abort_request calls with no_interrupt, got {env.mock_server.abort_calls}"
+    # verify remaining in-flight count is reported as metric
+    assert "rollout/no_interrupt/pending_at_end" in out.metrics
+
+
+_NO_INTERRUPT_BATCH = integration_env_config(
+    extra_argv=[
+        "--fully-async-rollout",
+        "--fully-async-interrupt-policy",
+        "no_interrupt",
+        "--rollout-batch-size",
+        "4",
+        "--over-sampling-batch-size",
+        "8",
+    ],
+)
+
+
+@pytest.mark.parametrize("rollout_env", [_NO_INTERRUPT_BATCH], indirect=True)
+def test_no_interrupt_strategy_preserves_batch_size(rollout_env):
+    """no_interrupt strategy must still collect exactly rollout_batch_size samples."""
+    env = rollout_env
+    out = _load_and_call_train(env.args, env.data_source)
+    assert len(out.samples) == env.args.rollout_batch_size
+    # more requests were submitted than target due to over-sampling
+    assert len(env.mock_server.request_log) >= env.args.rollout_batch_size
+
+
+_NO_INTERRUPT_STALENESS = integration_env_config(
+    extra_argv=[
+        "--fully-async-rollout",
+        "--fully-async-interrupt-policy",
+        "no_interrupt",
+        "--partial-rollout",
+        "--rollout-batch-size",
+        "2",
+        "--over-sampling-batch-size",
+        "4",
+        "--max-buffer-staleness",
+        "1",
+    ],
+)
+
+
+@pytest.mark.parametrize("rollout_env", [_NO_INTERRUPT_STALENESS], indirect=True)
+def test_no_interrupt_strategy_with_staleness_bound(rollout_env):
+    """no_interrupt + staleness filtering: stale samples are discarded from buffer."""
+    env = rollout_env
+    # pre-populate buffer with stale samples
+    for _ in range(3):
+        group = _make_buffer_group(start_rollout_id=0, n_samples=env.args.n_samples_per_prompt)
+        env.data_source.buffer.append(group)
+
+    out = _load_and_call_train(env.args, env.data_source, rollout_id=10)
+    assert len(out.samples) == env.args.rollout_batch_size
+    assert "rollout/buffer/stale_samples_discarded" in out.metrics
+    assert out.metrics["rollout/buffer/stale_samples_discarded"] == 3

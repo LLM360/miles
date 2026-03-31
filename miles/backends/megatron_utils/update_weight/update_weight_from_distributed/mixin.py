@@ -136,10 +136,17 @@ class DistBucketedWeightUpdateMixin:
 
         update_bucket_weight_func(converted_hf_tensors, pbar)
 
+    def _get_pause_mode(self) -> str:
+        policy = getattr(self.args, "fully_async_interrupt_policy", "legacy_abort_resume")
+        if policy == "no_interrupt":
+            return getattr(self.args, "fully_async_pause_mode", "retract")
+        return "abort"
+
     def _pause_and_prepare_engines(self) -> None:
         """Pause rollout engines, flush cache, and run pre-process if needed."""
         if dist.get_rank() == 0:
-            ray.get([engine.pause_generation.remote() for engine in self.rollout_engines])
+            pause_mode = self._get_pause_mode()
+            ray.get([engine.pause_generation.remote(mode=pause_mode) for engine in self.rollout_engines])
             ray.get([engine.flush_cache.remote() for engine in self.rollout_engines])
 
             # int4/fp4 pre_process

@@ -515,7 +515,8 @@ class MegatronTrainRayActor(TrainRayActor):
                 ray.get(self.rollout_manager.clear_updatable_num_new_engines.remote())
 
         use_session_server = getattr(self.args, "use_session_server", False)
-        if use_session_server:
+        no_interrupt = getattr(self.args, "fully_async_interrupt_policy", "legacy_abort_resume") == "no_interrupt"
+        if use_session_server and not no_interrupt:
             ray.get(self.rollout_manager.pause_sessions.remote())
 
         if self.args.offload_train and is_lora_enabled(self.args):
@@ -549,7 +550,7 @@ class MegatronTrainRayActor(TrainRayActor):
                 else:
                     self.weights_backuper.backup("old_actor")
 
-        if use_session_server:
+        if use_session_server and not no_interrupt:
             ray.get(self.rollout_manager.resume_sessions.remote())
 
         if self.args.offload_train:
