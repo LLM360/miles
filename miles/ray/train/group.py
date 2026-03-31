@@ -145,12 +145,12 @@ class RayTrainGroup:
     # ------------------------ utils to forward calls to cells ------------------------
 
     def _async_execute_alive(self, fn_name, *args, **kwargs):
-        alive_cells = [cell for cell in self._cells if cell.is_alive]
+        alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
         return [future for cell in alive_cells for future in cell.async_execute(fn_name, *args, **kwargs)]
 
     def _async_execute_first_alive(self, fn_name, *args, **kwargs):
-        alive_cells = [cell for cell in self._cells if cell.is_alive]
+        alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
         return alive_cells[0].async_execute(fn_name, *args, **kwargs)
 
