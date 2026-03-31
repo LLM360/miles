@@ -98,13 +98,15 @@ class RayTrainCell:
 
     # ------------------------ cooperatively prepare ------------------------
 
-    async def cooperatively_prepare_indep_dp_world(self):
-        assert self.is_running
-
-        if is_initialized:
+    async def cooperatively_prepare_indep_dp_world(
+        self,
+        send_ckpt_dst_ranks: list[int],
+    ):
+        if self.is_running:
             if world_changed:
                 await reconfigure_indep_dp()
         else:
+            assert self.is_pending
             await TODO_alloc_for_pending()
             await call_init()
 
