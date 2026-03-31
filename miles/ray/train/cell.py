@@ -271,6 +271,11 @@ class RayTrainCell:
     def is_stopped(self) -> bool:
         return isinstance(self._state, _StateStopped)
 
+    @property
+    def indep_dp_info(self) -> IndepDPInfo:
+        assert isinstance(self._state, (_StateAllocatedAlive, _StateAllocatedErrored))
+        return self._state.indep_dp_info
+
     def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
         assert isinstance(
             self._state, _StateAllocatedBase
