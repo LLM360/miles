@@ -96,7 +96,7 @@ class RayTrainCell:
             (_StateAllocatedAlive, _StateAllocatedErrored),
             lambda: _StateAllocatedErrored(
                 actor_handles=self._state.actor_handles,
-                indep_dp_info=self._state.indep_info,
+                indep_dp_info=self._state.indep_dp_info,
             ),
         )
 
