@@ -218,22 +218,22 @@ class RayTrainCell:
             case _StateAllocatedAlive():
                 return [
                     {"type": "Allocated", "status": "True"},
-                    {"type": "Ready", "status": "True"},
+                    {"type": "Healthy", "status": "True"},
                 ]
             case _StateAllocatedUninitialized():
                 return [
                     {"type": "Allocated", "status": "True"},
-                    {"type": "Ready", "status": "False"},
+                    {"type": "Healthy", "status": "True"},
                 ]
             case _StateAllocatedErrored():
                 return [
                     {"type": "Allocated", "status": "True"},
-                    {"type": "Ready", "status": "False"},
+                    {"type": "Healthy", "status": "False"},
                 ]
             case _StatePending() | _StateStopped():
                 return [
                     {"type": "Allocated", "status": "False"},
-                    {"type": "Ready", "status": "False"},
+                    {"type": "Healthy", "status": "True"},
                 ]
             case _:
                 raise NotImplementedError(f"Unknown state: {self._state}")

@@ -40,7 +40,7 @@ class TestGetCells:
                 is_suspended=True,
                 conditions=[
                     {"type": "Allocated", "status": "False"},
-                    {"type": "Ready", "status": "False"},
+                    {"type": "Healthy", "status": "False"},
                 ],
             )
         )
@@ -70,7 +70,7 @@ class TestGetCells:
                                 "lastTransitionTime": None,
                             },
                             {
-                                "type": "Ready",
+                                "type": "Healthy",
                                 "status": "True",
                                 "reason": None,
                                 "message": None,
@@ -98,7 +98,7 @@ class TestGetCells:
                                 "lastTransitionTime": None,
                             },
                             {
-                                "type": "Ready",
+                                "type": "Healthy",
                                 "status": "False",
                                 "reason": None,
                                 "message": None,
@@ -137,7 +137,7 @@ class TestGetCell:
                         "message": None,
                         "lastTransitionTime": None,
                     },
-                    {"type": "Ready", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
+                    {"type": "Healthy", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
                 ],
             },
         }

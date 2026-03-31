@@ -10,7 +10,7 @@ class _OkResponse(StrictBaseModel):
 
 
 class CellCondition(StrictBaseModel):
-    type: Literal["Allocated", "Ready"]
+    type: Literal["Allocated", "Healthy"]
     status: Literal["True", "False", "Unknown"]
     reason: str | None = None
     message: str | None = None

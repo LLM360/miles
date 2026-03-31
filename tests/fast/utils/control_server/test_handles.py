@@ -43,7 +43,7 @@ class TestActorCellHandle:
                         "message": None,
                         "lastTransitionTime": None,
                     },
-                    {"type": "Ready", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
+                    {"type": "Healthy", "status": "True", "reason": None, "message": None, "lastTransitionTime": None},
                 ],
             },
         }
@@ -56,7 +56,7 @@ class TestActorCellHandle:
                     phase="Suspended",
                     conditions=[
                         {"type": "Allocated", "status": "False"},
-                        {"type": "Ready", "status": "False"},
+                        {"type": "Healthy", "status": "False"},
                     ],
                     is_stopped=True,
                 )

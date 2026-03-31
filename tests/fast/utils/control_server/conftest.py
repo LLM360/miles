@@ -28,7 +28,7 @@ class MockHandle:
         self._phase = phase
         self._conditions = conditions or [
             {"type": "Allocated", "status": "True"},
-            {"type": "Ready", "status": "True"},
+            {"type": "Healthy", "status": "True"},
         ]
         self._is_suspended = is_suspended
         self._suspend_error = suspend_error
@@ -64,7 +64,7 @@ class MockHandle:
         self._phase = "Suspended"
         self._conditions = [
             {"type": "Allocated", "status": "False"},
-            {"type": "Ready", "status": "False"},
+            {"type": "Healthy", "status": "False"},
         ]
 
     async def resume(self) -> None:
@@ -75,7 +75,7 @@ class MockHandle:
         self._phase = "Running"
         self._conditions = [
             {"type": "Allocated", "status": "True"},
-            {"type": "Ready", "status": "True"},
+            {"type": "Healthy", "status": "True"},
         ]
 
 
@@ -105,7 +105,7 @@ class MockRolloutManager:
             conditions
             or [
                 {"type": "Allocated", "status": "True"},
-                {"type": "Ready", "status": "True"},
+                {"type": "Healthy", "status": "True"},
             ]
         )
         self.get_cell_is_suspended = MockRemoteCall(is_suspended)
@@ -122,7 +122,7 @@ class MockRayTrainCell:
         self._phase = phase
         self._conditions = conditions or [
             {"type": "Allocated", "status": "True"},
-            {"type": "Ready", "status": "True"},
+            {"type": "Healthy", "status": "True"},
         ]
         self._is_stopped = is_stopped
 
