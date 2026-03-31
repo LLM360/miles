@@ -146,10 +146,7 @@ class _CellRegistry:
         return list(self._handles.values())
 
     def get(self, cell_id: str) -> _CellHandle:
-        try:
-            return self._handles[cell_id]
-        except KeyError as e:
-            raise KeyError(f"Cell '{cell_id}' not found") from e
+        return self._handles[cell_id]
 
 
 # -------------------------- handle ------------------------------
