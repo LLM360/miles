@@ -69,16 +69,13 @@ class RayTrainCell:
 
         self._change_state("mark_as_pending", _StateStopped, _StatePending)
 
-    def allocate_for_pending(self, indep_dp_alive_cell_indices: list[int]) -> None:
+    def allocate_for_pending(self) -> None:
         def _core():
             actor_handles = self._allocate_gpus_for_actor(
                 **self._creation_kwargs,
                 args=self.args,
             )
-            return _StateAllocatedUninitialized(
-                actor_handles=actor_handles,
-                indep_dp_alive_cell_indices=indep_dp_alive_cell_indices,
-            )
+            return _StateAllocatedUninitialized(actor_handles=actor_handles)
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
@@ -288,13 +285,11 @@ class _StatePending(_StateBase):
 
 class _StateAllocatedBase(_StateBase):
     actor_handles: list[ray.actor.ActorHandle]
-    indep_dp_alive_cell_indices: list[int]
 
     @classmethod
     def copy_from(cls, another: "_StateAllocatedBase"):
         return cls(
             actor_handles=another.actor_handles,
-            indep_dp_alive_cell_indices=another.indep_dp_alive_cell_indices,
         )
 
 class _StateAllocatedUninitialized(_StateAllocatedBase):
