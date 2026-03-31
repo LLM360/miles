@@ -38,7 +38,7 @@ class TestMarkAsPendingIdempotent:
 
     def test_mark_as_pending_already_allocated_is_noop(self):
         """Calling mark_as_pending() on an allocated cell does not crash and state stays."""
-        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase="running"))
+        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase="alive"))
 
         cell.mark_as_pending()
 
@@ -48,7 +48,7 @@ class TestMarkAsPendingIdempotent:
 class TestPhaseTransitions:
     def test_allocate_sets_allocated_phase(self):
         """After allocate_for_pending, phase is 'allocated'."""
-        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase="allocated"))
+        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase="uninitialized"))
 
         assert cell.is_allocated
         assert cell.is_running
@@ -56,7 +56,7 @@ class TestPhaseTransitions:
 
     def test_mark_as_running(self):
         """mark_as_running transitions from allocated to running phase."""
-        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase="allocated"))
+        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase="uninitialized"))
 
         cell.mark_as_running()
 
@@ -65,7 +65,7 @@ class TestPhaseTransitions:
 
     def test_mark_as_errored(self):
         """mark_as_errored transitions from running to errored phase."""
-        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase="running"))
+        cell = _make_cell_with_state(_StateAllocated(actor_handles=[], phase="alive"))
 
         cell.mark_as_errored()
 

@@ -23,7 +23,7 @@ class _StatePending(StrictBaseModel):
 class _StateAllocated(StrictBaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
     actor_handles: list[ray.actor.ActorHandle]
-    phase: Literal["allocated", "running", "errored"]
+    phase: Literal["uninitialized", "alive", "errored"]
 
 
 class _StateStopped(StrictBaseModel):
@@ -93,18 +93,18 @@ class RayTrainCell:
                 **self._creation_kwargs,
                 args=self.args,
             )
-            return _StateAllocated(actor_handles=actor_handles, phase="allocated")
+            return _StateAllocated(actor_handles=actor_handles, phase="uninitialized")
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
     def mark_as_running(self) -> None:
-        assert isinstance(self._state, _StateAllocated) and self._state.phase == "allocated", (
+        assert isinstance(self._state, _StateAllocated) and self._state.phase == "uninitialized", (
             f"cell {self.cell_index}: mark_as_running requires allocated phase, got {self._state}"
         )
-        self._state = _StateAllocated(actor_handles=self._state.actor_handles, phase="running")
+        self._state = _StateAllocated(actor_handles=self._state.actor_handles, phase="alive")
 
     def mark_as_errored(self) -> None:
-        assert isinstance(self._state, _StateAllocated) and self._state.phase == "running", (
+        assert isinstance(self._state, _StateAllocated) and self._state.phase == "alive", (
             f"cell {self.cell_index}: mark_as_errored requires running phase, got {self._state}"
         )
         self._state = _StateAllocated(actor_handles=self._state.actor_handles, phase="errored")
@@ -268,7 +268,7 @@ class RayTrainCell:
 
     @property
     def is_running(self) -> bool:
-        return isinstance(self._state, _StateAllocated) and self._state.phase in ("allocated", "running")
+        return isinstance(self._state, _StateAllocated) and self._state.phase in ("uninitialized", "alive")
 
     @property
     def is_errored(self) -> bool:
