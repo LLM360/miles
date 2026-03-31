@@ -10,7 +10,7 @@ class _OkResponse(StrictBaseModel):
 
 
 class CellCondition(StrictBaseModel):
-    type: str
+    type: Literal["Allocated", "Ready"]
     status: Literal["True", "False", "Unknown"]
     reason: str | None = None
     message: str | None = None
@@ -32,16 +32,16 @@ class CellMetadata(StrictBaseModel):
 
 
 class Cell(StrictBaseModel):
-    apiVersion: str = "miles.io/v1"
-    kind: str = "Cell"
+    apiVersion: Literal["miles.io/v1"] = "miles.io/v1"
+    kind: Literal["Cell"] = "Cell"
     metadata: CellMetadata
     spec: CellSpec
     status: CellStatus
 
 
 class CellList(StrictBaseModel):
-    apiVersion: str = "miles.io/v1"
-    kind: str = "CellList"
+    apiVersion: Literal["miles.io/v1"] = "miles.io/v1"
+    kind: Literal["CellList"] = "CellList"
     items: list[Cell]
 
 
@@ -54,9 +54,9 @@ class CellPatch(StrictBaseModel):
 
 
 class K8sStatus(StrictBaseModel):
-    apiVersion: str = "v1"
-    kind: str = "Status"
-    status: str = "Failure"
+    apiVersion: Literal["v1"] = "v1"
+    kind: Literal["Status"] = "Status"
+    status: Literal["Failure"] = "Failure"
     message: str
     reason: str
     code: int
