@@ -21,6 +21,16 @@ def train(args):
     # create the actor and critic models
     actor_model, critic_model = create_training_models(args, pgs, rollout_manager)
 
+    control_server = None
+    if args.control_server_port:
+        from miles.utils.control_server import ActorCellHandle, ControlServer
+
+        control_server = ControlServer(port=args.control_server_port)
+        for i in range(len(actor_model._cells)):
+            control_server.register(ActorCellHandle(group=actor_model, cell_index=i))
+        # TODO: register rollout cells (to be implemented separately)
+        control_server.start()
+
     if args.offload_rollout:
         ray.get(rollout_manager.onload_weights.remote())
 
