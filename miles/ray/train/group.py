@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import ray
 from ray.util.placement_group import PlacementGroup
 
-from miles.ray.train.cell import RayTrainCell
+from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
@@ -68,14 +68,17 @@ class RayTrainGroup:
             self._cells.append(
                 RayTrainCell(
                     args=args,
-                    gpus_per_cell=gpus_per_cell,
-                    pg=cell_pg,
-                    num_gpus_per_actor=num_gpus_per_actor,
                     role=role,
                     with_ref=with_ref,
                     cell_index=cell_index,
-                    indep_dp_store_addr=indep_dp_store_addr,
                     rollout_manager=rollout_manager,
+                    actor_factory=lambda: allocate_gpus_for_actor(
+                        args=args,
+                        gpus_per_cell=gpus_per_cell,
+                        pg=cell_pg,
+                        num_gpus_per_actor=num_gpus_per_actor,
+                        indep_dp_store_addr=indep_dp_store_addr,
+                    ),
                 )
             )
 

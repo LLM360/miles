@@ -261,7 +261,7 @@ _CellState = _StatePending | _StateAllocatedBase | _StateStopped
 # ------------------------ Actor factory ------------------------
 
 
-def _allocate_gpus_for_actor(
+def allocate_gpus_for_actor(
     args,
     gpus_per_cell: int,
     pg: tuple[PlacementGroup, list[int], list[int]],
