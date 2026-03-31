@@ -5,7 +5,7 @@ import asyncio
 import httpx
 import pytest
 
-from miles.utils.control_server_utils import (
+from miles.utils.control_server import (
     _create_control_app,
     _RolloutSubsystemHandle,
     _SubsystemRegistry,
