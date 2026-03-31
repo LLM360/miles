@@ -103,11 +103,11 @@ class RayTrainCell:
 
     async def cooperatively_prepare_indep_dp_world(
         self,
-        is_initialized: bool,
+        was_initialized: bool,
         indep_dp_quorum_id: int,
         send_ckpt_dst_ranks: list[int],
     ):
-        if is_initialized:
+        if was_initialized:
             await asyncio.gather(
                 *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
             )
