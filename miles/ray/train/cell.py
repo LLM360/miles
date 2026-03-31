@@ -105,6 +105,7 @@ class RayTrainCell:
             if world_changed:
                 await reconfigure_indep_dp()
         else:
+            await TODO_alloc_for_pending()
             await call_init()
 
         for dst_rank in send_ckpt_dst_ranks:

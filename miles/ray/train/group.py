@@ -172,13 +172,8 @@ class RayTrainGroup:
         running_cell_ids = [cell.cell_id for cell in self._cells if cell.is_running]
         assert running_cell_ids, "No running cells to materialize"
 
-        # Step 0: Bump states
+        # Step 1: Bump states
         self._indep_dp_quorum_id += 1
-
-        # Step 1: Recreate actors for each pending cell
-        for cell in self._cells:
-            if cell in pending_cell_ids:
-                cell.allocate_for_pending()
 
         # Step 2: Cooperatively prepare
         await asyncio.gather(*[
