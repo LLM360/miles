@@ -161,7 +161,7 @@ class RayTrainGroup:
                 cell.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
-        src_cell_id = was_running_ids[0]
+        src_cell_id = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
         await asyncio.gather(*[
             cell.cooperatively_prepare_indep_dp_world(
                 is_initialized=cell.cell_id in was_running_ids,
