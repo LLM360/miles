@@ -149,7 +149,7 @@ def _check_wait(work: dist._Work, op_name: str) -> None:
     """
     success = work.wait()
     if not success:
-        raise RuntimeError(f"torchft {op_name} failed (wait returned False)")
+        raise RuntimeError(f"distributed operation {op_name} failed (wait returned False)")
 
 
 class _RawPGUtil(GeneralPGUtil):
