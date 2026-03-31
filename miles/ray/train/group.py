@@ -89,7 +89,11 @@ class RayTrainGroup:
             future
             for cell in self._cells
             for future in cell.async_init(
-                indep_dp_info=self._compute_indep_dp_info(cell_index=cell.cell_index, alive_cell_indices=TODO)
+                indep_dp_info=self._compute_indep_dp_info(
+                    cell_index=cell.cell_index,
+                    # all cells will be alive for this first initialization
+                    alive_cell_indices=list(range(len(self._cells))),
+                )
             )
         ]
 
