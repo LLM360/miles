@@ -142,7 +142,7 @@ class RayTrainGroup:
         return ray.get(self._async_execute(fn_name, *args, **kwargs))
 
     def _execute_first_running_cell(self, fn_name, *args, **kwargs):
-        running_cells = [cell for cell in self._cells if cell.is_running]
+        running_cells = [cell for cell in self._cells if TODO_cell_is_running]
         return ray.get(running_cells[0].async_execute(fn_name, *args, **kwargs))
 
     def _async_execute(self, fn_name, *args, **kwargs):
@@ -154,7 +154,7 @@ class RayTrainGroup:
     async def _materialize_pending_cells(self) -> None:
         was_pending_ids = [cell.cell_index for cell in self._cells if cell.is_pending]
         assert was_pending_ids, "No pending cells to materialize"
-        was_running_ids = [cell.cell_index for cell in self._cells if cell.is_running]
+        was_running_ids = [cell.cell_index for cell in self._cells if TODO_cell_is_running]
         assert was_running_ids, "No running cells to materialize"
 
         # Step 1: Bump states
@@ -195,13 +195,13 @@ class RayTrainGroup:
 
     def _assert_all_running(self) -> None:
         for cell in self._cells:
-            assert cell.is_running, f"Cell {cell.cell_index} is not running (state={type(cell._state).__name__})"
+            assert TODO_cell_is_running, f"Cell {cell.cell_index} is not running (state={type(cell._state).__name__})"
 
     # TODO no need for this after allowing stopped cells
     def _assert_all_running_or_pending(self) -> None:
         for cell in self._cells:
             assert (
-                cell.is_running or cell.is_pending
+                TODO_cell_is_running or cell.is_pending
             ), f"Cell {cell.cell_index} is stopped, all cells must be running or pending"
 
     def _has_pending_cells(self) -> bool:

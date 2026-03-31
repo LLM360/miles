@@ -248,10 +248,6 @@ class RayTrainCell:
         return isinstance(self._state, _StateAllocatedBase)
 
     @property
-    def is_running(self) -> bool:
-        return isinstance(self._state, (_StateAllocatedUninitialized, _StateAllocatedAlive))
-
-    @property
     def is_errored(self) -> bool:
         return isinstance(self._state, _StateAllocatedErrored)
 
