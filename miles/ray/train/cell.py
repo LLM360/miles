@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from collections.abc import Callable
@@ -100,10 +101,13 @@ class RayTrainCell:
 
     async def cooperatively_prepare_indep_dp_world(
         self,
+        indep_dp_quorum_id: int,
         send_ckpt_dst_ranks: list[int],
     ):
         if self.is_running:
-            await reconfigure_indep_dp()
+            await asyncio.gather(
+                *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
+            )
         elif self.is_pending:
             await TODO_alloc_for_pending()
             await call_init()
