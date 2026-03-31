@@ -8,7 +8,7 @@ class IndepDPInfo:
     alive_rank: int
     alive_size: int
     quorum_id: int
-    alive_cell_indices: tuple[int, ...]
+    alive_cell_indices: list[int]
 
     def __post_init__(self):
         assert self.alive_rank == self.alive_cell_indices.index(self.cell_index)
