@@ -69,6 +69,8 @@ class _OkResponse(BaseModel):
 def _create_control_app(registry: _CellRegistry) -> FastAPI:
     app = FastAPI()
 
+    # -------------------------- APIs ------------------------------
+
     @app.get("/health")
     async def health() -> _OkResponse:
         return _OkResponse()
@@ -88,6 +90,20 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
 
         return list(await asyncio.gather(*(_fetch(h) for h in handles)))
 
+    @app.post("/cells/{cell_id}/stop")
+    async def stop_cell(cell_id: str, body: _StopRequest | None = None) -> _OkResponse:
+        if body is None:
+            body = _StopRequest()
+        handle = _get_handle(cell_id)
+        return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
+
+    @app.post("/cells/{cell_id}/start")
+    async def start_cell(cell_id: str) -> _OkResponse:
+        handle = _get_handle(cell_id)
+        return await _call_handle(cell_id, "start", handle.start())
+
+    # -------------------------- utils ------------------------------
+
     def _get_handle(cell_id: str) -> _CellHandle:
         try:
             return registry.get(cell_id)
@@ -101,18 +117,6 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
             logger.error("Failed to %s cell %s", action, cell_id, exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to {action} cell '{cell_id}'") from None
         return _OkResponse()
-
-    @app.post("/cells/{cell_id}/stop")
-    async def stop_cell(cell_id: str, body: _StopRequest | None = None) -> _OkResponse:
-        if body is None:
-            body = _StopRequest()
-        handle = _get_handle(cell_id)
-        return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
-
-    @app.post("/cells/{cell_id}/start")
-    async def start_cell(cell_id: str) -> _OkResponse:
-        handle = _get_handle(cell_id)
-        return await _call_handle(cell_id, "start", handle.start())
 
     return app
 
