@@ -154,9 +154,7 @@ def create_training_models(args, pgs, rollout_manager):
     else:
         critic_model = None
 
-    start_rollout_ids = ray.get(
-        actor_model.async_init()
-    )
+    start_rollout_ids = ray.get(actor_model.async_init())
 
     assert len(set(start_rollout_ids)) == 1
     if args.start_rollout_id is None:
