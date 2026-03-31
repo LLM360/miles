@@ -122,7 +122,6 @@ class RayTrainGroup:
         self._execute("clear_memory")
 
     def connect(self, critic_group: "RayTrainGroup"):
-        self._critic_group = critic_group
         assert len(self._cells) == len(critic_group._cells), (
             f"Actor and critic must have the same number of cells: "
             f"actor has {len(self._cells)}, critic has {len(critic_group._cells)}"
@@ -136,7 +135,6 @@ class RayTrainGroup:
         )
 
     def set_rollout_manager(self, rollout_manager):
-        self._rollout_manager = rollout_manager
         self._execute("set_rollout_manager", rollout_manager)
 
     def stop(self, cell_id: int) -> None:
@@ -173,21 +171,6 @@ class RayTrainGroup:
             )
             for cell in self._cells
         ])
-
-        # Step 4: Re-wire restarted cells
-        self._rewire_cells(was_pending_ids)
-
-    def _rewire_cells(self, restarted_cell_ids: list[int]) -> None:
-        refs = []
-        for cell in self._cells:
-            if cell.cell_id in restarted_cell_ids:
-                if hasattr(self, "_rollout_manager"):
-                    refs.extend(cell.async_execute("set_rollout_manager", self._rollout_manager))
-                if hasattr(self, "_critic_group"):
-                    critic_cell = self._critic_group._cells[cell.cell_id]
-                    refs.extend(cell.async_connect(critic_cell))
-        if refs:
-            ray.get(refs)
 
     def _assert_all_running(self) -> None:
         for cell in self._cells:
