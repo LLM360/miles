@@ -106,14 +106,12 @@ class RayTrainCell:
         indep_dp_quorum_id: int,
         send_ckpt_dst_ranks: list[int],
     ):
-        if self.is_running:
+        if is_initialized:
             await asyncio.gather(
                 *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
             )
-        elif self.is_pending:
-            await asyncio.gather(*self.async_init(indep_dp_quorum_id=indep_dp_quorum_id))
         else:
-            raise NotImplementedError
+            await asyncio.gather(*self.async_init(indep_dp_quorum_id=indep_dp_quorum_id))
 
         for dst_rank in send_ckpt_dst_ranks:
             await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
