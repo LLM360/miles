@@ -150,12 +150,12 @@ def create_training_models(args, pgs, rollout_manager):
             role="critic",
             with_ref=False,
         )
-        critic_init_handle = critic_model.async_init(args)
+        critic_init_handle = critic_model.async_init()
     else:
         critic_model = None
 
     start_rollout_ids = ray.get(
-        actor_model.async_init(args)
+        actor_model.async_init()
     )
 
     assert len(set(start_rollout_ids)) == 1
