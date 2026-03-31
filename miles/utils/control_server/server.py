@@ -6,7 +6,7 @@ import threading
 
 import ray
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse
 
 from miles.ray.train.group import RayTrainGroup
@@ -15,6 +15,16 @@ from miles.utils.control_server.models import Cell, CellList, CellPatch, K8sStat
 from miles.utils.control_server.registry import _CellRegistry
 
 logger = logging.getLogger(__name__)
+
+
+# -------------------------- exception ------------------------------
+
+
+class _K8sError(Exception):
+    def __init__(self, *, status_code: int, reason: str, message: str) -> None:
+        self.status_code = status_code
+        self.reason = reason
+        self.message = message
 
 
 # -------------------------- entrypoint ------------------------------
@@ -64,6 +74,13 @@ def _start_control_server_raw(registry: _CellRegistry, port: int) -> None:
 def _create_control_app(registry: _CellRegistry) -> FastAPI:
     app = FastAPI()
 
+    @app.exception_handler(_K8sError)
+    async def _handle_k8s_error(request: Request, exc: _K8sError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=K8sStatus(message=exc.message, reason=exc.reason, code=exc.status_code).model_dump(),
+        )
+
     # -------------------------- APIs ------------------------------
 
     @app.get("/api/v1/health")
@@ -77,17 +94,13 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
         return CellList(items=cells)
 
     @app.get("/api/v1/cells/{name}")
-    async def get_cell(name: str) -> Cell | JSONResponse:
-        handle = _get_handle_or_404(name)
-        if isinstance(handle, JSONResponse):
-            return handle
+    async def get_cell(name: str) -> Cell:
+        handle = _get_handle(name)
         return await handle.get_cell()
 
     @app.patch("/api/v1/cells/{name}")
-    async def patch_cell(name: str, body: CellPatch) -> Cell | JSONResponse:
-        handle = _get_handle_or_404(name)
-        if isinstance(handle, JSONResponse):
-            return handle
+    async def patch_cell(name: str, body: CellPatch) -> Cell:
+        handle = _get_handle(name)
 
         if body.spec is not None and body.spec.suspend is not None:
             try:
@@ -97,30 +110,16 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
                     await handle.resume()
             except Exception:
                 logger.error("Failed to patch cell %s", name, exc_info=True)
-                return JSONResponse(
-                    status_code=500,
-                    content=K8sStatus(
-                        message=f"Failed to patch cell '{name}'",
-                        reason="InternalError",
-                        code=500,
-                    ).model_dump(),
-                )
+                raise _K8sError(status_code=500, reason="InternalError", message=f"Failed to patch cell '{name}'")
 
         return await handle.get_cell()
 
     # -------------------------- utils ------------------------------
 
-    def _get_handle_or_404(name: str) -> _CellHandle | JSONResponse:
+    def _get_handle(name: str) -> _CellHandle:
         try:
             return registry.get(name)
         except KeyError:
-            return JSONResponse(
-                status_code=404,
-                content=K8sStatus(
-                    message=f"Cell '{name}' not found",
-                    reason="NotFound",
-                    code=404,
-                ).model_dump(),
-            )
+            raise _K8sError(status_code=404, reason="NotFound", message=f"Cell '{name}' not found") from None
 
     return app
