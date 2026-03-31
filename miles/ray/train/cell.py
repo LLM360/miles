@@ -265,6 +265,10 @@ class RayTrainCell:
     def is_pending(self) -> bool:
         return isinstance(self._state, _StatePending)
 
+    @property
+    def is_stopped(self) -> bool:
+        return isinstance(self._state, _StateStopped)
+
     def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
         assert isinstance(
             self._state, _StateRunning

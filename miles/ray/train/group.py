@@ -55,6 +55,7 @@ class RayTrainGroup:
         assert total_gpus % num_cells == 0, f"total_gpus ({total_gpus}) must be divisible by num_cells ({num_cells})"
 
         self._indep_dp_quorum_id = 0
+        self._alive_cell_ids: frozenset[int] | None = None
 
         if num_cells > 1:
             self._indep_dp_store, indep_dp_store_addr = _create_tcp_store()
@@ -86,15 +87,16 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
+        self._alive_cell_ids = frozenset(cell.cell_id for cell in self._cells)
         return [
             future for cell in self._cells for future in cell.async_init(indep_dp_quorum_id=self._indep_dp_quorum_id)
         ]
 
     def async_train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
-        self._assert_all_running_or_pending()
         if self._has_pending_cells():
             asyncio.get_event_loop().run_until_complete(self._materialize_pending_cells())
+        self._reconfigure_if_alive_changed()
         return self._async_execute("train", rollout_id, rollout_data_ref)
 
     def save_model(self, rollout_id: int, force_sync: bool = False):
@@ -147,8 +149,33 @@ class RayTrainGroup:
         return ray.get(running_cells[0].async_execute(fn_name, *args, **kwargs))
 
     def _async_execute(self, fn_name, *args, **kwargs):
-        self._assert_all_running()
-        return [future for cell in self._cells for future in cell.async_execute(fn_name, *args, **kwargs)]
+        running_cells = [cell for cell in self._cells if cell.is_running]
+        assert running_cells, "No running cells"
+        return [future for cell in running_cells for future in cell.async_execute(fn_name, *args, **kwargs)]
+
+    # ------------------------ internals for alive tracking ------------------------
+
+    def _reconfigure_if_alive_changed(self) -> None:
+        current_alive = frozenset(cell.cell_id for cell in self._cells if cell.is_running)
+        assert current_alive, "No running cells available for training"
+        if current_alive != self._alive_cell_ids:
+            self._reconfigure_running_cells(current_alive)
+
+    def _reconfigure_running_cells(self, alive_ids: frozenset[int]) -> None:
+        self._indep_dp_quorum_id += 1
+        alive_mapping = {cell_id: rank for rank, cell_id in enumerate(sorted(alive_ids))}
+
+        ray.get([
+            future
+            for cell in self._cells
+            if cell.is_running
+            for future in cell.async_execute(
+                "reconfigure_indep_dp",
+                indep_dp_quorum_id=self._indep_dp_quorum_id,
+                indep_dp_group_info=self._make_indep_dp_group_info(cell.cell_id, alive_mapping),
+            )
+        ])
+        self._alive_cell_ids = alive_ids
 
     # ------------------------ internals for stop/start ------------------------
 
@@ -208,16 +235,7 @@ class RayTrainGroup:
             ]
         )
 
-    def _assert_all_running(self) -> None:
-        for cell in self._cells:
-            assert cell.is_running, f"Cell {cell.cell_id} is not running (state={type(cell._state).__name__})"
-
-    # TODO no need for this after allowing stopped cells
-    def _assert_all_running_or_pending(self) -> None:
-        for cell in self._cells:
-            assert (
-                cell.is_running or cell.is_pending
-            ), f"Cell {cell.cell_id} is stopped, all cells must be running or pending"
+        self._alive_cell_ids = frozenset(cell.cell_id for cell in self._cells if cell.is_running)
 
     def _has_pending_cells(self) -> bool:
         return any(cell.is_pending for cell in self._cells)
