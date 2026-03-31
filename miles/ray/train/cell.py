@@ -109,6 +109,7 @@ class RayTrainCell:
         send_ckpt_dst_ranks: list[int],
     ):
         if was_initialized:
+            assert recv_ckpt_src_rank is None, "recv_ckpt_src_rank is not used in this branch"
             await asyncio.gather(
                 *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
             )
