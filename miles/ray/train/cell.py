@@ -115,10 +115,10 @@ class RayTrainCell:
         old_state_cls: type["_CellState"] | tuple[type["_CellState"], ...],
         fn: Callable[[], "_CellState"],
     ):
-        logger.info(f"{debug_name} start {self.cell_index=}")
+        logger.info(f"{debug_name} start {self.cell_index=} old={self._state}")
         assert isinstance(self._state, old_state_cls), f"{self.cell_index=} {self._state=}"
         self._state = fn()
-        logger.info(f"{debug_name} end {self.cell_index=}")
+        logger.info(f"{debug_name} end {self.cell_index=} new={self._state}")
 
     # ------------------------ cooperatively prepare ------------------------
 
