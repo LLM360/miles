@@ -621,7 +621,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
     def send_ckpt(self, dst_rank: int) -> None:
         # These states are not handled
-        assert isinstance(self.weights_backuper, _TensorBackuperNoop)
+        assert not self.args.keep_old_actor
 
         _send_ckpt(
             indep_dp=self.parallel_state.indep_dp,
