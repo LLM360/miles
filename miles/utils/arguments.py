@@ -199,12 +199,6 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--log-probs-chunk-size", type=int, default=-1, help="Chunk size to compute log probs to save memory"
             )
             parser.add_argument(
-                # TODO will change to a better name
-                "--trainer-ft",
-                action="store_true",
-                default=False,
-            )
-            parser.add_argument(
                 "--indep-dp",
                 action="store_true",
                 default=False,
@@ -1776,10 +1770,10 @@ def miles_validate_args(args):
     args.ft_components = _resolve_ft_components(args)
     args.eval_datasets = _resolve_eval_datasets(args)
 
-    if args.trainer_ft:
+    if "train" in args.ft_components:
         args.indep_dp = True
         args.delay_split_train_data_by_dp = True
-        logger.info("trainer_ft is enabled. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
+        logger.info("train in ft_components. Auto set indep_dp=True, delay_split_train_data_by_dp=True")
 
     if args.indep_dp:
         per_replica = compute_megatron_world_size_except_dp(args)
