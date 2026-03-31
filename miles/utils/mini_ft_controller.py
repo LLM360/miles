@@ -147,10 +147,7 @@ class _MiniFTController:
         try:
             cells = await self._get_cells()
 
-            seen_cell_names: set[str] = set()
             for cell in cells:
-                seen_cell_names.add(cell.name)
-
                 if cell.healthy:
                     continue
 
@@ -162,7 +159,7 @@ class _MiniFTController:
 
                 await self._heal(cell_name=cell.name, backoff=backoff)
 
-            stale_keys = set(self._cell_backoffs) - seen_cell_names
+            stale_keys = set(self._cell_backoffs) - set(c.name for c in cells)
             for key in stale_keys:
                 del self._cell_backoffs[key]
         except Exception:
