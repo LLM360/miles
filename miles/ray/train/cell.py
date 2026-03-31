@@ -103,31 +103,29 @@ class RayTrainCell:
 
     # ------------------------ cooperatively prepare ------------------------
 
-    async def cooperatively_prepare_indep_dp_world(
+    async def prepare_indep_dp_mode_initialized(
         self,
-        was_initialized: bool,
         indep_dp_quorum_id: int,
-        recv_ckpt_src_rank: int | None,
         send_ckpt_dst_ranks: list[int],
     ):
-        if was_initialized:
-            assert recv_ckpt_src_rank is None, "recv_ckpt_src_rank is not used in this branch"
+        await asyncio.gather(
+            *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
+        )
 
-            await asyncio.gather(
-                *self.async_execute("reconfigure_indep_dp", indep_dp_quorum_id=indep_dp_quorum_id),
-            )
+        for dst_rank in send_ckpt_dst_ranks:
+            await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
 
-            for dst_rank in send_ckpt_dst_ranks:
-                await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
-        else:
-            assert TODO
+    async def prepare_indep_dp_mode_healing(
+        self,
+        indep_dp_quorum_id: int,
+        recv_ckpt_src_rank: int | None,
+    ):
+        await asyncio.gather(*self.async_init(
+            indep_dp_quorum_id=indep_dp_quorum_id,
+            recv_ckpt_src_rank=recv_ckpt_src_rank,
+        ))
 
-            await asyncio.gather(*self.async_init(
-                indep_dp_quorum_id=indep_dp_quorum_id,
-                recv_ckpt_src_rank=recv_ckpt_src_rank,
-            ))
-
-            await asyncio.gather(*self.async_set_rollout_manager())
+        await asyncio.gather(*self.async_set_rollout_manager())
 
     # ------------------------ actor creation ------------------------
 

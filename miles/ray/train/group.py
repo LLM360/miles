@@ -165,11 +165,14 @@ class RayTrainGroup:
         # Step 3: Cooperatively prepare
         src_cell_id = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
         await asyncio.gather(*[
-            cell.cooperatively_prepare_indep_dp_world(
-                was_initialized=cell.cell_id in was_running_ids,
+            cell.prepare_indep_dp_mode_initialized(
+                indep_dp_quorum_id=self._indep_dp_quorum_id,
+                send_ckpt_dst_ranks=was_pending_ids if cell.cell_id == src_cell_id else [],
+            )
+            if cell.cell_id in was_running_ids else
+            cell.prepare_indep_dp_mode_healing(
                 indep_dp_quorum_id=self._indep_dp_quorum_id,
                 recv_ckpt_src_rank=src_cell_id if cell.cell_id in was_pending_ids else None,
-                send_ckpt_dst_ranks=was_pending_ids if cell.cell_id == src_cell_id else [],
             )
             for cell in self._cells
         ])
