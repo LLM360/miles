@@ -31,7 +31,7 @@ def send_ckpt(
         optimizer: Megatron optimizer.
         opt_param_scheduler: LR scheduler.
         iteration: Current training iteration / rollout_id.
-        dst_rank: Destination cell_index in the indep_dp process group.
+        dst_rank: Destination alive_rank in the indep_dp process group.
         timeout: Timeout for the NCCL send operation.
     """
     state_dict = save_to_memory(
@@ -50,7 +50,7 @@ def send_ckpt(
         timeout=timeout,
     )
     transport.disallow_checkpoint()
-    logger.info(f"Sent checkpoint (iteration={iteration}) to cell {dst_rank}")
+    logger.info(f"Sent checkpoint (iteration={iteration}) to alive_rank={dst_rank}")
 
 
 def recv_ckpt(
@@ -66,7 +66,7 @@ def recv_ckpt(
 
     Args:
         indep_dp: Independent DP group info (provides the torchft PG).
-        src_rank: Source cell_index in the indep_dp process group.
+        src_rank: Source alive_rank in the indep_dp process group.
         timeout: Timeout for the NCCL recv operation.
 
     Returns:
@@ -82,7 +82,7 @@ def recv_ckpt(
     )
     iteration = payload["iteration"]
     state_dict = payload["state_dict"]
-    logger.info(f"Received checkpoint (iteration={iteration}) from cell {src_rank}")
+    logger.info(f"Received checkpoint (iteration={iteration}) from alive_rank={src_rank}")
 
     manager = InMemoryCheckpointManager()
     manager.save(state_dict, iteration=iteration)

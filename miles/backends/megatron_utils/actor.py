@@ -67,7 +67,7 @@ class MegatronTrainRayActor(TrainRayActor):
             args: Runtime arguments.
             role: Logical role ("actor" or "critic").
             with_ref: Whether to load a reference model.
-            recv_ckpt_src_rank: If not None, receive checkpoint from this cell_index
+            recv_ckpt_src_rank: If not None, receive checkpoint from this alive_rank
                 via PGTransport instead of loading from disk.
             indep_dp_info: Independent DP configuration (cell identity, alive rank/size, quorum ID).
         """
@@ -214,7 +214,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
         print_memory("after offload model")
 
-        if self._is_first_replica_megatron_main_rank and hasattr(self, "_last_rollout_id"):
+        if is_first_replica_megatron_main_rank() and hasattr(self, "_last_rollout_id"):
             log_cpu_memory(self._last_rollout_id, self.args, "after_offload_train")
 
     @timer

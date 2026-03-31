@@ -76,7 +76,6 @@ class RayTrainGroup:
                     role=role,
                     with_ref=with_ref,
                     cell_index=cell_index,
-                    num_cells=num_cells,
                     indep_dp_store_addr=indep_dp_store_addr,
                     rollout_manager=rollout_manager,
                 )

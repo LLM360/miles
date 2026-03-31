@@ -42,13 +42,11 @@ class RayTrainCell:
         role: str,
         with_ref: bool,
         cell_index: int,
-        num_cells: int,
         indep_dp_store_addr: str,
         rollout_manager: object | None,
     ) -> None:
         self.args = args
         self.cell_index = cell_index
-        self.num_cells = num_cells
         self.role = role
         self.with_ref = with_ref
         self.rollout_manager = rollout_manager
@@ -84,8 +82,6 @@ class RayTrainCell:
             actor_handles = self._allocate_gpus_for_actor(
                 **self._creation_kwargs,
                 args=self.args,
-                cell_index=self.cell_index,
-                num_cells=self.num_cells,
             )
             return _StateRunning(actor_handles=actor_handles)
 
@@ -136,8 +132,6 @@ class RayTrainCell:
     @staticmethod
     def _allocate_gpus_for_actor(
         args,
-        cell_index: int,
-        num_cells: int,
         gpus_per_cell: int,
         pg: tuple[PlacementGroup, list[int], list[int]],
         num_gpus_per_actor: float,
@@ -203,8 +197,6 @@ class RayTrainCell:
                 rank,
                 master_addr,
                 master_port,
-                cell_index=cell_index,
-                num_cells=num_cells,
                 indep_dp_store_addr=indep_dp_store_addr,
             )
             if rank == 0:
