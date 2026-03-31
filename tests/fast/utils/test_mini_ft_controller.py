@@ -332,7 +332,9 @@ async def test_suspend_cell_sends_correct_patch() -> None:
     runner._client.patch.assert_called_once()
     call_args = runner._client.patch.call_args
     assert call_args[0][0] == "/api/v1/cells/actor-0"
-    assert '"suspend": true' in call_args[1]["content"] or '"suspend":true' in call_args[1]["content"]
+    import json
+    body = json.loads(call_args[1]["content"])
+    assert body == {"spec": {"suspend": True}}
 
 
 @pytest.mark.asyncio
@@ -347,7 +349,9 @@ async def test_resume_cell_sends_correct_patch() -> None:
     runner._client.patch.assert_called_once()
     call_args = runner._client.patch.call_args
     assert call_args[0][0] == "/api/v1/cells/actor-0"
-    assert '"suspend": false' in call_args[1]["content"] or '"suspend":false' in call_args[1]["content"]
+    import json
+    body = json.loads(call_args[1]["content"])
+    assert body == {"spec": {"suspend": False}}
 
 
 @pytest.mark.asyncio
