@@ -153,9 +153,9 @@ class RayTrainGroup:
 
     async def _refresh_cells(self) -> None:
         was_pending_ids = [cell.cell_index for cell in self._cells if cell.is_pending]
-        assert was_pending_ids, "No pending cells to materialize"
-        was_running_ids = [cell.cell_index for cell in self._cells if TODO_cell_is_running]
-        assert was_running_ids, "No running cells to materialize"
+        was_alive_ids = [cell.cell_index for cell in self._cells if cell.is_allocated_alive]
+        assert len(was_alive_ids) > 0, "Cannot recover when all cells are dead"
+        TODO_handle_zero_case
 
         # Step 1: Bump states
         self._indep_dp_quorum_id += 1
@@ -166,7 +166,7 @@ class RayTrainGroup:
                 cell.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
-        src_cell_index = was_running_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
+        src_cell_index = was_alive_ids[0]  # TODO make it balanced, and support multi-src-to-one-dst
         await asyncio.gather(
             *[
                 (
@@ -174,7 +174,7 @@ class RayTrainGroup:
                         indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
                         send_ckpt_dst_ranks=was_pending_ids if cell.cell_index == src_cell_index else [],
                     )
-                    if cell.cell_index in was_running_ids
+                    if cell.cell_index in was_alive_ids
                     else cell.prepare_indep_dp_mode_healing(
                         indep_dp_info=self._compute_indep_dp_info(cell.cell_index),
                         recv_ckpt_src_rank=src_cell_index if cell.cell_index in was_pending_ids else None,
