@@ -6,11 +6,18 @@ import threading
 
 import ray
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+from starlette.responses import JSONResponse
 
 from miles.ray.train.group import RayTrainGroup
 from miles.utils.control_server.handles import _ActorCellHandle, _CellHandle, _RolloutCellHandle
-from miles.utils.control_server.models import _CellInfo, _OkResponse, _StopRequest
+from miles.utils.control_server.models import (
+    Cell,
+    CellList,
+    CellPatch,
+    K8sStatus,
+    _OkResponse,
+)
 from miles.utils.control_server.registry import _CellRegistry
 
 logger = logging.getLogger(__name__)
@@ -70,46 +77,56 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
         return _OkResponse()
 
     @app.get("/api/v1/cells")
-    async def get_cells() -> list[_CellInfo]:
+    async def get_cells() -> CellList:
         handles = registry.get_all()
+        cells = list(await asyncio.gather(*(h.get_cell() for h in handles)))
+        return CellList(items=cells)
 
-        async def _fetch(handle: _CellHandle) -> _CellInfo:
-            status, node_ids = await asyncio.gather(handle.get_status(), handle.get_node_ids())
-            return _CellInfo(
-                cell_id=handle.cell_id,
-                cell_type=handle.cell_type,
-                status=status,
-                node_ids=node_ids,
-            )
+    @app.get("/api/v1/cells/{name}")
+    async def get_cell(name: str) -> Cell | JSONResponse:
+        handle = _get_handle_or_404(name)
+        if isinstance(handle, JSONResponse):
+            return handle
+        return await handle.get_cell()
 
-        return list(await asyncio.gather(*(_fetch(h) for h in handles)))
+    @app.patch("/api/v1/cells/{name}")
+    async def patch_cell(name: str, body: CellPatch) -> Cell | JSONResponse:
+        handle = _get_handle_or_404(name)
+        if isinstance(handle, JSONResponse):
+            return handle
 
-    @app.post("/api/v1/cells/{cell_id}/stop")
-    async def stop_cell(cell_id: str, body: _StopRequest | None = None) -> _OkResponse:
-        if body is None:
-            body = _StopRequest()
-        handle = _get_handle(cell_id)
-        return await _call_handle(cell_id, "stop", handle.stop(timeout_seconds=body.timeout_seconds))
+        if body.spec is not None and body.spec.suspend is not None:
+            try:
+                if body.spec.suspend:
+                    await handle.suspend()
+                else:
+                    await handle.resume()
+            except Exception:
+                logger.error("Failed to patch cell %s", name, exc_info=True)
+                return JSONResponse(
+                    status_code=500,
+                    content=K8sStatus(
+                        message=f"Failed to patch cell '{name}'",
+                        reason="InternalError",
+                        code=500,
+                    ).model_dump(),
+                )
 
-    @app.post("/api/v1/cells/{cell_id}/start")
-    async def start_cell(cell_id: str) -> _OkResponse:
-        handle = _get_handle(cell_id)
-        return await _call_handle(cell_id, "start", handle.start())
+        return await handle.get_cell()
 
     # -------------------------- utils ------------------------------
 
-    def _get_handle(cell_id: str) -> _CellHandle:
+    def _get_handle_or_404(name: str) -> _CellHandle | JSONResponse:
         try:
-            return registry.get(cell_id)
+            return registry.get(name)
         except KeyError:
-            raise HTTPException(status_code=404, detail=f"Cell '{cell_id}' not found") from None
-
-    async def _call_handle(cell_id: str, action: str, coro) -> _OkResponse:
-        try:
-            await coro
-        except Exception:
-            logger.error("Failed to %s cell %s", action, cell_id, exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to {action} cell '{cell_id}'") from None
-        return _OkResponse()
+            return JSONResponse(
+                status_code=404,
+                content=K8sStatus(
+                    message=f"Cell '{name}' not found",
+                    reason="NotFound",
+                    code=404,
+                ).model_dump(),
+            )
 
     return app
