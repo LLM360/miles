@@ -212,6 +212,7 @@ class _ActorCellHandle(_CellHandle):
         return []
 
 
+# TODO: waiting for real rollout ft impl
 class _RolloutCellHandle(_CellHandle):
     def __init__(self, *, rollout_manager: object, cell_index: int) -> None:
         self._rollout_manager = rollout_manager
