@@ -154,12 +154,16 @@ class _CellRegistry:
 
 class _CellHandle(abc.ABC):
     @property
-    @abc.abstractmethod
-    def cell_id(self) -> str: ...
+    def cell_id(self) -> str:
+        return f"{self.cell_type}-{self.cell_index}"
 
     @property
     @abc.abstractmethod
     def cell_type(self) -> str: ...
+
+    @property
+    @abc.abstractmethod
+    def cell_index(self) -> int: ...
 
     @abc.abstractmethod
     async def stop(self, timeout_seconds: int) -> None: ...
