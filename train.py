@@ -30,6 +30,10 @@ def train(args):
             ft_components=args.ft_components,
         )
 
+    from miles.utils.mini_ft_controller.ray_actor import maybe_start_mini_ft_controller
+
+    maybe_start_mini_ft_controller(args)
+
     if args.offload_rollout:
         ray.get(rollout_manager.onload_weights.remote())
 
