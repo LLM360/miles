@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from collections.abc import Callable
-from typing import Literal
+from enum import StrEnum, auto
 
 import ray
 from pydantic import ConfigDict
@@ -16,6 +16,12 @@ from miles.utils.pydantic_utils import StrictBaseModel
 logger = logging.getLogger(__name__)
 
 
+class _AllocatedPhase(StrEnum):
+    UNINITIALIZED = auto()
+    ALIVE = auto()
+    ERRORED = auto()
+
+
 class _StatePending(StrictBaseModel):
     pass
 
@@ -23,7 +29,7 @@ class _StatePending(StrictBaseModel):
 class _StateAllocated(StrictBaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
     actor_handles: list[ray.actor.ActorHandle]
-    phase: Literal["uninitialized", "alive", "errored"]
+    phase: _AllocatedPhase
 
 
 class _StateStopped(StrictBaseModel):
@@ -93,21 +99,21 @@ class RayTrainCell:
                 **self._creation_kwargs,
                 args=self.args,
             )
-            return _StateAllocated(actor_handles=actor_handles, phase="uninitialized")
+            return _StateAllocated(actor_handles=actor_handles, phase=_AllocatedPhase.UNINITIALIZED)
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
     def mark_as_running(self) -> None:
-        assert isinstance(self._state, _StateAllocated) and self._state.phase == "uninitialized", (
+        assert isinstance(self._state, _StateAllocated) and self._state.phase == _AllocatedPhase.UNINITIALIZED, (
             f"cell {self.cell_index}: mark_as_running requires allocated phase, got {self._state}"
         )
-        self._state = _StateAllocated(actor_handles=self._state.actor_handles, phase="alive")
+        self._state = _StateAllocated(actor_handles=self._state.actor_handles, phase=_AllocatedPhase.ALIVE)
 
     def mark_as_errored(self) -> None:
-        assert isinstance(self._state, _StateAllocated) and self._state.phase == "alive", (
+        assert isinstance(self._state, _StateAllocated) and self._state.phase == _AllocatedPhase.ALIVE, (
             f"cell {self.cell_index}: mark_as_errored requires running phase, got {self._state}"
         )
-        self._state = _StateAllocated(actor_handles=self._state.actor_handles, phase="errored")
+        self._state = _StateAllocated(actor_handles=self._state.actor_handles, phase=_AllocatedPhase.ERRORED)
 
     def _change_state(
         self,
@@ -268,11 +274,11 @@ class RayTrainCell:
 
     @property
     def is_running(self) -> bool:
-        return isinstance(self._state, _StateAllocated) and self._state.phase in ("uninitialized", "alive")
+        return isinstance(self._state, _StateAllocated) and self._state.phase in (_AllocatedPhase.UNINITIALIZED, _AllocatedPhase.ALIVE)
 
     @property
     def is_errored(self) -> bool:
-        return isinstance(self._state, _StateAllocated) and self._state.phase == "errored"
+        return isinstance(self._state, _StateAllocated) and self._state.phase == _AllocatedPhase.ERRORED
 
     @property
     def is_pending(self) -> bool:
