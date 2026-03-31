@@ -171,7 +171,10 @@ class RayTrainGroup:
 
         # Step 2: Cooperatively prepare
         await asyncio.gather(*[
-            cell.cooperatively_prepare_indep_dp_world()
+            cell.cooperatively_prepare_indep_dp_world(
+                indep_dp_quorum_id=self._indep_dp_quorum_id,
+                send_ckpt_dst_ranks=TODO,
+            )
             for cell in self._cells
         ])
 

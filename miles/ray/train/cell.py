@@ -112,12 +112,12 @@ class RayTrainCell:
             )
         elif self.is_pending:
             await TODO_alloc_for_pending()
-            await call_init()
+            await asyncio.gather(*self.async_init(indep_dp_quorum_id=indep_dp_quorum_id))
         else:
             raise NotImplementedError
 
         for dst_rank in send_ckpt_dst_ranks:
-            await call_send_ckpt(dst_rank=dst_rank)
+            await asyncio.gather(*self.async_execute("send_ckpt", dst_rank=dst_rank))
 
     # ------------------------ actor creation ------------------------
 
