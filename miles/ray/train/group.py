@@ -161,6 +161,7 @@ class RayTrainGroup:
         will_alive_indices = sorted(list(set(snapshotted_pending_indices + snapshotted_alive_indices)))
         assert len(snapshotted_alive_indices) > 0, "Cannot recover when all cells are dead"
 
+        # Step 0: Determine whether need to reconfigure
         exists_alive_cell_changed_config = any(
             cell.indep_dp_info.alive_cell_indices != will_alive_indices
             for cell in self._cells
