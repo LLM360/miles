@@ -90,6 +90,7 @@ class ActorCellHandle(CellHandle):
         )
 
     def stop(self, timeout_seconds: int) -> None:
+        logger.info(f"Stopping actor cell {self._cell_index} (timeout_seconds={timeout_seconds})")
         self._group.stop(self._cell_index)
 
     def start(self) -> None:
