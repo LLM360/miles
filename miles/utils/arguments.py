@@ -550,7 +550,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             parser.add_argument(
                 "--mini-ft-controller-resume-delay",
                 type=float,
-                default=5.0,
+                default=10.0,
                 help="Delay in seconds between suspending and resuming a cell during heal.",
             )
             return parser

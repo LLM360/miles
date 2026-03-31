@@ -120,8 +120,8 @@ class _MiniFTController:
         get_cells: Callable[[], Awaitable[list[_CellSnapshot]]],
         suspend_cell: Callable[[str], Awaitable[None]],
         resume_cell: Callable[[str], Awaitable[None]],
-        poll_interval: float = 10.0,
-        resume_delay: float = 5.0,
+        poll_interval: float,
+        resume_delay: float,
     ) -> None:
         self._get_cells = get_cells
         self._suspend_cell = suspend_cell
