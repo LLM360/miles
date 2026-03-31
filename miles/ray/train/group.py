@@ -88,7 +88,9 @@ class RayTrainGroup:
         return [
             future
             for cell in self._cells
-            for future in cell.async_init(indep_dp_info=self._compute_indep_dp_info(cell_index=cell.cell_index, alive_cell_indices=TODO))
+            for future in cell.async_init(
+                indep_dp_info=self._compute_indep_dp_info(cell_index=cell.cell_index, alive_cell_indices=TODO)
+            )
         ]
 
     def async_train(self, rollout_id: int, rollout_data_ref):
@@ -140,10 +142,7 @@ class RayTrainGroup:
 
     def _async_execute_alive(self, fn_name, *args, **kwargs):
         return [
-            future
-            for cell in self._cells
-            if cell.is_alive
-            for future in cell.async_execute(fn_name, *args, **kwargs)
+            future for cell in self._cells if cell.is_alive for future in cell.async_execute(fn_name, *args, **kwargs)
         ]
 
     def _async_execute_first_alive(self, fn_name, *args, **kwargs):
