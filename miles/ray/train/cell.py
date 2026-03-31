@@ -85,8 +85,17 @@ class RayTrainCell:
 
         self._change_state("allocate_for_pending", _StatePending, _core)
 
-    async def start(self):
-        TODO
+    async def cooperatively_prepare(self):
+        assert self.is_running
+
+        if should_reconfigure_indep_dp:
+            await reconfigure_indep_dp()
+
+        if not is_initialized:
+            await call_init()
+
+        for dst_rank in send_ckpt_dst_ranks:
+            await call_send_ckpt(dst_rank=dst_rank)
 
     def _change_state(
         self,
