@@ -147,26 +147,26 @@ class RayTrainGroup:
     # ------------------------ internals for stop/start ------------------------
 
     async def _materialize_pending_cells(self) -> None:
-        pending_cell_ids = [cell.cell_id for cell in self._cells if cell.is_pending]
-        assert pending_cell_ids, "No pending cells to materialize"
-        running_cell_ids = [cell.cell_id for cell in self._cells if cell.is_running]
-        assert running_cell_ids, "No running cells to materialize"
+        was_pending_ids = [cell.cell_id for cell in self._cells if cell.is_pending]
+        assert was_pending_ids, "No pending cells to materialize"
+        was_running_ids = [cell.cell_id for cell in self._cells if cell.is_running]
+        assert was_running_ids, "No running cells to materialize"
 
         # Step 1: Bump states
         self._indep_dp_quorum_id += 1
 
         # Step 2: Allocate actors
         for cell in self._cells:
-            if cell in pending_cell_ids:
+            if cell in was_pending_ids:
                 cell.allocate_for_pending()
 
         # Step 3: Cooperatively prepare
-        src_cell_id = running_cell_ids[0]
+        src_cell_id = was_running_ids[0]
         await asyncio.gather(*[
             cell.cooperatively_prepare_indep_dp_world(
-                is_initialized=cell.cell_id in running_cell_ids,
+                is_initialized=cell.cell_id in was_running_ids,
                 indep_dp_quorum_id=self._indep_dp_quorum_id,
-                send_ckpt_dst_ranks=pending_cell_ids if cell.cell_id == src_cell_id else [],
+                send_ckpt_dst_ranks=was_pending_ids if cell.cell_id == src_cell_id else [],
             )
             for cell in self._cells
         ])
