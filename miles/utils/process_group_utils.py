@@ -139,11 +139,13 @@ class _NativePGUtil(GeneralPGUtil):
 
 
 def _check_wait(work: dist._Work, op_name: str) -> None:
-    """Call work.wait() and raise if it returns False.
+    """Call work.wait() and raise on failure.
 
-    Native PyTorch Work.wait() always returns True (raises on failure).
-    torchft ProcessGroupNCCL.wait() returns False on timeout/abort instead of
-    raising, so without this check failures are silently ignored.
+    Failure modes depend on the backend:
+    - Native PyTorch NCCL: always raises on failure, never returns False.
+    - torchft ProcessGroupNCCL: may raise (e.g. ncclCommAbort unblocks native
+      wait which throws) or return False, depending on the failure path.
+    This helper handles both.
     """
     success = work.wait()
     if not success:
