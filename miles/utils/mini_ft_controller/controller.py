@@ -46,8 +46,10 @@ class MiniFTController:
     async def run(self) -> None:
         self._running = True
         while self._running:
+            start = time.monotonic()
             await self._poll_and_heal()
-            await asyncio.sleep(self._poll_interval)
+            elapsed = time.monotonic() - start
+            await asyncio.sleep(max(0, self._poll_interval - elapsed))
 
     def request_stop(self) -> None:
         self._running = False
@@ -56,11 +58,14 @@ class MiniFTController:
         try:
             cells = await self._get_cells()
 
+            seen_cell_names: set[str] = set()
             for cell in cells:
+                seen_cell_names.add(cell.name)
+
                 if cell.healthy_status == "True":
                     continue
 
-                if cell.healthy_status == "Degraded":
+                if cell.healthy_reason == "Degraded":
                     logger.warning("Cell %s is Degraded, skipping heal", cell.name)
                     continue
 
@@ -74,12 +79,15 @@ class MiniFTController:
                     if now < backoff.next_attempt_at:
                         continue
 
-                    await self._heal(cell_name=cell.name)
+                    await self._heal(cell_name=cell.name, backoff=backoff)
+
+            stale_keys = set(self._cell_backoffs) - seen_cell_names
+            for key in stale_keys:
+                del self._cell_backoffs[key]
         except Exception:
             logger.error("Error in _poll_and_heal", exc_info=True)
 
-    async def _heal(self, *, cell_name: str) -> None:
-        backoff = self._cell_backoffs.setdefault(cell_name, _CellBackoff())
+    async def _heal(self, *, cell_name: str, backoff: _CellBackoff) -> None:
 
         try:
             logger.info("Healing cell %s: suspending", cell_name)

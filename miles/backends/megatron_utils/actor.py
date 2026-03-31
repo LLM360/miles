@@ -26,7 +26,7 @@ from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
 
 from ...utils.profile_utils import TrainProfiler
-from ...utils.tensor_backper import TensorBackuper
+from ...utils.tensor_backper import TensorBackuper, _TensorBackuperNoop
 from ..training_utils.cp_utils import slice_with_cp
 from ..training_utils.data import DataIterator, get_data_iterator, get_rollout_data, sync_actor_critic_data
 from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollout_data
@@ -620,6 +620,9 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
     def send_ckpt(self, dst_rank: int) -> None:
+        # These states are not handled
+        assert isinstance(self.weights_backuper, _TensorBackuperNoop)
+
         _send_ckpt(
             indep_dp=self.parallel_state.indep_dp,
             model=self.model,

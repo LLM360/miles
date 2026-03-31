@@ -11,7 +11,7 @@ from miles.utils.mini_ft_controller.controller import CellSnapshot, MiniFTContro
 logger = logging.getLogger(__name__)
 
 
-@ray.remote(num_cpus=0)
+@ray.remote(num_cpus=0.001)
 class MiniFTControllerActor:
     def __init__(
         self,
@@ -33,7 +33,10 @@ class MiniFTControllerActor:
         )
 
     async def run(self) -> None:
-        await self._controller.run()
+        try:
+            await self._controller.run()
+        finally:
+            await self._client.aclose()
 
     def request_stop(self) -> None:
         self._controller.request_stop()
@@ -46,7 +49,7 @@ class MiniFTControllerActor:
         snapshots: list[CellSnapshot] = []
         for item in data["items"]:
             name: str = item["metadata"]["name"]
-            healthy_status = "Unknown"
+            healthy_status: str = "Unknown"
             healthy_reason: str | None = None
 
             for condition in item.get("status", {}).get("conditions", []):
@@ -64,16 +67,15 @@ class MiniFTControllerActor:
         return snapshots
 
     async def _suspend_cell(self, name: str) -> None:
-        resp = await self._client.patch(
-            f"/api/v1/cells/{name}",
-            json={"spec": {"suspend": True}},
-        )
-        resp.raise_for_status()
+        await self._patch_cell_suspend(name=name, suspend=True)
 
     async def _resume_cell(self, name: str) -> None:
+        await self._patch_cell_suspend(name=name, suspend=False)
+
+    async def _patch_cell_suspend(self, *, name: str, suspend: bool) -> None:
         resp = await self._client.patch(
             f"/api/v1/cells/{name}",
-            json={"spec": {"suspend": False}},
+            json={"spec": {"suspend": suspend}},
         )
         resp.raise_for_status()
 
