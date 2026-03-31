@@ -105,13 +105,13 @@ class RayTrainGroup:
         self._execute_first_running_cell("update_weights")
 
     def onload(self):
-        self._execute("wake_up")
+        ray.get(self._async_execute("wake_up"))
 
     def offload(self):
-        self._execute("sleep")
+        ray.get(self._async_execute("sleep"))
 
     def clear_memory(self):
-        self._execute("clear_memory")
+        ray.get(self._async_execute("clear_memory"))
 
     def connect(self, critic_group: "RayTrainGroup"):
         assert len(self._cells) == len(critic_group._cells), (
@@ -137,9 +137,6 @@ class RayTrainGroup:
         self._cells[cell_index].mark_as_pending()
 
     # ------------------------ utils to forward calls to cells ------------------------
-
-    def _execute(self, fn_name, *args, **kwargs):
-        return ray.get(self._async_execute(fn_name, *args, **kwargs))
 
     def _execute_first_running_cell(self, fn_name, *args, **kwargs):
         running_cells = [cell for cell in self._cells if TODO_cell_is_running]
