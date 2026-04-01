@@ -13,23 +13,6 @@ logger = logging.getLogger(__name__)
 
 _event_adapter: TypeAdapter[Event] = TypeAdapter(Event)
 
-_event_logger: "EventLogger | None" = None
-
-
-def set_event_logger(event_logger: "EventLogger | None") -> None:
-    global _event_logger
-    _event_logger = event_logger
-
-
-def get_event_logger() -> "EventLogger":
-    if _event_logger is None:
-        raise RuntimeError("EventLogger not initialized. Call set_event_logger() first.")
-    return _event_logger
-
-
-def is_event_logger_initialized() -> bool:
-    return _event_logger is not None
-
 
 class EventLogger:
     def __init__(self, *, log_dir: Path | str, file_name: str = "events.jsonl", source: ProcessIdentity) -> None:
@@ -48,6 +31,24 @@ class EventLogger:
 
     def close(self) -> None:
         self._file.close()
+
+
+_event_logger: EventLogger | None = None
+
+
+def set_event_logger(event_logger: EventLogger | None) -> None:
+    global _event_logger
+    _event_logger = event_logger
+
+
+def get_event_logger() -> EventLogger:
+    if _event_logger is None:
+        raise RuntimeError("EventLogger not initialized. Call set_event_logger() first.")
+    return _event_logger
+
+
+def is_event_logger_initialized() -> bool:
+    return _event_logger is not None
 
 
 def read_events(log_dir: Path) -> list[Event]:
