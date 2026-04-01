@@ -7,6 +7,7 @@ from ray.util.placement_group import PlacementGroup
 
 from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor, create_trainer_cell_health_checker
+from miles.utils.async_utils import AsyncioGatherUtils
 from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
@@ -191,7 +192,7 @@ class RayTrainGroup:
             *[cell.execute(fn_name, *args, **kwargs) for cell in alive_cells],
             return_exceptions=True,
         )
-        _log_asyncio_gather_errors(outputs, debug_name=f"execute_all_alive_and_catch#{fn_name}")
+        AsyncioGatherUtils.log_errors(outputs, debug_name=f"execute_all_alive_and_catch#{fn_name}")
         return outputs
 
     async def _execute_first_alive(self, fn_name: str, *args, **kwargs):
@@ -255,7 +256,7 @@ class RayTrainGroup:
             return_exceptions=True,
         )
         # No need to do anything else - cells with exceptions will auto mark itself as errored
-        _log_asyncio_gather_errors(outputs, debug_name=f"refresh_cells#cooperatively_prepare")
+        AsyncioGatherUtils.log_errors(outputs, debug_name=f"refresh_cells#cooperatively_prepare")
 
         assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
 
@@ -290,9 +291,3 @@ def _create_tcp_store() -> tuple["torch.distributed.TCPStore", str]:
     host = ray.util.get_node_ip_address()
     port = store.port
     return store, f"{host}:{port}"
-
-
-def _log_asyncio_gather_errors(outputs, debug_name: str):
-    for i, output in enumerate(outputs):
-        if isinstance(output, BaseException):
-            logger.warning(f"{debug_name} error index={i}", exc_info=output)
