@@ -276,7 +276,7 @@ PGTuple = tuple[PlacementGroup, list[int], list[int]]
 
 def _slice_pg(pg: PGTuple, start: int, end: int) -> PGTuple:
     placement_group, bundle_indices, gpu_ids = pg
-    return (placement_group, bundle_indices[start:end], gpu_ids[start:end])
+    return placement_group, bundle_indices[start:end], gpu_ids[start:end]
 
 
 def _create_tcp_store() -> tuple["torch.distributed.TCPStore", str]:
