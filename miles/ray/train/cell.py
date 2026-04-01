@@ -195,7 +195,7 @@ class RayTrainCell:
             indep_dp_info=indep_dp_info,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
-        self.health_checker.start()
+        await self.health_checker.start()
 
     async def set_rollout_manager(self):
         if (m := self.rollout_manager) is not None:
