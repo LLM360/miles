@@ -397,6 +397,5 @@ def create_trainer_cell_health_checker(
     return SimpleHealthChecker(
         name=f"trainer-cell-{cell.cell_index}",
         check_fn=_check,
-        interval=config.interval,
-        first_wait=config.first_wait,
+        config=config,
     )
