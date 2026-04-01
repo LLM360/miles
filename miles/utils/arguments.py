@@ -555,6 +555,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Delay in seconds between suspending and resuming a cell during heal.",
             )
             SimpleHealthCheckerConfig.add_arguments(parser, prefix="trainer-heartbeat-checker")
+            parser.add_argument(
+                "--trainer-heartbeat-checker-max-heartbeat-age",
+                type=float,
+                default=90.0,
+                help="Maximum allowed age (seconds) of a trainer actor's heartbeat timestamp before reporting unhealthy.",
+            )
             return parser
 
         # data

@@ -10,10 +10,13 @@ def _make_checker(
     check_fn=None,
     on_result=None,
     interval: float = 10.0,
+    timeout: float = 5.0,
     first_wait: float = 0.0,
     name: str = "test",
     clock: FakeClock | None = None,
 ) -> tuple[SimpleHealthChecker, FakeClock]:
+    from miles.utils.health_checker import SimpleHealthCheckerConfig
+
     if check_fn is None:
 
         async def check_fn() -> None:
@@ -24,8 +27,7 @@ def _make_checker(
         name=name,
         check_fn=check_fn,
         on_result=on_result,
-        interval=interval,
-        first_wait=first_wait,
+        config=SimpleHealthCheckerConfig(interval=interval, timeout=timeout, first_wait=first_wait),
         clock=c,
     )
     return checker, c

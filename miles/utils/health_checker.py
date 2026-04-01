@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 class SimpleHealthCheckerConfig(StrictBaseModel):
     interval: float = 30.0
     timeout: float = 10.0
-    staleness: float = 90.0
     first_wait: float = 0.0
 
     @staticmethod
@@ -35,12 +34,6 @@ class SimpleHealthCheckerConfig(StrictBaseModel):
             help=f"Timeout in seconds for a single {prefix} health check RPC.",
         )
         parser.add_argument(
-            f"--{prefix}-staleness",
-            type=float,
-            default=90.0,
-            help="Maximum allowed staleness (seconds) before marking as errored.",
-        )
-        parser.add_argument(
             f"--{prefix}-first-wait",
             type=float,
             default=300.0,
@@ -53,7 +46,6 @@ class SimpleHealthCheckerConfig(StrictBaseModel):
         return SimpleHealthCheckerConfig(
             interval=getattr(args, f"{attr_prefix}_interval"),
             timeout=getattr(args, f"{attr_prefix}_timeout"),
-            staleness=getattr(args, f"{attr_prefix}_staleness"),
             first_wait=getattr(args, f"{attr_prefix}_first_wait"),
         )
 

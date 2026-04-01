@@ -143,10 +143,21 @@ class RayTrainCell:
 
     # ------------------------ forward calls to actors ------------------------
 
-    async def execute(self, fn_name: str, *args, **kwargs):
-        return await self._execute_raw(fn_name, compute_args=lambda _: args, compute_kwargs=lambda _: kwargs)
+    async def execute(self, fn_name: str, *args, mark_errored_on_failure: bool = True, **kwargs) -> list:
+        return await self._execute_raw(
+            fn_name,
+            compute_args=lambda _: args,
+            compute_kwargs=lambda _: kwargs,
+            mark_errored_on_failure=mark_errored_on_failure,
+        )
 
-    async def _execute_raw(self, fn_name: str, compute_args, compute_kwargs):
+    async def _execute_raw(
+        self,
+        fn_name: str,
+        compute_args,
+        compute_kwargs,
+        mark_errored_on_failure: bool = True,
+    ) -> list:
         handles = self._get_actor_handles()
         try:
             return await asyncio.gather(
@@ -157,13 +168,16 @@ class RayTrainCell:
             )
         except Exception:
             logger.error(f"Cell {self.cell_index} failed in {fn_name}", exc_info=True)
-            self._mark_as_errored()
+            if mark_errored_on_failure:
+                self._mark_as_errored()
             raise
 
-    async def connect(self, critic_cell: "RayTrainCell"):
+    async def connect(self, critic_cell: "RayTrainCell") -> list:
         critic_handles = critic_cell._get_actor_handles()
         return await self._execute_raw(
-            "connect_actor_critic", compute_args=lambda i: critic_handles[i], compute_kwargs=lambda _: {}
+            "connect_actor_critic",
+            compute_args=lambda i: (critic_handles[i],),
+            compute_kwargs=lambda _: {},
         )
 
     async def async_init(
@@ -378,17 +392,18 @@ def create_trainer_cell_health_checker(
     *,
     cell: RayTrainCell,
     config: SimpleHealthCheckerConfig,
+    max_heartbeat_age: float,
 ) -> SimpleHealthChecker:
     async def _check() -> None:
         if not cell.is_alive:
             return
 
         now = time.time()
-        results = await cell.execute("get_heartbeat_status")
+        results = await cell.execute("get_heartbeat_status", mark_errored_on_failure=False)
 
         for status in results:
             delta = now - status.last_active_timestamp
-            if delta > config.staleness:
+            if delta > max_heartbeat_age:
                 raise RuntimeError(
                     f"Heartbeat stale: last_active={status.last_active_timestamp:.1f}, "
                     f"now={now:.1f}, delta={delta:.1f}s, bump_count={status.bump_count}"

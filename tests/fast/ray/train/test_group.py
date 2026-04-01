@@ -15,7 +15,7 @@ def _make_mock_args(*, indep_dp: bool = True) -> MagicMock:
     args.indep_dp = indep_dp
     args.trainer_heartbeat_checker_interval = 30.0
     args.trainer_heartbeat_checker_timeout = 10.0
-    args.trainer_heartbeat_checker_staleness = 90.0
+    args.trainer_heartbeat_checker_max_heartbeat_age = 90.0
     args.trainer_heartbeat_checker_first_wait = 300.0
     return args
 
