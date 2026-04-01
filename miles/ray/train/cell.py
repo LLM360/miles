@@ -356,7 +356,7 @@ def allocate_gpus_for_actor(
     TrainRayActor = ray.remote(
         num_gpus=1,
         runtime_env={"env_vars": env_vars},
-        concurrency_groups={"heartbeat": 1, "default": 1},
+        concurrency_groups={"heartbeat_status": 1, "default": 1},
     )(actor_impl)
 
     # Create worker actors
