@@ -117,7 +117,6 @@ class RayTrainGroup:
 
     async def train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
-
         async def _fn():
             await self._refresh_cells()
             results = await self._execute_all_alive("train", rollout_id, rollout_data_ref, catch_exceptions=True)
