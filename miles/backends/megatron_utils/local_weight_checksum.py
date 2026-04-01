@@ -79,7 +79,7 @@ def _collect_optimizer_hashes(
     optimizer: MegatronOptimizer,
 ) -> list[OptimizerStateInfo]:
     """Collect optimizer state snapshots with tensors replaced by hashes."""
-    param_names_by_index = _build_param_names_by_index(model)
+    name_by_tensor_id = _build_name_by_tensor_id(model)
     result: list[OptimizerStateInfo] = []
 
     for sub_opt in _iter_sub_optimizers(optimizer):
@@ -88,27 +88,44 @@ def _collect_optimizer_hashes(
             f"Expected torch.optim.Optimizer, got {type(inner)}"
         )
 
+        param_names = _build_param_names_for_optimizer(inner, name_by_tensor_id=name_by_tensor_id)
         sd = inner.state_dict()
         hashed_sd = _transform_tensor_to_hash(sd)
 
         result.append(OptimizerStateInfo(
-            param_names=param_names_by_index,
+            param_names=param_names,
             state_dict=hashed_sd,
         ))
 
     return result
 
 
-def _build_param_names_by_index(model: Sequence[DDP]) -> dict[int, str]:
-    """Build param index → name mapping matching torch optimizer's state_dict indexing."""
-    names: dict[int, str] = {}
-    idx = 0
+def _build_name_by_tensor_id(model: Sequence[DDP]) -> dict[int, str]:
+    """Build id(fp32_main_param) → name mapping from model parameters."""
+    name_map: dict[int, str] = {}
     for pp_idx, model_chunk in enumerate(model):
         for name, param in model_chunk.named_parameters():
             assert param is not None, f"pp{pp_idx}.{name}: param is None"
-            names[idx] = f"pp{pp_idx}.{name}"
+            main_param = getattr(param, "main_param", None)
+            assert main_param is not None, f"pp{pp_idx}.{name}: param has no main_param attribute"
+            name_map[id(main_param)] = f"pp{pp_idx}.{name}"
+    return name_map
+
+
+def _build_param_names_for_optimizer(
+    inner: torch.optim.Optimizer,
+    name_by_tensor_id: dict[int, str],
+) -> dict[int, str]:
+    """Build state_dict index → name mapping by walking optimizer's param_groups."""
+    param_names: dict[int, str] = {}
+    idx = 0
+    for group in inner.param_groups:
+        for fp32_param in group["params"]:
+            name = name_by_tensor_id.get(id(fp32_param))
+            assert name is not None, f"fp32 param id={id(fp32_param)} not found in model name mapping"
+            param_names[idx] = name
             idx += 1
-    return names
+    return param_names
 
 
 def _transform_tensor_to_hash(obj: Any) -> Any:
