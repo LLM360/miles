@@ -248,6 +248,7 @@ def forward_only(
                 "total_lengths",
                 "response_lengths",
                 "max_seq_lens",
+                "witness_ids",
             ],
             parallel_state,
             args.data_pad_size_multiplier,
@@ -259,15 +260,18 @@ def forward_only(
         packed_seq_params = get_packed_seq_params(batch, args)
         total_lengths = batch["total_lengths"]
         response_lengths = batch["response_lengths"]
-        output_tensor = model(
-            input_ids=tokens,
-            position_ids=None,
-            attention_mask=None,
-            labels=None,
-            packed_seq_params=packed_seq_params,
-            loss_mask=batch["full_loss_masks"],
-            **(batch["multimodal_train_inputs"] if batch["multimodal_train_inputs"] is not None else {}),
-        )
+        model._pending_witness_ids = batch.get("witness_ids")
+        forward_kwargs = {
+            "input_ids": tokens,
+            "position_ids": None,
+            "attention_mask": None,
+            "labels": None,
+            "packed_seq_params": packed_seq_params,
+            "loss_mask": batch["full_loss_masks"],
+        }
+        if batch["multimodal_train_inputs"] is not None:
+            forward_kwargs.update(batch["multimodal_train_inputs"])
+        output_tensor = model(**forward_kwargs)
 
         return output_tensor, partial(
             f,
@@ -326,6 +330,27 @@ def forward_only(
 class TrainStepOutcome(StrEnum):
     NORMAL = auto()
     DISCARDED_SHOULD_RETRY = auto()
+
+
+def _dump_witness_grad(
+    args: Namespace,
+    model: Sequence[DDP],
+    rollout_id: int,
+    step_id: int,
+    parallel_state: "ParallelState",
+) -> None:
+    from miles.utils.witness import WitnessGradRecorder
+
+    recorder = WitnessGradRecorder()
+    for model_chunk in model:
+        head_witness = getattr(model_chunk.module, "head_witness", None)
+        if head_witness is not None:
+            recorder.record_and_log(
+                step=rollout_id * args.num_steps_per_rollout + step_id,
+                quorum_id=getattr(parallel_state.indep_dp, "quorum_id", 0),
+                rank=parallel_state.indep_dp.rank if parallel_state.indep_dp.size > 1 else 0,
+                witness=head_witness,
+            )
 
 
 def train_one_step(
@@ -405,6 +430,7 @@ def train_one_step(
                 "returns",
                 "rollout_log_probs",
                 "max_seq_lens",
+                "witness_ids",
             ],
             parallel_state,
             args.data_pad_size_multiplier,
@@ -417,6 +443,9 @@ def train_one_step(
         old_stages = [m.stage for m in all_replay_managers]
         for m in all_replay_managers:
             m.stage = "replay_forward"
+
+        # Set witness_ids for pre-decoder hook (read by the hook, cleared after forward)
+        model._pending_witness_ids = batch.get("witness_ids")
 
         if return_schedule_plan:
             assert not args.enable_mtp_training, "MTP training should not be enabled when using combined 1f1b"
@@ -468,6 +497,9 @@ def train_one_step(
 
     outcome = TrainStepOutcome.NORMAL
     valid_step = True
+
+    if getattr(args, "enable_witness", False):
+        _dump_witness_grad(args, model, rollout_id, step_id, parallel_state)
 
     if parallel_state.indep_dp.size > 1:
         assert step_id == 0, "indep-dp does not support multi step per train yet"

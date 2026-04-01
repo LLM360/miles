@@ -37,6 +37,7 @@ def split_train_data_by_dp(args, data: dict[str, Any], *, dp_size: int) -> list[
             "rollout_routed_experts",
             "prompt",
             "teacher_log_probs",
+            "witness_ids",
         ]:
             if key not in data:
                 continue

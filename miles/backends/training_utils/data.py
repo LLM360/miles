@@ -35,6 +35,16 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
     rollout_data["loss_masks"] = [
         torch.tensor(t, dtype=torch.int, device=torch.cuda.current_device()) for t in rollout_data["loss_masks"]
     ]
+    if getattr(args, "enable_witness", False):
+        from miles.utils.witness import get_witness_id_allocator
+
+        allocator = get_witness_id_allocator()
+        seq_ids = allocator.allocate_for_sequences(len(rollout_data["tokens"]))
+        rollout_data["witness_ids"] = [
+            torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
+            for t, sid in zip(rollout_data["tokens"], seq_ids)
+        ]
+
     if "multimodal_train_inputs" in rollout_data:
         # Move multimodal training tensors to GPU in advance
         rollout_data["multimodal_train_inputs"] = [
@@ -186,6 +196,26 @@ def get_batch(
         raise ValueError(f"Unsupported qkv_format: {qkv_format}")
 
     batch["tokens"] = tokens
+
+    # Process witness_ids identically to tokens (same CP slicing, padding, shape)
+    witness_ids = batch.get("witness_ids")
+    if witness_ids is not None:
+        if qkv_format == "bshd":
+            witness_ids = [slice_with_cp(w, 0, parallel_state, qkv_format, max_seqlen) for w in witness_ids]
+            witness_ids = torch.stack(witness_ids)
+        elif qkv_format == "thd":
+            if allgather_cp:
+                witness_ids = torch.cat(witness_ids, dim=0)
+                if pad != 0:
+                    witness_ids = F.pad(witness_ids, (0, pad), value=0)
+                witness_ids = witness_ids.chunk(cp_size, dim=0)[cp_rank]
+            else:
+                witness_ids = [slice_with_cp(w, 0, parallel_state, qkv_format) for w in witness_ids]
+                witness_ids = torch.cat(witness_ids)
+                if pad != 0:
+                    witness_ids = F.pad(witness_ids, (0, pad), value=0)
+            witness_ids = witness_ids.unsqueeze(0)
+        batch["witness_ids"] = witness_ids
 
     if get_position_ids:
         assert not allgather_cp, "allgather CP is not supported for FSDP"

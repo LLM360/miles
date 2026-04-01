@@ -5,7 +5,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
-from miles.utils.event_analyzer.rules import cross_replica_weight_checksum
+from miles.utils.event_analyzer.rules import cross_replica_weight_checksum, witness as witness_rule
 from miles.utils.event_logger.logger import read_events
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,11 @@ def run_analysis(event_dir: Path) -> list[Any]:
     if not events:
         return []
 
-    # TODO: more check rules
     issues = cross_replica_weight_checksum.check(events)
+
+    witness_mismatches = witness_rule.check(events)
+    for m in witness_mismatches:
+        logger.error("Witness mismatch at step %d quorum %d: %s", m.step, m.quorum_id, m.description)
+    issues.extend(witness_mismatches)
 
     return issues

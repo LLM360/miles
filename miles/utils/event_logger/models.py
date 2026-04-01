@@ -91,6 +91,14 @@ class LocalWeightChecksumEvent(EventBase):
     state: LocalWeightChecksumState
 
 
+class WitnessEvent(EventBase):
+    type: Literal["witness"] = "witness"
+    step: int
+    quorum_id: int
+    rank: int
+    nonzero_ids: list[int]
+
+
 Event = Annotated[
     GenericEvent
     | CellStateChangedEvent
@@ -101,7 +109,8 @@ Event = Annotated[
     | CellRefreshFailedEvent
     | CheckpointTransferStartedEvent
     | CheckpointTransferCompletedEvent
-    | LocalWeightChecksumEvent,
+    | LocalWeightChecksumEvent
+    | WitnessEvent,
     Discriminator("type"),
 ]
 

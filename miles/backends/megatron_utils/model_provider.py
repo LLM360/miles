@@ -82,6 +82,10 @@ def get_model_provider_func(
                 model.output_layer = LinearForLastLayer(
                     input_size=model.config.hidden_size, output_size=1, config=model.config
                 )
+            if getattr(args, "enable_witness", False):
+                from miles.utils.witness import DataWitness, install_witness_hook
+
+                install_witness_hook(model, DataWitness(args.witness_ring_buffer_size))
             return model
 
         return wrapped_model_provider
@@ -120,7 +124,12 @@ def get_model_provider_func(
             pg_collection=None,
         ) -> GPTModel:
             assert config is None, "miles builds the config from args, so it expects config to be None"
-            return provider.provide(pre_process=pre_process, post_process=post_process, vp_stage=vp_stage)
+            model = provider.provide(pre_process=pre_process, post_process=post_process, vp_stage=vp_stage)
+            if getattr(args, "enable_witness", False):
+                from miles.utils.witness import DataWitness, install_witness_hook
+
+                install_witness_hook(model, DataWitness(args.witness_ring_buffer_size))
+            return model
 
         return wrapped_bridge_provider
 
@@ -244,6 +253,11 @@ def get_model_provider_func(
 
         if post_process and role == "critic":
             model.output_layer = LinearForLastLayer(input_size=config.hidden_size, output_size=1, config=config)
+
+        if getattr(args, "enable_witness", False):
+            from miles.utils.witness import DataWitness, install_witness_hook
+
+            install_witness_hook(model, DataWitness(args.witness_ring_buffer_size))
 
         return model
 
