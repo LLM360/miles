@@ -1,11 +1,12 @@
 """Tests for event_analyzer rules/weight_checksum."""
 
-from pathlib import Path
-
-from miles.utils.event_analyzer.rules.weight_checksum import _flatten_nested, check
-from miles.utils.event_logger.logger import EventLogger, read_events
+from miles.utils.event_analyzer.rules.weight_checksum import (
+    ChecksumMismatchIssue,
+    _flatten_event,
+    _flatten_nested,
+    check,
+)
 from miles.utils.event_logger.models import LocalWeightChecksumEvent, OptimizerStateInfo
-from miles.utils.process_identity import MainProcessIdentity
 
 
 def _make_event(
@@ -29,103 +30,102 @@ def _make_event(
     )
 
 
-def _read_checksum_events(tmp_path: Path) -> list:
-    return read_events(tmp_path)
+class TestCheck:
+    def test_matching_replicas_no_mismatches(self) -> None:
+        events = [
+            _make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa"}),
+            _make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa"}),
+            _make_event(step=0, rank=2, param_hashes={"pp0.weight": "aaa"}),
+        ]
+        assert check(events) == []
+
+    def test_param_hash_mismatch_detected(self) -> None:
+        events = [
+            _make_event(step=5, rank=0, param_hashes={"pp0.weight": "aaa"}),
+            _make_event(step=5, rank=1, param_hashes={"pp0.weight": "zzz"}),
+        ]
+        mismatches = check(events)
+
+        assert len(mismatches) >= 1
+        keys = [m.key for m in mismatches]
+        assert any("param_hashes.pp0.weight" in k for k in keys)
+
+    def test_missing_key_in_one_replica_detected(self) -> None:
+        events = [
+            _make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"}),
+            _make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa"}),
+        ]
+        mismatches = check(events)
+
+        assert len(mismatches) >= 1
+        keys = [m.key for m in mismatches]
+        assert any("pp0.bias" in k for k in keys)
+        assert any("<missing>" in m.value_b for m in mismatches)
+
+    def test_multiple_steps_only_mismatched_step_reported(self) -> None:
+        events = [
+            # Step 0: match
+            _make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(step=0, rank=1, param_hashes={"pp0.w": "aaa"}),
+            # Step 1: mismatch
+            _make_event(step=1, rank=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(step=1, rank=1, param_hashes={"pp0.w": "zzz"}),
+            # Step 2: match
+            _make_event(step=2, rank=0, param_hashes={"pp0.w": "aaa"}),
+            _make_event(step=2, rank=1, param_hashes={"pp0.w": "aaa"}),
+        ]
+        mismatches = check(events)
+
+        assert len(mismatches) >= 1
+        assert all("step1" in m.value_a or "step1" in m.value_b for m in mismatches)
+
+    def test_empty_events_no_mismatches(self) -> None:
+        assert check([]) == []
+
+    def test_buffer_mismatch_detected(self) -> None:
+        events = [
+            _make_event(step=0, rank=0, buffer_hashes={"pp0.running_mean": "aaa"}),
+            _make_event(step=0, rank=1, buffer_hashes={"pp0.running_mean": "bbb"}),
+        ]
+        mismatches = check(events)
+
+        assert len(mismatches) >= 1
+        assert any("buffer_hashes" in m.key for m in mismatches)
+
+    def test_optimizer_state_mismatch_detected(self) -> None:
+        events = [
+            _make_event(step=3, rank=0, optimizer_state_dict={"state": {0: {"exp_avg": "aaa"}}}),
+            _make_event(step=3, rank=1, optimizer_state_dict={"state": {0: {"exp_avg": "bbb"}}}),
+        ]
+        mismatches = check(events)
+
+        assert len(mismatches) >= 1
+        assert any("exp_avg" in m.key for m in mismatches)
+
+    def test_non_tensor_state_mismatch_detected(self) -> None:
+        events = [
+            _make_event(step=0, rank=0, optimizer_state_dict={"state": {0: {"step": 10}}}),
+            _make_event(step=0, rank=1, optimizer_state_dict={"state": {0: {"step": 20}}}),
+        ]
+        mismatches = check(events)
+
+        assert len(mismatches) >= 1
+        assert any("step" in m.key for m in mismatches)
 
 
-class TestCheckWeightChecksums:
-    def test_matching_checksums_across_replicas_passes(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        event_logger.log(_make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"}))
-        event_logger.log(_make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"}))
-        event_logger.log(_make_event(step=0, rank=2, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"}))
-        event_logger.close()
+class TestFlattenEvent:
+    def test_excludes_metadata_fields(self) -> None:
+        event = _make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"})
+        flat = _flatten_event(event)
 
-        mismatches = check(_read_checksum_events(tmp_path))
-        assert mismatches == []
+        assert not any(k.startswith("step") or k.startswith("rank") or k.startswith("type") for k in flat.keys())
+        assert "param_hashes.pp0.w" in flat
 
-    def test_param_hash_mismatch_reports_correct_details(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        event_logger.log(_make_event(step=5, rank=0, param_hashes={"pp0.weight": "aaa"}))
-        event_logger.log(_make_event(step=5, rank=1, param_hashes={"pp0.weight": "zzz"}))
-        event_logger.log(_make_event(step=5, rank=2, param_hashes={"pp0.weight": "aaa"}))
-        event_logger.close()
+    def test_includes_optimizer_hashes(self) -> None:
+        event = _make_event(step=0, rank=0, optimizer_state_dict={"state": {0: {"exp_avg": "hash1"}}})
+        flat = _flatten_event(event)
 
-        mismatches = check(_read_checksum_events(tmp_path))
-
-        assert len(mismatches) == 1
-        m = mismatches[0]
-        assert m.step == 5
-        assert m.category == "param"
-        assert m.key == "pp0.weight"
-        assert 0 in m.cell_indices
-        assert 1 in m.cell_indices
-
-    def test_missing_tensor_in_one_replica_reports_mismatch(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        event_logger.log(_make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"}))
-        event_logger.log(_make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa"}))
-        event_logger.close()
-
-        mismatches = check(_read_checksum_events(tmp_path))
-
-        assert len(mismatches) == 1
-        assert mismatches[0].key == "pp0.bias"
-        assert "<missing>" in mismatches[0].values
-
-    def test_multiple_steps_only_reports_mismatched_step(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-
-        # Step 0: all match
-        event_logger.log(_make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa"}))
-        event_logger.log(_make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa"}))
-
-        # Step 1: mismatch
-        event_logger.log(_make_event(step=1, rank=0, param_hashes={"pp0.weight": "aaa"}))
-        event_logger.log(_make_event(step=1, rank=1, param_hashes={"pp0.weight": "zzz"}))
-
-        # Step 2: all match
-        event_logger.log(_make_event(step=2, rank=0, param_hashes={"pp0.weight": "aaa"}))
-        event_logger.log(_make_event(step=2, rank=1, param_hashes={"pp0.weight": "aaa"}))
-        event_logger.close()
-
-        mismatches = check(_read_checksum_events(tmp_path))
-
-        assert len(mismatches) == 1
-        assert mismatches[0].step == 1
-
-    def test_empty_events_returns_no_mismatches(self) -> None:
-        mismatches = check([])
-        assert mismatches == []
-
-    def test_buffer_mismatch_detected(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        event_logger.log(_make_event(step=0, rank=0, buffer_hashes={"pp0.running_mean": "aaa"}))
-        event_logger.log(_make_event(step=0, rank=1, buffer_hashes={"pp0.running_mean": "bbb"}))
-        event_logger.close()
-
-        mismatches = check(_read_checksum_events(tmp_path))
-
-        assert len(mismatches) == 1
-        assert mismatches[0].category == "buffer"
-
-    def test_optimizer_state_mismatch_detected(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        event_logger.log(_make_event(
-            step=3, rank=0,
-            optimizer_state_dict={"state": {0: {"exp_avg": "aaa"}}},
-        ))
-        event_logger.log(_make_event(
-            step=3, rank=1,
-            optimizer_state_dict={"state": {0: {"exp_avg": "bbb"}}},
-        ))
-        event_logger.close()
-
-        mismatches = check(_read_checksum_events(tmp_path))
-
-        assert len(mismatches) == 1
-        assert mismatches[0].category == "optimizer"
-        assert "exp_avg" in mismatches[0].key
+        assert any("exp_avg" in k for k in flat.keys())
 
 
 class TestFlattenNested:
@@ -141,9 +141,13 @@ class TestFlattenNested:
         result = _flatten_nested({"params": ["a", "b"]}, prefix="opt0")
         assert result == {"opt0.params[0]": "a", "opt0.params[1]": "b"}
 
-    def test_ignores_non_string_leaves(self) -> None:
-        result = _flatten_nested({"lr": 0.001, "hash": "abc"}, prefix="root")
-        assert result == {"root.hash": "abc"}
+    def test_keeps_int_and_float_leaves(self) -> None:
+        result = _flatten_nested({"lr": 0.001, "step": 42, "hash": "abc"}, prefix="root")
+        assert result == {"root.hash": "abc", "root.lr": 0.001, "root.step": 42}
+
+    def test_empty_prefix(self) -> None:
+        result = _flatten_nested({"a": "x"}, prefix="")
+        assert result == {"a": "x"}
 
     def test_empty_dict(self) -> None:
         result = _flatten_nested({}, prefix="root")

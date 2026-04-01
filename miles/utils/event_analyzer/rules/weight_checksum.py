@@ -1,18 +1,18 @@
 """Rule: cross-replica weight checksum consistency."""
 
-from collections import defaultdict
-from typing import Any, NamedTuple, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
+_PRIMITIVE_TYPES = (str, int, float, bool)
+
 
 class ChecksumMismatchIssue(FrozenStrictBaseModel):
-    step: int
-    category: str
     key: str
-    cell_indices: list[int]
-    values: list[str]
+    value_a: str
+    value_b: str
 
 
 def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
@@ -25,11 +25,11 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
     if not checksum_events:
         return []
 
-    events_by_step: dict[int, list[LocalWeightChecksumEvent]] = defaultdict(list)
-    for event in checksum_events:
-        events_by_step[event.step].append(event)
-
     all_mismatches: list[ChecksumMismatchIssue] = []
+
+    events_by_step: dict[int, list[LocalWeightChecksumEvent]] = {}
+    for event in checksum_events:
+        events_by_step.setdefault(event.step, []).append(event)
 
     for step in sorted(events_by_step.keys()):
         all_mismatches += list(_check_one_step(step, events=events_by_step[step]))
@@ -37,99 +37,57 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
     return all_mismatches
 
 
-class _RankHashes(NamedTuple):
-    rank: int
-    hashes: dict[str, str]
-
-
 def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]) -> Iterable[ChecksumMismatchIssue]:
+    flat_0 = _flatten_event(events[0])
     for i in range(1, len(events)):
-        yield from _compare_flat_dicts(a=_flatten_nested(events[0]), b=_flatten_nested(events[i]))
+        flat_i = _flatten_event(events[i])
+        yield from _compare_flat_dicts(
+            a=flat_0,
+            b=flat_i,
+            label_a=f"step{step}/rank{events[0].rank}",
+            label_b=f"step{step}/rank{events[i].rank}",
+        )
 
 
-# TODO temporarily commenterd out
-# def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]):
-#     yield from _compare_flat_dicts(
-#         step=step,
-#         category="param",
-#         entries=[_RankHashes(rank=e.rank, hashes=e.param_hashes) for e in events],
-#     )
-#
-#     yield from _compare_flat_dicts(
-#         step=step,
-#         category="buffer",
-#         entries=[_RankHashes(rank=e.rank, hashes=e.buffer_hashes) for e in events],
-#     )
-#
-#     for opt_idx in range(len(events[0].optimizer_hashes)):
-#         flat_dicts: list[_RankHashes] = []
-#         for e in events:
-#             assert opt_idx < len(e.optimizer_hashes), (
-#                 f"step {step} rank {e.rank}: expected optimizer_hashes[{opt_idx}] but only has {len(e.optimizer_hashes)}"
-#             )
-#             flat = _flatten_nested(e.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
-#             flat_dicts.append(_RankHashes(rank=e.rank, hashes=flat))
-#
-#         yield from _compare_flat_dicts(
-#             step=step,
-#             category="optimizer",
-#             entries=flat_dicts,
-#         )
+def _flatten_event(event: LocalWeightChecksumEvent) -> dict[str, Any]:
+    """Flatten all fields of an event into a flat dict with dot-separated keys."""
+    data = event.model_dump(exclude={"timestamp", "source", "type", "step", "rank"})
+    return _flatten_nested(data, prefix="")
 
 
-def _flatten_nested(obj: Any, *, prefix: str, _result: dict[str, str] | None = None) -> dict[str, str]:
-    """Flatten a nested dict/list into a flat dict with dot-separated keys. Only keeps str leaf values (hashes)."""
+def _compare_flat_dicts(
+    a: dict[str, Any],
+    b: dict[str, Any],
+    label_a: str,
+    label_b: str,
+) -> Iterable[ChecksumMismatchIssue]:
+    """Compare two flat dicts and yield mismatches."""
+    all_keys = sorted(set(a.keys()) | set(b.keys()))
+
+    for key in all_keys:
+        val_a = a.get(key, "<missing>")
+        val_b = b.get(key, "<missing>")
+        if val_a != val_b:
+            yield ChecksumMismatchIssue(
+                key=key,
+                value_a=f"{label_a}: {val_a}",
+                value_b=f"{label_b}: {val_b}",
+            )
+
+
+def _flatten_nested(obj: Any, *, prefix: str, _result: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Flatten a nested dict/list into a flat dict with dot-separated keys. Keeps all primitive leaf values."""
     if _result is None:
         _result = {}
 
     if isinstance(obj, dict):
         for k, v in sorted(obj.items(), key=lambda x: str(x[0])):
-            _flatten_nested(v, prefix=f"{prefix}.{k}", _result=_result)
+            child_prefix = f"{prefix}.{k}" if prefix else str(k)
+            _flatten_nested(v, prefix=child_prefix, _result=_result)
     elif isinstance(obj, (list, tuple)):
         for i, v in enumerate(obj):
             _flatten_nested(v, prefix=f"{prefix}[{i}]", _result=_result)
-    elif isinstance(obj, str):
+    elif isinstance(obj, _PRIMITIVE_TYPES):
         _result[prefix] = obj
 
     return _result
-
-
-def _compare_flat_dicts(a: dict[str, Any], b: dict[str, Any]):
-    TODO
-
-
-# def _compare_flat_dicts(
-#     step: int,
-#     category: str,
-#     entries: list[_RankHashes],
-# ) -> list[ChecksumMismatchIssue]:
-#     """Compare flat string dicts across replicas."""
-#     mismatches: list[ChecksumMismatchIssue] = []
-#
-#     all_keys: set[str] = set()
-#     for entry in entries:
-#         all_keys.update(entry.hashes.keys())
-#
-#     for key in sorted(all_keys):
-#         value_by_rank: dict[str, list[int]] = defaultdict(list)
-#         for entry in entries:
-#             v = entry.hashes.get(key, "<missing>")
-#             value_by_rank[v].append(entry.rank)
-#
-#         if len(value_by_rank) > 1:
-#             cell_indices: list[int] = []
-#             values: list[str] = []
-#             for v, ranks in sorted(value_by_rank.items(), key=lambda x: x[1][0]):
-#                 for r in ranks:
-#                     cell_indices.append(r)
-#                     values.append(v)
-#
-#             mismatches.append(ChecksumMismatchIssue(
-#                 step=step,
-#                 category=category,
-#                 key=key,
-#                 cell_indices=cell_indices,
-#                 values=values,
-#             ))
-#
-#     return mismatches
