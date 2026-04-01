@@ -178,7 +178,7 @@ class RayTrainCell:
 
     # ------------------------ TODO: move these methods up and down ------------------------
 
-    async def connect(self, critic_cell: "RayTrainCell") -> list:
+    async def connect_actor_critic(self, critic_cell: "RayTrainCell") -> list:
         critic_handles = critic_cell._get_actor_handles()
         return await self._execute_raw(
             "connect_actor_critic",
