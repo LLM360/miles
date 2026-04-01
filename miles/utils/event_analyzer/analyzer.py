@@ -17,6 +17,8 @@ def run_analysis_from_args(args: Namespace) -> None:
         return
 
     mismatches = run_analysis(event_dir=Path(event_dir))
+
+    # Fail fast, we want to stop the system if sanity check fails
     if mismatches:
         raise ValueError(f"Event analysis found {len(mismatches)} mismatches, see above for details")
 
