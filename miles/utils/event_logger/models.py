@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import Discriminator
 
@@ -7,7 +7,7 @@ from miles.utils.pydantic_utils import StrictBaseModel
 
 
 class EventBase(StrictBaseModel):
-    timestamp: datetime
+    timestamp: Optional[datetime] = None
 
 
 class CellStateChanged(EventBase):

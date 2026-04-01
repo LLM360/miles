@@ -11,7 +11,6 @@ from miles.utils.event_logger.models import CellStateChanged, GenericEvent
 
 def _make_event() -> CellStateChanged:
     return CellStateChanged(
-        timestamp=datetime(2000, 1, 1, tzinfo=timezone.utc),
         cell_index=0,
         old_state="pending",
         new_state="alive",
@@ -25,7 +24,6 @@ class TestEventLoggerWritesJsonl:
         logger.log(_make_event())
         logger.log(
             GenericEvent(
-                timestamp=datetime(2000, 1, 1, tzinfo=timezone.utc),
                 message="hi",
                 details={"x": 1},
             )
