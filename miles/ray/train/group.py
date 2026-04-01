@@ -213,23 +213,36 @@ class RayTrainGroup:
         src_alive_rank = will_alive_indices.index(src_cell_index)
         ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
 
-        await asyncio.gather(
-            *[
-                (
-                    c.prepare_indep_dp_mode_alive(
-                        indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
-                        send_ckpt_dst_ranks=ckpt_dst_alive_ranks if c.cell_index == src_cell_index else [],
+        try:
+            await asyncio.gather(
+                *[
+                    (
+                        c.prepare_indep_dp_mode_alive(
+                            indep_dp_info=self._compute_indep_dp_info(
+                                c.cell_index, alive_cell_indices=will_alive_indices
+                            ),
+                            send_ckpt_dst_ranks=ckpt_dst_alive_ranks if c.cell_index == src_cell_index else [],
+                        )
+                        if c.cell_index in snapshotted_alive_indices
+                        else c.prepare_indep_dp_mode_healing(
+                            indep_dp_info=self._compute_indep_dp_info(
+                                c.cell_index, alive_cell_indices=will_alive_indices
+                            ),
+                            recv_ckpt_src_rank=src_alive_rank
+                            if c.cell_index in snapshotted_pending_indices
+                            else None,
+                        )
                     )
-                    if c.cell_index in snapshotted_alive_indices
-                    else c.prepare_indep_dp_mode_healing(
-                        indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
-                        recv_ckpt_src_rank=src_alive_rank if c.cell_index in snapshotted_pending_indices else None,
-                    )
-                )
-                for c in self._cells
-                if c.cell_index in will_alive_indices
-            ]
-        )
+                    for c in self._cells
+                    if c.cell_index in will_alive_indices
+                ]
+            )
+        except Exception:
+            logger.exception("Failed to refresh cells, stopping pending cells")
+            for c in self._cells:
+                if c.cell_index in snapshotted_pending_indices:
+                    c.stop()
+            return
 
         assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
 

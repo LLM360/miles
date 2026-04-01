@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -560,3 +561,35 @@ class TestExecuteFirstAliveFallback:
 
         with pytest.raises(RuntimeError, match="All cells failed for save_model"):
             await group._execute_first_alive("save_model", 42)
+
+
+def _make_failing_actor_factory() -> Callable:
+    """Create a factory that returns actors pre-configured to fail on init."""
+
+    def factory():
+        actor = DummyTrainActor.remote()
+        ray.get(actor.set_fail_methods.remote(["init"]))
+        return [actor]
+
+    return factory
+
+
+class TestRefreshCellsErrorHandling:
+    async def test_healing_failure_stops_pending_cell_keeps_alive(self):
+        """When healing init fails, pending cell is stopped, alive cells unaffected."""
+        group = await _make_alive_group(num_cells=3)
+
+        # Step 1: Stop cell 2 and start it (pending)
+        group.stop_cell(2)
+        group.start_cell(2)
+
+        # Step 2: Replace actor factory so new actors fail on init
+        group._cells[2]._actor_factory = _make_failing_actor_factory()
+
+        # Step 3: Refresh — healing should fail, pending cell stopped
+        await group._refresh_cells()
+
+        # Step 4: Cell 2 stopped, cells 0 and 1 still alive
+        assert group._cells[0].is_alive
+        assert group._cells[1].is_alive
+        assert group._cells[2].is_stopped
