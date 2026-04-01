@@ -176,18 +176,17 @@ class RayTrainGroup:
         assert alive_cells, "No alive cells"
         return [(cell, cell.async_execute(fn_name, *args, **kwargs)) for cell in alive_cells]
 
-    async def _safe_await(self, futures_by_cell: list[tuple[RayTrainCell, list[ray.ObjectRef]]]) -> None:
+    async def _broadcast_alive(self, fn_name, *args, **kwargs):
+        dispatched = self._dispatch_alive(fn_name, *args, **kwargs)
+
         async def _await_cell(cell: RayTrainCell, futures: list[ray.ObjectRef]) -> None:
             try:
                 await asyncio.gather(*futures)
-            except Exception as e:
-                logger.error(f"Cell {cell.cell_index} failed: {e}", exc_info=True)
+            except Exception:
+                logger.error(f"Cell {cell.cell_index} failed in {fn_name}", exc_info=True)
                 cell.mark_as_errored()
 
-        await asyncio.gather(*[_await_cell(cell, fs) for cell, fs in futures_by_cell])
-
-    async def _broadcast_alive(self, fn_name, *args, **kwargs):
-        await self._safe_await(self._dispatch_alive(fn_name, *args, **kwargs))
+        await asyncio.gather(*[_await_cell(cell, fs) for cell, fs in dispatched])
 
     async def _execute_first_alive(self, fn_name, *args, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
@@ -196,8 +195,8 @@ class RayTrainGroup:
             try:
                 await asyncio.gather(*cell.async_execute(fn_name, *args, **kwargs))
                 return
-            except Exception as e:
-                logger.error(f"Cell {cell.cell_index} failed in {fn_name}: {e}", exc_info=True)
+            except Exception:
+                logger.error(f"Cell {cell.cell_index} failed in {fn_name}", exc_info=True)
                 cell.mark_as_errored()
         raise RuntimeError(f"All cells failed for {fn_name}")
 
@@ -258,6 +257,9 @@ class RayTrainGroup:
                 ]
             )
         except Exception:
+            # TODO: use return_exceptions=True to let all tasks complete,
+            # then handle per-cell failures individually. Currently alive cells
+            # that were sending ckpt may still be running in the background.
             logger.exception("Failed to refresh cells, stopping pending cells")
             for c in self._cells:
                 if c.cell_index in snapshotted_pending_indices:

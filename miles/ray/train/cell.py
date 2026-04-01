@@ -202,7 +202,7 @@ class RayTrainCell:
     def is_stopped(self) -> bool:
         return isinstance(self._state, _StateStopped)
 
-    def get_cell_status(self) -> CellStatus:
+    def cell_status(self) -> CellStatus:
         match self._state:
             case _StateAllocatedAlive():
                 if self.health_checker.status == HealthStatus.UNHEALTHY:

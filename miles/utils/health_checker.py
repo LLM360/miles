@@ -118,20 +118,24 @@ class SimpleHealthChecker(BaseHealthChecker):
     async def start(self) -> None:
         if self._task is not None:
             return
+        logger.info(f"[{self._name}] Starting health checker (interval={self._interval}s, first_wait={self._first_wait}s)")
         self._task = asyncio.create_task(self._loop())
         await asyncio.sleep(0)
 
     def stop(self) -> None:
         if self._task is not None:
+            logger.info(f"[{self._name}] Stopping health checker")
             self._task.cancel()
             self._task = None
         self._status = HealthStatus.UNKNOWN
 
     def pause(self) -> None:
+        logger.info(f"[{self._name}] Pausing health checker")
         self._paused = True
         self._status = HealthStatus.UNKNOWN
 
     def resume(self) -> None:
+        logger.info(f"[{self._name}] Resuming health checker (first_wait={self._first_wait}s)")
         self._paused = False
         self._need_first_wait = True
         self._status = HealthStatus.UNKNOWN
@@ -140,6 +144,7 @@ class SimpleHealthChecker(BaseHealthChecker):
         while True:
             if self._need_first_wait:
                 self._need_first_wait = False
+                logger.info(f"[{self._name}] Waiting {self._first_wait}s before first check")
                 await self._clock.sleep(self._first_wait)
 
             if not self._paused:
@@ -148,9 +153,13 @@ class SimpleHealthChecker(BaseHealthChecker):
                     await self._check_fn()
                     success = True
                 except Exception:
-                    logger.error(f"Health check failed for {self._name}", exc_info=True)
+                    logger.error(f"[{self._name}] Health check failed", exc_info=True)
 
+                prev_status = self._status
                 self._status = HealthStatus.HEALTHY if success else HealthStatus.UNHEALTHY
+                if prev_status != self._status:
+                    logger.info(f"[{self._name}] Status changed: {prev_status.value} -> {self._status.value}")
+
                 if self._on_result is not None:
                     self._on_result(success)
 

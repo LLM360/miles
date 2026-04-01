@@ -54,7 +54,7 @@ class _ActorCellHandle(_CellHandle):
                 },
             ),
             spec=CellSpec(suspend=cell.is_stopped),
-            status=cell.get_cell_status(),
+            status=cell.cell_status(),
         )
 
     async def suspend(self) -> None:
