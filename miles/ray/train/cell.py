@@ -233,7 +233,6 @@ class RayTrainCell:
             case _StatePending() | _StateStopped():
                 return [
                     {"type": "Allocated", "status": "False"},
-                    {"type": "Healthy", "status": "True"},
                 ]
             case _:
                 raise NotImplementedError(f"Unknown state: {self._state}")
