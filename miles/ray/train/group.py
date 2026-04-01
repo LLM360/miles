@@ -121,7 +121,7 @@ class RayTrainGroup:
 
     async def _train_one_attempt(self, rollout_id: int, rollout_data_ref) -> bool:
         await self._refresh_cells()
-        results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
+        results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, catch_exceptions=True)
 
         ok = self._does_train_one_attempt_succeed(results)
         if not ok:
@@ -149,17 +149,17 @@ class RayTrainGroup:
         await self._execute_first_alive("update_weights")
 
     async def onload(self):
-        await self._broadcast_alive("wake_up", return_exceptions=True)
+        await self._broadcast_alive("wake_up", catch_exceptions=True)
         for cell in self._cells:
             cell.health_checker.resume()
 
     async def offload(self):
         for cell in self._cells:
             cell.health_checker.pause()
-        await self._broadcast_alive("sleep", return_exceptions=True)
+        await self._broadcast_alive("sleep", catch_exceptions=True)
 
     async def clear_memory(self):
-        await self._broadcast_alive("clear_memory", return_exceptions=True)
+        await self._broadcast_alive("clear_memory", catch_exceptions=True)
 
     async def connect(self, critic_group: "RayTrainGroup"):
         assert len(self._cells) == len(critic_group._cells), (
@@ -182,12 +182,12 @@ class RayTrainGroup:
 
     # ------------------------ utils to forward calls to cells ------------------------
 
-    async def _broadcast_alive(self, fn_name: str, *args, return_exceptions: bool, **kwargs):
+    async def _broadcast_alive(self, fn_name: str, *args, catch_exceptions: bool, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
         outputs = await asyncio.gather(
             *[cell.execute(fn_name, *args, **kwargs) for cell in alive_cells],
-            return_exceptions=return_exceptions,
+            return_exceptions=catch_exceptions,
         )
 
         for i, output in enumerate(outputs):
