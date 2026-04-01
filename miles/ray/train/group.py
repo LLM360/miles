@@ -121,7 +121,7 @@ class RayTrainGroup:
 
     async def _train_one_attempt(self, rollout_id: int, rollout_data_ref) -> bool:
         await self._refresh_cells()
-        results = await self._execute_all_alive("train", rollout_id, rollout_data_ref, catch_exceptions=True)
+        results = await self._execute_all_alive("train", rollout_id, rollout_data_ref)
 
         ok = self._does_train_one_attempt_succeed(results)
         if not ok:
@@ -149,17 +149,17 @@ class RayTrainGroup:
         await self._execute_first_alive("update_weights")
 
     async def onload(self):
-        await self._execute_all_alive("wake_up", catch_exceptions=True)
+        await self._execute_all_alive("wake_up")
         for cell in self._cells:
             cell.health_checker.resume()
 
     async def offload(self):
         for cell in self._cells:
             cell.health_checker.pause()
-        await self._execute_all_alive("sleep", catch_exceptions=True)
+        await self._execute_all_alive("sleep")
 
     async def clear_memory(self):
-        await self._execute_all_alive("clear_memory", catch_exceptions=True)
+        await self._execute_all_alive("clear_memory")
 
     async def connect(self, critic_group: "RayTrainGroup"):
         assert len(self._cells) == len(critic_group._cells), (
