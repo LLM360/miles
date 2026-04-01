@@ -227,40 +227,7 @@ class RayTrainCell:
         return isinstance(self._state, _StateStopped)
 
     def cell_status(self) -> CellStatus:
-        match self._state:
-            case _StateAllocatedAlive():
-                if self.health_checker.status == HealthStatus.UNHEALTHY:
-                    healthy = CellCondition.healthy("False", reason="HealthCheckFailed")
-                else:
-                    healthy = CellCondition.healthy("True")
-                return CellStatus(phase="Running", conditions=[CellCondition.allocated("True"), healthy])
-
-            case _StateAllocatedUninitialized():
-                return CellStatus(
-                    phase="Running",
-                    conditions=[
-                        CellCondition.allocated("True"),
-                        CellCondition.healthy("True"),
-                    ],
-                )
-
-            case _StateAllocatedErrored():
-                return CellStatus(
-                    phase="Running",
-                    conditions=[
-                        CellCondition.allocated("True"),
-                        CellCondition.healthy("False", reason="ExecutionErrored"),
-                    ],
-                )
-
-            case _StatePending():
-                return CellStatus(phase="Pending", conditions=[CellCondition.allocated("False")])
-
-            case _StateStopped():
-                return CellStatus(phase="Suspended", conditions=[CellCondition.allocated("False")])
-
-            case _:
-                raise NotImplementedError(f"Unknown state: {self._state}")
+        return _compute_cell_status(self._state, self.health_checker.status)
 
     @property
     def indep_dp_info(self) -> IndepDPInfo:
@@ -391,6 +358,9 @@ def allocate_gpus_for_actor(
     return actor_handles
 
 
+# ------------------------ misc ------------------------
+
+
 def create_trainer_cell_health_checker(
     *,
     cell: RayTrainCell,
@@ -417,3 +387,40 @@ def create_trainer_cell_health_checker(
         check_fn=_check,
         config=config,
     )
+
+
+def _compute_cell_status(state: _CellState, health_status: HealthStatus):
+    match state:
+        case _StateAllocatedAlive():
+            if health_status == HealthStatus.UNHEALTHY:
+                healthy = CellCondition.healthy("False", reason="HealthCheckFailed")
+            else:
+                healthy = CellCondition.healthy("True")
+            return CellStatus(phase="Running", conditions=[CellCondition.allocated("True"), healthy])
+
+        case _StateAllocatedUninitialized():
+            return CellStatus(
+                phase="Running",
+                conditions=[
+                    CellCondition.allocated("True"),
+                    CellCondition.healthy("True"),
+                ],
+            )
+
+        case _StateAllocatedErrored():
+            return CellStatus(
+                phase="Running",
+                conditions=[
+                    CellCondition.allocated("True"),
+                    CellCondition.healthy("False", reason="ExecutionErrored"),
+                ],
+            )
+
+        case _StatePending():
+            return CellStatus(phase="Pending", conditions=[CellCondition.allocated("False")])
+
+        case _StateStopped():
+            return CellStatus(phase="Suspended", conditions=[CellCondition.allocated("False")])
+
+        case _:
+            raise NotImplementedError(f"Unknown state: {state}")
