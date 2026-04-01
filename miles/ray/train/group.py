@@ -129,7 +129,7 @@ class RayTrainGroup:
     def _check_train_one_attempt(results):
         # NOTE: If some cells errors + all other cells claim normal, we do *not* retry
         #       This may happen when some cells fails *after* exchanging gradients w/ others
-        if not all(
+        if any(
             any(r == TrainStepOutcome.DISCARDED_SHOULD_RETRY for r in cell_results)
             for cell_results in results
             if not isinstance(cell_results, BaseException)
