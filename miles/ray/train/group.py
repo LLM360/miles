@@ -110,7 +110,8 @@ class RayTrainGroup:
         await self._execute_first_alive("save_model", rollout_id, force_sync=force_sync)
 
     async def update_weights(self):
-        """Broadcast weights to rollout engines. Only cell 0 pushes (all cells have identical weights)."""
+        """Broadcast weights to rollout engines."""
+        # TODO: allow using all cells to update weights (instead of first alive cell)
         await self._execute_first_alive("update_weights")
 
     async def onload(self):
