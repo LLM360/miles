@@ -23,7 +23,7 @@ def configure_logger(args, *, source: ProcessIdentity) -> None:
 
 
 # ref: SGLang
-def configure_logger_raw(name: str) -> None:
+def configure_logger_raw(name: str = "") -> None:
     global _LOGGER_CONFIGURED
     if _LOGGER_CONFIGURED:
         return

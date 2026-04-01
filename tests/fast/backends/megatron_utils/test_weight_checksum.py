@@ -5,19 +5,19 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 import torch
 
 from miles.backends.megatron_utils.weight_checksum import (
     WeightChecksumEntry,
-    _hash_tensor_sha256,
     compute_and_dump_weight_checksums,
     compute_weight_checksums,
     dump_weight_checksums,
 )
 
 
-def _make_mock_model_chunk(params: dict[str, torch.Tensor], buffers: dict[str, torch.Tensor] | None = None) -> MagicMock:
+def _make_mock_model_chunk(
+    params: dict[str, torch.Tensor], buffers: dict[str, torch.Tensor] | None = None
+) -> MagicMock:
     """Create a mock DDP model chunk with given named parameters and buffers."""
     chunk = MagicMock()
     chunk.named_parameters.return_value = sorted(params.items(), key=lambda x: x[0])
@@ -119,9 +119,7 @@ class TestComputeWeightChecksums:
 
         model = [_make_mock_model_chunk(params={"layers.0.weight": torch.randn(4, 4)})]
 
-        with patch(
-            "miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params"
-        ) as mock_cls:
+        with patch("miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
             mock_cls.__instancecheck__ = lambda self, instance: instance is chained
             entry = compute_weight_checksums(model=model, optimizer=optimizer)
 
@@ -147,9 +145,7 @@ class TestComputeWeightChecksums:
 
         model = [_make_mock_model_chunk(params={"weight": torch.randn(4, 4)})]
 
-        with patch(
-            "miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params"
-        ) as mock_cls:
+        with patch("miles.backends.megatron_utils.weight_checksum.Float16OptimizerWithFloat16Params") as mock_cls:
             mock_cls.__instancecheck__ = lambda self, instance: instance is chained
             entry = compute_weight_checksums(model=model, optimizer=optimizer)
 
@@ -195,9 +191,7 @@ class TestComputeAndDumpWeightChecksums:
         model = [_make_mock_model_chunk(params={})]
         optimizer = _make_mock_optimizer()
 
-        compute_and_dump_weight_checksums(
-            args=args, model=model, optimizer=optimizer, step=0
-        )
+        compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
 
         checksum_dir = tmp_path / "weight_checksum"
         assert not checksum_dir.exists()
@@ -212,9 +206,7 @@ class TestComputeAndDumpWeightChecksums:
         optimizer = _make_mock_optimizer()
 
         with patch("miles.backends.megatron_utils.weight_checksum.torch.distributed.get_rank", return_value=0):
-            compute_and_dump_weight_checksums(
-                args=args, model=model, optimizer=optimizer, step=3
-            )
+            compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=3)
 
         checksum_dir = tmp_path / "weight_checksum"
         assert not checksum_dir.exists()
@@ -229,9 +221,7 @@ class TestComputeAndDumpWeightChecksums:
         optimizer = _make_mock_optimizer()
 
         with patch("miles.backends.megatron_utils.weight_checksum.torch.distributed.get_rank", return_value=7):
-            compute_and_dump_weight_checksums(
-                args=args, model=model, optimizer=optimizer, step=4
-            )
+            compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
 
         expected_path = tmp_path / "weight_checksum" / "step_0000004" / "rank_0007.json"
         assert expected_path.exists()

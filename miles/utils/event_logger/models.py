@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import Discriminator
 
@@ -8,8 +8,8 @@ from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 
 class EventBase(FrozenStrictBaseModel):
-    timestamp: Optional[datetime] = None
-    source: Optional[ProcessIdentity] = None
+    timestamp: datetime | None = None
+    source: ProcessIdentity | None = None
 
 
 class CellStateChanged(EventBase):
@@ -71,16 +71,14 @@ class GenericEvent(EventBase):
 
 
 Event = Annotated[
-    Union[
-        CellStateChanged,
-        QuorumChanged,
-        HeartbeatTimeout,
-        CellRefreshStarted,
-        CellRefreshCompleted,
-        CellRefreshFailed,
-        CheckpointTransferStarted,
-        CheckpointTransferCompleted,
-        GenericEvent,
-    ],
+    CellStateChanged
+    | QuorumChanged
+    | HeartbeatTimeout
+    | CellRefreshStarted
+    | CellRefreshCompleted
+    | CellRefreshFailed
+    | CheckpointTransferStarted
+    | CheckpointTransferCompleted
+    | GenericEvent,
     Discriminator("type"),
 ]

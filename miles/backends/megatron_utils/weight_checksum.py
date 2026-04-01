@@ -28,7 +28,6 @@ def _hash_tensor_sha256(tensor: torch.Tensor) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
 
-
 def compute_weight_checksums(
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,

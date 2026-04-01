@@ -2,10 +2,9 @@
 
 from pathlib import Path
 
-import pytest
 
 from miles.backends.megatron_utils.weight_checksum import WeightChecksumEntry
-from miles.utils.event_analyzer import ChecksumMismatch, check_weight_checksums
+from miles.utils.event_analyzer import check_weight_checksums
 
 
 def _write_entry(base_dir: Path, step: int, rank: int, entry: WeightChecksumEntry) -> None:

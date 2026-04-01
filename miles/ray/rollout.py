@@ -28,16 +28,16 @@ from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.health_monitor import RolloutHealthMonitor
 from miles.utils.http_utils import _wrap_ipv6, find_available_port, get_host_info, init_http_client, is_port_available
 from miles.utils.iter_utils import group_by
-from miles.utils.process_identity import RolloutManagerProcessIdentity
 from miles.utils.logging_utils import configure_logger
 from miles.utils.metric_checker import MetricChecker
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_statistics, dict_add_prefix
 from miles.utils.misc import load_function
+from miles.utils.process_identity import RolloutManagerProcessIdentity
 from miles.utils.ray_utils import Box
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import Sample
-from ..utils.data_utils import split_train_data_by_dp
 
+from ..utils.data_utils import split_train_data_by_dp
 from ..utils.metric_utils import has_repetition
 from .utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST, Lock
 

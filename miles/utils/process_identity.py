@@ -1,4 +1,4 @@
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import Discriminator
 
@@ -30,6 +30,6 @@ class TrainProcessIdentity(_ProcessIdentityBase):
 
 
 ProcessIdentity = Annotated[
-    Union[MainProcessIdentity, RolloutManagerProcessIdentity, TrainProcessIdentity],
+    MainProcessIdentity | RolloutManagerProcessIdentity | TrainProcessIdentity,
     Discriminator("component"),
 ]
