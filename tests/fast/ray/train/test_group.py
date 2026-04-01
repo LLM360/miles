@@ -473,3 +473,90 @@ class TestTrain:
         # Step 5: Full training again (no reconfigure)
         await group.train(rollout_id=4, rollout_data_ref="data")
         assert group._indep_dp_quorum_id == 2
+
+
+class TestPerCellErrorIsolation:
+    async def test_one_cell_failure_marks_errored_others_ok(self):
+        """One cell's actor fails during broadcast, that cell is errored, others complete normally."""
+        group = await _make_alive_group(num_cells=3)
+
+        # Step 1: Make cell 1's actors fail on train
+        for handle in group._cells[1]._get_actor_handles():
+            ray.get(handle.set_fail_methods.remote(["train"]))
+
+        # Step 2: Broadcast train
+        await group._broadcast_alive("train", 0, "data")
+
+        # Step 3: Cell 1 is errored, others alive
+        assert group._cells[0].is_alive
+        assert group._cells[1].is_errored
+        assert group._cells[2].is_alive
+
+        # Step 4: Other cells received train call
+        for cell_idx in [0, 2]:
+            for handle in group._cells[cell_idx]._get_actor_handles():
+                calls = ray.get(handle.get_calls.remote())
+                assert any(c[0] == "train" for c in calls)
+
+    async def test_errored_cell_skipped_in_next_broadcast(self):
+        """After marking a cell errored, subsequent broadcasts skip it."""
+        group = await _make_alive_group(num_cells=2)
+
+        # Step 1: Make cell 0 fail
+        for handle in group._cells[0]._get_actor_handles():
+            ray.get(handle.set_fail_methods.remote(["train"]))
+
+        await group._broadcast_alive("train", 0, "data")
+        assert group._cells[0].is_errored
+
+        # Step 2: Next broadcast only goes to cell 1
+        await group._broadcast_alive("train", 1, "data")
+
+        for handle in group._cells[1]._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            train_calls = [c for c in calls if c[0] == "train"]
+            assert len(train_calls) == 2
+
+    async def test_get_errored_cell_indices(self):
+        group = await _make_alive_group(num_cells=3)
+
+        # Step 1: Make cell 2 fail
+        for handle in group._cells[2]._get_actor_handles():
+            ray.get(handle.set_fail_methods.remote(["train"]))
+
+        await group._broadcast_alive("train", 0, "data")
+
+        # Step 2: Check errored indices
+        assert group.get_errored_cell_indices() == [2]
+
+
+class TestExecuteFirstAliveFallback:
+    async def test_first_cell_fails_falls_back_to_next(self):
+        """If the first alive cell fails, _execute_first_alive tries the next."""
+        group = await _make_alive_group(num_cells=3)
+
+        # Step 1: Make cell 0 fail on save_model
+        for handle in group._cells[0]._get_actor_handles():
+            ray.get(handle.set_fail_methods.remote(["save_model"]))
+
+        # Step 2: Execute first alive
+        await group._execute_first_alive("save_model", 42)
+
+        # Step 3: Cell 0 errored, cell 1 handled it
+        assert group._cells[0].is_errored
+        assert group._cells[1].is_alive
+
+        for handle in group._cells[1]._get_actor_handles():
+            calls = ray.get(handle.get_calls.remote())
+            assert any(c[0] == "save_model" for c in calls)
+
+    async def test_all_cells_fail_raises_runtime_error(self):
+        """If all cells fail, RuntimeError is raised."""
+        group = await _make_alive_group(num_cells=2)
+
+        for cell in group._cells:
+            for handle in cell._get_actor_handles():
+                ray.get(handle.set_fail_methods.remote(["save_model"]))
+
+        with pytest.raises(RuntimeError, match="All cells failed for save_model"):
+            await group._execute_first_alive("save_model", 42)

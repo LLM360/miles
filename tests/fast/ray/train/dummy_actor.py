@@ -13,9 +13,15 @@ class DummyTrainActor:
 
     def __init__(self):
         self._calls: list[tuple[str, tuple, dict]] = []
+        self._fail_methods: set[str] = set()
+
+    def set_fail_methods(self, methods: list[str]) -> None:
+        self._fail_methods = set(methods)
 
     def _record(self, method: str, args: tuple, kwargs: dict) -> None:
         self._calls.append((method, args, kwargs))
+        if method in self._fail_methods:
+            raise RuntimeError(f"Injected failure in {method}")
 
     def get_calls(self) -> list[tuple[str, tuple, dict]]:
         return list(self._calls)

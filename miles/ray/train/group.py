@@ -146,18 +146,40 @@ class RayTrainGroup:
         """Mark a stopped cell as pending. Actual startup happens in train()."""
         self._cells[cell_index].mark_as_pending()
 
+    def get_errored_cell_indices(self) -> list[int]:
+        return [c.cell_index for c in self._cells if c.is_errored]
+
     # ------------------------ utils to forward calls to cells ------------------------
 
-    async def _broadcast_alive(self, fn_name, *args, **kwargs):
+    def _dispatch_alive(self, fn_name: str, *args, **kwargs) -> dict[int, list[ray.ObjectRef]]:
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        refs = [future for cell in alive_cells for future in cell.async_execute(fn_name, *args, **kwargs)]
-        await asyncio.gather(*refs)
+        return {cell.cell_index: cell.async_execute(fn_name, *args, **kwargs) for cell in alive_cells}
+
+    async def _safe_await(self, futures_by_cell: dict[int, list[ray.ObjectRef]]) -> None:
+        async def _await_cell(cell_index: int, futures: list[ray.ObjectRef]) -> None:
+            try:
+                await asyncio.gather(*futures)
+            except Exception as e:
+                logger.error(f"Cell {cell_index} failed: {e}", exc_info=True)
+                self._cells[cell_index]._mark_as_errored()
+
+        await asyncio.gather(*[_await_cell(ci, fs) for ci, fs in futures_by_cell.items()])
+
+    async def _broadcast_alive(self, fn_name, *args, **kwargs):
+        await self._safe_await(self._dispatch_alive(fn_name, *args, **kwargs))
 
     async def _execute_first_alive(self, fn_name, *args, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        await asyncio.gather(*alive_cells[0].async_execute(fn_name, *args, **kwargs))
+        for cell in alive_cells:
+            try:
+                await asyncio.gather(*cell.async_execute(fn_name, *args, **kwargs))
+                return
+            except Exception as e:
+                logger.error(f"Cell {cell.cell_index} failed in {fn_name}: {e}", exc_info=True)
+                cell._mark_as_errored()
+        raise RuntimeError(f"All cells failed for {fn_name}")
 
     # ------------------------ internals for stop/start ------------------------
 
