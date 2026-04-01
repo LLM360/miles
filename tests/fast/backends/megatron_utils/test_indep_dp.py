@@ -1,7 +1,7 @@
 import torch.distributed as dist
 from tests.fast.dist_utils import init_gloo, run_multiprocess
 
-from miles.backends.megatron_utils.indep_dp import _intra_cell_consensus
+from miles.backends.megatron_utils.indep_dp import _collective_bool_and
 
 
 def _worker_consensus(
@@ -10,7 +10,7 @@ def _worker_consensus(
     init_gloo(rank, world_size, port=port)
     try:
         group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
-        result = _intra_cell_consensus(success=success_by_rank[rank], gloo_group=group)
+        result = _collective_bool_and(value=success_by_rank[rank], group=group)
         assert result is expected, f"rank {rank}: expected {expected}, got {result}"
     finally:
         dist.destroy_process_group()
