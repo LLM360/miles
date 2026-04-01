@@ -142,7 +142,7 @@ class RayTrainGroup:
     async def update_weights(self):
         """Broadcast weights to rollout engines."""
         # TODO: allow using all cells to update weights (instead of first alive cell)
-        await self._execute_first_alive("update_weights")
+        await retry(lambda: self._execute_first_alive("update_weights"))
 
     async def onload(self):
         # Catch *without* retry: cells w/ exceptions are auto marked errored and will not be used
