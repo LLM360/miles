@@ -4,7 +4,7 @@ import re
 import sys
 import warnings
 from miles.utils.event_logger.logger import EventLogger, is_event_logger_initialized, set_event_logger
-from miles.utils.event_logger.models import _ProcessIdentityBase
+from miles.utils.event_logger.models import ProcessIdentity
 
 _LOGGER_CONFIGURED = False
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _FATAL_ASYNC_PATTERN = "coroutine .* was never awaited"
 
 
-def configure_logger(args, *, source: _ProcessIdentityBase) -> None:
+def configure_logger(args, *, source: ProcessIdentity) -> None:
     name = source.to_name()
     configure_logger_raw(name)
 
