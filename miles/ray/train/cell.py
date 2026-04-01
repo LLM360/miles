@@ -48,6 +48,38 @@ class RayTrainCell:
         self.health_checker = health_checker
         self.allocate_for_pending()
 
+    # ------------------------ APIs ------------------------
+
+    async def init(
+            self,
+            *,
+            indep_dp_info: IndepDPInfo,
+            recv_ckpt_src_rank: int | None = None,
+    ):
+        self._mark_as_alive(indep_dp_info=indep_dp_info)
+        await self.execute(
+            "init",
+            args=self.args,
+            role=self.role,
+            with_ref=self.with_ref,
+            indep_dp_info=indep_dp_info,
+            recv_ckpt_src_rank=recv_ckpt_src_rank,
+        )
+        await self.health_checker.start()
+
+    async def connect_actor_critic(self, critic_cell: "RayTrainCell") -> list:
+        critic_handles = critic_cell._get_actor_handles()
+        return await self._execute_raw(
+            "connect_actor_critic",
+            compute_args=lambda i: (critic_handles[i],),
+            compute_kwargs=lambda _: {},
+        )
+
+    async def set_rollout_manager(self):
+        if (m := self.rollout_manager) is not None:
+            return await self.execute("set_rollout_manager", m)
+        return []
+
     # ------------------------ state transition ------------------------
 
     def stop(self) -> None:
@@ -175,38 +207,6 @@ class RayTrainCell:
             if mark_errored_on_failure:
                 self._mark_as_errored()
             raise
-
-    # ------------------------ TODO: move these methods up and down ------------------------
-
-    async def connect_actor_critic(self, critic_cell: "RayTrainCell") -> list:
-        critic_handles = critic_cell._get_actor_handles()
-        return await self._execute_raw(
-            "connect_actor_critic",
-            compute_args=lambda i: (critic_handles[i],),
-            compute_kwargs=lambda _: {},
-        )
-
-    async def init(
-        self,
-        *,
-        indep_dp_info: IndepDPInfo,
-        recv_ckpt_src_rank: int | None = None,
-    ):
-        self._mark_as_alive(indep_dp_info=indep_dp_info)
-        await self.execute(
-            "init",
-            args=self.args,
-            role=self.role,
-            with_ref=self.with_ref,
-            indep_dp_info=indep_dp_info,
-            recv_ckpt_src_rank=recv_ckpt_src_rank,
-        )
-        await self.health_checker.start()
-
-    async def set_rollout_manager(self):
-        if (m := self.rollout_manager) is not None:
-            return await self.execute("set_rollout_manager", m)
-        return []
 
     # ------------------------ state helpers ------------------------
 
