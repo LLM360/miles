@@ -162,20 +162,20 @@ class RayTrainGroup:
 
     # ------------------------ utils to forward calls to cells ------------------------
 
-    def _dispatch_alive(self, fn_name: str, *args, **kwargs) -> dict[int, list[ray.ObjectRef]]:
+    def _dispatch_alive(self, fn_name: str, *args, **kwargs) -> list[tuple[RayTrainCell, list[ray.ObjectRef]]]:
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        return {cell.cell_index: cell.async_execute(fn_name, *args, **kwargs) for cell in alive_cells}
+        return [(cell, cell.async_execute(fn_name, *args, **kwargs)) for cell in alive_cells]
 
-    async def _safe_await(self, futures_by_cell: dict[int, list[ray.ObjectRef]]) -> None:
-        async def _await_cell(cell_index: int, futures: list[ray.ObjectRef]) -> None:
+    async def _safe_await(self, futures_by_cell: list[tuple[RayTrainCell, list[ray.ObjectRef]]]) -> None:
+        async def _await_cell(cell: RayTrainCell, futures: list[ray.ObjectRef]) -> None:
             try:
                 await asyncio.gather(*futures)
             except Exception as e:
-                logger.error(f"Cell {cell_index} failed: {e}", exc_info=True)
-                self._cells[cell_index]._mark_as_errored()
+                logger.error(f"Cell {cell.cell_index} failed: {e}", exc_info=True)
+                cell._mark_as_errored()
 
-        await asyncio.gather(*[_await_cell(ci, fs) for ci, fs in futures_by_cell.items()])
+        await asyncio.gather(*[_await_cell(cell, fs) for cell, fs in futures_by_cell])
 
     async def _broadcast_alive(self, fn_name, *args, **kwargs):
         await self._safe_await(self._dispatch_alive(fn_name, *args, **kwargs))
@@ -270,6 +270,11 @@ class RayTrainGroup:
     # ------------------------ heartbeat monitor ------------------------
 
     def _start_heartbeat_monitor(self) -> None:
+        self._hb_first_wait: float = self.args.trainer_heartbeat_first_wait
+        self._hb_interval: float = self.args.trainer_heartbeat_interval
+        self._hb_timeout: float = self.args.trainer_heartbeat_timeout
+        self._hb_staleness: float = self.args.trainer_heartbeat_staleness
+
         self._hb_stop_event = threading.Event()
         self._hb_pause_event = threading.Event()
         self._hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
@@ -279,39 +284,43 @@ class RayTrainGroup:
         assert self._hb_stop_event is not None
         assert self._hb_pause_event is not None
 
-        first_wait: float = getattr(self.args, "trainer_heartbeat_first_wait", 300.0)
-        interval: float = getattr(self.args, "trainer_heartbeat_interval", 30.0)
-
-        if self._hb_stop_event.wait(timeout=first_wait):
+        if self._hb_stop_event.wait(timeout=self._hb_first_wait):
             return
         while not self._hb_stop_event.is_set():
             if not self._hb_pause_event.is_set():
                 self._check_heartbeats()
-            if self._hb_stop_event.wait(timeout=interval):
+            if self._hb_stop_event.wait(timeout=self._hb_interval):
                 break
 
     def _check_heartbeats(self) -> None:
-        timeout: float = getattr(self.args, "trainer_heartbeat_timeout", 10.0)
-        staleness: float = getattr(self.args, "trainer_heartbeat_staleness", 90.0)
         now = time.time()
 
-        for cell in self._cells:
-            if not cell.is_alive:
-                continue
+        alive_cells = [cell for cell in self._cells if cell.is_alive]
+        all_futures: list[tuple[RayTrainCell, ray.ObjectRef]] = []
+        for cell in alive_cells:
             for actor in cell._get_actor_handles():
-                try:
-                    ts: float = ray.get(actor.heartbeat.remote(), timeout=timeout)
-                    if now - ts > staleness:
-                        logger.error(
-                            f"Cell {cell.cell_index} heartbeat stale: "
-                            f"last_active={ts:.1f}, now={now:.1f}, delta={now - ts:.1f}s"
-                        )
-                        cell._mark_as_errored()
-                        break
-                except Exception:
-                    logger.error(f"Cell {cell.cell_index} heartbeat failed", exc_info=True)
+                all_futures.append((cell, actor.heartbeat.remote()))
+
+        for cell, future in all_futures:
+            if cell.is_errored:
+                continue
+            try:
+                ts: float = ray.get(future, timeout=self._hb_timeout)
+                if now - ts > self._hb_staleness:
+                    logger.error(
+                        f"Cell {cell.cell_index} heartbeat stale: "
+                        f"last_active={ts:.1f}, now={now:.1f}, delta={now - ts:.1f}s"
+                    )
                     cell._mark_as_errored()
-                    break
+            except Exception:
+                logger.error(f"Cell {cell.cell_index} heartbeat failed", exc_info=True)
+                cell._mark_as_errored()
+
+    def stop_heartbeat(self) -> None:
+        if self._hb_stop_event is not None:
+            self._hb_stop_event.set()
+        if self._hb_thread is not None:
+            self._hb_thread.join(timeout=10.0)
 
     def pause_heartbeat(self) -> None:
         if self._hb_pause_event is not None:
