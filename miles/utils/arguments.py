@@ -14,7 +14,7 @@ from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizerType
 from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
 from miles.utils.health_checker import SimpleHealthCheckerConfig
-from miles.utils.logging_utils import configure_logger_raw
+from miles.utils.logging_utils import configure_logger
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.misc import load_function
 
@@ -1606,21 +1606,6 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             return parser
 
-        def add_weight_checksum_arguments(parser):
-            group = parser.add_argument_group(title="weight-checksum")
-            group.add_argument(
-                "--weight-checksum-enable",
-                action="store_true",
-                help="Enable per-step weight checksum dumping for replica consistency verification.",
-            )
-            group.add_argument(
-                "--weight-checksum-interval",
-                type=int,
-                default=1,
-                help="Dump checksum every N steps. Default: every step.",
-            )
-            return parser
-
         def add_user_provided_function_arguments(parser):
             args_partial, _ = parser.parse_known_args()
             for path in [
@@ -1666,7 +1651,6 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
         parser = add_mtp_training_arguments(parser)
         parser = add_prefill_decode_disaggregation_arguments(parser)
         parser = add_ci_arguments(parser)
-        parser = add_weight_checksum_arguments(parser)
         parser = add_custom_megatron_plugins_arguments(parser)
         if enable_experimental_rollout_refactor():
             parser = add_user_provided_function_arguments(parser)
@@ -1932,10 +1916,6 @@ def miles_validate_args(args):
         args.save_debug_rollout_data = f"{args.dump_details}/rollout_data/{{rollout_id}}.pt"
         args.save_debug_train_data = f"{args.dump_details}/train_data/{{rollout_id}}_{{rank}}.pt"
         args.save_debug_event_data = f"{args.dump_details}/events"
-
-    if args.weight_checksum_enable:
-        if args.weight_checksum_interval < 1:
-            raise ValueError("--weight-checksum-interval must be >= 1")
 
     if args.load_debug_rollout_data is not None:
         logger.info(
