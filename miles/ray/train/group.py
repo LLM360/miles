@@ -259,11 +259,8 @@ class RayTrainGroup:
                 ]
             )
         except Exception:
-            logger.exception("refresh_cells failed at cooperative_prepare phase")
-            TODO
-            for c in self._cells:
-                if c.cell_index in snapshotted_pending_indices:
-                    c.stop()
+            logger.warning("refresh_cells failed at cooperative_prepare phase", exc_info=True)
+            # No need to do anything - cells with exceptions will auto mark itself as errored
             return
 
         assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
