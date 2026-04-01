@@ -397,7 +397,7 @@ def _create_health_checker(
             return
 
         now = time.time()
-        futures = [actor.heartbeat.remote() for actor in cell._get_actor_handles()]
+        futures = [actor.get_heartbeat_status.remote() for actor in cell._get_actor_handles()]
 
         for future in futures:
             status = await asyncio.wait_for(future, timeout=timeout)

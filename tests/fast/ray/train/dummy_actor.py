@@ -70,7 +70,7 @@ class DummyTrainActor:
             bump_count=self._heartbeat._status.bump_count,
         )
 
-    def heartbeat(self) -> HeartbeatStatus:
+    def get_heartbeat_status(self) -> HeartbeatStatus:
         if self._heartbeat_fail:
             raise RuntimeError("Injected heartbeat failure")
         return self._heartbeat.status()

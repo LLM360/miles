@@ -116,7 +116,7 @@ class TrainRayActor(RayActor):
         self._heartbeat.bump()
 
     @ray.method(concurrency_group="heartbeat")
-    def heartbeat(self) -> HeartbeatStatus:
+    def get_heartbeat_status(self) -> HeartbeatStatus:
         return self._heartbeat.status()
 
     def clear_memory(self):
