@@ -461,6 +461,7 @@ def train_one_step(
     )
 
     valid_step = True
+    grad_norm = None
     if parallel_state.indep_dp.size > 1:
         try:
             _allreduce_grads_across_replicas(args, model, parallel_state)
