@@ -3,12 +3,22 @@ import os
 import re
 import sys
 import warnings
+from miles.utils.event_logger.logger import EventLogger, is_event_logger_initialized, set_event_logger
 
 _LOGGER_CONFIGURED = False
 
 logger = logging.getLogger(__name__)
 
 _FATAL_ASYNC_PATTERN = "coroutine .* was never awaited"
+
+
+def configure_logger(args: object, *, name: str) -> None:
+    configure_logger_raw(name)
+
+    event_dir = getattr(args, "save_debug_event_data", None)
+    if event_dir is not None:
+        if not is_event_logger_initialized():
+            set_event_logger(EventLogger(log_dir=event_dir, file_name=f"{name}.jsonl"))
 
 
 # ref: SGLang
@@ -27,17 +37,6 @@ def configure_logger_raw(name: str) -> None:
     )
 
     configure_strict_async_warnings()
-
-
-def configure_logger(args: object, *, name: str) -> None:
-    configure_logger_raw(name)
-
-    event_dir = getattr(args, "save_debug_event_data", None)
-    if event_dir is not None:
-        from miles.utils.event_logger.logger import EventLogger, is_event_logger_initialized, set_event_logger
-
-        if not is_event_logger_initialized():
-            set_event_logger(EventLogger(log_dir=event_dir, file_name=f"{name}.jsonl"))
 
 
 def configure_strict_async_warnings() -> None:
