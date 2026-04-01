@@ -468,7 +468,6 @@ def train_one_step(
 
     outcome = TrainStepOutcome.NORMAL
     valid_step = True
-    grad_norm = None
 
     if parallel_state.indep_dp.size > 1:
         assert step_id == 0, "indep-dp does not support multi step per train yet"
