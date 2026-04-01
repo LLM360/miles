@@ -245,6 +245,6 @@ class TestDumpLocalWeightChecksums:
             checksum_events = [e for e in events if isinstance(e, LocalWeightChecksumEvent)]
             assert len(checksum_events) == 1
             assert checksum_events[0].step == 4
-            assert checksum_events[0].rank == 7
+            assert checksum_events[0].rank_within_cell == 7
         finally:
             set_event_logger(None)
