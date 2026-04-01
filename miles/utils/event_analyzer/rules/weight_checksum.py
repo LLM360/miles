@@ -2,16 +2,15 @@
 
 import logging
 from collections import defaultdict
-from collections.abc import Callable
 from typing import Any
 
 from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
-from miles.utils.pydantic_utils import StrictBaseModel
+from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 logger = logging.getLogger(__name__)
 
 
-class ChecksumMismatch(StrictBaseModel):
+class ChecksumMismatchIssue(FrozenStrictBaseModel):
     step: int
     category: str
     key: str
@@ -19,7 +18,7 @@ class ChecksumMismatch(StrictBaseModel):
     values: list[str]
 
 
-def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
+def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatchIssue]:
     """Verify cross-replica weight checksum consistency from events.
 
     Returns:
@@ -33,7 +32,7 @@ def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
     for event in checksum_events:
         entries_by_step[event.step].append((event.rank, event))
 
-    all_mismatches: list[ChecksumMismatch] = []
+    all_mismatches: list[ChecksumMismatchIssue] = []
 
     for step in sorted(entries_by_step.keys()):
         step_entries = entries_by_step[step]
@@ -87,9 +86,9 @@ def _compare_flat_dicts(
     step: int,
     category: str,
     entries: list[tuple[int, dict[str, str]]],
-) -> list[ChecksumMismatch]:
+) -> list[ChecksumMismatchIssue]:
     """Compare flat string dicts across replicas."""
-    mismatches: list[ChecksumMismatch] = []
+    mismatches: list[ChecksumMismatchIssue] = []
 
     all_keys: set[str] = set()
     for _, d in entries:
@@ -109,7 +108,7 @@ def _compare_flat_dicts(
                     cell_indices.append(r)
                     values.append(v)
 
-            mismatches.append(ChecksumMismatch(
+            mismatches.append(ChecksumMismatchIssue(
                 step=step,
                 category=category,
                 key=key,
