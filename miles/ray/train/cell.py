@@ -10,7 +10,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-from miles.utils.health_checker import BaseHealthChecker, SimpleHealthChecker, SimpleHealthCheckerConfig
+from miles.utils.health_checker import BaseHealthChecker, HealthStatus, SimpleHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,6 @@ class RayTrainCell:
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
         self._state: _CellState = _StatePending()
         self.health_checker = health_checker
-        self.health_check_healthy: bool = True
         self.allocate_for_pending()
 
     # ------------------------ state transition ------------------------
@@ -220,10 +219,10 @@ class RayTrainCell:
     def conditions(self) -> list[dict[str, str | None]]:
         match self._state:
             case _StateAllocatedAlive():
-                if self.health_check_healthy:
-                    healthy = {"type": "Healthy", "status": "True"}
-                else:
+                if self.health_checker.healthy == HealthStatus.UNHEALTHY:
                     healthy = {"type": "Healthy", "status": "False", "reason": "HealthCheckFailed"}
+                else:
+                    healthy = {"type": "Healthy", "status": "True"}
                 return [
                     {"type": "Allocated", "status": "True"},
                     healthy,
@@ -398,7 +397,6 @@ def create_trainer_cell_health_checker(
     return SimpleHealthChecker(
         name=f"trainer-cell-{cell.cell_index}",
         check_fn=_check,
-        on_result=lambda success: setattr(cell, "health_check_healthy", success),
         interval=config.interval,
         first_wait=config.first_wait,
     )

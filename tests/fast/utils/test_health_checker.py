@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from miles.utils.clock import FakeClock
-from miles.utils.health_checker import SimpleHealthChecker
+from miles.utils.health_checker import HealthStatus, SimpleHealthChecker
 
 
 def _make_checker(
@@ -19,9 +19,6 @@ def _make_checker(
 
         async def check_fn() -> None:
             pass
-
-    if on_result is None:
-        on_result = lambda success: None
 
     return SimpleHealthChecker(
         name=name,
@@ -298,3 +295,88 @@ class TestNeedFirstWait:
         assert checker._need_first_wait is False
 
         checker.stop()
+
+
+class TestHealthyProperty:
+    async def test_initial_healthy_is_unknown(self):
+        checker = _make_checker()
+        assert checker.healthy == HealthStatus.UNKNOWN
+
+    async def test_healthy_after_successful_check(self):
+        checker = _make_checker()
+        await checker.start()
+        await _tick()
+
+        assert checker.healthy == HealthStatus.HEALTHY
+        checker.stop()
+
+    async def test_unhealthy_after_failed_check(self):
+        async def check_fn() -> None:
+            raise RuntimeError("boom")
+
+        checker = _make_checker(check_fn=check_fn)
+        await checker.start()
+        await _tick()
+
+        assert checker.healthy == HealthStatus.UNHEALTHY
+        checker.stop()
+
+    async def test_stop_resets_to_unknown(self):
+        checker = _make_checker()
+        await checker.start()
+        await _tick()
+        assert checker.healthy == HealthStatus.HEALTHY
+
+        checker.stop()
+        assert checker.healthy == HealthStatus.UNKNOWN
+
+    async def test_pause_resets_to_unknown(self):
+        checker = _make_checker()
+        await checker.start()
+        await _tick()
+        assert checker.healthy == HealthStatus.HEALTHY
+
+        checker.pause()
+        assert checker.healthy == HealthStatus.UNKNOWN
+
+        checker.stop()
+
+    async def test_resume_resets_to_unknown(self):
+        checker = _make_checker()
+        await checker.start()
+        await _tick()
+        assert checker.healthy == HealthStatus.HEALTHY
+
+        checker.pause()
+        checker.resume()
+        assert checker.healthy == HealthStatus.UNKNOWN
+
+        checker.stop()
+
+    async def test_recovers_from_unhealthy_to_healthy(self):
+        call_count = 0
+
+        async def check_fn() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("transient")
+
+        checker = _make_checker(check_fn=check_fn)
+        await checker.start()
+
+        await _tick()
+        assert checker.healthy == HealthStatus.UNHEALTHY
+
+        await _tick()
+        assert checker.healthy == HealthStatus.HEALTHY
+
+        checker.stop()
+
+
+class TestNoopHealthChecker:
+    def test_noop_healthy_is_always_unknown(self):
+        from miles.utils.health_checker import NoopHealthChecker
+
+        checker = NoopHealthChecker()
+        assert checker.healthy == HealthStatus.UNKNOWN

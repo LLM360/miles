@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import logging
 from collections.abc import Callable, Coroutine
+from enum import StrEnum, auto
 from typing import Any
 
 from miles.utils.clock import Clock, RealClock
@@ -57,7 +58,17 @@ class SimpleHealthCheckerConfig(StrictBaseModel):
         )
 
 
+class HealthStatus(StrEnum):
+    HEALTHY = auto()
+    UNHEALTHY = auto()
+    UNKNOWN = auto()
+
+
 class BaseHealthChecker(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def healthy(self) -> HealthStatus: ...
+
     @abc.abstractmethod
     async def start(self) -> None: ...
 
@@ -83,7 +94,7 @@ class SimpleHealthChecker(BaseHealthChecker):
         *,
         name: str,
         check_fn: Callable[[], Coroutine[Any, Any, None]],
-        on_result: Callable[[bool], None],
+        on_result: Callable[[bool], None] | None = None,
         interval: float,
         first_wait: float = 0.0,
         clock: Clock | None = None,
@@ -95,9 +106,14 @@ class SimpleHealthChecker(BaseHealthChecker):
         self._first_wait = first_wait
         self._clock = clock or RealClock()
 
+        self._healthy = HealthStatus.UNKNOWN
         self._paused: bool = False
         self._need_first_wait: bool = True
         self._task: asyncio.Task[None] | None = None
+
+    @property
+    def healthy(self) -> HealthStatus:
+        return self._healthy
 
     async def start(self) -> None:
         if self._task is not None:
@@ -108,13 +124,16 @@ class SimpleHealthChecker(BaseHealthChecker):
         if self._task is not None:
             self._task.cancel()
             self._task = None
+        self._healthy = HealthStatus.UNKNOWN
 
     def pause(self) -> None:
         self._paused = True
+        self._healthy = HealthStatus.UNKNOWN
 
     def resume(self) -> None:
         self._paused = False
         self._need_first_wait = True
+        self._healthy = HealthStatus.UNKNOWN
 
     async def _loop(self) -> None:
         while True:
@@ -130,12 +149,18 @@ class SimpleHealthChecker(BaseHealthChecker):
                 except Exception:
                     logger.error(f"Health check failed for {self._name}", exc_info=True)
 
-                self._on_result(success)
+                self._healthy = HealthStatus.HEALTHY if success else HealthStatus.UNHEALTHY
+                if self._on_result is not None:
+                    self._on_result(success)
 
             await self._clock.sleep(self._interval)
 
 
 class NoopHealthChecker(BaseHealthChecker):
+    @property
+    def healthy(self) -> HealthStatus:
+        return HealthStatus.UNKNOWN
+
     async def start(self) -> None:
         pass
 
@@ -155,7 +180,7 @@ def create_rollout_cell_health_checker(
     cell_id: str,
     get_engines: Callable[[], list[object]],
     config: SimpleHealthCheckerConfig,
-    on_result: Callable[[bool], None],
+    on_result: Callable[[bool], None] | None = None,
 ) -> SimpleHealthChecker:
 
     async def _check() -> None:
