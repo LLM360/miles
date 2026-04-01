@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import torch
 import torch.distributed as dist
 
 from miles.utils.indep_dp import IndepDPInfo
@@ -71,7 +72,23 @@ def reconfigure_indep_dp_group(
     logger.info(f"Reconfigured indep_dp PG with quorum_id={indep_dp_info.quorum_id}")
 
 
-def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_state: ParallelState) -> bool:
+def _intra_cell_consensus(*, success: bool, gloo_group: dist.ProcessGroup) -> bool:
+    tensor = torch.tensor([1.0 if success else 0.0], dtype=torch.float32)
+    util = GeneralPGUtil.create(gloo_group)
+    util.all_reduce(tensor, gloo_group, op=dist.ReduceOp.MIN)
+    return tensor.item() > 0.5
+
+
+def _zero_grad_buffers(model: Sequence["DDP"]) -> None:
+    for model_chunk in model:
+        for bucket_group in model_chunk.bucket_groups + model_chunk.expert_parallel_bucket_groups:
+            for bucket in bucket_group.buckets:
+                bucket.grad_data.zero_()
+
+
+def _allreduce_grads_across_replicas(
+    args, model: Sequence["DDP"], parallel_state: ParallelState, *, gloo_group: dist.ProcessGroup
+) -> bool:
     assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported with indep_dp yet"
     assert parallel_state.intra_dp.size == 1, (
         f"indep_dp requires intra_dp.size == 1, got {parallel_state.intra_dp.size}. "
@@ -81,13 +98,16 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
     pg = parallel_state.indep_dp.group
     util = GeneralPGUtil.create(pg)
 
+    allreduce_success = True
     try:
         for model_chunk in model:
             # mimic: DistributedDataParallel.start_grad_sync
             for bucket_group in model_chunk.bucket_groups + model_chunk.expert_parallel_bucket_groups:
                 for bucket in bucket_group.buckets:
                     util.all_reduce(bucket.grad_data, pg, op=dist.ReduceOp.SUM)
-        return True
     except Exception:
-        logger.exception("Gradient allreduce across replicas failed", exc_info=True)
-        return False
+        allreduce_success = False
+        _zero_grad_buffers(model)
+        logger.exception("Gradient allreduce across replicas failed")
+
+    return _intra_cell_consensus(success=allreduce_success, gloo_group=gloo_group)

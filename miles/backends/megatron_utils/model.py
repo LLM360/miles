@@ -470,7 +470,7 @@ def train_one_step(
 
     if parallel_state.indep_dp.size > 1:
         assert step_id == 0, "indep-dp does not support multi step per train yet"
-        ok = _allreduce_grads_across_replicas(args, model, parallel_state)
+        ok = _allreduce_grads_across_replicas(args, model, parallel_state, gloo_group=parallel_state.indep_dp.gloo_group)
         if not ok:
             outcome = TrainStepOutcome.DISCARDED_SHOULD_RETRY
             valid_step = False
