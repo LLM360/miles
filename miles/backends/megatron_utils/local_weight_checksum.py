@@ -62,7 +62,8 @@ def _compute_weight_checksums(
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
     step: int,
-    rank: int,
+    cell_index: int,
+    rank_within_cell: int,
 ) -> LocalWeightChecksumEvent:
     param_hashes = _hash_named_tensors(model, accessor="named_parameters")
     assert param_hashes, "No parameters found in model"
@@ -73,7 +74,8 @@ def _compute_weight_checksums(
 
     return LocalWeightChecksumEvent(
         step=step,
-        rank=rank,
+        cell_index=cell_index,
+        rank_within_cell=rank_within_cell,
         state=LocalWeightChecksumState(
             param_hashes=param_hashes,
             buffer_hashes=buffer_hashes,

@@ -7,7 +7,7 @@ import pytest
 
 from miles.utils.event_analyzer.analyzer import run_analysis, run_analysis_from_args
 from miles.utils.event_logger.logger import EventLogger
-from miles.utils.event_logger.models import LocalWeightChecksumEvent, OptimizerStateInfo
+from miles.utils.event_logger.models import LocalWeightChecksumEvent, LocalWeightChecksumState
 from miles.utils.process_identity import MainProcessIdentity
 
 
@@ -18,10 +18,13 @@ def _make_event(
 ) -> LocalWeightChecksumEvent:
     return LocalWeightChecksumEvent(
         step=step,
-        rank=rank,
-        param_hashes=param_hashes or {},
-        buffer_hashes={},
-        optimizer_hashes=[],
+        cell_index=0,
+        rank_within_cell=rank,
+        state=LocalWeightChecksumState(
+            param_hashes=param_hashes or {},
+            buffer_hashes={},
+            optimizer_hashes=[],
+        ),
     )
 
 
