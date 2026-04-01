@@ -7,7 +7,7 @@ import torch
 import torch.distributed as dist
 
 from miles.utils.indep_dp import IndepDPInfo
-from miles.utils.process_group_utils import GeneralPGUtil, GroupInfo
+from miles.utils.process_group_utils import GeneralPGUtil, GroupInfo, collective_bool_and
 
 from ..training_utils.parallel import ParallelState
 
@@ -72,13 +72,6 @@ def reconfigure_indep_dp_group(
     logger.info(f"Reconfigured indep_dp PG with quorum_id={indep_dp_info.quorum_id}")
 
 
-def _collective_bool_and(*, value: bool, group: dist.ProcessGroup) -> bool:
-    """Make a bool `and` operation on all ranks in this process group"""
-    tensor = torch.tensor([1.0 if value else 0.0], dtype=torch.float32)
-    GeneralPGUtil.create(group).all_reduce(tensor, group, op=dist.ReduceOp.MIN)
-    return tensor.item() > 0.5
-
-
 def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_state: ParallelState) -> bool:
     assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported with indep_dp yet"
     assert parallel_state.intra_dp.size == 1, (
@@ -100,4 +93,4 @@ def _allreduce_grads_across_replicas(args, model: Sequence["DDP"], parallel_stat
         allreduce_success = False
         logger.exception("Gradient allreduce across replicas failed")
 
-    return _collective_bool_and(value=allreduce_success, group=parallel_state.indep_dp.gloo_group)
+    return collective_bool_and(value=allreduce_success, group=parallel_state.indep_dp.gloo_group)

@@ -300,3 +300,12 @@ def _gather_object_via_util(
         object_gather_list[i] = _tensor_to_object(tensor, tensor_size)
 
     # --- End: adapted from PyTorch v2.11.0 gather_object ---
+
+
+def collective_bool_and(*, value: bool, group: dist.ProcessGroup) -> bool:
+    """Make a bool `and` operation on all ranks in this process group"""
+    tensor = torch.tensor([1.0 if value else 0.0], dtype=torch.float32)
+    GeneralPGUtil.create(group).all_reduce(tensor, group, op=dist.ReduceOp.MIN)
+    return tensor.item() > 0.5
+
+
