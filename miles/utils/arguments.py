@@ -1372,6 +1372,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             parser.add_argument("--check-weight-update-equal", action="store_true")
             parser.add_argument(
+                "--save-local-weight-checksum",
+                action="store_true",
+                help="Save per-rank local weight checksum per-step.",
+            )
+            # TODO: implement witness related
+            parser.add_argument(
+                "--enable-witness",
+                action="store_true",
+                help="Enable forward/backward pass witness.",
+            )
+            parser.add_argument(
                 "--env-report",
                 type=str,
                 default=os.environ.get("MILES_SCRIPT_ENV_REPORT", ""),
