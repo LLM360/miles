@@ -491,6 +491,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
     @timer
     def save_model(self, rollout_id: int, force_sync: bool = False) -> None:
+        self._last_active_timestamp = time.time()
         if self.args.debug_rollout_only:
             return
 
@@ -518,6 +519,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
     @timer
     def update_weights(self) -> None:
+        self._last_active_timestamp = time.time()
         if self.args.debug_train_only or self.args.debug_rollout_only:
             return
 
