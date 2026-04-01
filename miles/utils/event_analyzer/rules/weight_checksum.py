@@ -1,7 +1,7 @@
 """Rule: cross-replica weight checksum consistency."""
 
 from collections import defaultdict
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Iterable
 
 from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
@@ -42,33 +42,39 @@ class _RankHashes(NamedTuple):
     hashes: dict[str, str]
 
 
-def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]):
-    yield from _compare_flat_dicts(
-        step=step,
-        category="param",
-        entries=[_RankHashes(rank=e.rank, hashes=e.param_hashes) for e in events],
-    )
+def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]) -> Iterable[ChecksumMismatchIssue]:
+    for i in range(1, len(events)):
+        yield from _compare_flat_dicts(a=_flatten_nested(events[0]), b=_flatten_nested(events[i]))
 
-    yield from _compare_flat_dicts(
-        step=step,
-        category="buffer",
-        entries=[_RankHashes(rank=e.rank, hashes=e.buffer_hashes) for e in events],
-    )
 
-    for opt_idx in range(len(events[0].optimizer_hashes)):
-        flat_dicts: list[_RankHashes] = []
-        for e in events:
-            assert opt_idx < len(e.optimizer_hashes), (
-                f"step {step} rank {e.rank}: expected optimizer_hashes[{opt_idx}] but only has {len(e.optimizer_hashes)}"
-            )
-            flat = _flatten_nested(e.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
-            flat_dicts.append(_RankHashes(rank=e.rank, hashes=flat))
-
-        yield from _compare_flat_dicts(
-            step=step,
-            category="optimizer",
-            entries=flat_dicts,
-        )
+# TODO temporarily commenterd out
+# def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]):
+#     yield from _compare_flat_dicts(
+#         step=step,
+#         category="param",
+#         entries=[_RankHashes(rank=e.rank, hashes=e.param_hashes) for e in events],
+#     )
+#
+#     yield from _compare_flat_dicts(
+#         step=step,
+#         category="buffer",
+#         entries=[_RankHashes(rank=e.rank, hashes=e.buffer_hashes) for e in events],
+#     )
+#
+#     for opt_idx in range(len(events[0].optimizer_hashes)):
+#         flat_dicts: list[_RankHashes] = []
+#         for e in events:
+#             assert opt_idx < len(e.optimizer_hashes), (
+#                 f"step {step} rank {e.rank}: expected optimizer_hashes[{opt_idx}] but only has {len(e.optimizer_hashes)}"
+#             )
+#             flat = _flatten_nested(e.optimizer_hashes[opt_idx].state_dict, prefix=f"opt{opt_idx}")
+#             flat_dicts.append(_RankHashes(rank=e.rank, hashes=flat))
+#
+#         yield from _compare_flat_dicts(
+#             step=step,
+#             category="optimizer",
+#             entries=flat_dicts,
+#         )
 
 
 def _flatten_nested(obj: Any, *, prefix: str, _result: dict[str, str] | None = None) -> dict[str, str]:
@@ -88,38 +94,42 @@ def _flatten_nested(obj: Any, *, prefix: str, _result: dict[str, str] | None = N
     return _result
 
 
-def _compare_flat_dicts(
-    step: int,
-    category: str,
-    entries: list[_RankHashes],
-) -> list[ChecksumMismatchIssue]:
-    """Compare flat string dicts across replicas."""
-    mismatches: list[ChecksumMismatchIssue] = []
+def _compare_flat_dicts(a: dict[str, Any], b: dict[str, Any]):
+    TODO
 
-    all_keys: set[str] = set()
-    for entry in entries:
-        all_keys.update(entry.hashes.keys())
 
-    for key in sorted(all_keys):
-        value_by_rank: dict[str, list[int]] = defaultdict(list)
-        for entry in entries:
-            v = entry.hashes.get(key, "<missing>")
-            value_by_rank[v].append(entry.rank)
-
-        if len(value_by_rank) > 1:
-            cell_indices: list[int] = []
-            values: list[str] = []
-            for v, ranks in sorted(value_by_rank.items(), key=lambda x: x[1][0]):
-                for r in ranks:
-                    cell_indices.append(r)
-                    values.append(v)
-
-            mismatches.append(ChecksumMismatchIssue(
-                step=step,
-                category=category,
-                key=key,
-                cell_indices=cell_indices,
-                values=values,
-            ))
-
-    return mismatches
+# def _compare_flat_dicts(
+#     step: int,
+#     category: str,
+#     entries: list[_RankHashes],
+# ) -> list[ChecksumMismatchIssue]:
+#     """Compare flat string dicts across replicas."""
+#     mismatches: list[ChecksumMismatchIssue] = []
+#
+#     all_keys: set[str] = set()
+#     for entry in entries:
+#         all_keys.update(entry.hashes.keys())
+#
+#     for key in sorted(all_keys):
+#         value_by_rank: dict[str, list[int]] = defaultdict(list)
+#         for entry in entries:
+#             v = entry.hashes.get(key, "<missing>")
+#             value_by_rank[v].append(entry.rank)
+#
+#         if len(value_by_rank) > 1:
+#             cell_indices: list[int] = []
+#             values: list[str] = []
+#             for v, ranks in sorted(value_by_rank.items(), key=lambda x: x[1][0]):
+#                 for r in ranks:
+#                     cell_indices.append(r)
+#                     values.append(v)
+#
+#             mismatches.append(ChecksumMismatchIssue(
+#                 step=step,
+#                 category=category,
+#                 key=key,
+#                 cell_indices=cell_indices,
+#                 values=values,
+#             ))
+#
+#     return mismatches

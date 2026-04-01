@@ -76,13 +76,17 @@ class OptimizerStateInfo(FrozenStrictBaseModel):
     state_dict: dict[str, Any]
 
 
+class LocalWeightChecksumState(FrozenStrictBaseModel):
+    param_hashes: dict[str, str]
+    buffer_hashes: dict[str, str]
+    optimizer_hashes: list[OptimizerStateInfo]
+
+
 class LocalWeightChecksumEvent(EventBase):
     type: Literal["local_weight_checksum"] = "local_weight_checksum"
     step: int
     rank: int
-    param_hashes: dict[str, str]
-    buffer_hashes: dict[str, str]
-    optimizer_hashes: list[OptimizerStateInfo]
+    state: LocalWeightChecksumState
 
 
 Event = Annotated[
