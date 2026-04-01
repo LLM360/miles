@@ -122,9 +122,8 @@ class RayTrainGroup:
         results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
 
         ok = all(
-            r == TrainStepOutcome.NORMAL
+            (not isinstance(cell_results, BaseException)) and all(r == TrainStepOutcome.NORMAL for r in cell_results)
             for cell_results in results
-            for r in cell_results
         )
         if not ok:
             logger.warning("Not all actors returned NORMAL, retrying train")
