@@ -6,7 +6,8 @@ import ray
 from ray.util.placement_group import PlacementGroup
 
 from miles.backends.megatron_utils.model import TrainStepOutcome
-from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor, create_trainer_cell_health_checker
+from miles.ray.train.actor_factory import allocate_gpus_for_actor
+from miles.ray.train.cell import RayTrainCell, create_trainer_cell_health_checker
 from miles.utils.async_utils import AsyncioGatherUtils
 from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
