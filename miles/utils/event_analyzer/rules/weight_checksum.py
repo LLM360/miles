@@ -25,34 +25,36 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
     if not checksum_events:
         return []
 
-    entries_by_step: dict[int, list[tuple[int, LocalWeightChecksumEvent]]] = defaultdict(list)
+    events_by_step: dict[int, list[LocalWeightChecksumEvent]] = defaultdict(list)
     for event in checksum_events:
-        entries_by_step[event.step].append((event.rank, event))
+        events_by_step[event.step].append(event)
 
     all_mismatches: list[ChecksumMismatchIssue] = []
 
-    for step in sorted(entries_by_step.keys()):
-        all_mismatches += list(_check_one_step(step, entries_by_step[step]))
+    for step in sorted(events_by_step.keys()):
+        all_mismatches += list(_check_one_step(step, events=events_by_step[step]))
 
     return all_mismatches
 
 
-def _check_one_step(step, step_entries):
+def _check_one_step(step: int, events: list[LocalWeightChecksumEvent]):
+    rank_entries = [(e.rank, e) for e in events]
+
     yield from _compare_flat_dicts(
         step=step,
         category="param",
-        entries=[(rank, e.param_hashes) for rank, e in step_entries],
+        entries=[(rank, e.param_hashes) for rank, e in rank_entries],
     )
 
     yield from _compare_flat_dicts(
         step=step,
         category="buffer",
-        entries=[(rank, e.buffer_hashes) for rank, e in step_entries],
+        entries=[(rank, e.buffer_hashes) for rank, e in rank_entries],
     )
 
-    for opt_idx in range(len(step_entries[0][1].optimizer_hashes)):
+    for opt_idx in range(len(events[0].optimizer_hashes)):
         flat_dicts = []
-        for rank, event in step_entries:
+        for rank, event in rank_entries:
             assert opt_idx < len(event.optimizer_hashes), (
                 f"step {step} rank {rank}: expected optimizer_hashes[{opt_idx}] but only has {len(event.optimizer_hashes)}"
             )
