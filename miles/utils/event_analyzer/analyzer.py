@@ -16,12 +16,9 @@ def run_analysis_from_args(args: Namespace) -> None:
     if event_dir is None:
         return
 
-    try:
-        mismatches = run_analysis(event_dir=Path(event_dir))
-        if mismatches:
-            logger.error("Event analysis found %d mismatch(es), see above for details", len(mismatches))
-    except Exception:
-        logger.warning("Event analysis failed", exc_info=True)
+    mismatches = run_analysis(event_dir=Path(event_dir))
+    if mismatches:
+        raise ValueError(f"Event analysis found {len(mismatches)} mismatches, see above for details")
 
 
 def run_analysis(event_dir: Path) -> list[ChecksumMismatch]:
