@@ -1,13 +1,12 @@
 import asyncio
 import logging
-import threading
-import time
 from typing import TYPE_CHECKING
 
 import ray
 from ray.util.placement_group import PlacementGroup
 
 from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor
+from miles.ray.train.heartbeat_monitor import TrainerHeartbeatMonitor
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
@@ -83,12 +82,15 @@ class RayTrainGroup:
                 )
             )
 
-        self._hb_stop_event: threading.Event | None = None
-        self._hb_pause_event: threading.Event | None = None
-        self._hb_thread: threading.Thread | None = None
-
+        self._heartbeat_monitor: TrainerHeartbeatMonitor | None = None
         if len(self._cells) > 1:
-            self._start_heartbeat_monitor()
+            self._heartbeat_monitor = TrainerHeartbeatMonitor(
+                cells=self._cells,
+                first_wait=args.trainer_heartbeat_first_wait,
+                interval=args.trainer_heartbeat_interval,
+                timeout=args.trainer_heartbeat_timeout,
+                staleness=args.trainer_heartbeat_staleness,
+            )
 
     # ------------------------ APIs ------------------------
 
@@ -125,10 +127,12 @@ class RayTrainGroup:
 
     async def onload(self):
         await self._broadcast_alive("wake_up")
-        self.resume_heartbeat()
+        if self._heartbeat_monitor is not None:
+            self._heartbeat_monitor.resume()
 
     async def offload(self):
-        self.pause_heartbeat()
+        if self._heartbeat_monitor is not None:
+            self._heartbeat_monitor.pause()
         await self._broadcast_alive("sleep")
 
     async def clear_memory(self):
@@ -266,71 +270,6 @@ class RayTrainGroup:
             quorum_id=self._indep_dp_quorum_id,
             alive_cell_indices=alive_cell_indices,
         )
-
-    # ------------------------ heartbeat monitor ------------------------
-
-    def _start_heartbeat_monitor(self) -> None:
-        self._hb_first_wait: float = self.args.trainer_heartbeat_first_wait
-        self._hb_interval: float = self.args.trainer_heartbeat_interval
-        self._hb_timeout: float = self.args.trainer_heartbeat_timeout
-        self._hb_staleness: float = self.args.trainer_heartbeat_staleness
-
-        self._hb_stop_event = threading.Event()
-        self._hb_pause_event = threading.Event()
-        self._hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
-        self._hb_thread.start()
-
-    def _heartbeat_loop(self) -> None:
-        assert self._hb_stop_event is not None
-        assert self._hb_pause_event is not None
-
-        if self._hb_stop_event.wait(timeout=self._hb_first_wait):
-            return
-        while not self._hb_stop_event.is_set():
-            if not self._hb_pause_event.is_set():
-                self._check_heartbeats()
-            if self._hb_stop_event.wait(timeout=self._hb_interval):
-                break
-
-    def _check_heartbeats(self) -> None:
-        now = time.time()
-
-        alive_cells = [cell for cell in self._cells if cell.is_alive]
-        all_futures: list[tuple[RayTrainCell, ray.ObjectRef]] = []
-        for cell in alive_cells:
-            for actor in cell._get_actor_handles():
-                all_futures.append((cell, actor.heartbeat.remote()))
-
-        for cell, future in all_futures:
-            if cell.is_errored:
-                continue
-            try:
-                status = ray.get(future, timeout=self._hb_timeout)
-                if now - status.last_active_timestamp > self._hb_staleness:
-                    logger.error(
-                        f"Cell {cell.cell_index} heartbeat stale: "
-                        f"last_active={status.last_active_timestamp:.1f}, now={now:.1f}, "
-                        f"delta={now - status.last_active_timestamp:.1f}s, bump_count={status.bump_count}"
-                    )
-                    cell._mark_as_errored()
-            except Exception:
-                logger.error(f"Cell {cell.cell_index} heartbeat failed", exc_info=True)
-                cell._mark_as_errored()
-
-    def stop_heartbeat(self) -> None:
-        if self._hb_stop_event is not None:
-            self._hb_stop_event.set()
-        if self._hb_thread is not None:
-            self._hb_thread.join(timeout=10.0)
-
-    def pause_heartbeat(self) -> None:
-        if self._hb_pause_event is not None:
-            self._hb_pause_event.set()
-
-    def resume_heartbeat(self) -> None:
-        if self._hb_pause_event is not None:
-            self._hb_pause_event.clear()
-
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
 
