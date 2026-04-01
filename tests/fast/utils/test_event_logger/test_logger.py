@@ -1,0 +1,138 @@
+import json
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+from miles.utils.event_logger.logger import EventLogger, get_event_logger, set_event_logger
+from miles.utils.event_logger.models import CellStateChanged, GenericEvent
+
+
+def _make_event() -> CellStateChanged:
+    return CellStateChanged(
+        timestamp=datetime(2000, 1, 1, tzinfo=timezone.utc),
+        cell_index=0,
+        old_state="pending",
+        new_state="alive",
+    )
+
+
+class TestEventLoggerWritesJsonl:
+    def test_writes_multiple_events(self, tmp_path: Path) -> None:
+        logger = EventLogger(log_dir=tmp_path, file_name="test.jsonl")
+
+        logger.log(_make_event())
+        logger.log(
+            GenericEvent(
+                timestamp=datetime(2000, 1, 1, tzinfo=timezone.utc),
+                message="hi",
+                details={"x": 1},
+            )
+        )
+        logger.close()
+
+        lines = (tmp_path / "test.jsonl").read_text().strip().split("\n")
+        assert len(lines) == 2
+        for line in lines:
+            parsed = json.loads(line)
+            assert "timestamp" in parsed
+            assert "type" in parsed
+
+
+class TestEventLoggerAutoFillsTimestamp:
+    def test_timestamp_is_utc_and_recent(self, tmp_path: Path) -> None:
+        logger = EventLogger(log_dir=tmp_path)
+
+        before = datetime.now(timezone.utc)
+        logger.log(_make_event())
+        after = datetime.now(timezone.utc)
+        logger.close()
+
+        line = (tmp_path / "events.jsonl").read_text().strip()
+        parsed = json.loads(line)
+        ts = datetime.fromisoformat(parsed["timestamp"])
+        assert before <= ts <= after
+
+
+class TestEventLoggerThreadSafety:
+    def test_concurrent_writes_no_data_loss(self, tmp_path: Path) -> None:
+        logger = EventLogger(log_dir=tmp_path)
+        num_threads = 8
+        events_per_thread = 50
+
+        def writer() -> None:
+            for _ in range(events_per_thread):
+                logger.log(_make_event())
+
+        threads = [threading.Thread(target=writer) for _ in range(num_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        logger.close()
+
+        lines = (tmp_path / "events.jsonl").read_text().strip().split("\n")
+        assert len(lines) == num_threads * events_per_thread
+
+        for line in lines:
+            json.loads(line)
+
+
+class TestSetGetEventLogger:
+    def test_set_then_get(self, tmp_path: Path) -> None:
+        logger = EventLogger(log_dir=tmp_path)
+        set_event_logger(logger)
+        assert get_event_logger() is logger
+        logger.close()
+        set_event_logger(None)  # type: ignore[arg-type]
+
+    def test_replace_logger(self, tmp_path: Path) -> None:
+        logger1 = EventLogger(log_dir=tmp_path, file_name="a.jsonl")
+        logger2 = EventLogger(log_dir=tmp_path, file_name="b.jsonl")
+        set_event_logger(logger1)
+        set_event_logger(logger2)
+        assert get_event_logger() is logger2
+        logger1.close()
+        logger2.close()
+        set_event_logger(None)  # type: ignore[arg-type]
+
+
+class TestGetEventLoggerRaisesWhenNotSet:
+    def test_raises_runtime_error(self) -> None:
+        import miles.utils.event_logger.logger as mod
+
+        original = mod._event_logger
+        mod._event_logger = None
+        try:
+            with pytest.raises(RuntimeError, match="EventLogger not initialized"):
+                get_event_logger()
+        finally:
+            mod._event_logger = original
+
+
+class TestEventLoggerFlushOnEachWrite:
+    def test_readable_before_close(self, tmp_path: Path) -> None:
+        logger = EventLogger(log_dir=tmp_path)
+        logger.log(_make_event())
+
+        content = (tmp_path / "events.jsonl").read_text()
+        assert len(content.strip()) > 0
+        logger.close()
+
+
+class TestEventLoggerCreatesDirectory:
+    def test_creates_nested_dir(self, tmp_path: Path) -> None:
+        nested = tmp_path / "a" / "b" / "c"
+        logger = EventLogger(log_dir=nested)
+        logger.log(_make_event())
+        logger.close()
+        assert (nested / "events.jsonl").exists()
+
+
+class TestEventLoggerClose:
+    def test_file_closed_after_close(self, tmp_path: Path) -> None:
+        logger = EventLogger(log_dir=tmp_path)
+        logger.log(_make_event())
+        logger.close()
+        assert logger._file.closed
