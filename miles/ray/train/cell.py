@@ -143,10 +143,10 @@ class RayTrainCell:
 
     # ------------------------ forward calls to actors ------------------------
 
-    async def execute(self, fn_name: str, *args, **kwargs) -> None:
+    async def execute(self, fn_name: str, *args, **kwargs):
         return await self._execute_raw(fn_name, compute_args=lambda _: args, compute_kwargs=lambda _: kwargs)
 
-    async def _execute_raw(self, fn_name: str, compute_args, compute_kwargs) -> None:
+    async def _execute_raw(self, fn_name: str, compute_args, compute_kwargs):
         handles = self._get_actor_handles()
         try:
             await asyncio.gather(
@@ -384,10 +384,9 @@ def create_trainer_cell_health_checker(
             return
 
         now = time.time()
-        futures = [actor.get_heartbeat_status.remote() for actor in cell._get_actor_handles()]
+        results = await cell.execute("get_heartbeat_status")
 
-        for future in futures:
-            status = await asyncio.wait_for(future, timeout=config.timeout)
+        for result in results:
             delta = now - status.last_active_timestamp
             if delta > config.staleness:
                 raise RuntimeError(
