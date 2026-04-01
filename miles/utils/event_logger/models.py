@@ -12,6 +12,12 @@ class EventBase(FrozenStrictBaseModel):
     source: ProcessIdentity | None = None
 
 
+class GenericEvent(EventBase):
+    type: Literal["generic"] = "generic"
+    message: str
+    details: dict[str, Any]
+
+
 class CellStateChanged(EventBase):
     type: Literal["cell_state_changed"] = "cell_state_changed"
     cell_index: int
@@ -64,12 +70,6 @@ class CheckpointTransferCompleted(EventBase):
     duration_seconds: float
 
 
-class GenericEvent(EventBase):
-    type: Literal["generic"] = "generic"
-    message: str
-    details: dict[str, Any]
-
-
 class LocalWeightChecksumEvent(EventBase):
     type: Literal["local_weight_checksum"] = "local_weight_checksum"
     step: int
@@ -81,7 +81,8 @@ class LocalWeightChecksumEvent(EventBase):
 
 
 Event = Annotated[
-    CellStateChanged
+    GenericEvent
+    | CellStateChanged
     | QuorumChanged
     | HeartbeatTimeout
     | CellRefreshStarted
@@ -89,7 +90,6 @@ Event = Annotated[
     | CellRefreshFailed
     | CheckpointTransferStarted
     | CheckpointTransferCompleted
-    | GenericEvent
     | LocalWeightChecksumEvent,
     Discriminator("type"),
 ]
