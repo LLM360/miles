@@ -41,11 +41,11 @@ class RayTrainCell:
         self.role = role
         self.with_ref = with_ref
         self.rollout_manager = rollout_manager
-        self._actor_factory = actor_factory
+        self.actor_factory = actor_factory
+        self.health_checker = health_checker
 
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
         self._state: CellState = StatePending()
-        self.health_checker = health_checker
         self.allocate_for_pending()
 
     # ------------------------ API ------------------------
@@ -126,7 +126,7 @@ class RayTrainCell:
         self._change_state("mark_as_pending", StateStopped, StatePending())
 
     def allocate_for_pending(self) -> None:
-        actor_handles = self._actor_factory()
+        actor_handles = self.actor_factory()
         self._change_state(
             "allocate_for_pending",
             StatePending,
