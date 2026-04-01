@@ -395,6 +395,24 @@ class TestRunnerGetCells:
         assert result[1] == _CellSnapshot(name="actor-1", healthy=False)
 
     @pytest.mark.asyncio
+    async def test_missing_healthy_condition_treated_as_unhealthy(self) -> None:
+        """Cell with no Healthy condition → healthy=False."""
+        runner = _create_runner()
+
+        cell_json = _build_cell_json(name="actor-0")
+        # Remove the Healthy condition, keep only Allocated
+        cell_json["status"]["conditions"] = [{"type": "Allocated", "status": "True"}]
+
+        cells_json = _build_cell_list_json([cell_json])
+        runner._client = AsyncMock()
+        runner._client.get = AsyncMock(return_value=_mock_response(json_data=cells_json))
+
+        result = await runner._get_cells()
+
+        assert len(result) == 1
+        assert result[0] == _CellSnapshot(name="actor-0", healthy=False)
+
+    @pytest.mark.asyncio
     async def test_http_error_raises(self) -> None:
         """Verify HTTP 4xx/5xx propagated."""
         runner = _create_runner()
