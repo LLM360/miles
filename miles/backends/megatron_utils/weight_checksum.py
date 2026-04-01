@@ -17,14 +17,6 @@ from miles.utils.event_logger.models import LocalWeightChecksumEvent
 logger = logging.getLogger(__name__)
 
 
-class _MainParamId(NamedTuple):
-    tensor_id: int
-
-    @classmethod
-    def from_tensor(cls, tensor: torch.Tensor) -> "_MainParamId":
-        return cls(tensor_id=id(tensor))
-
-
 def dump_local_weight_checksums(
     args: Namespace,
     model: Sequence[DDP],
@@ -78,6 +70,14 @@ def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str
                 continue
             hashes[f"pp{pp_idx}.{name}"] = _hash_tensor_sha256(tensor)
     return hashes
+
+
+class _MainParamId(NamedTuple):
+    tensor_id: int
+
+    @classmethod
+    def from_tensor(cls, tensor: torch.Tensor) -> "_MainParamId":
+        return cls(tensor_id=id(tensor))
 
 
 def _build_name_by_fp32_id(model: Sequence[DDP]) -> dict[_MainParamId, str]:
