@@ -183,16 +183,23 @@ class RayTrainGroup:
     # ------------------------ utils to forward calls to cells ------------------------
 
     async def _execute_all_alive(self, fn_name: str, *args, **kwargs):
-        alive_cells = [c for c in self._cells if c.is_alive]
-        assert alive_cells, "No alive cells"
-        return await self._execute_raw(fn_name, alive_cells, *args, TODO_catch_exceptions, **kwargs)
+        return await self._execute_raw(
+            fn_name,
+            get_chosen_cells=lambda: [c for c in self._cells if c.is_alive],
+            args=args,
+            kwargs=kwargs,
+        )
 
-    async def _execute_first_alive(self, fn_name: str, *args, catch_exceptions: bool, **kwargs):
-        alive_cells = [c for c in self._cells if c.is_alive]
-        assert alive_cells, "No alive cells"
-        return self._execute_raw(fn_name, [alive_cells[0]], *args, TODO_catch_exceptions, **kwargs)
+    async def _execute_first_alive(self, fn_name: str, *args, **kwargs):
+        return self._execute_raw(
+            fn_name,
+            get_chosen_cells=lambda: [[c for c in self._cells if c.is_alive][0]],
+            args=args,
+            kwargs=kwargs,
+        )
 
-    async def _execute_raw(self, fn_name: str, chosen_cells, *args, catch_exceptions: bool, **kwargs):
+    async def _execute_raw(self, fn_name: str, get_chosen_cells, args, kwargs):
+        chosen_cells = get_chosen_cells()
         outputs = await asyncio.gather(
             *[cell.execute(fn_name, *args, **kwargs) for cell in chosen_cells],
             return_exceptions=catch_exceptions,
