@@ -4,6 +4,7 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 import torch
 
 from miles.backends.megatron_utils.local_weight_checksum import (
@@ -150,6 +151,71 @@ class TestTransformTensorToHash:
         result = _transform_tensor_to_hash([torch.tensor([1.0]), 3])
         assert isinstance(result[0], str)
         assert result[1] == 3
+
+
+    def test_multiple_pp_chunks_produce_distinct_prefixes(self) -> None:
+        params_0 = {"embed.weight": torch.randn(4, 4)}
+        params_1 = {"head.weight": torch.randn(4, 4)}
+        model = [
+            _make_mock_model_chunk(params=params_0),
+            _make_mock_model_chunk(params=params_1),
+        ]
+        all_params = list(params_0.values()) + list(params_1.values())
+        optimizer = _make_mock_optimizer_with_state_dict(params=all_params)
+
+        entry = _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+
+        assert "pp0.embed.weight" in entry.param_hashes
+        assert "pp1.head.weight" in entry.param_hashes
+
+    def test_transform_tensor_to_hash_preserves_tuple_type(self) -> None:
+        result = _transform_tensor_to_hash((torch.tensor([1.0]), 42))
+        assert isinstance(result, tuple)
+        assert isinstance(result[0], str)
+        assert result[1] == 42
+
+
+class TestFailFastAssertions:
+    def test_assert_event_logger_initialized_when_enabled(self) -> None:
+        import miles.utils.event_logger.logger as mod
+        original = mod._event_logger
+        mod._event_logger = None
+        try:
+            args = Namespace(save_local_weight_checksum=True)
+            model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
+            optimizer = _make_mock_optimizer_with_state_dict(params=[torch.randn(2, 2)])
+
+            with pytest.raises(AssertionError, match="EventLogger is not initialized"):
+                with patch("miles.backends.megatron_utils.local_weight_checksum.torch.distributed.get_rank", return_value=0):
+                    dump_local_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
+        finally:
+            mod._event_logger = original
+
+    def test_assert_empty_params_fails(self) -> None:
+        model = [_make_mock_model_chunk(params={})]
+        optimizer = MagicMock()
+        optimizer.chained_optimizers = []
+
+        with pytest.raises(AssertionError, match="No parameters found"):
+            _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+
+    def test_assert_no_sub_optimizers_fails(self) -> None:
+        model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
+        optimizer = MagicMock()
+        optimizer.chained_optimizers = []
+
+        with pytest.raises(AssertionError, match="No sub-optimizers found"):
+            _compute_weight_checksums(model=model, optimizer=optimizer, step=0, rank=0)
+
+    def test_assert_param_without_main_param_fails(self) -> None:
+        from miles.backends.megatron_utils.local_weight_checksum import _build_name_by_tensor_id
+
+        chunk = MagicMock()
+        param = torch.randn(2, 2)
+        chunk.named_parameters.return_value = [("weight", param)]
+
+        with pytest.raises(AssertionError, match="no main_param"):
+            _build_name_by_tensor_id([chunk])
 
 
 class TestDumpLocalWeightChecksums:

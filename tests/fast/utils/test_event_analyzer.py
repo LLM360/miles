@@ -1,8 +1,12 @@
 """Tests for event_analyzer rules and analyzer."""
 
+from argparse import Namespace
 from pathlib import Path
 
-from miles.utils.event_analyzer.analyzer import run_analysis
+import pytest
+
+from miles.utils.event_analyzer.analyzer import run_analysis, run_analysis_from_args
+from miles.utils.event_analyzer.rules.weight_checksum import _flatten_nested
 from miles.utils.event_logger.logger import EventLogger
 from miles.utils.event_logger.models import LocalWeightChecksumEvent, OptimizerStateInfo
 from miles.utils.process_identity import MainProcessIdentity
@@ -126,3 +130,67 @@ class TestRunAnalysisWeightChecksum:
         assert len(mismatches) == 1
         assert mismatches[0].category == "optimizer"
         assert "exp_avg" in mismatches[0].key
+
+
+class TestRunAnalysisFromArgs:
+    def test_skips_when_no_event_dir(self) -> None:
+        args = Namespace()
+        run_analysis_from_args(args)
+
+    def test_raises_on_mismatch(self, tmp_path: Path) -> None:
+        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
+        _log(event_logger, _make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa"}))
+        _log(event_logger, _make_event(step=0, rank=1, param_hashes={"pp0.weight": "zzz"}))
+        event_logger.close()
+
+        args = Namespace(save_debug_event_data=str(tmp_path))
+        with pytest.raises(ValueError, match="mismatches"):
+            run_analysis_from_args(args)
+
+    def test_passes_when_all_match(self, tmp_path: Path) -> None:
+        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
+        _log(event_logger, _make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa"}))
+        _log(event_logger, _make_event(step=0, rank=1, param_hashes={"pp0.weight": "aaa"}))
+        event_logger.close()
+
+        args = Namespace(save_debug_event_data=str(tmp_path))
+        run_analysis_from_args(args)
+
+
+class TestFlattenNested:
+    def test_flat_dict_with_string_values(self) -> None:
+        result = _flatten_nested({"a": "hash1", "b": "hash2"}, prefix="root")
+        assert result == {"root.a": "hash1", "root.b": "hash2"}
+
+    def test_nested_dict(self) -> None:
+        result = _flatten_nested({"state": {0: {"exp_avg": "h1"}}}, prefix="opt0")
+        assert result == {"opt0.state.0.exp_avg": "h1"}
+
+    def test_list_values(self) -> None:
+        result = _flatten_nested({"params": ["a", "b"]}, prefix="opt0")
+        assert result == {"opt0.params[0]": "a", "opt0.params[1]": "b"}
+
+    def test_ignores_non_string_leaves(self) -> None:
+        result = _flatten_nested({"lr": 0.001, "hash": "abc"}, prefix="root")
+        assert result == {"root.hash": "abc"}
+
+    def test_empty_dict(self) -> None:
+        result = _flatten_nested({}, prefix="root")
+        assert result == {}
+
+
+class TestReadEventsMalformedJsonl:
+    def test_malformed_line_skipped_with_warning(self, tmp_path: Path) -> None:
+        from miles.utils.event_logger.logger import read_events
+
+        jsonl_file = tmp_path / "events.jsonl"
+        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
+        _log(event_logger, _make_event(step=0, rank=0, param_hashes={"pp0.weight": "aaa"}))
+        event_logger.close()
+
+        # Append a malformed line
+        with open(jsonl_file, "a") as f:
+            f.write("this is not valid json\n")
+
+        events = read_events(tmp_path)
+        assert len(events) == 1
