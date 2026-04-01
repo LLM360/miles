@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 class RayTrainGroup:
     """
     A group of ray actors
-    Functions start with 'async' should return list of object refs
 
     Args:
         args (Namespace): Arguments for the actor group.
@@ -84,11 +83,11 @@ class RayTrainGroup:
 
     # ------------------------ APIs ------------------------
 
-    def async_init(self):
+    async def init(self):
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        return [
+        refs = [
             future
             for cell in self._cells
             for future in cell.async_init(
@@ -99,63 +98,65 @@ class RayTrainGroup:
                 )
             )
         ]
+        return await asyncio.gather(*refs)
 
-    def async_train(self, rollout_id: int, rollout_data_ref):
+    async def train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
-        asyncio.get_event_loop().run_until_complete(self._refresh_cells())
-        return self._async_execute_alive("train", rollout_id, rollout_data_ref)
+        await self._refresh_cells()
+        await self._broadcast_alive("train", rollout_id, rollout_data_ref)
 
-    def save_model(self, rollout_id: int, force_sync: bool = False):
+    async def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
-        ray.get(self._async_execute_first_alive("save_model", rollout_id, force_sync=force_sync))
+        await self._execute_first_alive("save_model", rollout_id, force_sync=force_sync)
 
-    def update_weights(self):
+    async def update_weights(self):
         """Broadcast weights to rollout engines. Only cell 0 pushes (all cells have identical weights)."""
-        ray.get(self._async_execute_first_alive("update_weights"))
+        await self._execute_first_alive("update_weights")
 
-    def onload(self):
-        ray.get(self._async_execute_alive("wake_up"))
+    async def onload(self):
+        await self._broadcast_alive("wake_up")
 
-    def offload(self):
-        ray.get(self._async_execute_alive("sleep"))
+    async def offload(self):
+        await self._broadcast_alive("sleep")
 
-    def clear_memory(self):
-        ray.get(self._async_execute_alive("clear_memory"))
+    async def clear_memory(self):
+        await self._broadcast_alive("clear_memory")
 
-    def connect(self, critic_group: "RayTrainGroup"):
+    async def connect(self, critic_group: "RayTrainGroup"):
         assert len(self._cells) == len(critic_group._cells), (
             f"Actor and critic must have the same number of cells: "
             f"actor has {len(self._cells)}, critic has {len(critic_group._cells)}"
         )
-        ray.get(
-            [
-                future
-                for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
-                for future in cell.async_connect(critic_cell)
-            ]
-        )
+        refs = [
+            future
+            for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
+            for future in cell.async_connect(critic_cell)
+        ]
+        await asyncio.gather(*refs)
 
-    def set_rollout_manager(self):
-        ray.get([future for cell in self._cells for future in cell.async_set_rollout_manager()])
+    async def set_rollout_manager(self):
+        refs = [future for cell in self._cells for future in cell.async_set_rollout_manager()]
+        await asyncio.gather(*refs)
 
     def stop_cell(self, cell_index: int) -> None:
         self._cells[cell_index].stop()
 
     def start_cell(self, cell_index: int) -> None:
-        """Mark a stopped cell as pending. Actual startup happens in async_train()."""
+        """Mark a stopped cell as pending. Actual startup happens in train()."""
         self._cells[cell_index].mark_as_pending()
 
     # ------------------------ utils to forward calls to cells ------------------------
 
-    def _async_execute_alive(self, fn_name, *args, **kwargs):
+    async def _broadcast_alive(self, fn_name, *args, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        return [future for cell in alive_cells for future in cell.async_execute(fn_name, *args, **kwargs)]
+        refs = [future for cell in alive_cells for future in cell.async_execute(fn_name, *args, **kwargs)]
+        await asyncio.gather(*refs)
 
-    def _async_execute_first_alive(self, fn_name, *args, **kwargs):
+    async def _execute_first_alive(self, fn_name, *args, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        return alive_cells[0].async_execute(fn_name, *args, **kwargs)
+        await asyncio.gather(*alive_cells[0].async_execute(fn_name, *args, **kwargs))
 
     # ------------------------ internals for stop/start ------------------------
 
