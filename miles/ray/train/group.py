@@ -192,7 +192,7 @@ class RayTrainGroup:
             *[cell.execute(fn_name, *args, **kwargs) for cell in alive_cells],
             return_exceptions=True,
         )
-        AsyncioGatherUtils.log_errors(outputs, debug_name=f"execute_all_alive_and_catch#{fn_name}")
+        AsyncioGatherUtils.log_error(outputs, debug_name=f"execute_all_alive_and_catch#{fn_name}")
         return outputs
 
     async def _execute_first_alive(self, fn_name: str, *args, **kwargs):
@@ -233,7 +233,7 @@ class RayTrainGroup:
         src_alive_rank = will_alive_indices.index(src_cell_index)
         ckpt_dst_alive_ranks = [will_alive_indices.index(x) for x in snapshotted_pending_indices]
 
-        outputs = await asyncio.gather(
+        coop_prepare_outputs = await asyncio.gather(
             *[
                 (
                     c.prepare_indep_dp_mode_alive(
@@ -256,9 +256,10 @@ class RayTrainGroup:
             return_exceptions=True,
         )
         # No need to do anything else - cells with exceptions will auto mark itself as errored
-        AsyncioGatherUtils.log_errors(outputs, debug_name=f"refresh_cells#cooperatively_prepare")
+        AsyncioGatherUtils.log_error(coop_prepare_outputs, debug_name=f"refresh_cells#cooperatively_prepare")
 
-        assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
+        if not AsyncioGatherUtils.has_error(coop_prepare_outputs):
+            assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
 
     def _compute_indep_dp_info(self, cell_index: int, alive_cell_indices: list[int]) -> IndepDPInfo:
         return IndepDPInfo(

@@ -58,7 +58,11 @@ async def eager_create_task(coro: Coroutine[object, object, _T]) -> asyncio.Task
 
 class AsyncioGatherUtils:
     @staticmethod
-    def log_errors(outputs, debug_name: str):
+    def has_error(outputs):
+        return any(isinstance(output, BaseException) for output in outputs)
+
+    @staticmethod
+    def log_error(outputs, debug_name: str):
         for i, output in enumerate(outputs):
             if isinstance(output, BaseException):
                 logger.warning(f"{debug_name} error index={i}", exc_info=output)
