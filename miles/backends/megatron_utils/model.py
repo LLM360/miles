@@ -260,7 +260,8 @@ def forward_only(
         packed_seq_params = get_packed_seq_params(batch, args)
         total_lengths = batch["total_lengths"]
         response_lengths = batch["response_lengths"]
-        model._pending_witness_ids = batch.get("witness_ids")
+        from miles.utils.witness import set_pending_witness_ids
+        set_pending_witness_ids(model, batch.get("witness_ids"))
         forward_kwargs = {
             "input_ids": tokens,
             "position_ids": None,
@@ -333,6 +334,7 @@ class TrainStepOutcome(StrEnum):
 
 
 def _dump_witness_grad(
+    *,
     args: Namespace,
     model: Sequence[DDP],
     rollout_id: int,
@@ -444,8 +446,8 @@ def train_one_step(
         for m in all_replay_managers:
             m.stage = "replay_forward"
 
-        # Set witness_ids for pre-decoder hook (read by the hook, cleared after forward)
-        model._pending_witness_ids = batch.get("witness_ids")
+        from miles.utils.witness import set_pending_witness_ids
+        set_pending_witness_ids(model, batch.get("witness_ids"))
 
         if return_schedule_plan:
             assert not args.enable_mtp_training, "MTP training should not be enabled when using combined 1f1b"
@@ -499,7 +501,13 @@ def train_one_step(
     valid_step = True
 
     if getattr(args, "enable_witness", False):
-        _dump_witness_grad(args, model, rollout_id, step_id, parallel_state)
+        _dump_witness_grad(
+            args=args,
+            model=model,
+            rollout_id=rollout_id,
+            step_id=step_id,
+            parallel_state=parallel_state,
+        )
 
     if parallel_state.indep_dp.size > 1:
         assert step_id == 0, "indep-dp does not support multi step per train yet"

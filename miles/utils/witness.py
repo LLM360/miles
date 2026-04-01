@@ -82,15 +82,21 @@ class WitnessIdAllocator:
         if self._counter == 0:
             return []
 
-        actual_keep = min(keep_count, self._counter, self._ring_buffer_size)
-        head = self._counter % self._ring_buffer_size
+        n = self._ring_buffer_size
+        actual_keep = min(keep_count, self._counter, n)
+        if actual_keep >= n:
+            return []
 
-        active_ids: set[int] = {
-            (head - 1 - i) % self._ring_buffer_size
-            for i in range(actual_keep)
-        }
+        head = self._counter % n
+        # Active IDs occupy the contiguous range [active_start, head) mod n.
+        # Stale IDs are the complement: one or two contiguous ranges.
+        active_start = (head - actual_keep) % n
 
-        return [i for i in range(self._ring_buffer_size) if i not in active_ids]
+        if active_start < head:
+            return list(range(0, active_start)) + list(range(head, n))
+        else:
+            # Wrapped: active spans [active_start, n) + [0, head)
+            return list(range(head, active_start))
 
 
 def _get_witness_grad(witness: DataWitness) -> Optional[Tensor]:
@@ -156,6 +162,15 @@ def install_witness_hook(model: nn.Module, witness: DataWitness) -> None:
             return None
 
     model.register_pre_decoder_hook(_witness_hook)
+
+
+def set_pending_witness_ids(model: nn.Module, witness_ids: Optional[Tensor]) -> None:
+    """Set witness IDs for consumption by the pre-decoder hook.
+
+    This avoids callers directly touching the private ``_pending_witness_ids``
+    attribute that ``install_witness_hook`` manages.
+    """
+    model._pending_witness_ids = witness_ids
 
 
 _witness_id_allocator: Optional[WitnessIdAllocator] = None

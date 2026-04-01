@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import DataWitness, install_witness_hook
+from miles.utils.witness import DataWitness, install_witness_hook, set_pending_witness_ids
 
 
 class _FakeDecoder(nn.Module):
@@ -38,8 +38,7 @@ class _FakeGPTModel(nn.Module):
             # Non-pre_process: hidden states come from set_input_tensor
             decoder_input = None
 
-        # Set witness_ids for hook
-        self._pending_witness_ids = witness_ids
+        set_pending_witness_ids(self, witness_ids)
 
         # Run pre-decoder hooks
         for hook in self._pre_decoder_hooks:
