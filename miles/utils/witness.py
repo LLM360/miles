@@ -142,7 +142,7 @@ def install_witness_hook(model: nn.Module, witness: DataWitness) -> None:
     model.head_witness = witness
     model._pending_witness_ids = None
 
-    def _witness_hook(gpt_model: nn.Module, decoder_input: Tensor) -> Tensor:
+    def _witness_hook(gpt_model: nn.Module, decoder_input: Optional[Tensor]) -> Optional[Tensor]:
         witness_ids: Optional[Tensor] = gpt_model._pending_witness_ids
         if witness_ids is None:
             return decoder_input
@@ -150,7 +150,14 @@ def install_witness_hook(model: nn.Module, witness: DataWitness) -> None:
         gpt_model._pending_witness_ids = None
 
         witness_out: Tensor = gpt_model.head_witness(witness_ids)
-        return decoder_input + witness_out
+
+        if decoder_input is not None:
+            # pre_process stage: decoder_input comes from embedding
+            return decoder_input + witness_out
+        else:
+            # non-pre_process stage: hidden states live in decoder.input_tensor
+            gpt_model.decoder.input_tensor = gpt_model.decoder.input_tensor + witness_out
+            return None
 
     model.register_pre_decoder_hook(_witness_hook)
 

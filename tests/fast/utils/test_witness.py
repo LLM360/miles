@@ -1,11 +1,11 @@
-"""Tests for miles.utils.witness: DataWitness, WitnessIdAllocator, WitnessGradRecorder."""
+"""Tests for miles.utils.witness: DataWitness, WitnessIdAllocator, record_and_log_witness_grad."""
 
 from unittest.mock import MagicMock, patch
 
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import DataWitness, WitnessGradRecorder, WitnessIdAllocator
+from miles.utils.witness import DataWitness, WitnessIdAllocator, record_and_log_witness_grad
 
 
 class TestDataWitnessForward:
@@ -158,7 +158,7 @@ class TestWitnessIdAllocator:
             assert optimizer.state[param]["exp_avg_sq"][i].item() == 0.0
 
 
-class TestWitnessGradRecorder:
+class TestRecordAndLogWitnessGrad:
     def test_reads_main_grad(self) -> None:
         witness = DataWitness(num_ids=10)
         ids = torch.tensor([3, 7])
@@ -171,13 +171,11 @@ class TestWitnessGradRecorder:
         fake_main_grad[7] = 1.0
         witness.witness.weight.main_grad = fake_main_grad
 
-        recorder = WitnessGradRecorder()
-
         with patch("miles.utils.witness.get_event_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            recorder.record_and_log(step=0, quorum_id=0, rank=0, witness=witness)
+            record_and_log_witness_grad(step=0, quorum_id=0, rank=0, witness=witness)
 
             mock_logger.log.assert_called_once()
             event = mock_logger.log.call_args[0][0]
@@ -189,13 +187,11 @@ class TestWitnessGradRecorder:
         out = witness(ids)
         out.sum().backward()
 
-        recorder = WitnessGradRecorder()
-
         with patch("miles.utils.witness.get_event_logger") as mock_get_logger:
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
 
-            recorder.record_and_log(step=5, quorum_id=2, rank=1, witness=witness)
+            record_and_log_witness_grad(step=5, quorum_id=2, rank=1, witness=witness)
 
             mock_logger.log.assert_called_once()
             event = mock_logger.log.call_args[0][0]

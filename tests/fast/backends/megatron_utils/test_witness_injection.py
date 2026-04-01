@@ -32,7 +32,11 @@ class _FakeGPTModel(nn.Module):
 
     def forward(self, input_ids: torch.Tensor, witness_ids: torch.Tensor | None = None) -> torch.Tensor:
         # Simulate _preprocess
-        decoder_input = self.embedding(input_ids)
+        if self.pre_process:
+            decoder_input = self.embedding(input_ids)
+        else:
+            # Non-pre_process: hidden states come from set_input_tensor
+            decoder_input = None
 
         # Set witness_ids for hook
         self._pending_witness_ids = witness_ids
@@ -40,6 +44,10 @@ class _FakeGPTModel(nn.Module):
         # Run pre-decoder hooks
         for hook in self._pre_decoder_hooks:
             decoder_input = hook(self, decoder_input)
+
+        if decoder_input is None:
+            # Non-pre_process: decoder reads from input_tensor
+            decoder_input = self.decoder.input_tensor
 
         return self.decoder(hidden_states=decoder_input)
 
@@ -134,6 +142,42 @@ class TestInstallWitnessHook:
         model = _FakeGPTModel()
         # Don't install witness
         assert not hasattr(model, "head_witness")
+
+    def test_witness_middle_pp_stage_modifies_input_tensor(self) -> None:
+        """Non-pre_process stage: witness should modify decoder.input_tensor, not decoder_input."""
+        model = _FakeGPTModel(pre_process=False)
+        witness = DataWitness(num_ids=10)
+        install_witness_hook(model, witness)
+
+        # Simulate hidden states from previous PP stage
+        hidden = torch.randn(1, 4, 16)
+        model.decoder.input_tensor = hidden.clone()
+
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        witness_ids = torch.tensor([[0, 1, 2, 3]])
+
+        out = model(tokens, witness_ids=witness_ids)
+        # Output should equal hidden (witness adds zero)
+        assert torch.equal(out, hidden)
+
+    def test_witness_middle_pp_stage_produces_gradient(self) -> None:
+        model = _FakeGPTModel(pre_process=False)
+        witness = DataWitness(num_ids=10)
+        install_witness_hook(model, witness)
+
+        hidden = torch.randn(1, 4, 16, requires_grad=True)
+        model.decoder.input_tensor = hidden
+
+        tokens = torch.tensor([[1, 2, 3, 4]])
+        witness_ids = torch.tensor([[5, 5, 5, 5]])
+
+        out = model(tokens, witness_ids=witness_ids)
+        out.sum().backward()
+
+        grad = witness.witness.weight.grad
+        assert grad is not None
+        nonzero = grad.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
+        assert 5 in nonzero
 
     def test_witness_forward_bitwise_zero_bf16(self) -> None:
         witness = DataWitness(num_ids=10).to(dtype=torch.bfloat16)
