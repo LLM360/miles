@@ -471,6 +471,7 @@ def train_one_step(
     grad_norm = None
 
     if parallel_state.indep_dp.size > 1:
+        assert step_id == 0, "indep-dp does not support multi step per train yet"
         ok = _allreduce_grads_across_replicas(args, model, parallel_state)
         if not ok:
             outcome = TrainStepOutcome.DISCARDED_SHOULD_RETRY
@@ -634,13 +635,12 @@ def train(
         pre_hook_enabled = False
 
     num_steps_per_rollout = len(num_microbatches)
-    train_step_outcome = TrainStepOutcome.NORMAL
 
     # Run training iterations till done.
     for step_id in range(num_steps_per_rollout):
 
         # Run training step.
-        loss_dict, grad_norm, step_outcome = train_one_step(
+        loss_dict, grad_norm, train_step_outcome = train_one_step(
             args,
             rollout_id,
             step_id,
@@ -651,11 +651,6 @@ def train(
             num_microbatches[step_id],
             parallel_state,
         )
-
-        if step_outcome == TrainStepOutcome.DISCARDED_SHOULD_RETRY:
-            logger.warning(f"Step {step_id} discarded, stopping remaining steps in rollout {rollout_id}")
-            train_step_outcome = TrainStepOutcome.DISCARDED_SHOULD_RETRY
-            break
 
         if step_id == 0:
             # Enable forward pre-hook after training step has successfully run. All subsequent
