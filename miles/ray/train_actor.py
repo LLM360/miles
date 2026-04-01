@@ -30,13 +30,15 @@ def get_local_gpu_id():
 class TrainRayActor(RayActor):
     def __init__(
         self,
+        args,
         world_size: int,
         rank: int,
         master_addr,
         master_port,
         indep_dp_store_addr: str,
     ):
-        configure_logger()
+        configure_logger(args, f"train_rank{rank}")
+        self.args = args
 
         self._heartbeat = SimpleHeartbeat()
         self._world_size = world_size

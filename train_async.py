@@ -13,7 +13,7 @@ from miles.utils.tracking_utils import init_tracking
 # The framework supports other asynchronous approaches such as fully async (which is shown in examples/full_async).
 async def train(args):
     assert not args.colocate, "Colocation is not supported for async training."
-    configure_logger()
+    configure_logger(args, "main")
     # allocate the GPUs
     pgs = create_placement_groups(args)
     init_tracking(args)

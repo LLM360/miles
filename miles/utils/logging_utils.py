@@ -12,7 +12,7 @@ _FATAL_ASYNC_PATTERN = "coroutine .* was never awaited"
 
 
 # ref: SGLang
-def configure_logger(prefix: str = ""):
+def configure_logger_raw(name: str) -> None:
     global _LOGGER_CONFIGURED
     if _LOGGER_CONFIGURED:
         return
@@ -21,12 +21,22 @@ def configure_logger(prefix: str = ""):
 
     logging.basicConfig(
         level=logging.INFO,
-        format=f"[%(asctime)s{prefix}] %(filename)s:%(lineno)d - %(message)s",
+        format=f"[%(asctime)s {name}] %(filename)s:%(lineno)d - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         force=True,
     )
 
     configure_strict_async_warnings()
+
+
+def configure_logger(args, name: str) -> None:
+    configure_logger_raw(name)
+
+    event_dir = getattr(args, "save_debug_event_data", None)
+    if event_dir is not None:
+        from miles.utils.event_logger.logger import EventLogger, set_event_logger
+
+        set_event_logger(EventLogger(log_dir=event_dir, file_name=f"{name}.jsonl"))
 
 
 def configure_strict_async_warnings() -> None:

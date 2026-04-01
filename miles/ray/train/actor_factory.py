@@ -74,6 +74,7 @@ def allocate_gpus_for_actor(
                 placement_group_bundle_index=reordered_bundle_indices[rank],
             ),
         ).remote(
+            args,
             world_size,
             rank,
             master_addr,

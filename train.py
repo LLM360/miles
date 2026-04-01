@@ -13,7 +13,7 @@ from miles.utils.tracking_utils import init_tracking
 
 
 async def train(args):
-    configure_logger()
+    configure_logger(args, "main")
     # allocate the GPUs
     pgs = create_placement_groups(args)
     init_tracking(args)
