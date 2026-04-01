@@ -121,17 +121,21 @@ class RayTrainGroup:
         await self._refresh_cells()
         results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
 
-        # NOTE: If some cells errors + all other cells claim normal, we do *not* retry
-        #       This may happen when some cells fails *after* exchanging gradients w/ others
-        ok = all(
-            all(r == TrainStepOutcome.NORMAL for r in cell_results)
-            for cell_results in results
-            if not isinstance(cell_results, BaseException)
-        )
+        ok = self._does_train_one_attempt_succeed(results)
         if not ok:
             logger.warning("Not all actors returned NORMAL, retrying train")
 
         return ok
+
+    @staticmethod
+    def _does_train_one_attempt_succeed(results):
+        # NOTE: If some cells errors + all other cells claim normal, we do *not* retry
+        #       This may happen when some cells fails *after* exchanging gradients w/ others
+        return all(
+            all(r == TrainStepOutcome.NORMAL for r in cell_results)
+            for cell_results in results
+            if not isinstance(cell_results, BaseException)
+        )
 
     async def save_model(self, rollout_id: int, force_sync: bool = False):
         """Save actor model. Only cell 0 saves to avoid file write conflicts."""
