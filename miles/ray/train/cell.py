@@ -134,14 +134,12 @@ class RayTrainCell:
         indep_dp_info: IndepDPInfo,
         recv_ckpt_src_rank: int | None,
     ):
-        await asyncio.gather(
-            *self.async_init(
-                indep_dp_info=indep_dp_info,
-                recv_ckpt_src_rank=recv_ckpt_src_rank,
-            )
+        await self.async_init(
+            indep_dp_info=indep_dp_info,
+            recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
 
-        await asyncio.gather(*self.async_set_rollout_manager())
+        await self.set_rollout_manager()
 
     # ------------------------ forward calls to actors ------------------------
 
@@ -154,7 +152,7 @@ class RayTrainCell:
             self._mark_as_errored()
             raise
 
-    def async_connect(self, critic_cell: "RayTrainCell"):
+    async def connect(self, critic_cell: "RayTrainCell"):
         handles = self._get_actor_handles()
         critic_handles = critic_cell._get_actor_handles()
         return [

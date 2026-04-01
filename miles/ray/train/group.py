@@ -148,12 +148,10 @@ class RayTrainGroup:
             f"Actor and critic must have the same number of cells: "
             f"actor has {len(self._cells)}, critic has {len(critic_group._cells)}"
         )
-        refs = [
-            future
+        await asyncio.gather(*[
+            cell.connect(critic_cell)
             for cell, critic_cell in zip(self._cells, critic_group._cells, strict=True)
-            for future in cell.async_connect(critic_cell)
-        ]
-        await asyncio.gather(*refs)
+        ])
 
     async def set_rollout_manager(self):
         await asyncio.gather(*[cell.set_rollout_manager() for cell in self._cells])
