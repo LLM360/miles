@@ -190,15 +190,18 @@ class RayTrainGroup:
             return_exceptions=catch_exceptions,
         )
 
-        for i, output in enumerate(outputs):
-            if isinstance(output, BaseException):
-                logger.warning("RayTrainGroup._broadcast_alive cell %d error in %s", i, fn_name, exc_info=output)
+        TODO_is_this_good
+        if catch_exceptions:
+            for i, output in enumerate(outputs):
+                if isinstance(output, BaseException):
+                    logger.warning("RayTrainGroup._broadcast_alive cell %d error in %s", i, fn_name, exc_info=output)
 
         return outputs
 
-    async def _execute_first_alive(self, fn_name: str, *args, **kwargs):
+    async def _execute_first_alive(self, fn_name: str, *args, catch_exceptions: bool, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
+        TODO_handle_catch_exceptions
         return await alive_cells[0].execute(fn_name, *args, **kwargs)
 
     # ------------------------ internals for stop/start ------------------------
