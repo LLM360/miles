@@ -3,7 +3,6 @@ from collections.abc import Sequence
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-import torch
 import torch.distributed as dist
 
 from miles.utils.indep_dp import IndepDPInfo

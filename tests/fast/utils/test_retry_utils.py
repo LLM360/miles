@@ -1,5 +1,3 @@
-import logging
-
 import pytest
 
 from miles.utils.retry_utils import retry

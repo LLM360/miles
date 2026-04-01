@@ -307,5 +307,3 @@ def collective_bool_and(*, value: bool, group: dist.ProcessGroup) -> bool:
     tensor = torch.tensor([1.0 if value else 0.0], dtype=torch.float32)
     GeneralPGUtil.create(group).all_reduce(tensor, group, op=dist.ReduceOp.MIN)
     return tensor.item() > 0.5
-
-

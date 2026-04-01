@@ -237,16 +237,12 @@ class RayTrainGroup:
             *[
                 (
                     c.prepare_indep_dp_mode_alive(
-                        indep_dp_info=self._compute_indep_dp_info(
-                            c.cell_index, alive_cell_indices=will_alive_indices
-                        ),
+                        indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
                         send_ckpt_dst_ranks=ckpt_dst_alive_ranks if c.cell_index == src_cell_index else [],
                     )
                     if c.cell_index in snapshotted_alive_indices
                     else c.prepare_indep_dp_mode_healing(
-                        indep_dp_info=self._compute_indep_dp_info(
-                            c.cell_index, alive_cell_indices=will_alive_indices
-                        ),
+                        indep_dp_info=self._compute_indep_dp_info(c.cell_index, alive_cell_indices=will_alive_indices),
                         recv_ckpt_src_rank=src_alive_rank if c.cell_index in snapshotted_pending_indices else None,
                     )
                 )
@@ -256,7 +252,7 @@ class RayTrainGroup:
             return_exceptions=True,
         )
         # No need to do anything else - cells with exceptions will auto mark itself as errored
-        AsyncioGatherUtils.log_error(coop_prepare_outputs, debug_name=f"refresh_cells#cooperatively_prepare")
+        AsyncioGatherUtils.log_error(coop_prepare_outputs, debug_name="refresh_cells#cooperatively_prepare")
 
         if not AsyncioGatherUtils.has_error(coop_prepare_outputs):
             assert [c.cell_index for c in self._cells if c.is_alive] == will_alive_indices
