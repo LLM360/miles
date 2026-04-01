@@ -702,19 +702,18 @@ class TestTrainRetry:
         for i in range(2):
             assert _count_train_calls(group, i) >= 2
 
-    async def test_no_retry_when_cell_errored(self):
-        """One cell errors during train → return immediately, no retry."""
+    async def test_cell_errored_retries_once_then_succeeds(self):
+        """One cell errors during train → ok=False → retries once with remaining alive cells → succeeds."""
         group = await _make_alive_group(num_cells=3)
-        await _set_all_train_return(group, TrainStepOutcome.DISCARDED_SHOULD_RETRY)
 
         # Step 1: Make cell 1 fail (exception)
         for handle in group._cells[1]._get_actor_handles():
             ray.get(handle.set_fail_methods.remote(["train"]))
 
-        # Step 2: Train should return (not retry) because of the errored cell
+        # Step 2: Train retries once: first attempt has errored cell, second attempt succeeds with alive cells only
         await group.train(rollout_id=0, rollout_data_ref="data")
 
-        # Step 3: Each cell got exactly 1 train call (no retry)
+        # Step 3: Cell 1 errored, alive cells got 2 train calls (one per attempt)
         assert group._cells[1].is_errored
         for i in [0, 2]:
-            assert _count_train_calls(group, i) == 1
+            assert _count_train_calls(group, i) == 2
