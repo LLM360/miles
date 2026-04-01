@@ -521,18 +521,6 @@ class TestPerCellErrorIsolation:
             train_calls = [c for c in calls if c[0] == "train"]
             assert len(train_calls) == 2
 
-    async def test_get_errored_cell_indices(self):
-        group = await _make_alive_group(num_cells=3)
-
-        # Step 1: Make cell 2 fail
-        for handle in group._cells[2]._get_actor_handles():
-            ray.get(handle.set_fail_methods.remote(["train"]))
-
-        await group._broadcast_alive("train", 0, "data")
-
-        # Step 2: Check errored indices
-        assert group.get_errored_cell_indices() == [2]
-
 
 class TestExecuteFirstAliveFallback:
     async def test_first_cell_fails_falls_back_to_next(self):

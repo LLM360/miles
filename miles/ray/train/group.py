@@ -157,8 +157,7 @@ class RayTrainGroup:
         """Mark a stopped cell as pending. Actual startup happens in train()."""
         self._cells[cell_index].mark_as_pending()
 
-    def get_errored_cell_indices(self) -> list[int]:
-        return [c.cell_index for c in self._cells if c.is_errored]
+
 
     # ------------------------ utils to forward calls to cells ------------------------
 
