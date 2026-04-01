@@ -41,6 +41,7 @@ class RayTrainCell:
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
         self._state: _CellState = _StatePending()
         self.health_checker = health_checker
+        self.health_check_healthy: bool = True
         self.allocate_for_pending()
 
     # ------------------------ state transition ------------------------
@@ -219,9 +220,13 @@ class RayTrainCell:
     def conditions(self) -> list[dict[str, str | None]]:
         match self._state:
             case _StateAllocatedAlive():
+                if self.health_check_healthy:
+                    healthy = {"type": "Healthy", "status": "True"}
+                else:
+                    healthy = {"type": "Healthy", "status": "False", "reason": "HealthCheckFailed"}
                 return [
                     {"type": "Allocated", "status": "True"},
-                    {"type": "Healthy", "status": "True"},
+                    healthy,
                 ]
             case _StateAllocatedUninitialized():
                 return [
@@ -231,7 +236,7 @@ class RayTrainCell:
             case _StateAllocatedErrored():
                 return [
                     {"type": "Allocated", "status": "True"},
-                    {"type": "Healthy", "status": "False"},
+                    {"type": "Healthy", "status": "False", "reason": "ExecutionErrored"},
                 ]
             case _StatePending() | _StateStopped():
                 return [
@@ -390,14 +395,10 @@ def create_trainer_cell_health_checker(
                     f"now={now:.1f}, delta={delta:.1f}s, bump_count={status.bump_count}"
                 )
 
-    def _on_result(success: bool) -> None:
-        if not success:
-            cell.mark_as_errored()
-
     return SimpleHealthChecker(
         name=f"trainer-cell-{cell.cell_index}",
         check_fn=_check,
-        on_result=_on_result,
+        on_result=lambda success: setattr(cell, "health_check_healthy", success),
         interval=config.interval,
         first_wait=config.first_wait,
     )
