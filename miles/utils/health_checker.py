@@ -5,6 +5,8 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+from miles.utils.clock import Clock, RealClock
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,12 +21,14 @@ class SimpleHealthChecker:
         on_failure: Callable[[], None],
         interval: float,
         first_wait: float = 0.0,
+        clock: Clock | None = None,
     ) -> None:
         self._name = name
         self._check_fn = check_fn
         self._on_failure = on_failure
         self._interval = interval
         self._first_wait = first_wait
+        self._clock = clock or RealClock()
 
         self._paused: bool = False
         self._task: asyncio.Task[None] | None = None
@@ -46,7 +50,7 @@ class SimpleHealthChecker:
         self._paused = False
 
     async def _loop(self) -> None:
-        await asyncio.sleep(self._first_wait)
+        await self._clock.sleep(self._first_wait)
 
         while True:
             if not self._paused:
@@ -56,7 +60,7 @@ class SimpleHealthChecker:
                     logger.error(f"Health check failed for {self._name}", exc_info=True)
                     self._on_failure()
 
-            await asyncio.sleep(self._interval)
+            await self._clock.sleep(self._interval)
 
 
 # TODO: should move when Rollout FT is implemented
