@@ -4,8 +4,9 @@ import time
 from collections.abc import Callable
 
 import ray
-from pydantic import BaseModel, ConfigDict
 
+from miles.ray.train.cell_state import StateStopped, StatePending, StateAllocatedBase, StateAllocatedUninitialized, \
+    StateAllocatedAlive, StateAllocatedErrored, _CellState
 from miles.utils.control_server.models import CellCondition, CellStatus, TriState
 from miles.utils.health_checker import BaseHealthChecker, SimpleHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
@@ -36,7 +37,7 @@ class RayTrainCell:
         self._actor_factory = actor_factory
 
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
-        self._state: _CellState = _StatePending()
+        self._state: _CellState = StatePending()
         self.health_checker = health_checker
         self.allocate_for_pending()
 
@@ -53,29 +54,29 @@ class RayTrainCell:
                 for actor in handles:
                     ray.kill(actor)
 
-            return _StateStopped()
+            return StateStopped()
 
-        self._change_state("stop", (_StatePending, _StateAllocatedBase), _core)
+        self._change_state("stop", (StatePending, StateAllocatedBase), _core)
 
     def mark_as_pending(self) -> None:
         if self.is_pending or self.is_allocated:
             logger.info(f"mark_as_pending: cell {self.cell_index} already {type(self._state).__name__}, skipping")
             return
 
-        self._change_state("mark_as_pending", _StateStopped, _StatePending)
+        self._change_state("mark_as_pending", StateStopped, StatePending)
 
     def allocate_for_pending(self) -> None:
         def _core():
             actor_handles = self._actor_factory()
-            return _StateAllocatedUninitialized(actor_handles=actor_handles)
+            return StateAllocatedUninitialized(actor_handles=actor_handles)
 
-        self._change_state("allocate_for_pending", _StatePending, _core)
+        self._change_state("allocate_for_pending", StatePending, _core)
 
     def _mark_as_alive(self, indep_dp_info: IndepDPInfo) -> None:
         self._change_state(
             "_mark_as_alive",
-            _StateAllocatedUninitialized,
-            lambda: _StateAllocatedAlive(
+            StateAllocatedUninitialized,
+            lambda: StateAllocatedAlive(
                 actor_handles=self._state.actor_handles,
                 indep_dp_info=indep_dp_info,
             ),
@@ -84,8 +85,8 @@ class RayTrainCell:
     def _update_indep_dp_info(self, indep_dp_info: IndepDPInfo) -> None:
         self._change_state(
             "_update_indep_dp_info",
-            _StateAllocatedAlive,
-            lambda: _StateAllocatedAlive(
+            StateAllocatedAlive,
+            lambda: StateAllocatedAlive(
                 actor_handles=self._state.actor_handles,
                 indep_dp_info=indep_dp_info,
             ),
@@ -94,8 +95,8 @@ class RayTrainCell:
     def _mark_as_errored(self) -> None:
         self._change_state(
             "_mark_as_errored",
-            (_StateAllocatedAlive, _StateAllocatedErrored),
-            lambda: _StateAllocatedErrored(
+            (StateAllocatedAlive, StateAllocatedErrored),
+            lambda: StateAllocatedErrored(
                 actor_handles=self._state.actor_handles,
                 indep_dp_info=self._state.indep_dp_info,
             ),
@@ -204,35 +205,35 @@ class RayTrainCell:
 
     @property
     def is_pending(self) -> bool:
-        return isinstance(self._state, _StatePending)
+        return isinstance(self._state, StatePending)
 
     @property
     def is_allocated(self) -> bool:
-        return isinstance(self._state, _StateAllocatedBase)
+        return isinstance(self._state, StateAllocatedBase)
 
     @property
     def is_alive(self) -> bool:
-        return isinstance(self._state, _StateAllocatedAlive)
+        return isinstance(self._state, StateAllocatedAlive)
 
     @property
     def is_errored(self) -> bool:
-        return isinstance(self._state, _StateAllocatedErrored)
+        return isinstance(self._state, StateAllocatedErrored)
 
     @property
     def is_stopped(self) -> bool:
-        return isinstance(self._state, _StateStopped)
+        return isinstance(self._state, StateStopped)
 
     def cell_status(self) -> CellStatus:
         return _compute_cell_status(self._state, self.health_checker.status)
 
     @property
     def indep_dp_info(self) -> IndepDPInfo:
-        assert isinstance(self._state, (_StateAllocatedAlive, _StateAllocatedErrored))
+        assert isinstance(self._state, (StateAllocatedAlive, StateAllocatedErrored))
         return self._state.indep_dp_info
 
     def _get_actor_handles(self) -> list[ray.actor.ActorHandle]:
         assert isinstance(
-            self._state, _StateAllocatedBase
+            self._state, StateAllocatedBase
         ), f"Cell {self.cell_index} is not allocated (state={type(self._state).__name__})"
         return self._state.actor_handles
 
@@ -274,14 +275,14 @@ def create_trainer_cell_health_checker(
 
 def _compute_cell_status(state: _CellState, health_checker_status: TriState) -> CellStatus:
     match state:
-        case _StateAllocatedAlive():
+        case StateAllocatedAlive():
             if health_checker_status == TriState.FALSE:
                 healthy = CellCondition.healthy(TriState.FALSE, reason="HealthCheckFailed")
             else:
                 healthy = CellCondition.healthy(TriState.TRUE)
             return CellStatus(phase="Running", conditions=[CellCondition.allocated(TriState.TRUE), healthy])
 
-        case _StateAllocatedUninitialized():
+        case StateAllocatedUninitialized():
             return CellStatus(
                 phase="Running",
                 conditions=[
@@ -290,7 +291,7 @@ def _compute_cell_status(state: _CellState, health_checker_status: TriState) -> 
                 ],
             )
 
-        case _StateAllocatedErrored():
+        case StateAllocatedErrored():
             return CellStatus(
                 phase="Running",
                 conditions=[
@@ -299,10 +300,10 @@ def _compute_cell_status(state: _CellState, health_checker_status: TriState) -> 
                 ],
             )
 
-        case _StatePending():
+        case StatePending():
             return CellStatus(phase="Pending", conditions=[CellCondition.allocated(TriState.FALSE)])
 
-        case _StateStopped():
+        case StateStopped():
             return CellStatus(phase="Suspended", conditions=[CellCondition.allocated(TriState.FALSE)])
 
         case _:

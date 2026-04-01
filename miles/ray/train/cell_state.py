@@ -5,33 +5,33 @@ from pydantic import BaseModel, ConfigDict
 from miles.utils.indep_dp import IndepDPInfo
 
 
-class _StateBase(BaseModel):
+class StateBase(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
 
-class _StatePending(_StateBase):
+class StatePending(StateBase):
     pass
 
 
-class _StateAllocatedBase(_StateBase):
+class StateAllocatedBase(StateBase):
     actor_handles: list[ray.actor.ActorHandle]
 
 
-class _StateAllocatedUninitialized(_StateAllocatedBase):
+class StateAllocatedUninitialized(StateAllocatedBase):
     pass
 
 
-class _StateAllocatedAlive(_StateAllocatedBase):
+class StateAllocatedAlive(StateAllocatedBase):
     indep_dp_info: IndepDPInfo
 
 
-class _StateAllocatedErrored(_StateAllocatedBase):
+class StateAllocatedErrored(StateAllocatedBase):
     indep_dp_info: IndepDPInfo
 
 
-class _StateStopped(_StateBase):
+class StateStopped(StateBase):
     pass
 
 
-_CellState = _StatePending | _StateAllocatedBase | _StateStopped
+_CellState = StatePending | StateAllocatedUninitialized | StateAllocatedAlive | StateAllocatedErrored | StateStopped
 
