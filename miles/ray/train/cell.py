@@ -271,9 +271,6 @@ class _StateStopped(_StateBase):
 _CellState = _StatePending | _StateAllocatedBase | _StateStopped
 
 
-# ------------------------ Actor factory ------------------------
-
-
 # ------------------------ misc ------------------------
 
 
