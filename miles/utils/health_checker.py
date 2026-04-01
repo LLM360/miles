@@ -97,6 +97,7 @@ def create_trainer_cell_health_checker(
     )
 
 
+# TODO: should move when Rollout Ft is implemented
 def create_rollout_cell_health_checker(
     *,
     cell_id: str,
