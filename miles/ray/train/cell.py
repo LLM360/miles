@@ -112,69 +112,53 @@ class RayTrainCell:
             logger.info(f"stop: cell {self.cell_index} already stopped, skipping")
             return
 
-        def _core():
-            if self.is_allocated:
-                handles = self._get_actor_handles()
-                for actor in handles:
-                    ray.kill(actor)
+        if self.is_allocated:
+            for actor in self._get_actor_handles():
+                ray.kill(actor)
 
-            return StateStopped()
-
-        self._change_state("stop", (StatePending, StateAllocatedBase), _core)
+        self._change_state("stop", (StatePending, StateAllocatedBase), StateStopped())
 
     def mark_as_pending(self) -> None:
         if self.is_pending or self.is_allocated:
             logger.info(f"mark_as_pending: cell {self.cell_index} already {type(self._state).__name__}, skipping")
             return
 
-        self._change_state("mark_as_pending", StateStopped, StatePending)
+        self._change_state("mark_as_pending", StateStopped, StatePending())
 
     def allocate_for_pending(self) -> None:
-        def _core():
-            actor_handles = self._actor_factory()
-            return StateAllocatedUninitialized(actor_handles=actor_handles)
-
-        self._change_state("allocate_for_pending", StatePending, _core)
+        actor_handles = self._actor_factory()
+        self._change_state(
+            "allocate_for_pending", StatePending,
+            StateAllocatedUninitialized(actor_handles=actor_handles),
+        )
 
     def _mark_as_alive(self, indep_dp_info: IndepDPInfo) -> None:
         self._change_state(
-            "_mark_as_alive",
-            StateAllocatedUninitialized,
-            lambda: StateAllocatedAlive(
-                actor_handles=self._state.actor_handles,
-                indep_dp_info=indep_dp_info,
-            ),
+            "_mark_as_alive", StateAllocatedUninitialized,
+            StateAllocatedAlive(actor_handles=self._state.actor_handles, indep_dp_info=indep_dp_info),
         )
 
     def _update_indep_dp_info(self, indep_dp_info: IndepDPInfo) -> None:
         self._change_state(
-            "_update_indep_dp_info",
-            StateAllocatedAlive,
-            lambda: StateAllocatedAlive(
-                actor_handles=self._state.actor_handles,
-                indep_dp_info=indep_dp_info,
-            ),
+            "_update_indep_dp_info", StateAllocatedAlive,
+            StateAllocatedAlive(actor_handles=self._state.actor_handles, indep_dp_info=indep_dp_info),
         )
 
     def _mark_as_errored(self) -> None:
         self._change_state(
-            "_mark_as_errored",
-            (StateAllocatedAlive, StateAllocatedErrored),
-            lambda: StateAllocatedErrored(
-                actor_handles=self._state.actor_handles,
-                indep_dp_info=self._state.indep_dp_info,
-            ),
+            "_mark_as_errored", (StateAllocatedAlive, StateAllocatedErrored),
+            StateAllocatedErrored(actor_handles=self._state.actor_handles, indep_dp_info=self._state.indep_dp_info),
         )
 
     def _change_state(
         self,
         debug_name: str,
-        old_state_cls: type["CellState"] | tuple[type["CellState"], ...],
-        fn: Callable[[], "CellState"],
-    ):
+        old_state_cls: type[CellState] | tuple[type[CellState], ...],
+        new_state: CellState,
+    ) -> None:
         logger.info(f"{debug_name} start {self.cell_index=} old={self._state}")
         assert isinstance(self._state, old_state_cls), f"{self.cell_index=} {self._state=}"
-        self._state = fn()
+        self._state = new_state
         logger.info(f"{debug_name} end {self.cell_index=} new={self._state}")
 
     # ------------------------ API :: directly forward calls to actors ------------------------
