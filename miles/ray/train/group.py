@@ -118,10 +118,7 @@ class RayTrainGroup:
 
     async def _train_one_attempt(self, rollout_id: int, rollout_data_ref) -> bool:
         await self._refresh_cells()
-
         results = await self._broadcast_alive("train", rollout_id, rollout_data_ref, return_exceptions=True)
-        TODO
-
         return all(not isinstance(r, BaseException) for r in results)
 
     async def save_model(self, rollout_id: int, force_sync: bool = False):
