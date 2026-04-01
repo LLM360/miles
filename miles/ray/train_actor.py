@@ -64,6 +64,7 @@ class TrainRayActor(RayActor):
         # os.environ["LOCAL_RANK"] = str(ray.get_gpu_ids()[0])
         os.environ["LOCAL_RANK"] = str(get_local_gpu_id())
 
+    # TODO mv the args into ctor
     def init(self, args, role, with_ref=False):
         self.args = args
         self.role = role
