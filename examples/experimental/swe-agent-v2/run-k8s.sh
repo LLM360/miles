@@ -8,6 +8,7 @@
 #   bash run-k8s.sh --wandb-run-name my-run               # 16-node full training
 #   bash run-k8s.sh --wandb-run-name my-run --num-nodes 2
 #   bash run-k8s.sh --wandb-run-name my-run --num-nodes 16 --ep 8
+#   bash run-k8s.sh --wandb-run-name my-run --max-seq-len 131072   # default is 16384
 #
 # Required environment:
 #   RAY_ADDRESS          URL of the Ray dashboard (e.g. http://raycluster-head-svc:8265)
@@ -41,6 +42,7 @@ ROLLOUT_BATCH_SIZE=64
 N_SAMPLES=8
 ROLLOUT_TEMP=0.8
 MAX_RESP_LEN=8192
+MAX_SEQ_LEN=16384
 GLOBAL_BATCH=256
 MAX_TOKENS_PER_GPU=2048
 
@@ -79,6 +81,7 @@ while [[ $# -gt 0 ]]; do
     --n-samples-per-prompt) N_SAMPLES="$2";         shift 2 ;;
     --rollout-temperature)  ROLLOUT_TEMP="$2";      shift 2 ;;
     --rollout-max-response-len) MAX_RESP_LEN="$2";  shift 2 ;;
+    --max-seq-len)        MAX_SEQ_LEN="$2";         shift 2 ;;
     --global-batch-size)  GLOBAL_BATCH="$2";        shift 2 ;;
     --max-tokens-per-gpu) MAX_TOKENS_PER_GPU="$2";  shift 2 ;;
     --lr)                 LR="$2";                  shift 2 ;;
@@ -206,6 +209,7 @@ echo "  Agent server:  $AGENT_SERVER_URL"
 echo "  Harbor tasks:  $HARBOR_TASKS_DIR"
 echo "  Model:         $HF_CHECKPOINT"
 echo "  Parallelism:   TP=$TP PP=$PP EP=$EP"
+echo "  Max seq len:   $MAX_SEQ_LEN"
 
 ray job submit \
   --address="$RAY_ADDRESS" \
@@ -236,6 +240,7 @@ ray job submit \
   --n-samples-per-prompt "$N_SAMPLES" \
   --rollout-temperature "$ROLLOUT_TEMP" \
   --rollout-max-response-len "$MAX_RESP_LEN" \
+  --max-seq-len "$MAX_SEQ_LEN" \
   --global-batch-size "$GLOBAL_BATCH" \
   --balance-data \
   --advantage-estimator grpo \
