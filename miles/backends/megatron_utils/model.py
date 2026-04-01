@@ -516,27 +516,6 @@ def train_one_step(
     return {}, grad_norm, outcome
 
 
-def _allreduce_grads_across_replicas(args, model: Sequence[DDP], parallel_state: ParallelState) -> bool:
-    assert not args.calculate_per_token_loss, "calculate_per_token_loss is not supported with indep_dp yet"
-    assert parallel_state.intra_dp.size == 1, (
-        f"indep_dp requires intra_dp.size == 1, got {parallel_state.intra_dp.size}. "
-        "Simultaneous intra and indep DP is not supported."
-    )
-
-    pg = parallel_state.indep_dp.group
-    util = GeneralPGUtil.create(pg)
-
-    try:
-        for model_chunk in model:
-            # mimic: DistributedDataParallel.start_grad_sync
-            for bucket_group in model_chunk.bucket_groups + model_chunk.expert_parallel_bucket_groups:
-                for bucket in bucket_group.buckets:
-                    util.all_reduce(bucket.grad_data, pg, op=dist.ReduceOp.SUM)
-        return True
-    except Exception:
-        logger.exception("Gradient allreduce across replicas failed", exc_info=True)
-        return False
-
 
 def finalize_model_grads_with_empty_cache(*args, **kwargs):
     # TODO: this is an ad-hoc method and we should figure out why the oom happens in the first place.
