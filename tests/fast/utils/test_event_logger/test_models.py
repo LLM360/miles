@@ -139,13 +139,18 @@ class TestProcessIdentity:
     def test_rollout_manager_to_name(self) -> None:
         assert RolloutManagerProcessIdentity().to_name() == "rollout_manager"
 
-    def test_train_to_name(self) -> None:
-        source = TrainProcessIdentity(cell_index=1, rank_within_cell=3)
-        assert source.to_name() == "train_cell1_rank3"
+    def test_actor_to_name(self) -> None:
+        source = TrainProcessIdentity(component="actor", cell_index=1, rank_within_cell=3)
+        assert source.to_name() == "actor_cell1_rank3"
+
+    def test_critic_to_name(self) -> None:
+        source = TrainProcessIdentity(component="critic", cell_index=0, rank_within_cell=2)
+        assert source.to_name() == "critic_cell0_rank2"
 
     def test_train_roundtrip(self) -> None:
-        source = TrainProcessIdentity(cell_index=2, rank_within_cell=0)
+        source = TrainProcessIdentity(component="actor", cell_index=2, rank_within_cell=0)
         raw = source.model_dump_json()
         parsed = TrainProcessIdentity.model_validate_json(raw)
         assert parsed.cell_index == 2
         assert parsed.rank_within_cell == 0
+        assert parsed.component == "actor"

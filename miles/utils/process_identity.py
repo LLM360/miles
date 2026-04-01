@@ -26,7 +26,7 @@ class TrainProcessIdentity(_ProcessIdentityBase):
     rank_within_cell: int
 
     def to_name(self) -> str:
-        return f"train_cell{self.cell_index}_rank{self.rank_within_cell}"
+        return f"{self.component}_cell{self.cell_index}_rank{self.rank_within_cell}"
 
 
 ProcessIdentity = Annotated[

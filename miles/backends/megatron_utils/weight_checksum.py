@@ -29,32 +29,28 @@ def _hash_tensor_sha256(tensor: torch.Tensor) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
 
+def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str]:
+    """Hash all named tensors from model chunks using the given accessor method."""
+    hashes: dict[str, str] = {}
+    for pp_idx, model_chunk in enumerate(model):
+        for name, tensor in sorted(getattr(model_chunk, accessor)(), key=lambda x: x[0]):
+            if tensor is None:
+                continue
+            hashes[f"pp{pp_idx}.{name}"] = _hash_tensor_sha256(tensor)
+    return hashes
+
+
 def compute_weight_checksums(
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
 ) -> WeightChecksumEntry:
     """Compute SHA-256 checksums of all model weights, buffers, master params, and optimizer states."""
 
-    param_hashes: dict[str, str] = {}
-    buffer_hashes: dict[str, str] = {}
     master_param_hashes: dict[str, str] = {}
     optimizer_state_hashes: dict[str, str] = {}
 
-    # Hash model parameters
-    for pp_idx, model_chunk in enumerate(model):
-        for name, param in sorted(model_chunk.named_parameters(), key=lambda x: x[0]):
-            if param is None:
-                continue
-            full_name = f"pp{pp_idx}.{name}"
-            param_hashes[full_name] = _hash_tensor_sha256(param)
-
-    # Hash model buffers
-    for pp_idx, model_chunk in enumerate(model):
-        for name, buffer in sorted(model_chunk.named_buffers(), key=lambda x: x[0]):
-            if buffer is None:
-                continue
-            full_name = f"pp{pp_idx}.{name}"
-            buffer_hashes[full_name] = _hash_tensor_sha256(buffer)
+    param_hashes = _hash_named_tensors(model, accessor="named_parameters")
+    buffer_hashes = _hash_named_tensors(model, accessor="named_buffers")
 
     # Hash fp32 master weights and optimizer states
     if hasattr(optimizer, "chained_optimizers"):
