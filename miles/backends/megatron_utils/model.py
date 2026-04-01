@@ -510,7 +510,7 @@ def train_one_step(
 
     dumper_phase_util.finalize(model)
 
-    accumulated_step = rollout_id * getattr(args, "num_steps_per_rollout", 1) + step_id
+    accumulated_step = rollout_id * (args.num_steps_per_rollout or 1) + step_id
     compute_and_dump_weight_checksums(
         args=args,
         model=model,
