@@ -10,6 +10,7 @@ from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor, create_t
 from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
+from miles.utils.retry_utils import retry
 
 if TYPE_CHECKING:
     import torch
@@ -116,18 +117,20 @@ class RayTrainGroup:
 
     async def train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
-        while not await self._train_one_attempt(rollout_id, rollout_data_ref):
-            pass
 
-    async def _train_one_attempt(self, rollout_id: int, rollout_data_ref) -> bool:
-        await self._refresh_cells()
-        results = await self._execute_all_alive("train", rollout_id, rollout_data_ref, catch_exceptions=True)
+        async def _fn() -> bool:
+            await self._refresh_cells()
+            results = await self._execute_all_alive("train", rollout_id, rollout_data_ref, catch_exceptions=True)
 
-        ok = self._does_train_one_attempt_succeed(results)
-        if not ok:
-            logger.warning("Not all actors returned NORMAL, retrying train")
+            ok = self._does_train_one_attempt_succeed(results)
+            if not ok:
+                logger.warning("Not all actors returned NORMAL, retrying train")
 
-        return ok
+            return ok
+
+        await retry(
+            fn=_fn,
+        )
 
     @staticmethod
     def _does_train_one_attempt_succeed(results):
