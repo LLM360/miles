@@ -1294,6 +1294,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                     "The file will be saved to `save_debug_train_data.format(rollout_id)`."
                 ),
             )
+            parser.add_argument("--save-debug-event-data", type=str, default=None)
             parser.add_argument(
                 "--dump-details",
                 type=str,
