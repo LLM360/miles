@@ -47,7 +47,7 @@ def dump_local_weight_checksums(
     )
 
     event_logger = get_event_logger()
-    source = event_logger._source
+    source = event_logger.source
     info = _compute_weight_checksums(
         model=model,
         optimizer=optimizer,

@@ -55,8 +55,7 @@ def _compute_label(event: LocalWeightChecksumEvent):
 
 def _flatten_event(event: LocalWeightChecksumEvent) -> dict[str, Any]:
     """Flatten all fields of an event into a flat dict with dot-separated keys."""
-    data = event.model_dump(exclude={"timestamp", "source", "type", "step", "rank"})
-    return _flatten_nested(data, prefix="")
+    return _flatten_nested(event.state.model_dump())
 
 
 def _compare_flat_dicts(

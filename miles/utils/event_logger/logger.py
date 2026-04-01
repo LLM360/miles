@@ -22,6 +22,10 @@ class EventLogger:
         self._file: TextIO = open(self._log_dir / file_name, "a", encoding="utf-8")
         self._source = source
 
+    @property
+    def source(self) -> ProcessIdentity:
+        return self._source
+
     def log(self, event: EventBase, *, print_log: bool = True) -> None:
         enriched = event.model_copy(update={"timestamp": datetime.now(timezone.utc), "source": self._source})
         line = enriched.model_dump_json() + "\n"
