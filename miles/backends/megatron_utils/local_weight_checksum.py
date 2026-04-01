@@ -46,7 +46,15 @@ def dump_local_weight_checksums(
         "save_local_weight_checksum is enabled but EventLogger is not initialized"
     )
 
-    info = _compute_weight_checksums(model=model, optimizer=optimizer, step=step, rank=torch.distributed.get_rank())
+    event_logger = get_event_logger()
+    source = event_logger._source
+    info = _compute_weight_checksums(
+        model=model,
+        optimizer=optimizer,
+        step=step,
+        cell_index=source.cell_index,
+        rank_within_cell=source.rank_within_cell,
+    )
     get_event_logger().log(info, print_log=False)
 
 

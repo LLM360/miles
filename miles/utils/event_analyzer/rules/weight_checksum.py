@@ -38,15 +38,19 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
 
 
 def _check_one_step(events: list[LocalWeightChecksumEvent]) -> Iterable[ChecksumMismatchIssue]:
-    flat_0 = _flatten_event(events[0])
+    event_a = events[0]
     for i in range(1, len(events)):
-        flat_i = _flatten_event(events[i])
+        event_b = events[i]
         yield from _compare_flat_dicts(
-            a=flat_0,
-            b=flat_i,
-            label_a=f"step{step}/rank{events[0].rank}",
-            label_b=f"step{step}/rank{events[i].rank}",
+            a=_flatten_event(event_a),
+            b=_flatten_event(event_b),
+            label_a=_compute_label(event_a),
+            label_b=_compute_label(event_b),
         )
+
+
+def _compute_label(event: LocalWeightChecksumEvent):
+    return f"step_{event.step}/cell_{event.cell_index}/rank_{event.rank_within_cell}"
 
 
 def _flatten_event(event: LocalWeightChecksumEvent) -> dict[str, Any]:
