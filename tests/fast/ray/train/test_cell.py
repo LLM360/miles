@@ -154,7 +154,7 @@ class TestMarkAsErrored:
         cell = make_alive_cell(0, alive_cell_indices=[0])
         info = cell.indep_dp_info
 
-        cell._mark_as_errored()
+        cell.mark_as_errored()
 
         assert cell.is_errored
         assert not cell.is_alive
@@ -163,19 +163,19 @@ class TestMarkAsErrored:
 
     def test_errored_is_idempotent(self):
         cell = make_alive_cell(0, alive_cell_indices=[0])
-        cell._mark_as_errored()
+        cell.mark_as_errored()
 
-        cell._mark_as_errored()
+        cell.mark_as_errored()
 
         assert cell.is_errored
 
 
 class TestInvalidTransitions:
-    def test_mark_as_errored_rejects_from_uninitialized(self):
+    def testmark_as_errored_rejects_from_uninitialized(self):
         cell = make_cell()
 
         with pytest.raises(AssertionError):
-            cell._mark_as_errored()
+            cell.mark_as_errored()
 
     def test_allocate_for_pending_rejects_from_alive(self):
         cell = make_alive_cell(0, alive_cell_indices=[0])
@@ -194,7 +194,7 @@ class TestInvalidTransitions:
 class TestErroredToStopped:
     def test_stop_from_errored_transitions_to_stopped(self):
         cell = make_alive_cell(0, alive_cell_indices=[0])
-        cell._mark_as_errored()
+        cell.mark_as_errored()
         assert cell.is_errored
 
         cell.stop()
@@ -205,7 +205,7 @@ class TestErroredToStopped:
     def test_full_error_recovery_lifecycle(self):
         """Errored → stop → pending → allocate → alive (full recovery from error)."""
         cell = make_alive_cell(0, alive_cell_indices=[0])
-        cell._mark_as_errored()
+        cell.mark_as_errored()
 
         cell.stop()
         cell.mark_as_pending()
@@ -320,7 +320,7 @@ class TestStatePredicates:
 
     def test_errored(self):
         cell = make_alive_cell(0, alive_cell_indices=[0])
-        cell._mark_as_errored()
+        cell.mark_as_errored()
 
         assert not cell.is_pending
         assert cell.is_allocated

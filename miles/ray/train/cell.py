@@ -10,7 +10,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-from miles.utils.health_checker import SimpleHealthChecker, SimpleHealthCheckerConfig
+from miles.utils.health_checker import BaseHealthChecker, SimpleHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ class RayTrainCell:
         cell_index: int,
         actor_factory: ActorFactory,
         rollout_manager: object | None,
+        health_checker: BaseHealthChecker,
     ) -> None:
         self.args = args
         self.cell_index = cell_index
@@ -39,7 +40,7 @@ class RayTrainCell:
 
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
         self._state: _CellState = _StatePending()
-        self.health_checker: SimpleHealthChecker | None = None
+        self.health_checker = health_checker
         self.allocate_for_pending()
 
     # ------------------------ state transition ------------------------
@@ -93,12 +94,9 @@ class RayTrainCell:
             ),
         )
 
-    def setup_health_checker(self, *, config: SimpleHealthCheckerConfig) -> None:
-        self.health_checker = _create_health_checker(cell=self, config=config)
-
-    def _mark_as_errored(self) -> None:
+    def mark_as_errored(self) -> None:
         self._change_state(
-            "_mark_as_errored",
+            "mark_as_errored",
             (_StateAllocatedAlive, _StateAllocatedErrored),
             lambda: _StateAllocatedErrored(
                 actor_handles=self._state.actor_handles,
@@ -371,7 +369,7 @@ def allocate_gpus_for_actor(
     return actor_handles
 
 
-def _create_health_checker(
+def create_trainer_cell_health_checker(
     *,
     cell: RayTrainCell,
     config: SimpleHealthCheckerConfig,
@@ -394,7 +392,7 @@ def _create_health_checker(
 
     def _on_result(success: bool) -> None:
         if not success:
-            cell._mark_as_errored()
+            cell.mark_as_errored()
 
     return SimpleHealthChecker(
         name=f"trainer-cell-{cell.cell_index}",

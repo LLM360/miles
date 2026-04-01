@@ -5,6 +5,7 @@ import ray
 from tests.fast.ray.train.dummy_actor import DummyTrainActor
 
 from miles.ray.train.cell import RayTrainCell
+from miles.utils.health_checker import NoopHealthChecker
 from miles.utils.indep_dp import IndepDPInfo
 
 
@@ -49,6 +50,7 @@ def make_cell(
         cell_index=cell_index,
         actor_factory=factory,
         rollout_manager=rollout_manager,
+        health_checker=NoopHealthChecker(),
     )
 
 

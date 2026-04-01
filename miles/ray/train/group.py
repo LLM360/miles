@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 import ray
 from ray.util.placement_group import PlacementGroup
 
-from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor
-from miles.utils.health_checker import SimpleHealthCheckerConfig
+from miles.ray.train.cell import RayTrainCell, allocate_gpus_for_actor, create_trainer_cell_health_checker
+from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 
@@ -62,32 +62,37 @@ class RayTrainGroup:
         else:
             self._indep_dp_store, indep_dp_store_addr = None, None
 
+        health_checker_config = (
+            SimpleHealthCheckerConfig.from_args(args, prefix="trainer_heartbeat_checker")
+            if num_cells > 1
+            else None
+        )
+
         self._cells: list[RayTrainCell] = []
         for cell_index in range(num_cells):
             cell_pg = _slice_pg(pg, start=cell_index * gpus_per_cell, end=(cell_index + 1) * gpus_per_cell)
-            self._cells.append(
-                RayTrainCell(
+            cell = RayTrainCell(
+                args=args,
+                role=role,
+                with_ref=with_ref,
+                cell_index=cell_index,
+                rollout_manager=rollout_manager,
+                actor_factory=lambda: allocate_gpus_for_actor(
                     args=args,
-                    role=role,
-                    with_ref=with_ref,
-                    cell_index=cell_index,
-                    rollout_manager=rollout_manager,
-                    actor_factory=lambda: allocate_gpus_for_actor(
-                        args=args,
-                        gpus_per_cell=gpus_per_cell,
-                        pg=cell_pg,
-                        num_gpus_per_actor=num_gpus_per_actor,
-                        indep_dp_store_addr=indep_dp_store_addr,
-                    ),
-                )
+                    gpus_per_cell=gpus_per_cell,
+                    pg=cell_pg,
+                    num_gpus_per_actor=num_gpus_per_actor,
+                    indep_dp_store_addr=indep_dp_store_addr,
+                ),
+                health_checker=NoopHealthChecker(),
             )
 
-        if len(self._cells) > 1:
-            health_checker_config = SimpleHealthCheckerConfig.from_args(
-                args, prefix="trainer_heartbeat_checker",
-            )
-            for cell in self._cells:
-                cell.setup_health_checker(config=health_checker_config)
+            if health_checker_config is not None:
+                cell.health_checker = create_trainer_cell_health_checker(
+                    cell=cell, config=health_checker_config,
+                )
+
+            self._cells.append(cell)
 
     # ------------------------ APIs ------------------------
 
@@ -108,8 +113,7 @@ class RayTrainGroup:
         ]
         result = await asyncio.gather(*refs)
         for cell in self._cells:
-            if cell.health_checker is not None:
-                await cell.health_checker.start()
+            await cell.health_checker.start()
         return result
 
     async def train(self, rollout_id: int, rollout_data_ref):
@@ -129,13 +133,11 @@ class RayTrainGroup:
     async def onload(self):
         await self._broadcast_alive("wake_up")
         for cell in self._cells:
-            if cell.health_checker is not None:
-                cell.health_checker.resume()
+            cell.health_checker.resume()
 
     async def offload(self):
         for cell in self._cells:
-            if cell.health_checker is not None:
-                cell.health_checker.pause()
+            cell.health_checker.pause()
         await self._broadcast_alive("sleep")
 
     async def clear_memory(self):
@@ -180,7 +182,7 @@ class RayTrainGroup:
                 await asyncio.gather(*futures)
             except Exception as e:
                 logger.error(f"Cell {cell.cell_index} failed: {e}", exc_info=True)
-                cell._mark_as_errored()
+                cell.mark_as_errored()
 
         await asyncio.gather(*[_await_cell(cell, fs) for cell, fs in futures_by_cell])
 
@@ -196,7 +198,7 @@ class RayTrainGroup:
                 return
             except Exception as e:
                 logger.error(f"Cell {cell.cell_index} failed in {fn_name}: {e}", exc_info=True)
-                cell._mark_as_errored()
+                cell.mark_as_errored()
         raise RuntimeError(f"All cells failed for {fn_name}")
 
     # ------------------------ internals for stop/start ------------------------

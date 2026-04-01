@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import argparse
 import asyncio
 import logging
@@ -56,8 +57,26 @@ class SimpleHealthCheckerConfig(StrictBaseModel):
         )
 
 
-class SimpleHealthChecker:
-    """Periodic async health checker. Calls *check_fn*; reports result via *on_result*."""
+class BaseHealthChecker(abc.ABC):
+    @abc.abstractmethod
+    async def start(self) -> None: ...
+
+    @abc.abstractmethod
+    def stop(self) -> None: ...
+
+    @abc.abstractmethod
+    def pause(self) -> None: ...
+
+    @abc.abstractmethod
+    def resume(self) -> None: ...
+
+
+class SimpleHealthChecker(BaseHealthChecker):
+    """Periodic async health checker. Calls *check_fn*; reports result via *on_result*.
+
+    After each ``resume()``, waits ``first_wait`` seconds before the first check
+    (matching ``RolloutHealthMonitor._need_first_wait`` semantics).
+    """
 
     def __init__(
         self,
@@ -77,6 +96,7 @@ class SimpleHealthChecker:
         self._clock = clock or RealClock()
 
         self._paused: bool = False
+        self._need_first_wait: bool = True
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
@@ -94,11 +114,14 @@ class SimpleHealthChecker:
 
     def resume(self) -> None:
         self._paused = False
+        self._need_first_wait = True
 
     async def _loop(self) -> None:
-        await self._clock.sleep(self._first_wait)
-
         while True:
+            if self._need_first_wait:
+                self._need_first_wait = False
+                await self._clock.sleep(self._first_wait)
+
             if not self._paused:
                 success = False
                 try:
@@ -110,6 +133,20 @@ class SimpleHealthChecker:
                 self._on_result(success)
 
             await self._clock.sleep(self._interval)
+
+
+class NoopHealthChecker(BaseHealthChecker):
+    async def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def pause(self) -> None:
+        pass
+
+    def resume(self) -> None:
+        pass
 
 
 # TODO: should move when Rollout FT is implemented

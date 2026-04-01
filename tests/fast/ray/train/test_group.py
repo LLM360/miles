@@ -637,9 +637,9 @@ class TestHeartbeatMonitor:
         group = await _make_alive_group(num_cells=2)
 
         for cell in group._cells:
-            cell.pausehealth_checker()
+            cell.health_checker.pause()
         assert all(c.health_checker._paused for c in group._cells)
 
         for cell in group._cells:
-            cell.resumehealth_checker()
+            cell.health_checker.resume()
         assert all(not c.health_checker._paused for c in group._cells)
