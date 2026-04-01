@@ -105,7 +105,7 @@ def main():
         filesystem_async_module.FileSystemWriterAsync = ROCmFileSystemWriterAsync
         print("[ROCm] Applied FileSystemWriterAsync patch for HIP compatibility")
 
-    configure_logger_raw("convert")
+    configure_logger_raw()
 
     # Initialize distributed environment
     world_size = int(os.getenv("WORLD_SIZE") or os.getenv("SLURM_NTASKS") or 1)
