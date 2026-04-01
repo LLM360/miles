@@ -152,7 +152,7 @@ class SimpleHealthChecker(BaseHealthChecker):
             if not self._paused:
                 success = False
                 try:
-                    await self._check_fn()
+                    await asyncio.wait_for(self._check_fn(), timeout=self._config.timeout)
                     success = True
                 except Exception:
                     logger.error(f"[{self._name}] Health check failed", exc_info=True)
@@ -204,7 +204,7 @@ def create_rollout_cell_health_checker(
         if lead_engine is None:
             raise RuntimeError("Lead engine is None")
 
-        await asyncio.wait_for(lead_engine.health_generate.remote(), timeout=config.timeout)
+        await lead_engine.health_generate.remote()
 
     return SimpleHealthChecker(
         name=f"rollout-cell-{cell_id}",
