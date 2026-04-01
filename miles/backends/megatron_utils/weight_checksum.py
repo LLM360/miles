@@ -38,11 +38,7 @@ def compute_and_dump_weight_checksums(
     entry = compute_weight_checksums(model=model, optimizer=optimizer)
     rank: int = torch.distributed.get_rank()
 
-    dump_weight_checksums(
-        entry=entry,
-        step=step,
-        rank=rank,
-    )
+    dump_weight_checksums(entry=entry, step=step, rank=rank)
 
 
 def compute_weight_checksums(
