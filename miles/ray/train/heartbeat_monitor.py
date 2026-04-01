@@ -1,5 +1,5 @@
+import asyncio
 import logging
-import threading
 import time
 
 import ray
@@ -25,23 +25,22 @@ class TrainerHeartbeatMonitor:
         self._timeout = timeout
         self._staleness = staleness
 
-        self._stop_event = threading.Event()
-        self._pause_event = threading.Event()
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
+        self._paused: bool = False
+        self._task: asyncio.Task[None] | None = None
 
-    def _loop(self) -> None:
-        if self._stop_event.wait(timeout=self._first_wait):
-            return
+    async def start(self) -> None:
+        self._task = asyncio.create_task(self._loop())
 
-        while not self._stop_event.is_set():
-            if not self._pause_event.is_set():
-                self.check()
+    async def _loop(self) -> None:
+        await asyncio.sleep(self._first_wait)
 
-            if self._stop_event.wait(timeout=self._interval):
-                break
+        while True:
+            if not self._paused:
+                await self.check()
 
-    def check(self) -> None:
+            await asyncio.sleep(self._interval)
+
+    async def check(self) -> None:
         now = time.time()
 
         alive_cells = [cell for cell in self._cells if cell.is_alive]
@@ -54,7 +53,7 @@ class TrainerHeartbeatMonitor:
             if cell.is_errored:
                 continue
             try:
-                status = ray.get(future, timeout=self._timeout)
+                status = await asyncio.wait_for(future, timeout=self._timeout)
                 if now - status.last_active_timestamp > self._staleness:
                     logger.error(
                         f"Cell {cell.cell_index} heartbeat stale: "
@@ -67,11 +66,12 @@ class TrainerHeartbeatMonitor:
                 cell._mark_as_errored()
 
     def stop(self) -> None:
-        self._stop_event.set()
-        self._thread.join(timeout=10.0)
+        if self._task is not None:
+            self._task.cancel()
+            self._task = None
 
     def pause(self) -> None:
-        self._pause_event.set()
+        self._paused = True
 
     def resume(self) -> None:
-        self._pause_event.clear()
+        self._paused = False

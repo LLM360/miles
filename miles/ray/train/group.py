@@ -92,6 +92,10 @@ class RayTrainGroup:
                 staleness=args.trainer_heartbeat_staleness,
             )
 
+    async def _start_heartbeat_monitor(self) -> None:
+        if self._heartbeat_monitor is not None:
+            await self._heartbeat_monitor.start()
+
     # ------------------------ APIs ------------------------
 
     async def init(self):
@@ -109,7 +113,9 @@ class RayTrainGroup:
                 )
             )
         ]
-        return await asyncio.gather(*refs)
+        result = await asyncio.gather(*refs)
+        await self._start_heartbeat_monitor()
+        return result
 
     async def train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""

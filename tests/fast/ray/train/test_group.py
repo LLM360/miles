@@ -604,7 +604,7 @@ class TestHeartbeatMonitor:
         """When heartbeat returns recent timestamp, cells stay alive."""
         group = await _make_alive_group(num_cells=2)
 
-        group._heartbeat_monitor.check()
+        await group._heartbeat_monitor.check()
 
         assert all(c.is_alive for c in group._cells)
 
@@ -619,7 +619,7 @@ class TestHeartbeatMonitor:
             ray.get(handle.set_last_active_timestamp.remote(0.0))
 
         # Step 2: Check heartbeats
-        group._heartbeat_monitor.check()
+        await group._heartbeat_monitor.check()
 
         # Step 3: Cell 1 errored, cell 0 alive
         assert group._cells[0].is_alive
@@ -636,7 +636,7 @@ class TestHeartbeatMonitor:
             ray.get(handle.set_heartbeat_fail.remote(True))
 
         # Step 2: Check heartbeats
-        group._heartbeat_monitor.check()
+        await group._heartbeat_monitor.check()
 
         # Step 3: Cell 0 errored, cell 1 alive
         assert group._cells[0].is_errored
@@ -654,8 +654,8 @@ class TestHeartbeatMonitor:
         monitor = group._heartbeat_monitor
         assert monitor is not None
         monitor.pause()
-        assert monitor._pause_event.is_set()
+        assert monitor._paused
 
         # Step 3: Resume
         monitor.resume()
-        assert not monitor._pause_event.is_set()
+        assert not monitor._paused
