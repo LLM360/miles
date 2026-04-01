@@ -4,7 +4,7 @@ from pathlib import Path
 
 from miles.utils.event_analyzer.analyzer import run_analysis
 from miles.utils.event_logger.logger import EventLogger
-from miles.utils.event_logger.models import WeightChecksumInfo
+from miles.utils.event_logger.models import LocalWeightChecksumEvent
 from miles.utils.process_identity import MainProcessIdentity
 
 
@@ -17,7 +17,7 @@ def _log_checksum(
     master_param_hashes: dict[str, str] | None = None,
     optimizer_state_hashes: dict[str, str] | None = None,
 ) -> None:
-    event_logger.log(WeightChecksumInfo(
+    event_logger.log(LocalWeightChecksumEvent(
         step=step,
         rank=rank,
         param_hashes=param_hashes or {},

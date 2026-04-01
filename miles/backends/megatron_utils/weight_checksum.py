@@ -11,7 +11,7 @@ from megatron.core.optimizer.optimizer import MegatronOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
 from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
-from miles.utils.event_logger.models import WeightChecksumInfo
+from miles.utils.event_logger.models import LocalWeightChecksumEvent
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def _compute_weight_checksums(
     optimizer: MegatronOptimizer,
     step: int,
     rank: int,
-) -> WeightChecksumInfo:
+) -> LocalWeightChecksumEvent:
     master_param_hashes: dict[str, str] = {}
     optimizer_state_hashes: dict[str, str] = {}
 
@@ -55,7 +55,7 @@ def _compute_weight_checksums(
                 optimizer_state_hashes=optimizer_state_hashes,
             )
 
-    return WeightChecksumInfo(
+    return LocalWeightChecksumEvent(
         step=step,
         rank=rank,
         param_hashes=param_hashes,

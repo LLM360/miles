@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Callable
 
-from miles.utils.event_logger.models import Event, WeightChecksumInfo
+from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -24,11 +24,11 @@ def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
     Returns:
         List of mismatches found. Empty list means all replicas match.
     """
-    checksum_events = [e for e in events if isinstance(e, WeightChecksumInfo)]
+    checksum_events = [e for e in events if isinstance(e, LocalWeightChecksumEvent)]
     if not checksum_events:
         return []
 
-    entries_by_step: dict[int, list[tuple[int, WeightChecksumInfo]]] = defaultdict(list)
+    entries_by_step: dict[int, list[tuple[int, LocalWeightChecksumEvent]]] = defaultdict(list)
     for event in checksum_events:
         entries_by_step[event.step].append((event.rank, event))
 
@@ -37,7 +37,7 @@ def check_weight_checksums(events: list[Event]) -> list[ChecksumMismatch]:
     for step in sorted(entries_by_step.keys()):
         step_entries = entries_by_step[step]
 
-        categories: list[tuple[str, Callable[[WeightChecksumInfo], dict[str, str]]]] = [
+        categories: list[tuple[str, Callable[[LocalWeightChecksumEvent], dict[str, str]]]] = [
             ("param", lambda e: e.param_hashes),
             ("buffer", lambda e: e.buffer_hashes),
             ("master_param", lambda e: e.master_param_hashes),

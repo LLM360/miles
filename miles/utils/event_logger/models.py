@@ -70,8 +70,8 @@ class GenericEvent(EventBase):
     details: dict[str, Any]
 
 
-class WeightChecksumInfo(EventBase):
-    type: Literal["weight_checksum_dumped"] = "weight_checksum_dumped"
+class LocalWeightChecksumEvent(EventBase):
+    type: Literal["local_weight_checksum"] = "local_weight_checksum"
     step: int
     rank: int
     param_hashes: dict[str, str]
@@ -90,6 +90,6 @@ Event = Annotated[
     | CheckpointTransferStarted
     | CheckpointTransferCompleted
     | GenericEvent
-    | WeightChecksumInfo,
+    | LocalWeightChecksumEvent,
     Discriminator("type"),
 ]

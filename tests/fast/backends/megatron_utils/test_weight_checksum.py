@@ -11,7 +11,7 @@ from miles.backends.megatron_utils.weight_checksum import (
     _compute_weight_checksums,
 )
 from miles.utils.event_logger.logger import EventLogger, set_event_logger
-from miles.utils.event_logger.models import WeightChecksumInfo
+from miles.utils.event_logger.models import LocalWeightChecksumEvent
 from miles.utils.process_identity import MainProcessIdentity
 
 
@@ -177,7 +177,7 @@ class TestComputeAndDumpWeightChecksums:
             from miles.utils.event_logger.logger import read_events
 
             events = read_events(tmp_path)
-            checksum_events = [e for e in events if isinstance(e, WeightChecksumInfo)]
+            checksum_events = [e for e in events if isinstance(e, LocalWeightChecksumEvent)]
             assert len(checksum_events) == 1
             assert checksum_events[0].step == 4
             assert checksum_events[0].rank == 7
