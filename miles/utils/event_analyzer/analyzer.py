@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 def run_analysis_from_args(args: Namespace) -> None:
-    """Run event analysis if enabled. Safe to call unconditionally."""
     if not getattr(args, "enable_event_analyzer", False):
         return
 
@@ -28,16 +27,11 @@ def run_analysis_from_args(args: Namespace) -> None:
 
 
 def run_analysis(event_dir: Path) -> list[Any]:
-    """Read all events from event_dir and run all analysis rules.
-
-    Returns:
-        List of issues found. Empty list means all replicas match.
-    """
     events = read_events(event_dir)
     if not events:
         return []
 
     # TODO: more check rules
-    issues = weight_checksum.check(events)
+    issues = cross_replica_weight_checksum.check(events)
 
     return issues
