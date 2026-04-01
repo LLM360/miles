@@ -119,7 +119,7 @@ class RayTrainGroup:
         """Do one rollout training"""
         async def _fn():
             await self._refresh_cells()
-            results = await self._execute_all_alive("train", rollout_id, rollout_data_ref, catch_exceptions=True)
+            results = await self._execute_all_alive_and_catch("train", rollout_id, rollout_data_ref)
             self._check_train_one_attempt(results)
 
         await retry(_fn)
@@ -145,17 +145,17 @@ class RayTrainGroup:
         await self._execute_first_alive("update_weights")
 
     async def onload(self):
-        await self._execute_all_alive("wake_up", catch_exceptions=True)
+        await self._execute_all_alive_and_catch("wake_up")
         for cell in self._cells:
             cell.health_checker.resume()
 
     async def offload(self):
         for cell in self._cells:
             cell.health_checker.pause()
-        await self._execute_all_alive("sleep", catch_exceptions=True)
+        await self._execute_all_alive_and_catch("sleep")
 
     async def clear_memory(self):
-        await self._execute_all_alive("clear_memory", catch_exceptions=True)
+        await self._execute_all_alive_and_catch("clear_memory")
 
     async def connect(self, critic_group: "RayTrainGroup"):
         assert len(self._cells) == len(critic_group._cells), (
@@ -178,19 +178,17 @@ class RayTrainGroup:
 
     # ------------------------ utils to forward calls to cells ------------------------
 
-    async def _execute_all_alive(self, fn_name: str, *args, catch_exceptions: bool, **kwargs):
+    async def _execute_all_alive_and_catch(self, fn_name: str, *args, **kwargs):
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
         outputs = await asyncio.gather(
             *[cell.execute(fn_name, *args, **kwargs) for cell in alive_cells],
-            return_exceptions=catch_exceptions,
+            return_exceptions=True,
         )
 
-        TODO_is_this_good
-        if catch_exceptions:
-            for i, output in enumerate(outputs):
-                if isinstance(output, BaseException):
-                    logger.warning("RayTrainGroup._execute_all_alive cell %d error in %s", i, fn_name, exc_info=output)
+        for i, output in enumerate(outputs):
+            if isinstance(output, BaseException):
+                logger.warning("RayTrainGroup._execute_all_alive cell %d error in %s", i, fn_name, exc_info=output)
 
         return outputs
 
