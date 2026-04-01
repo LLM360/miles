@@ -3,11 +3,12 @@
 import hashlib
 import logging
 from argparse import Namespace
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 
 import torch
 from megatron.core.distributed import DistributedDataParallel as DDP
-from megatron.core.optimizer.optimizer import MegatronOptimizer, ChainedOptimizer, DistributedOptimizer
+from megatron.core.optimizer.optimizer import MegatronOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
 from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
@@ -41,19 +42,14 @@ def _compute_weight_checksums(
     step: int,
     rank: int,
 ) -> LocalWeightChecksumEvent:
-    master_param_hashes: dict[str, str] = {}
-    optimizer_state_hashes: dict[str, str] = {}
-
     param_hashes = _hash_named_tensors(model, accessor="named_parameters")
     buffer_hashes = _hash_named_tensors(model, accessor="named_buffers")
 
-    if hasattr(optimizer, "chained_optimizers"):
-        for chained_optimizer in optimizer.chained_optimizers:
-            _collect_master_and_optimizer_hashes(
-                chained_optimizer=chained_optimizer,
-                master_param_hashes=master_param_hashes,
-                optimizer_state_hashes=optimizer_state_hashes,
-            )
+    name_by_fp32_id = _build_name_by_fp32_id(model)
+    master_param_hashes, optimizer_state_hashes = _collect_master_and_optimizer_hashes(
+        optimizer=optimizer,
+        name_by_fp32_id=name_by_fp32_id,
+    )
 
     return LocalWeightChecksumEvent(
         step=step,
@@ -76,76 +72,67 @@ def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str
     return hashes
 
 
-class _OptimizerTensorExtractor:
-    @classmethod
-    def extract(cls, optimizer: MegatronOptimizer):
-        if isinstance(optimizer, ChainedOptimizer):
-            return cls._extract_chained_optimizer(optimizer)
-        if isinstance(optimizer, DistributedOptimizer):
-            return cls._extract_distributed_optimizer(optimizer)
-
-    @classmethod
-    def _extract_chained_optimizer(cls, optimizer: ChainedOptimizer):
-        for chained_optimizer in optimizer.chained_optimizers:
-            yield from cls.extract(
-                optimizer=chained_optimizer,
-                prefix=TODO,
-            )
-
-    @classmethod
-    def _extract_distributed_optimizer(cls, optimizer: DistributedOptimizer):
-        return TODO
+def _build_name_by_fp32_id(model: Sequence[DDP]) -> dict[int, str]:
+    """Build id(fp32_master_param) → name mapping from model parameters."""
+    name_map: dict[int, str] = {}
+    for pp_idx, model_chunk in enumerate(model):
+        for name, param in model_chunk.named_parameters():
+            if param is None:
+                continue
+            main_param = getattr(param, "main_param", None)
+            if main_param is not None:
+                name_map[id(main_param)] = f"pp{pp_idx}.{name}"
+    return name_map
 
 
 def _collect_master_and_optimizer_hashes(
-    chained_optimizer: object,
-    master_param_hashes: dict[str, str],
-    optimizer_state_hashes: dict[str, str],
-) -> None:
-    """Collect fp32 master weight hashes and optimizer state hashes from a single chained optimizer."""
+    optimizer: MegatronOptimizer,
+    name_by_fp32_id: dict[int, str],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Collect fp32 master weight hashes and optimizer state hashes via inner PyTorch optimizer."""
+    master_param_hashes: dict[str, str] = {}
+    optimizer_state_hashes: dict[str, str] = {}
 
-    from megatron.core.optimizer import Float16OptimizerWithFloat16Params
+    for fp32_param, state in _iter_fp32_params_and_states(optimizer):
+        param_name = name_by_fp32_id.get(id(fp32_param))
+        if param_name is None:
+            continue
 
-    if not isinstance(chained_optimizer, Float16OptimizerWithFloat16Params):
-        return
-
-    fp16_params: list[torch.nn.Parameter] = []
-    for group in chained_optimizer.float16_groups:
-        fp16_params.extend(group)
-
-    fp32_params: list[torch.nn.Parameter] = []
-    for group in chained_optimizer.fp32_from_float16_groups:
-        fp32_params.extend(group)
-
-    if len(fp16_params) != len(fp32_params):
-        logger.warning(
-            "fp16_params count (%d) != fp32_params count (%d), skipping master param hashing",
-            len(fp16_params),
-            len(fp32_params),
-        )
-        return
-
-    for fp16_param, fp32_param in zip(fp16_params, fp32_params, strict=True):
-        param_name = _get_param_name(fp16_param)
         master_param_hashes[param_name] = _hash_tensor_sha256(fp32_param)
 
-        state = chained_optimizer.optimizer.state.get(fp32_param, {})
         for state_key in ("exp_avg", "exp_avg_sq"):
             if state_key in state:
-                state_name = f"{param_name}/{state_key}"
-                optimizer_state_hashes[state_name] = _hash_tensor_sha256(state[state_key])
+                optimizer_state_hashes[f"{param_name}/{state_key}"] = _hash_tensor_sha256(state[state_key])
+
+    return master_param_hashes, optimizer_state_hashes
 
 
-def _get_param_name(param: torch.nn.Parameter) -> str:
-    """Extract a human-readable name for a parameter."""
-    if hasattr(param, "main_param"):
-        main = param.main_param
-        if hasattr(main, "_param_name"):
-            return main._param_name
-    if hasattr(param, "_param_name"):
-        return param._param_name
-    logger.warning("Parameter has no _param_name attribute, using id() as fallback (non-deterministic across ranks)")
-    return str(id(param))
+def _iter_fp32_params_and_states(
+    optimizer: MegatronOptimizer,
+) -> Iterator[tuple[torch.Tensor, dict[str, torch.Tensor]]]:
+    """Yield (fp32_param, optimizer_state_dict) from all sub-optimizers.
+
+    Works uniformly for both Float16OptimizerWithFloat16Params and DistributedOptimizer,
+    because both place fp32 master params into inner optimizer's param_groups.
+    """
+    for sub_opt in _iter_sub_optimizers(optimizer):
+        inner = getattr(sub_opt, "optimizer", None)
+        if inner is None:
+            continue
+
+        for group in inner.param_groups:
+            for fp32_param in group["params"]:
+                state = inner.state.get(fp32_param, {})
+                yield fp32_param, state
+
+
+def _iter_sub_optimizers(optimizer: MegatronOptimizer) -> Iterator[MegatronOptimizer]:
+    """Flatten ChainedOptimizer into individual sub-optimizers."""
+    if hasattr(optimizer, "chained_optimizers"):
+        for sub in optimizer.chained_optimizers:
+            yield from _iter_sub_optimizers(sub)
+    else:
+        yield optimizer
 
 
 def _hash_tensor_sha256(tensor: torch.Tensor) -> str:
