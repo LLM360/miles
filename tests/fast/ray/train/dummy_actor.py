@@ -7,7 +7,7 @@ from typing import Any
 
 import ray
 
-from miles.ray.train.heartbeat import ActorHeartbeat, HeartbeatStatus
+from miles.ray.train.heartbeat import SimpleHeartbeat, HeartbeatStatus
 
 
 @ray.remote(num_gpus=0, num_cpus=0)
@@ -16,7 +16,7 @@ class DummyTrainActor:
     def __init__(self):
         self._calls: list[tuple[str, tuple, dict]] = []
         self._fail_methods: set[str] = set()
-        self._heartbeat = ActorHeartbeat()
+        self._heartbeat = SimpleHeartbeat()
         self._heartbeat.bump()
         self._heartbeat_fail: bool = False
 

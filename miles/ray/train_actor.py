@@ -10,7 +10,7 @@ import torch.distributed as dist
 
 import miles.utils.eval_config
 from miles.ray.ray_actor import RayActor
-from miles.ray.train.heartbeat import ActorHeartbeat, HeartbeatStatus
+from miles.ray.train.heartbeat import SimpleHeartbeat, HeartbeatStatus
 from miles.utils.distributed_utils import init_gloo_group
 from miles.utils.env_report import collect_and_print_node_env_report
 from miles.utils.logging_utils import configure_logger
@@ -38,7 +38,7 @@ class TrainRayActor(RayActor):
     ):
         configure_logger()
 
-        self._heartbeat = ActorHeartbeat()
+        self._heartbeat = SimpleHeartbeat()
         self._world_size = world_size
         self._rank = rank
         self._indep_dp_store_addr = indep_dp_store_addr

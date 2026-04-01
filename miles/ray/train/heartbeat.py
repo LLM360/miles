@@ -2,13 +2,13 @@ import time
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(frozen=True)
 class HeartbeatStatus:
     last_active_timestamp: float
     bump_count: int
 
 
-class ActorHeartbeat:
+class SimpleHeartbeat:
     def __init__(self) -> None:
         self._last_active_timestamp: float = 0.0
         self._bump_count: int = 0
