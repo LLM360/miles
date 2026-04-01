@@ -1,4 +1,10 @@
-"""Per-rank per-step weight checksum dumper for cross-replica consistency verification."""
+"""Per-rank per-step weight checksum dumper for cross-replica consistency verification.
+
+Design principle: fail fast. This module must never silently produce partial results.
+If any parameter, buffer, master weight, or optimizer state cannot be hashed, it should
+raise an error rather than skip it — incomplete checksums defeat the purpose of
+cross-replica consistency verification.
+"""
 
 import hashlib
 import logging
@@ -28,9 +34,9 @@ def dump_local_weight_checksums(
     if not args.save_local_weight_checksum:
         return
 
-    if not is_event_logger_initialized():
-        logger.warning("EventLogger not initialized, skipping weight checksum dump")
-        return
+    assert is_event_logger_initialized(), (
+        "save_local_weight_checksum is enabled but EventLogger is not initialized"
+    )
 
     info = _compute_weight_checksums(model=model, optimizer=optimizer, step=step, rank=torch.distributed.get_rank())
     get_event_logger().log(info, print_log=False)
@@ -66,8 +72,7 @@ def _hash_named_tensors(model: Sequence[DDP], *, accessor: str) -> dict[str, str
     hashes: dict[str, str] = {}
     for pp_idx, model_chunk in enumerate(model):
         for name, tensor in sorted(getattr(model_chunk, accessor)(), key=lambda x: x[0]):
-            if tensor is None:
-                continue
+            assert tensor is not None, f"pp{pp_idx}.{name}: tensor is None"
             hashes[f"pp{pp_idx}.{name}"] = _hash_tensor_sha256(tensor)
     return hashes
 
@@ -85,11 +90,10 @@ def _build_name_by_fp32_id(model: Sequence[DDP]) -> dict[_MainParamId, str]:
     name_map: dict[_MainParamId, str] = {}
     for pp_idx, model_chunk in enumerate(model):
         for name, param in model_chunk.named_parameters():
-            if param is None:
-                continue
+            assert param is not None, f"pp{pp_idx}.{name}: param is None"
             main_param = getattr(param, "main_param", None)
-            if main_param is not None:
-                name_map[_MainParamId.from_tensor(main_param)] = f"pp{pp_idx}.{name}"
+            assert main_param is not None, f"pp{pp_idx}.{name}: param has no main_param attribute"
+            name_map[_MainParamId.from_tensor(main_param)] = f"pp{pp_idx}.{name}"
     return name_map
 
 
@@ -102,9 +106,9 @@ def _collect_master_and_optimizer_hashes(
     optimizer_state_hashes: dict[str, str] = {}
 
     for fp32_param, state in _iter_fp32_params_and_states(optimizer):
-        param_name = name_by_fp32_id.get(_MainParamId.from_tensor(fp32_param))
-        if param_name is None:
-            continue
+        fp32_id = _MainParamId.from_tensor(fp32_param)
+        param_name = name_by_fp32_id.get(fp32_id)
+        assert param_name is not None, f"fp32 param id={fp32_id.tensor_id} not found in name mapping"
 
         master_param_hashes[param_name] = _hash_tensor_sha256(fp32_param)
 
@@ -124,9 +128,7 @@ def _iter_fp32_params_and_states(
     because both place fp32 master params into inner optimizer's param_groups.
     """
     for sub_opt in _iter_sub_optimizers(optimizer):
-        inner = getattr(sub_opt, "optimizer", None)
-        if inner is None:
-            continue
+        inner = sub_opt.optimizer
 
         for group in inner.param_groups:
             for fp32_param in group["params"]:
