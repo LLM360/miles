@@ -11,7 +11,7 @@ from miles.ray.train.cell_state import (
     StateAllocatedUninitialized,
     StatePending,
     StateStopped,
-    _CellState,
+    CellState,
 )
 from miles.ray.train.cell_status import compute_cell_status
 from miles.utils.control_server.models import CellStatus
@@ -44,7 +44,7 @@ class RayTrainCell:
         self._actor_factory = actor_factory
 
         # NOTE: do *NOT* directly modify `self._state`, but instead use `self._change_state`
-        self._state: _CellState = StatePending()
+        self._state: CellState = StatePending()
         self.health_checker = health_checker
         self.allocate_for_pending()
 
@@ -112,8 +112,8 @@ class RayTrainCell:
     def _change_state(
         self,
         debug_name: str,
-        old_state_cls: type["_CellState"] | tuple[type["_CellState"], ...],
-        fn: Callable[[], "_CellState"],
+        old_state_cls: type["CellState"] | tuple[type["CellState"], ...],
+        fn: Callable[[], "CellState"],
     ):
         logger.info(f"{debug_name} start {self.cell_index=} old={self._state}")
         assert isinstance(self._state, old_state_cls), f"{self.cell_index=} {self._state=}"

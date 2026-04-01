@@ -33,4 +33,4 @@ class StateStopped(StateBase):
     pass
 
 
-_CellState = StatePending | StateAllocatedUninitialized | StateAllocatedAlive | StateAllocatedErrored | StateStopped
+CellState = StatePending | StateAllocatedUninitialized | StateAllocatedAlive | StateAllocatedErrored | StateStopped

@@ -7,7 +7,7 @@ from miles.ray.train.cell_state import (
     StateAllocatedUninitialized,
     StatePending,
     StateStopped,
-    _CellState,
+    CellState,
 )
 from miles.utils.control_server.models import CellCondition, CellStatus, TriState
 from miles.utils.health_checker import SimpleHealthChecker, SimpleHealthCheckerConfig
@@ -44,7 +44,7 @@ def create_trainer_cell_health_checker(
     )
 
 
-def compute_cell_status(state: _CellState, health_checker_status: TriState) -> CellStatus:
+def compute_cell_status(state: CellState, health_checker_status: TriState) -> CellStatus:
     match state:
         case StateAllocatedAlive():
             if health_checker_status == TriState.FALSE:
