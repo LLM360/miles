@@ -11,6 +11,8 @@ from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer.optimizer import MegatronOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
+from miles.utils.event_logger.logger import is_event_logger_initialized, get_event_logger
+from miles.utils.event_logger.models import WeightChecksumDumped
 from miles.utils.pydantic_utils import StrictBaseModel
 
 logger = logging.getLogger(__name__)
@@ -127,15 +129,24 @@ def _get_param_name(param: torch.nn.Parameter) -> str:
 
 def dump_weight_checksums(
     entry: WeightChecksumEntry,
-    output_dir: Path,
     step: int,
     rank: int,
 ) -> None:
-    """Write a weight checksum entry to a JSON file."""
-    file_path = output_dir / "weight_checksum" / f"step_{step:07d}" / f"rank_{rank:04d}.json"
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(entry.model_dump_json())
-    logger.info("Weight checksum dumped to %s", file_path)
+    """Log a weight checksum entry via the EventLogger."""
+    if not is_event_logger_initialized():
+        logger.warning("EventLogger not initialized, skipping weight checksum dump")
+        return
+
+    event = WeightChecksumDumped(
+        step=step,
+        rank=rank,
+        param_hashes=entry.param_hashes,
+        buffer_hashes=entry.buffer_hashes,
+        master_param_hashes=entry.master_param_hashes,
+        optimizer_state_hashes=entry.optimizer_state_hashes,
+    )
+    get_event_logger().log(event)
+    logger.info("Weight checksum logged for step=%d rank=%d", step, rank)
 
 
 def compute_and_dump_weight_checksums(
@@ -154,13 +165,10 @@ def compute_and_dump_weight_checksums(
         return
 
     entry = compute_weight_checksums(model=model, optimizer=optimizer)
-
-    output_dir = Path(args.weight_checksum_dir)
     rank: int = torch.distributed.get_rank()
 
     dump_weight_checksums(
         entry=entry,
-        output_dir=output_dir,
         step=step,
         rank=rank,
     )

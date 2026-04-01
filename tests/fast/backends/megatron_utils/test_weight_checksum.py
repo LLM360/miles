@@ -1,6 +1,5 @@
 """Tests for weight_checksum module."""
 
-import json
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -13,6 +12,9 @@ from miles.backends.megatron_utils.weight_checksum import (
     compute_weight_checksums,
     dump_weight_checksums,
 )
+from miles.utils.event_logger.logger import EventLogger, set_event_logger
+from miles.utils.event_logger.models import WeightChecksumDumped
+from miles.utils.process_identity import MainProcessIdentity
 
 
 def _make_mock_model_chunk(
@@ -154,35 +156,57 @@ class TestComputeWeightChecksums:
 
 
 class TestDumpWeightChecksums:
-    def test_writes_correct_path_and_valid_json(self, tmp_path: Path) -> None:
-        entry = WeightChecksumEntry(
-            param_hashes={"pp0.weight": "abc123"},
-            buffer_hashes={},
-            master_param_hashes={},
-            optimizer_state_hashes={},
-        )
+    def test_logs_event_via_event_logger(self, tmp_path: Path) -> None:
+        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
+        set_event_logger(event_logger)
+        try:
+            entry = WeightChecksumEntry(
+                param_hashes={"pp0.weight": "abc123"},
+                buffer_hashes={},
+                master_param_hashes={},
+                optimizer_state_hashes={},
+            )
 
-        dump_weight_checksums(entry=entry, output_dir=tmp_path, step=42, rank=3)
+            dump_weight_checksums(entry=entry, step=42, rank=3)
+            event_logger.close()
 
-        expected_path = tmp_path / "weight_checksum" / "step_0000042" / "rank_0003.json"
-        assert expected_path.exists()
+            from miles.utils.event_logger.logger import read_events
 
-        data = json.loads(expected_path.read_text())
-        assert data["param_hashes"]["pp0.weight"] == "abc123"
+            events = read_events(tmp_path)
+            checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
+            assert len(checksum_events) == 1
+            assert checksum_events[0].step == 42
+            assert checksum_events[0].rank == 3
+            assert checksum_events[0].param_hashes["pp0.weight"] == "abc123"
+        finally:
+            set_event_logger(None)  # type: ignore[arg-type]
 
-    def test_pydantic_round_trip(self, tmp_path: Path) -> None:
-        entry = WeightChecksumEntry(
-            param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"},
-            buffer_hashes={"pp0.running_mean": "ccc"},
-            master_param_hashes={"pp0.weight": "ddd"},
-            optimizer_state_hashes={"pp0.weight/exp_avg": "eee"},
-        )
+    def test_round_trip_preserves_all_fields(self, tmp_path: Path) -> None:
+        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
+        set_event_logger(event_logger)
+        try:
+            entry = WeightChecksumEntry(
+                param_hashes={"pp0.weight": "aaa", "pp0.bias": "bbb"},
+                buffer_hashes={"pp0.running_mean": "ccc"},
+                master_param_hashes={"pp0.weight": "ddd"},
+                optimizer_state_hashes={"pp0.weight/exp_avg": "eee"},
+            )
 
-        dump_weight_checksums(entry=entry, output_dir=tmp_path, step=10, rank=0)
+            dump_weight_checksums(entry=entry, step=10, rank=0)
+            event_logger.close()
 
-        file_path = tmp_path / "weight_checksum" / "step_0000010" / "rank_0000.json"
-        loaded = WeightChecksumEntry.model_validate_json(file_path.read_text())
-        assert loaded == entry
+            from miles.utils.event_logger.logger import read_events
+
+            events = read_events(tmp_path)
+            checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
+            assert len(checksum_events) == 1
+            e = checksum_events[0]
+            assert e.param_hashes == entry.param_hashes
+            assert e.buffer_hashes == entry.buffer_hashes
+            assert e.master_param_hashes == entry.master_param_hashes
+            assert e.optimizer_state_hashes == entry.optimizer_state_hashes
+        finally:
+            set_event_logger(None)  # type: ignore[arg-type]
 
 
 class TestComputeAndDumpWeightChecksums:
@@ -192,9 +216,6 @@ class TestComputeAndDumpWeightChecksums:
         optimizer = _make_mock_optimizer()
 
         compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=0)
-
-        checksum_dir = tmp_path / "weight_checksum"
-        assert not checksum_dir.exists()
 
     def test_does_nothing_when_step_not_on_interval(self, tmp_path: Path) -> None:
         args = Namespace(
@@ -208,20 +229,29 @@ class TestComputeAndDumpWeightChecksums:
         with patch("miles.backends.megatron_utils.weight_checksum.torch.distributed.get_rank", return_value=0):
             compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=3)
 
-        checksum_dir = tmp_path / "weight_checksum"
-        assert not checksum_dir.exists()
-
     def test_dumps_when_enabled_and_on_interval(self, tmp_path: Path) -> None:
-        args = Namespace(
-            weight_checksum_enable=True,
-            weight_checksum_dir=str(tmp_path),
-            weight_checksum_interval=2,
-        )
-        model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
-        optimizer = _make_mock_optimizer()
+        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
+        set_event_logger(event_logger)
+        try:
+            args = Namespace(
+                weight_checksum_enable=True,
+                weight_checksum_dir=str(tmp_path),
+                weight_checksum_interval=2,
+            )
+            model = [_make_mock_model_chunk(params={"w": torch.randn(2, 2)})]
+            optimizer = _make_mock_optimizer()
 
-        with patch("miles.backends.megatron_utils.weight_checksum.torch.distributed.get_rank", return_value=7):
-            compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
+            with patch("miles.backends.megatron_utils.weight_checksum.torch.distributed.get_rank", return_value=7):
+                compute_and_dump_weight_checksums(args=args, model=model, optimizer=optimizer, step=4)
 
-        expected_path = tmp_path / "weight_checksum" / "step_0000004" / "rank_0007.json"
-        assert expected_path.exists()
+            event_logger.close()
+
+            from miles.utils.event_logger.logger import read_events
+
+            events = read_events(tmp_path)
+            checksum_events = [e for e in events if isinstance(e, WeightChecksumDumped)]
+            assert len(checksum_events) == 1
+            assert checksum_events[0].step == 4
+            assert checksum_events[0].rank == 7
+        finally:
+            set_event_logger(None)  # type: ignore[arg-type]
