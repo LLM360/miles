@@ -42,7 +42,7 @@ class FakeClock(Clock):
         return self._now
 
     async def sleep(self, seconds: float) -> None:
-        if seconds <= 0:
+        if seconds < 0:
             return
 
         target = self._now + seconds
