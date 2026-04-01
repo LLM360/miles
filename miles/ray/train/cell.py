@@ -10,6 +10,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
+from miles.utils.control_server.models import CellCondition, CellStatus
 from miles.utils.health_checker import BaseHealthChecker, HealthStatus, SimpleHealthChecker, SimpleHealthCheckerConfig
 from miles.utils.indep_dp import IndepDPInfo
 
@@ -201,31 +202,35 @@ class RayTrainCell:
     def is_stopped(self) -> bool:
         return isinstance(self._state, _StateStopped)
 
-    def phase_and_conditions(self) -> tuple[str, list[dict[str, str | None]]]:
+    def get_cell_status(self) -> CellStatus:
+        _allocated_true = CellCondition(type="Allocated", status="True")
+        _allocated_false = CellCondition(type="Allocated", status="False")
+
         match self._state:
             case _StateAllocatedAlive():
-                healthy_condition: dict[str, str | None] = {"type": "Healthy", "status": "True"}
                 if self.health_checker.status == HealthStatus.UNHEALTHY:
-                    healthy_condition = {"type": "Healthy", "status": "False", "reason": "HealthCheckFailed"}
-                return "Running", [{"type": "Allocated", "status": "True"}, healthy_condition]
+                    healthy = CellCondition(type="Healthy", status="False", reason="HealthCheckFailed")
+                else:
+                    healthy = CellCondition(type="Healthy", status="True")
+                return CellStatus(phase="Running", conditions=[_allocated_true, healthy])
 
             case _StateAllocatedUninitialized():
-                return "Running", [
-                    {"type": "Allocated", "status": "True"},
-                    {"type": "Healthy", "status": "True"},
-                ]
+                return CellStatus(phase="Running", conditions=[
+                    _allocated_true,
+                    CellCondition(type="Healthy", status="True"),
+                ])
 
             case _StateAllocatedErrored():
-                return "Running", [
-                    {"type": "Allocated", "status": "True"},
-                    {"type": "Healthy", "status": "False", "reason": "ExecutionErrored"},
-                ]
+                return CellStatus(phase="Running", conditions=[
+                    _allocated_true,
+                    CellCondition(type="Healthy", status="False", reason="ExecutionErrored"),
+                ])
 
             case _StatePending():
-                return "Pending", [{"type": "Allocated", "status": "False"}]
+                return CellStatus(phase="Pending", conditions=[_allocated_false])
 
             case _StateStopped():
-                return "Suspended", [{"type": "Allocated", "status": "False"}]
+                return CellStatus(phase="Suspended", conditions=[_allocated_false])
 
             case _:
                 raise NotImplementedError(f"Unknown state: {self._state}")

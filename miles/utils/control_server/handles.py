@@ -4,7 +4,7 @@ import abc
 import asyncio
 
 from miles.ray.train.group import RayTrainGroup
-from miles.utils.control_server.models import Cell, CellCondition, CellMetadata, CellSpec, CellStatus
+from miles.utils.control_server.models import Cell, CellMetadata, CellSpec
 
 
 class _CellHandle(abc.ABC):
@@ -45,7 +45,6 @@ class _ActorCellHandle(_CellHandle):
 
     async def get_cell(self) -> Cell:
         cell = self._group._cells[self._cell_index]
-        phase, conditions = cell.phase_and_conditions()
         return Cell(
             metadata=CellMetadata(
                 name=self.cell_id,
@@ -55,10 +54,7 @@ class _ActorCellHandle(_CellHandle):
                 },
             ),
             spec=CellSpec(suspend=cell.is_stopped),
-            status=CellStatus(
-                phase=phase,
-                conditions=[CellCondition(**c) for c in conditions],
-            ),
+            status=cell.get_cell_status(),
         )
 
     async def suspend(self) -> None:
