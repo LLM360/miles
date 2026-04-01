@@ -1,6 +1,6 @@
 """Tests for event_analyzer rules/weight_checksum."""
 
-from miles.utils.event_analyzer.rules.weight_checksum import (
+from miles.utils.event_analyzer.rules.cross_replica_weight_checksum import (
     ChecksumMismatchIssue,
     _flatten_event,
     _flatten_nested,

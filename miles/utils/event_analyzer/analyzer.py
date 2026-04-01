@@ -5,7 +5,7 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
-from miles.utils.event_analyzer.rules import weight_checksum
+from miles.utils.event_analyzer.rules import cross_replica_weight_checksum
 from miles.utils.event_logger.logger import read_events
 
 logger = logging.getLogger(__name__)
