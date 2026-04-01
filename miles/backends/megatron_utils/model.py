@@ -324,8 +324,8 @@ def forward_only(
 
 
 class TrainStepOutcome(StrEnum):
-    COMMITTED = auto()
-    DISCARDED = auto()
+    NORMAL = auto()
+    DISCARDED_SHOULD_RETRY = auto()
 
 
 def train_one_step(
@@ -466,26 +466,30 @@ def train_one_step(
         forward_only=False,
     )
 
-    outcome = TrainStepOutcome.COMMITTED
+    outcome = TrainStepOutcome.NORMAL
+    valid_step = True
     grad_norm = None
+
     if parallel_state.indep_dp.size > 1:
         try:
             _allreduce_grads_across_replicas(args, model, parallel_state)
         except Exception:
             logger.exception("Gradient allreduce across replicas failed, discarding step")
-            outcome = TrainStepOutcome.DISCARDED
+            outcome = TrainStepOutcome.DISCARDED_SHOULD_RETRY
+            valid_step = False
+
     if not getattr(args, "check_for_nan_in_loss_and_grad", True):
         found_inf_flag = optimizer.prepare_grads()
         if found_inf_flag:
-            outcome = TrainStepOutcome.DISCARDED
+            valid_step = False
         else:
             grad_norm = optimizer.get_grad_norm()
             if isinstance(grad_norm, torch.Tensor):
                 if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-                    outcome = TrainStepOutcome.DISCARDED
+                    valid_step = False
             else:
                 if math.isnan(grad_norm) or math.isinf(grad_norm):
-                    outcome = TrainStepOutcome.DISCARDED
+                    valid_step = False
 
     # CI check: verify only MTP parameters have non-zero gradients when truncation happens
     # This check must happen before optimizer.step() as gradients may be modified during step
@@ -495,7 +499,7 @@ def train_one_step(
 
         check_mtp_only_grad(model, step_id)
 
-    if outcome == TrainStepOutcome.COMMITTED:
+    if valid_step:
         # Update parameters.
         update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
 
@@ -629,7 +633,7 @@ def train(
         pre_hook_enabled = False
 
     num_steps_per_rollout = len(num_microbatches)
-    train_step_outcome = TrainStepOutcome.COMMITTED
+    train_step_outcome = TrainStepOutcome.NORMAL
 
     # Run training iterations till done.
     for step_id in range(num_steps_per_rollout):
@@ -647,9 +651,9 @@ def train(
             parallel_state,
         )
 
-        if step_outcome == TrainStepOutcome.DISCARDED:
+        if step_outcome == TrainStepOutcome.DISCARDED_SHOULD_RETRY:
             logger.warning(f"Step {step_id} discarded, stopping remaining steps in rollout {rollout_id}")
-            train_step_outcome = TrainStepOutcome.DISCARDED
+            train_step_outcome = TrainStepOutcome.DISCARDED_SHOULD_RETRY
             break
 
         if step_id == 0:

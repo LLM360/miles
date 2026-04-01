@@ -338,7 +338,7 @@ class MegatronTrainRayActor(TrainRayActor):
             rollout_data = get_rollout_data(self.args, rollout_data_ref, self.parallel_state)
             if self.args.debug_rollout_only:
                 log_rollout_data(rollout_id, self.args, rollout_data, self.parallel_state)
-                return TrainStepOutcome.COMMITTED
+                return TrainStepOutcome.NORMAL
 
         if self.role == "critic":
             return self.train_critic(rollout_id, rollout_data)
@@ -467,7 +467,7 @@ class MegatronTrainRayActor(TrainRayActor):
             if m.enabled:
                 m.clear_all()
 
-        if train_step_outcome == TrainStepOutcome.COMMITTED:
+        if train_step_outcome == TrainStepOutcome.NORMAL:
             # update the cpu actor weight to the latest model
             self.weights_backuper.backup("actor")
 
