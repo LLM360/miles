@@ -289,7 +289,7 @@ Arguments for WandB, Tensorboard, and general logging.
 
 ## Fault Tolerance
 
-Arguments for handling failures in rollout engines and trainer actors.
+Arguments for handling server failures during rollout.
 
 | Argument | Description | Default | Options | Source |
 | :--- | :--- | :--- | :--- | :--- |
@@ -297,10 +297,6 @@ Arguments for handling failures in rollout engines and trainer actors.
 | `--rollout-health-check-interval` | Interval in seconds between rollout engine `/health_generate` checks during generate/eval. | `30.0` | Type: float | Miles Native |
 | `--rollout-health-check-timeout` | Timeout in seconds to wait for a rollout engine `/health_generate` response before killing it. | `30.0` | Type: float | Miles Native |
 | `--rollout-health-check-first-wait` | Initial grace period (in seconds) before starting health checks. This allows time for model compilation and initialization. Increase this value significantly when using deepgemm. | `0.0` | Type: float | Miles Native |
-| `--trainer-heartbeat-interval` | Interval in seconds between trainer actor heartbeat checks. Only active when `indep_dp` is enabled (multiple cells). | `30.0` | Type: float | Miles Native |
-| `--trainer-heartbeat-timeout` | Timeout in seconds for a single trainer heartbeat RPC. | `10.0` | Type: float | Miles Native |
-| `--trainer-heartbeat-staleness` | Maximum allowed staleness (seconds) of a trainer actor's last-active timestamp before marking the cell as errored. | `90.0` | Type: float | Miles Native |
-| `--trainer-heartbeat-first-wait` | Initial grace period (seconds) before starting trainer heartbeat checks, allowing time for model initialization. | `300.0` | Type: float | Miles Native |
 
 ---
 
