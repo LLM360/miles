@@ -509,6 +509,16 @@ def train_one_step(
 
     dumper_phase_util.finalize(model)
 
+    from miles.backends.megatron_utils.weight_checksum import compute_and_dump_weight_checksums
+
+    accumulated_step = rollout_id * getattr(args, "num_steps_per_rollout", 1) + step_id
+    compute_and_dump_weight_checksums(
+        args=args,
+        model=model,
+        optimizer=optimizer,
+        step=accumulated_step,
+    )
+
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = aggregate_train_losses(losses_reduced, parallel_state)
         return loss_reduced, grad_norm, outcome
