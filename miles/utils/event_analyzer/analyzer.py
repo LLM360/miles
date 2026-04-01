@@ -16,33 +16,24 @@ def run_analysis_from_args(args: Namespace) -> None:
     if event_dir is None:
         return
 
-    mismatches = run_analysis(event_dir=Path(event_dir))
+    issues = run_analysis(event_dir=Path(event_dir))
 
     # Fail fast, we want to stop the system if sanity check fails
-    if mismatches:
-        raise ValueError(f"Event analysis found {len(mismatches)} mismatches, see above for details")
+    if issues:
+        raise ValueError(f"Event analysis found issues: {issues}")
 
 
 def run_analysis(event_dir: Path) -> list[ChecksumMismatch]:
     """Read all events from event_dir and run all analysis rules.
 
     Returns:
-        List of mismatches found. Empty list means all replicas match.
+        List of issues found. Empty list means all replicas match.
     """
     events = read_events(event_dir)
     if not events:
         return []
 
     # TODO: more check rules
-    mismatches = check_weight_checksums(events)
+    issues = check_weight_checksums(events)
 
-    for m in mismatches:
-        logger.error(
-            "Weight checksum mismatch at step %d: %s/%s diverged across ranks %s",
-            m.step,
-            m.category,
-            m.key,
-            m.cell_indices,
-        )
-
-    return mismatches
+    return issues
