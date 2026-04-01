@@ -300,14 +300,14 @@ class TestNeedFirstWait:
 class TestHealthyProperty:
     async def test_initial_healthy_is_unknown(self):
         checker = _make_checker()
-        assert checker.healthy == HealthStatus.UNKNOWN
+        assert checker.status == HealthStatus.UNKNOWN
 
     async def test_healthy_after_successful_check(self):
         checker = _make_checker()
         await checker.start()
         await _tick()
 
-        assert checker.healthy == HealthStatus.HEALTHY
+        assert checker.status == HealthStatus.HEALTHY
         checker.stop()
 
     async def test_unhealthy_after_failed_check(self):
@@ -318,26 +318,26 @@ class TestHealthyProperty:
         await checker.start()
         await _tick()
 
-        assert checker.healthy == HealthStatus.UNHEALTHY
+        assert checker.status == HealthStatus.UNHEALTHY
         checker.stop()
 
     async def test_stop_resets_to_unknown(self):
         checker = _make_checker()
         await checker.start()
         await _tick()
-        assert checker.healthy == HealthStatus.HEALTHY
+        assert checker.status == HealthStatus.HEALTHY
 
         checker.stop()
-        assert checker.healthy == HealthStatus.UNKNOWN
+        assert checker.status == HealthStatus.UNKNOWN
 
     async def test_pause_resets_to_unknown(self):
         checker = _make_checker()
         await checker.start()
         await _tick()
-        assert checker.healthy == HealthStatus.HEALTHY
+        assert checker.status == HealthStatus.HEALTHY
 
         checker.pause()
-        assert checker.healthy == HealthStatus.UNKNOWN
+        assert checker.status == HealthStatus.UNKNOWN
 
         checker.stop()
 
@@ -345,11 +345,11 @@ class TestHealthyProperty:
         checker = _make_checker()
         await checker.start()
         await _tick()
-        assert checker.healthy == HealthStatus.HEALTHY
+        assert checker.status == HealthStatus.HEALTHY
 
         checker.pause()
         checker.resume()
-        assert checker.healthy == HealthStatus.UNKNOWN
+        assert checker.status == HealthStatus.UNKNOWN
 
         checker.stop()
 
@@ -366,10 +366,10 @@ class TestHealthyProperty:
         await checker.start()
 
         await _tick()
-        assert checker.healthy == HealthStatus.UNHEALTHY
+        assert checker.status == HealthStatus.UNHEALTHY
 
         await _tick()
-        assert checker.healthy == HealthStatus.HEALTHY
+        assert checker.status == HealthStatus.HEALTHY
 
         checker.stop()
 
@@ -379,4 +379,4 @@ class TestNoopHealthChecker:
         from miles.utils.health_checker import NoopHealthChecker
 
         checker = NoopHealthChecker()
-        assert checker.healthy == HealthStatus.UNKNOWN
+        assert checker.status == HealthStatus.UNKNOWN

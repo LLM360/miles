@@ -67,7 +67,7 @@ class HealthStatus(StrEnum):
 class BaseHealthChecker(abc.ABC):
     @property
     @abc.abstractmethod
-    def healthy(self) -> HealthStatus: ...
+    def status(self) -> HealthStatus: ...
 
     @abc.abstractmethod
     async def start(self) -> None: ...
@@ -106,14 +106,14 @@ class SimpleHealthChecker(BaseHealthChecker):
         self._first_wait = first_wait
         self._clock = clock or RealClock()
 
-        self._healthy = HealthStatus.UNKNOWN
+        self._status = HealthStatus.UNKNOWN
         self._paused: bool = False
         self._need_first_wait: bool = True
         self._task: asyncio.Task[None] | None = None
 
     @property
-    def healthy(self) -> HealthStatus:
-        return self._healthy
+    def status(self) -> HealthStatus:
+        return self._status
 
     async def start(self) -> None:
         if self._task is not None:
@@ -124,16 +124,16 @@ class SimpleHealthChecker(BaseHealthChecker):
         if self._task is not None:
             self._task.cancel()
             self._task = None
-        self._healthy = HealthStatus.UNKNOWN
+        self._status = HealthStatus.UNKNOWN
 
     def pause(self) -> None:
         self._paused = True
-        self._healthy = HealthStatus.UNKNOWN
+        self._status = HealthStatus.UNKNOWN
 
     def resume(self) -> None:
         self._paused = False
         self._need_first_wait = True
-        self._healthy = HealthStatus.UNKNOWN
+        self._status = HealthStatus.UNKNOWN
 
     async def _loop(self) -> None:
         while True:
@@ -149,7 +149,7 @@ class SimpleHealthChecker(BaseHealthChecker):
                 except Exception:
                     logger.error(f"Health check failed for {self._name}", exc_info=True)
 
-                self._healthy = HealthStatus.HEALTHY if success else HealthStatus.UNHEALTHY
+                self._status = HealthStatus.HEALTHY if success else HealthStatus.UNHEALTHY
                 if self._on_result is not None:
                     self._on_result(success)
 
@@ -158,7 +158,7 @@ class SimpleHealthChecker(BaseHealthChecker):
 
 class NoopHealthChecker(BaseHealthChecker):
     @property
-    def healthy(self) -> HealthStatus:
+    def status(self) -> HealthStatus:
         return HealthStatus.UNKNOWN
 
     async def start(self) -> None:

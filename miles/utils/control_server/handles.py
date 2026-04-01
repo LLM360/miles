@@ -45,6 +45,7 @@ class _ActorCellHandle(_CellHandle):
 
     async def get_cell(self) -> Cell:
         cell = self._group._cells[self._cell_index]
+        phase, conditions = cell.phase_and_conditions()
         return Cell(
             metadata=CellMetadata(
                 name=self.cell_id,
@@ -55,8 +56,8 @@ class _ActorCellHandle(_CellHandle):
             ),
             spec=CellSpec(suspend=cell.is_stopped),
             status=CellStatus(
-                phase=cell.phase,
-                conditions=[CellCondition(**c) for c in cell.conditions],
+                phase=phase,
+                conditions=[CellCondition(**c) for c in conditions],
             ),
         )
 

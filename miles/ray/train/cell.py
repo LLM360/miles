@@ -201,46 +201,32 @@ class RayTrainCell:
     def is_stopped(self) -> bool:
         return isinstance(self._state, _StateStopped)
 
-    @property
-    def phase(self) -> str:
-        match self._state:
-            case _StateAllocatedAlive() | _StateAllocatedUninitialized():
-                return "Running"
-            case _StatePending():
-                return "Pending"
-            case _StateStopped():
-                return "Suspended"
-            case _StateAllocatedErrored():
-                return "Running"
-            case _:
-                raise NotImplementedError(f"Unknown state: {self._state}")
-
-    @property
-    def conditions(self) -> list[dict[str, str | None]]:
+    def phase_and_conditions(self) -> tuple[str, list[dict[str, str | None]]]:
         match self._state:
             case _StateAllocatedAlive():
-                if self.health_checker.healthy == HealthStatus.UNHEALTHY:
-                    healthy = {"type": "Healthy", "status": "False", "reason": "HealthCheckFailed"}
-                else:
-                    healthy = {"type": "Healthy", "status": "True"}
-                return [
-                    {"type": "Allocated", "status": "True"},
-                    healthy,
-                ]
+                healthy_condition: dict[str, str | None] = {"type": "Healthy", "status": "True"}
+                if self.health_checker.status == HealthStatus.UNHEALTHY:
+                    healthy_condition = {"type": "Healthy", "status": "False", "reason": "HealthCheckFailed"}
+                return "Running", [{"type": "Allocated", "status": "True"}, healthy_condition]
+
             case _StateAllocatedUninitialized():
-                return [
+                return "Running", [
                     {"type": "Allocated", "status": "True"},
                     {"type": "Healthy", "status": "True"},
                 ]
+
             case _StateAllocatedErrored():
-                return [
+                return "Running", [
                     {"type": "Allocated", "status": "True"},
                     {"type": "Healthy", "status": "False", "reason": "ExecutionErrored"},
                 ]
-            case _StatePending() | _StateStopped():
-                return [
-                    {"type": "Allocated", "status": "False"},
-                ]
+
+            case _StatePending():
+                return "Pending", [{"type": "Allocated", "status": "False"}]
+
+            case _StateStopped():
+                return "Suspended", [{"type": "Allocated", "status": "False"}]
+
             case _:
                 raise NotImplementedError(f"Unknown state: {self._state}")
 
