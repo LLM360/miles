@@ -6,7 +6,6 @@ from typing import Any
 from miles.utils.event_logger.models import Event, LocalWeightChecksumEvent
 from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
-_PRIMITIVE_TYPES = (str, int, float, bool)
 
 
 class ChecksumMismatchIssue(FrozenStrictBaseModel):
@@ -93,7 +92,7 @@ def _flatten_nested(obj: Any, *, prefix: str = "") -> dict[str, Any]:
     elif isinstance(obj, (list, tuple)):
         for i, v in enumerate(obj):
             result.update(_flatten_nested(v, prefix=f"{prefix}[{i}]"))
-    elif isinstance(obj, _PRIMITIVE_TYPES):
+    else:
         result[prefix] = obj
 
     return result
