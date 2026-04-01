@@ -180,13 +180,7 @@ class RayTrainGroup:
     async def _execute_first_alive(self, fn_name: str, *args, **kwargs) -> None:
         alive_cells = [c for c in self._cells if c.is_alive]
         assert alive_cells, "No alive cells"
-        for cell in alive_cells:
-            try:
-                await cell.execute(fn_name, *args, **kwargs)
-                return
-            except Exception:
-                pass
-        raise RuntimeError(f"All cells failed for {fn_name}")
+        await alive_cells[0].execute(fn_name, *args, **kwargs)
 
     # ------------------------ internals for stop/start ------------------------
 
