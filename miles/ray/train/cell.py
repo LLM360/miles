@@ -134,7 +134,7 @@ class RayTrainCell:
         indep_dp_info: IndepDPInfo,
         recv_ckpt_src_rank: int | None,
     ):
-        await self.async_init(
+        await self.init(
             indep_dp_info=indep_dp_info,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
@@ -180,14 +180,14 @@ class RayTrainCell:
             compute_kwargs=lambda _: {},
         )
 
-    async def async_init(
+    async def init(
         self,
         *,
         indep_dp_info: IndepDPInfo,
         recv_ckpt_src_rank: int | None = None,
     ):
         self._mark_as_alive(indep_dp_info=indep_dp_info)
-        return await self.execute(
+        await self.execute(
             "init",
             args=self.args,
             role=self.role,
@@ -195,6 +195,7 @@ class RayTrainCell:
             indep_dp_info=indep_dp_info,
             recv_ckpt_src_rank=recv_ckpt_src_rank,
         )
+        self.health_checker.start()
 
     async def set_rollout_manager(self):
         if (m := self.rollout_manager) is not None:

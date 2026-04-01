@@ -100,21 +100,16 @@ class RayTrainGroup:
         """
         Allocate GPU resourced and initialize model, optimzier, local ckpt, etc.
         """
-        refs = [
-            future
-            for cell in self._cells
-            for future in cell.async_init(
+        await asyncio.gather(*[
+            cell.init(
                 indep_dp_info=self._compute_indep_dp_info(
                     cell_index=cell.cell_index,
                     # all cells will be alive for this first initialization
                     alive_cell_indices=list(range(len(self._cells))),
                 )
             )
-        ]
-        result = await asyncio.gather(*refs)
-        for cell in self._cells:
-            await cell.health_checker.start()
-        return result
+            for cell in self._cells
+        ])
 
     async def train(self, rollout_id: int, rollout_data_ref):
         """Do one rollout training"""
