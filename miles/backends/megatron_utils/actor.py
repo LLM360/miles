@@ -333,30 +333,23 @@ class MegatronTrainRayActor(TrainRayActor):
                 store_prefix=store_prefix,
             )
 
+    @event_logger_context(lambda _self, rollout_id, rollout_data_ref: dict(rollout_id=rollout_id))
     def train(self, rollout_id: int, rollout_data_ref: Box) -> TrainStepOutcome:
-        ctx = (
-            get_event_logger().with_context(dict(
-                rollout_id=rollout_id,
-            ))
-            if is_event_logger_initialized()
-            else nullcontext()
-        )
-        with ctx:
-            self._heartbeat.bump()
-            self._last_rollout_id = rollout_id
-            if self.args.offload_train:
-                self.wake_up()
+        self._heartbeat.bump()
+        self._last_rollout_id = rollout_id
+        if self.args.offload_train:
+            self.wake_up()
 
-            with timer("data_preprocess"):
-                rollout_data = get_rollout_data(self.args, rollout_data_ref, self.parallel_state)
-                if self.args.debug_rollout_only:
-                    log_rollout_data(rollout_id, self.args, rollout_data, self.parallel_state)
-                    return TrainStepOutcome.NORMAL
+        with timer("data_preprocess"):
+            rollout_data = get_rollout_data(self.args, rollout_data_ref, self.parallel_state)
+            if self.args.debug_rollout_only:
+                log_rollout_data(rollout_id, self.args, rollout_data, self.parallel_state)
+                return TrainStepOutcome.NORMAL
 
-            if self.role == "critic":
-                return self.train_critic(rollout_id, rollout_data)
-            else:
-                return self.train_actor(rollout_id, rollout_data)
+        if self.role == "critic":
+            return self.train_critic(rollout_id, rollout_data)
+        else:
+            return self.train_actor(rollout_id, rollout_data)
 
     def train_critic(self, rollout_id: int, rollout_data: RolloutBatch) -> TrainStepOutcome:
         # Create data iterator for log_probs and train.
