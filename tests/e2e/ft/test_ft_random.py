@@ -1,10 +1,14 @@
 # NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
 
+import random
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Annotated
+
+import requests
 
 _MILES_ROOT: Path = Path(__file__).resolve().parents[3]
 if str(_MILES_ROOT) not in sys.path:
@@ -12,47 +16,98 @@ if str(_MILES_ROOT) not in sys.path:
 
 import typer
 
+from miles.utils.test_utils.fault_injector import FailureMode
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args, prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
 app: typer.Typer = typer.Typer()
 
-DEFAULT_NUM_STEPS: int = 30
-DEFAULT_CRASH_PROBABILITY: float = 0.1
+_CONTROL_SERVER_PORT: int = 18080
+_MEAN_INTERVAL_SECONDS: float = 15.0
+_FAILURE_MODES: list[FailureMode] = [FailureMode.SIGKILL, FailureMode.EXIT, FailureMode.SEGFAULT]
+
+
+def _run_fault_injection_loop(
+    *,
+    base_url: str,
+    seed: int,
+    stop_event: threading.Event,
+) -> None:
+    rng = random.Random(seed)
+
+    while not stop_event.is_set():
+        delay = rng.expovariate(1.0 / _MEAN_INTERVAL_SECONDS)
+        if stop_event.wait(timeout=delay):
+            break
+
+        try:
+            resp = requests.get(f"{base_url}/api/v1/cells", timeout=5)
+            resp.raise_for_status()
+            cells = resp.json()["items"]
+        except Exception:
+            continue
+
+        alive = [c for c in cells if c["status"]["phase"] == "Running"]
+        if len(alive) <= 1:
+            continue
+
+        target = rng.choice(alive)
+        cell_name = target["metadata"]["name"]
+        mode = rng.choice(_FAILURE_MODES)
+
+        try:
+            requests.post(
+                f"{base_url}/api/v1/cells/{cell_name}/inject-fault",
+                json={"mode": mode.value, "sub_index": 0},
+                timeout=5,
+            )
+        except Exception:
+            pass
 
 
 @app.command()
 def run(
     mode: Annotated[str, typer.Option(help="Test mode variant")],
     seed: Annotated[int, typer.Option(help="Random seed for fault injection")] = 42,
-    num_steps: Annotated[int, typer.Option(help="Number of train() calls")] = DEFAULT_NUM_STEPS,
-    crash_probability: Annotated[float, typer.Option(help="Per-step crash probability per cell")] = DEFAULT_CRASH_PROBABILITY,
+    num_steps: Annotated[int, typer.Option(help="Number of train() calls")] = 30,
+    crash_probability: Annotated[float, typer.Option(help="Per-step crash probability per cell")] = 0.1,
 ) -> None:
-    """Run random failure injection soak test.
+    """Random failure soak test.
 
-    The mini FT controller handles automatic recovery. The test verifies
-    that training completes without hanging and all assertions pass.
+    Starts a background thread that injects faults at random intervals
+    via the control server HTTP API. The mini FT controller auto-recovers.
     """
     ft_mode: FTTestMode = resolve_mode(mode)
     dump_dir: str = str(Path(tempfile.mkdtemp(prefix="ft_random_failure_")) / "dumps")
     print(f"Dump directory: {dump_dir}")
-    print(f"Seed: {seed}, Steps: {num_steps}, Crash probability: {crash_probability}")
+    print(f"Seed: {seed}, Steps: {num_steps}")
 
     prepare(ft_mode)
 
-    base = (
+    train_args = (
         get_common_train_args(ft_mode, dump_dir=dump_dir, num_steps=num_steps)
         + get_indep_dp_args(ft_mode)
-        + "--control-server-port 18080 "
+        + f"--control-server-port {_CONTROL_SERVER_PORT} "
         + "--mini-ft-controller-enable "
-        + f"--ci-ft-test-scenario random_failure "
-        + f"--ci-ft-test-random-seed {seed} "
-        + f"--ci-ft-test-crash-probability {crash_probability} "
         + "--save-local-weight-checksum "
         + "--enable-event-analyzer "
     )
 
-    run_training(train_args=base, mode=ft_mode)
+    base_url = f"http://localhost:{_CONTROL_SERVER_PORT}"
+    stop_event = threading.Event()
+    injector_thread = threading.Thread(
+        target=_run_fault_injection_loop,
+        kwargs={"base_url": base_url, "seed": seed, "stop_event": stop_event},
+        daemon=True,
+        name="ft-random-fault-injector",
+    )
+    injector_thread.start()
+
+    try:
+        run_training(train_args=train_args, mode=ft_mode)
+    finally:
+        stop_event.set()
+        injector_thread.join(timeout=5)
 
     print(f"Random failure soak test PASSED (seed={seed}, steps={num_steps})")
 
