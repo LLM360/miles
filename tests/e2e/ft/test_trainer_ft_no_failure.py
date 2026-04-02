@@ -10,7 +10,7 @@ if str(_MILES_ROOT) not in sys.path:
 
 from tests.e2e.ft.conftest_ft.app import create_comparison_app
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args
-from miles.utils.test_utils.metric_comparison import compare_metrics
+from miles.utils.test_utils.metric_comparison import compare_dumps, compare_metrics
 from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
 
@@ -28,6 +28,10 @@ def _compare(dump_dir: str, mode: FTTestMode) -> None:
         target_dir=f"{dump_dir}/target",
         rtol=1e-2,
         key_prefixes=["train/"],
+    )
+    compare_dumps(
+        baseline_dir=f"{dump_dir}/baseline",
+        target_dir=f"{dump_dir}/target",
     )
     print("No-failure comparison test PASSED")
 

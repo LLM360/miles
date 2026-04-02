@@ -1,8 +1,14 @@
 # NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 
-import miles.utils.external_utils.command_utils as U
+import tempfile
+from pathlib import Path
 
+import miles.utils.external_utils.command_utils as U
+from tests.e2e.conftest_dumper import MEGATRON_PATCHER_YAMLS
 from tests.e2e.ft.conftest_ft.modes import DEBUG_ROLLOUT_DATA_HF_REPO, MODEL_HF_REPO, FTTestMode
+
+_RUN_DIR: Path = Path(tempfile.mkdtemp(prefix="ft_test_dumper_"))
+_MEGATRON_SOURCE_PATCHER_CONFIG_PATH: Path = _RUN_DIR / "megatron_source_patcher.yaml"
 
 
 def prepare(mode: FTTestMode) -> None:
@@ -14,6 +20,9 @@ def prepare(mode: FTTestMode) -> None:
         num_gpus_per_node=mode.train_gpus_per_node,
     )
     U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
+
+    megatron_yaml: str = MEGATRON_PATCHER_YAMLS["thd"]
+    _MEGATRON_SOURCE_PATCHER_CONFIG_PATH.write_text(megatron_yaml)
 
 
 def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None) -> str:
@@ -74,6 +83,12 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         "--control-server-port 0 "
     )
 
+    dumper_args = (
+        f"--dumper-enable --dumper-dir {dump_dir}/dumps "
+        f"--dumper-fwd-bwd enable_model_value=1 enable_model_grad=1 "
+        f"--dumper-source-patcher-config-train {_MEGATRON_SOURCE_PATCHER_CONFIG_PATH} "
+    )
+
     train_args = (
         f"{ckpt_args} "
         f"{optimizer_args} "
@@ -82,6 +97,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         f"{mode.parallel_args} "
         f"{misc_args} "
         f"{ft_args} "
+        f"{dumper_args} "
         f"{U.get_default_wandb_args(__file__)} "
     )
 
