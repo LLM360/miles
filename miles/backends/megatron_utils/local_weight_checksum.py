@@ -46,23 +46,26 @@ def dump_local_weight_checksums(
 
     event_logger = get_event_logger()
     source = event_logger.source
-    info = _compute_weight_checksums(
+    state = _compute_weight_checksum_state(
         model=model,
         optimizer=optimizer,
-        step=step,
-        cell_index=source.cell_index,
-        rank_within_cell=source.rank_within_cell,
     )
-    get_event_logger().log(info, print_log=False)
+    event_logger.log(
+        LocalWeightChecksumEvent,
+        dict(
+            step=step,
+            cell_index=source.cell_index,
+            rank_within_cell=source.rank_within_cell,
+            state=state,
+        ),
+        print_log=False,
+    )
 
 
-def _compute_weight_checksums(
+def _compute_weight_checksum_state(
     model: Sequence[DDP],
     optimizer: MegatronOptimizer,
-    step: int,
-    cell_index: int,
-    rank_within_cell: int,
-) -> LocalWeightChecksumEvent:
+) -> LocalWeightChecksumState:
     param_hashes = _hash_named_tensors(model, accessor="named_parameters")
     assert param_hashes, "No parameters found in model"
     buffer_hashes = _hash_named_tensors(model, accessor="named_buffers")
@@ -70,15 +73,10 @@ def _compute_weight_checksums(
     optimizer_hashes = _collect_optimizer_hashes(model=model, optimizer=optimizer)
     assert optimizer_hashes, "No sub-optimizers found"
 
-    return LocalWeightChecksumEvent(
-        step=step,
-        cell_index=cell_index,
-        rank_within_cell=rank_within_cell,
-        state=LocalWeightChecksumState(
-            param_hashes=param_hashes,
-            buffer_hashes=buffer_hashes,
-            optimizer_hashes=optimizer_hashes,
-        ),
+    return LocalWeightChecksumState(
+        param_hashes=param_hashes,
+        buffer_hashes=buffer_hashes,
+        optimizer_hashes=optimizer_hashes,
     )
 
 

@@ -1,9 +1,10 @@
 import logging
 import threading
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TextIO, Any, Type
+from typing import Any, TextIO, Type
 
 from pydantic import TypeAdapter
 
@@ -22,22 +23,28 @@ class EventLogger:
         self._lock = threading.Lock()
         self._file: TextIO = open(self._log_dir / file_name, "a", encoding="utf-8")
         self._source = source
+        self._context: dict[str, Any] = {}
 
     @property
     def source(self) -> ProcessIdentity:
         return self._source
 
     @contextmanager
-    def with_context(self, ctx: dict[str, Any]):
-        """"""
-        TODO
+    def with_context(self, ctx: dict[str, Any]) -> Generator[None, None, None]:
+        """Temporarily merge extra fields into every event logged within this scope."""
+        prev = self._context.copy()
+        self._context.update(ctx)
+        try:
+            yield
+        finally:
+            self._context = prev
 
-    def log(self, event_cls: Type[Event], partial: dict[str, Any], *, print_log: bool = True) -> None:
+    def log(self, event_cls: Type[EventBase], partial: dict[str, Any], *, print_log: bool = True) -> None:
         event = event_cls(**{
             **partial,
             "timestamp": datetime.now(timezone.utc),
             "source": self._source,
-            **extra_context_TODO,
+            **self._context,
         })
         line = event.model_dump_json() + "\n"
         with self._lock:

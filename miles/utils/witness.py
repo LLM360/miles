@@ -189,7 +189,8 @@ def _record_and_log_witness_param(
     nonzero_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
 
     get_event_logger().log(
-        WitnessEvent(
+        WitnessEvent,
+        dict(
             step=step,
             position=position,
             nonzero_ids=nonzero_ids,
