@@ -1,5 +1,3 @@
-"""Rule: cross-replica weight checksum consistency."""
-
 from collections.abc import Iterable
 from typing import Any
 
@@ -16,11 +14,7 @@ class ChecksumMismatchIssue(FrozenStrictBaseModel):
 
 
 def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
-    """Verify cross-replica weight checksum consistency from events.
-
-    Returns:
-        List of mismatches found. Empty list means all replicas match.
-    """
+    """Weight checksum across replicas should be exactly the same."""
     checksum_events = [e for e in events if isinstance(e, LocalWeightChecksumEvent)]
     if not checksum_events:
         return []
