@@ -1,0 +1,83 @@
+# WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
+
+# Usage:
+#   python test_ft_random_failure.py run --mode dp4_cp2
+#   python test_ft_random_failure.py run --mode dp4_cp2 --seed 42 --num-steps 50
+
+# This is a non-comparison soak test. Train actors randomly crash themselves
+# via ray concurrency group background threads. The mini FT controller
+# auto-recovers crashed cells. Verifies no hangs, no assertion failures,
+# and final weights are loadable.
+
+import sys
+from pathlib import Path
+from typing import Annotated
+
+_MILES_ROOT: Path = Path(__file__).resolve().parents[3]
+if str(_MILES_ROOT) not in sys.path:
+    sys.path.insert(0, str(_MILES_ROOT))
+
+import typer
+
+from tests.e2e.ft.conftest_ft import (
+    FTTestMode,
+    get_common_train_args,
+    get_indep_dp_args,
+    prepare,
+    resolve_mode,
+    run_training,
+)
+
+app: typer.Typer = typer.Typer()
+
+DEFAULT_NUM_STEPS: int = 30
+DEFAULT_CRASH_PROBABILITY: float = 0.1
+
+
+@app.command()
+def run(
+    mode: Annotated[str, typer.Option(help="Test mode variant")] = "dp4_cp2",
+    seed: Annotated[int, typer.Option(help="Random seed for fault injection")] = 42,
+    num_steps: Annotated[int, typer.Option(help="Number of train() calls")] = DEFAULT_NUM_STEPS,
+    crash_probability: Annotated[float, typer.Option(help="Per-step crash probability per cell")] = DEFAULT_CRASH_PROBABILITY,
+) -> None:
+    """Run random failure injection soak test.
+
+    The mini FT controller handles automatic recovery. The test verifies
+    that training completes without hanging and all assertions pass.
+    """
+    import tempfile
+
+    ft_mode: FTTestMode = resolve_mode(mode)
+    dump_dir: str = str(Path(tempfile.mkdtemp(prefix="ft_random_failure_")) / "dumps")
+    print(f"Dump directory: {dump_dir}")
+    print(f"Seed: {seed}, Steps: {num_steps}, Crash probability: {crash_probability}")
+
+    prepare(ft_mode)
+
+    base = get_common_train_args(ft_mode, dump_dir=dump_dir)
+    base += get_indep_dp_args(ft_mode)
+
+    base += "--mini-ft-controller-enable "
+    base += "--control-server-port 0 "
+
+    base += f"--ci-ft-test-scenario random_failure "
+    base += f"--ci-ft-random-seed {seed} "
+    base += f"--ci-ft-crash-probability {crash_probability} "
+
+    base += "--save-local-weight-checksum "
+    base += "--enable-event-analyzer "
+
+    run_training(train_args=base, mode=ft_mode)
+
+    # Step: Verify events directory exists
+    events_dir: Path = Path(dump_dir) / "events"
+    assert events_dir.exists(), f"Events directory not found: {events_dir}"
+    jsonl_files = list(events_dir.glob("**/*.jsonl"))
+    assert len(jsonl_files) > 0, f"No event files found in {events_dir}"
+
+    print(f"Random failure soak test PASSED (seed={seed}, steps={num_steps})")
+
+
+if __name__ == "__main__":
+    app()

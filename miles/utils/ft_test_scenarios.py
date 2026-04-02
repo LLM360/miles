@@ -9,6 +9,7 @@ The scenario is called as a *step callback* — it receives the current
 """
 
 import logging
+import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -117,6 +118,65 @@ class DeterministicScenario(FTTestScenarioBase):
 
     def on_complete(self) -> None:
         logger.info("DeterministicScenario: completed successfully")
+
+
+@register_scenario("random_failure")
+class RandomFailureScenario(FTTestScenarioBase):
+    """Task 4: Random unexpected crashes via background thread in train actors.
+
+    Unlike tasks 1-3, this uses the mini FT controller for automatic recovery
+    rather than coordinated stop/start. The scenario randomly selects a cell
+    to crash at each step boundary. The actual crash is simulated by calling
+    stop_cell() to emulate an unexpected failure detected by the health checker.
+
+    NOTE: True unexpected crashes (os.kill, sys.exit in actor background thread)
+    require ray concurrency group integration in the train actor. This scenario
+    provides the orchestration layer; the actor-side crash injection is a
+    separate concern that plugs into the actor's concurrency group.
+    """
+
+    def __init__(self, ctx: FTTestContext) -> None:
+        super().__init__(ctx)
+        seed: int = ctx.metadata.get("random_seed", 42)
+        self._crash_probability: float = ctx.metadata.get("crash_probability", 0.1)
+        self._rng: random.Random = random.Random(seed)
+        self._fault_log: list[dict] = []
+        logger.info(
+            "RandomFailureScenario: seed=%d, crash_probability=%.3f",
+            seed, self._crash_probability,
+        )
+
+    def after_step(self, step: int) -> None:
+        if self._rng.random() < self._crash_probability:
+            alive_cells = [
+                i for i in range(self.ctx.num_cells)
+                if self.ctx.group._cells[i].is_alive
+            ]
+            if len(alive_cells) <= 1:
+                logger.info(
+                    "RandomFailureScenario: skipping crash at step %d (only %d alive cells)",
+                    step, len(alive_cells),
+                )
+                return
+
+            target = self._rng.choice(alive_cells)
+            logger.info(
+                "RandomFailureScenario: crashing cell %d at step %d",
+                target, step,
+            )
+            self.ctx.group.stop_cell(target)
+            self._fault_log.append({"step": step, "cell": target, "action": "crash"})
+
+            self.ctx.group.start_cell(target)
+            self._fault_log.append({"step": step, "cell": target, "action": "restart"})
+
+    def on_complete(self) -> None:
+        logger.info(
+            "RandomFailureScenario: completed. Total faults injected: %d",
+            len([e for e in self._fault_log if e["action"] == "crash"]),
+        )
+        for entry in self._fault_log:
+            logger.info("  Fault event: %s", entry)
 
 
 def get_scenario(name: str, ctx: FTTestContext) -> FTTestScenarioBase:

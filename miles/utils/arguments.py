@@ -1401,6 +1401,18 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "miles.utils.ft_test_scenarios at step boundaries for coordinated fault injection.",
             )
             parser.add_argument(
+                "--ci-ft-random-seed",
+                type=int,
+                default=42,
+                help="Random seed for the random_failure FT test scenario.",
+            )
+            parser.add_argument(
+                "--ci-ft-crash-probability",
+                type=float,
+                default=0.1,
+                help="Per-step crash probability for the random_failure FT test scenario.",
+            )
+            parser.add_argument(
                 "--env-report",
                 type=str,
                 default=os.environ.get("MILES_SCRIPT_ENV_REPORT", ""),
