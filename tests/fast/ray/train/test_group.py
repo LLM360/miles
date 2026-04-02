@@ -7,13 +7,18 @@ from tests.fast.ray.train.dummy_actor import DummyTrainActor
 
 from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.ray.train.group import RayTrainGroup
+from miles.utils.witness.allocator import WitnessIdAllocator
 
 pytestmark = pytest.mark.asyncio
 
+_DUMMY_DATA_PACK = {"data_ref": "data", "sample_indices": [0]}
 
-def _make_mock_args(*, indep_dp: bool = True) -> MagicMock:
+
+def _make_mock_args(*, indep_dp: bool = True, enable_witness: bool = False) -> MagicMock:
     args = MagicMock()
     args.indep_dp = indep_dp
+    args.enable_witness = enable_witness
+    args.witness_buffer_size = 100
     args.trainer_heartbeat_checker_interval = 30.0
     args.trainer_heartbeat_checker_timeout = 10.0
     args.trainer_heartbeat_checker_max_heartbeat_age = 90.0
@@ -181,12 +186,12 @@ class TestComputeIndepDPInfo:
         assert info.alive_size == 2
 
 
-class TestBroadcastAlive:
+class TestExecuteAllAliveAndCatch:
     async def test_skips_stopped_cells(self):
         group = await _make_alive_group(num_cells=2)
         group._cells[1].stop()
 
-        await group._broadcast_alive("train")
+        await group._execute_all_alive_and_catch("train")
 
         for handle in group._cells[0]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
@@ -197,7 +202,7 @@ class TestBroadcastAlive:
         group._cells[0].stop()
 
         with pytest.raises(AssertionError, match="No alive cells"):
-            await group._broadcast_alive("train")
+            await group._execute_all_alive_and_catch("train")
 
 
 class TestRefreshCellsReconfigure:
@@ -394,7 +399,7 @@ class TestTrain:
     async def test_train_refreshes_and_dispatches(self):
         group = await _make_alive_group(num_cells=2)
 
-        await group.train(rollout_id=0, rollout_data_ref="data")
+        await group.train(rollout_id=0, rollout_data_pack=_DUMMY_DATA_PACK)
 
         for cell in group._cells:
             for handle in cell._get_actor_handles():
@@ -405,7 +410,7 @@ class TestTrain:
         group = await _make_alive_group(num_cells=3)
         group.stop_cell(1)
 
-        await group.train(rollout_id=0, rollout_data_ref="data")
+        await group.train(rollout_id=0, rollout_data_pack=_DUMMY_DATA_PACK)
 
         for cell in [group._cells[0], group._cells[2]]:
             for handle in cell._get_actor_handles():
@@ -425,7 +430,7 @@ class TestTrain:
                 init_counts[id(handle)] = len(ray.get(handle.get_calls.remote()))
 
         for step in range(3):
-            await group.train(rollout_id=step, rollout_data_ref="data")
+            await group.train(rollout_id=step, rollout_data_pack=_DUMMY_DATA_PACK)
 
         assert group._indep_dp_quorum_id == 0
 
@@ -444,7 +449,7 @@ class TestTrain:
         group.stop_cell(1)
         group.start_cell(1)
 
-        await group.train(rollout_id=0, rollout_data_ref="data")
+        await group.train(rollout_id=0, rollout_data_pack=_DUMMY_DATA_PACK)
 
         assert all(c.is_alive for c in group._cells)
         for cell in group._cells:
@@ -455,28 +460,28 @@ class TestTrain:
         group = await _make_alive_group(num_cells=3)
 
         # Step 1: Normal training (no reconfigure)
-        await group.train(rollout_id=0, rollout_data_ref="data")
+        await group.train(rollout_id=0, rollout_data_pack=_DUMMY_DATA_PACK)
         assert group._indep_dp_quorum_id == 0
 
         # Step 2: Stop cell 2 → degraded (triggers reconfigure)
         group.stop_cell(2)
-        await group.train(rollout_id=1, rollout_data_ref="data")
+        await group.train(rollout_id=1, rollout_data_pack=_DUMMY_DATA_PACK)
         assert group._indep_dp_quorum_id == 1
         assert group._cells[0].indep_dp_info.alive_cell_indices == [0, 1]
 
         # Step 3: Steady degraded (no reconfigure)
-        await group.train(rollout_id=2, rollout_data_ref="data")
+        await group.train(rollout_id=2, rollout_data_pack=_DUMMY_DATA_PACK)
         assert group._indep_dp_quorum_id == 1
 
         # Step 4: Start cell 2 → healing (triggers reconfigure)
         group.start_cell(2)
-        await group.train(rollout_id=3, rollout_data_ref="data")
+        await group.train(rollout_id=3, rollout_data_pack=_DUMMY_DATA_PACK)
         assert group._indep_dp_quorum_id == 2
         assert all(c.is_alive for c in group._cells)
         assert group._cells[2].indep_dp_info.alive_cell_indices == [0, 1, 2]
 
         # Step 5: Full training again (no reconfigure)
-        await group.train(rollout_id=4, rollout_data_ref="data")
+        await group.train(rollout_id=4, rollout_data_pack=_DUMMY_DATA_PACK)
         assert group._indep_dp_quorum_id == 2
 
 
@@ -490,7 +495,7 @@ class TestPerCellErrorIsolation:
             ray.get(handle.set_fail_methods.remote(["train"]))
 
         # Step 2: Broadcast train
-        await group._broadcast_alive("train", 0, "data")
+        await group._execute_all_alive_and_catch("train", 0, "data")
 
         # Step 3: Cell 1 is errored, others alive
         assert group._cells[0].is_alive
@@ -511,11 +516,11 @@ class TestPerCellErrorIsolation:
         for handle in group._cells[0]._get_actor_handles():
             ray.get(handle.set_fail_methods.remote(["train"]))
 
-        await group._broadcast_alive("train", 0, "data")
+        await group._execute_all_alive_and_catch("train", 0, "data")
         assert group._cells[0].is_errored
 
         # Step 2: Next broadcast only goes to cell 1
-        await group._broadcast_alive("train", 1, "data")
+        await group._execute_all_alive_and_catch("train", 1, "data")
 
         for handle in group._cells[1]._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())
@@ -693,7 +698,7 @@ class TestTrainRetry:
         """All cells return NORMAL → no retry, train called once per cell."""
         group = await _make_alive_group(num_cells=2)
 
-        await group.train(rollout_id=0, rollout_data_ref="data")
+        await group.train(rollout_id=0, rollout_data_pack=_DUMMY_DATA_PACK)
 
         for i in range(2):
             assert _count_train_calls(group, i) == 1
@@ -705,7 +710,7 @@ class TestTrainRetry:
 
         # After first train call, switch to NORMAL so second attempt succeeds
         async def _do_train():
-            await group.train(rollout_id=0, rollout_data_ref="data")
+            await group.train(rollout_id=0, rollout_data_pack=_DUMMY_DATA_PACK)
 
         import asyncio
 
@@ -726,7 +731,7 @@ class TestTrainRetry:
         await _set_all_train_return(group, TrainStepOutcome.DISCARDED_SHOULD_RETRY)
 
         async def _do_train():
-            await group.train(rollout_id=0, rollout_data_ref="data")
+            await group.train(rollout_id=0, rollout_data_pack=_DUMMY_DATA_PACK)
 
         import asyncio
 
@@ -751,9 +756,71 @@ class TestTrainRetry:
             ray.get(handle.set_fail_methods.remote(["train"]))
 
         # Step 2: Train retries once: first attempt has errored cell, second attempt succeeds with alive cells only
-        await group.train(rollout_id=0, rollout_data_ref="data")
+        await group.train(rollout_id=0, rollout_data_pack=_DUMMY_DATA_PACK)
 
         # Step 3: Cell 1 errored, alive cells got 2 train calls (one per attempt)
         assert group._cells[1].is_errored
         for i in [0, 2]:
             assert _count_train_calls(group, i) == 2
+
+
+class TestAllocateWitnessInfo:
+    def test_returns_none_when_disabled(self):
+        """When _witness_allocator is None, _allocate_witness_info returns None."""
+        group = _make_group(num_cells=1)
+        group._witness_allocator = None
+
+        result = group._allocate_witness_info(rollout_id=0, attempt=0, sample_indices=[10, 20, 30])
+
+        assert result is None
+
+    def test_returns_witness_info_when_enabled(self):
+        """When witness is enabled, _allocate_witness_info returns a WitnessInfo with correct number of ids."""
+        group = _make_group(num_cells=1)
+        group._witness_allocator = WitnessIdAllocator(buffer_size=100)
+
+        with patch("miles.ray.train.group.is_event_logger_initialized", return_value=False):
+            result = group._allocate_witness_info(rollout_id=0, attempt=0, sample_indices=[10, 20, 30])
+
+        assert result is not None
+        assert len(result.witness_ids) == 3
+        assert isinstance(result.stale_ids, list)
+
+
+class TestLogStepEndEvent:
+    def test_with_normal_and_error_cells(self):
+        """Passes correct cell_outcomes to event logger for a mix of normal and errored cells."""
+        group = _make_group(num_cells=3)
+
+        mock_cell_0 = MagicMock()
+        mock_cell_0.cell_index = 0
+        mock_cell_1 = MagicMock()
+        mock_cell_1.cell_index = 1
+        mock_cell_2 = MagicMock()
+        mock_cell_2.cell_index = 2
+
+        snapshot_alive_cells = [mock_cell_0, mock_cell_1, mock_cell_2]
+        results = [
+            [TrainStepOutcome.NORMAL, TrainStepOutcome.NORMAL],
+            RuntimeError("boom"),
+            [TrainStepOutcome.NORMAL],
+        ]
+
+        with patch("miles.ray.train.group.is_event_logger_initialized", return_value=True), \
+             patch("miles.ray.train.group.get_event_logger") as mock_get_logger:
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+
+            group._log_step_end_event(
+                rollout_id=42, snapshot_alive_cells=snapshot_alive_cells, results=results,
+            )
+
+            mock_logger.log.assert_called_once()
+            args = mock_logger.log.call_args[0]
+            partial = args[1]
+            assert partial["rollout_id"] == 42
+
+            cell_outcomes = partial["cell_outcomes"]
+            assert cell_outcomes[0] == [TrainStepOutcome.NORMAL, TrainStepOutcome.NORMAL]
+            assert cell_outcomes[1] == "error"
+            assert cell_outcomes[2] == [TrainStepOutcome.NORMAL]
