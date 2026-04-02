@@ -1,0 +1,128 @@
+"""Fault tolerance test scenarios executed inside the training job.
+
+Each scenario function is invoked at step boundaries by the training loop
+when ``--ci-ft-test-scenario`` is set. Scenarios perform coordinated fault
+injection (stop/start cells) and are deterministic.
+
+The scenario is called as a *step callback* — it receives the current
+``FTTestContext`` and decides what to do before/after each ``train()`` call.
+"""
+
+import logging
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from miles.ray.train.group import RayTrainGroup
+
+logger = logging.getLogger(__name__)
+
+SCENARIOS: dict[str, "type[FTTestScenarioBase]"] = {}
+
+
+def register_scenario(name: str):
+    """Decorator to register a scenario class by name."""
+    def _decorator(cls: type) -> type:
+        SCENARIOS[name] = cls
+        return cls
+    return _decorator
+
+
+@dataclass
+class FTTestContext:
+    """Runtime context shared across scenario callbacks."""
+    group: "RayTrainGroup"
+    num_cells: int
+    current_step: int = 0
+    metadata: dict = field(default_factory=dict)
+
+
+class FTTestScenarioBase:
+    """Base class for FT test scenarios.
+
+    Subclasses override ``before_step`` and ``after_step`` to inject faults.
+    """
+
+    def __init__(self, ctx: FTTestContext) -> None:
+        self.ctx = ctx
+
+    def before_step(self, step: int) -> None:
+        """Called before each train() invocation."""
+
+    def after_step(self, step: int) -> None:
+        """Called after each train() invocation."""
+
+    def on_complete(self) -> None:
+        """Called after all steps are done."""
+
+
+@register_scenario("with_failure")
+class WithFailureScenario(FTTestScenarioBase):
+    """Task 2: Coordinated stop/start sequence.
+
+    Timeline (phase_b, resuming from ckpt):
+      train() #0: normal (N cells)
+      after #0:   stop_cell(target_cell_index)
+      train() #1: N-1 cells (retry on DISCARDED_SHOULD_RETRY)
+      after #1:   start_cell(target_cell_index)
+      train() #2: _refresh_cells() heals the cell, N cells run
+      train() #3: N cells stable
+    """
+
+    def __init__(self, ctx: FTTestContext) -> None:
+        super().__init__(ctx)
+        self._target_cell_index: int = ctx.num_cells - 1
+
+    def after_step(self, step: int) -> None:
+        if step == 0:
+            logger.info(
+                "WithFailureScenario: stopping cell %d after step %d",
+                self._target_cell_index, step,
+            )
+            self.ctx.group.stop_cell(self._target_cell_index)
+
+        elif step == 1:
+            logger.info(
+                "WithFailureScenario: starting cell %d after step %d",
+                self._target_cell_index, step,
+            )
+            self.ctx.group.start_cell(self._target_cell_index)
+
+    def on_complete(self) -> None:
+        logger.info("WithFailureScenario: completed successfully")
+
+
+@register_scenario("deterministic")
+class DeterministicScenario(FTTestScenarioBase):
+    """Task 3: Stop + start (no missed steps) for bitwise healing verification.
+
+    Timeline:
+      train() #0, #1: all N cells normal
+      after #1:       stop_cell(X) + start_cell(X)
+      train() #2:     _refresh_cells() heals X from cell_0, all N cells run
+    """
+
+    def __init__(self, ctx: FTTestContext) -> None:
+        super().__init__(ctx)
+        self._target_cell_index: int = ctx.num_cells - 1
+
+    def after_step(self, step: int) -> None:
+        if step == 1:
+            logger.info(
+                "DeterministicScenario: stop+start cell %d after step %d",
+                self._target_cell_index, step,
+            )
+            self.ctx.group.stop_cell(self._target_cell_index)
+            self.ctx.group.start_cell(self._target_cell_index)
+
+    def on_complete(self) -> None:
+        logger.info("DeterministicScenario: completed successfully")
+
+
+def get_scenario(name: str, ctx: FTTestContext) -> FTTestScenarioBase:
+    """Look up and instantiate a scenario by name."""
+    if name not in SCENARIOS:
+        raise ValueError(
+            f"Unknown FT test scenario: {name!r}. Available: {list(SCENARIOS.keys())}"
+        )
+    return SCENARIOS[name](ctx)
