@@ -77,12 +77,6 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         f"--num-rollout {num_steps if num_steps is not None else mode.num_steps} "
     )
 
-    ft_args = (
-        "--use-fault-tolerance "
-        "--ft-components train "
-        "--control-server-port 0 "
-    )
-
     dumper_args = (
         f"--dumper-enable --dumper-dir {dump_dir}/dumps "
         f"--dumper-fwd-bwd enable_model_value=1 enable_model_grad=1 "
@@ -96,7 +90,6 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         f"{event_logger_args} "
         f"{mode.parallel_args} "
         f"{misc_args} "
-        f"{ft_args} "
         f"{dumper_args} "
         f"{U.get_default_wandb_args(__file__)} "
     )

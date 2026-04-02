@@ -20,11 +20,6 @@ class FailureMode(Enum):
 
 
 def inject_fault(mode: str) -> None:
-    """Execute a fault immediately. Does not return (process dies or deadlocks).
-
-    Args:
-        mode: One of "sigkill", "exit", "segfault", "deadlock".
-    """
     failure_mode = FailureMode(mode)
     logger.warning("FaultInjector: executing %s (pid=%d)", failure_mode.value, os.getpid())
 
