@@ -98,6 +98,26 @@ class WitnessSnapshotParamEvent(_ActorTrainEventBase):
     instance_id: str
     # TODO: may shrink a contiguous range of numbers into a pair, if this is too large/slow
     nonzero_witness_ids: list[int]
+    stale_threshold: int
+
+
+class RolloutGenerateCompletedEvent(EventBase):
+    type: Literal["rollout_generate_completed"] = "rollout_generate_completed"
+    rollout_id: int
+    sample_indices: list[int]
+
+
+class WitnessAllocateIdEvent(EventBase):
+    type: Literal["witness_allocate_id"] = "witness_allocate_id"
+    rollout_id: int
+    attempt: int
+    witness_id_to_sample_index: dict[int, int]
+
+
+class TrainGroupStepEndEvent(EventBase):
+    type: Literal["train_group_step_end"] = "train_group_step_end"
+    rollout_id: int
+    cell_outcomes: dict[int, str]
 
 
 Event = Annotated[
@@ -111,7 +131,10 @@ Event = Annotated[
     | CheckpointTransferStartedEvent
     | CheckpointTransferCompletedEvent
     | LocalWeightChecksumEvent
-    | WitnessSnapshotParamEvent,
+    | WitnessSnapshotParamEvent
+    | RolloutGenerateCompletedEvent
+    | WitnessAllocateIdEvent
+    | TrainGroupStepEndEvent,
     Discriminator("type"),
 ]
 
