@@ -35,7 +35,7 @@ WitnessIssue = WitnessDataMismatchIssue | WitnessMissingSnapshotIssue
 def check(events: list[Event]) -> list[WitnessIssue]:
     """
     Related events:
-    * WitnessAllocateIdEvent: when allocating `witness_id` to `sample_id`
+    * WitnessAllocateIdEvent: when allocating `witness_id` to `sample_index`
     * WitnessSnapshotParamEvent: near the end of each train() step in MegatronTrainRayActor
         * If a witness_id appears in the weight, it means the corresponding data is consumed at least once.
     * TrainGroupStepEndEvent: after each train() step in RayTrainGroup
@@ -46,7 +46,7 @@ def check(events: list[Event]) -> list[WitnessIssue]:
        then its WitnessSnapshotParamEvent should observe *EXACTLY* the training data in rollout_id=0~curr.
 
     Remarks:
-    * To correlate witness_id vs sample_id utilize WitnessAllocateIdEvent.
+    * To correlate witness_id vs sample_index utilize WitnessAllocateIdEvent.
     * Witness' ring buffer will remove old data, thus we need to ignore the appearance/disappearance of
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
