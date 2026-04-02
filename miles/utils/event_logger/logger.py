@@ -95,11 +95,12 @@ def event_logger_context(ctx_fn: Callable[..., dict[str, Any]]) -> Callable:
     def decorator(method: Callable) -> Callable:
         @functools.wraps(method)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            if is_event_logger_initialized():
-                ctx = ctx_fn(*args, **kwargs)
-                with get_event_logger().with_context(ctx):
-                    return method(*args, **kwargs)
-            return method(*args, **kwargs)
+            if not is_event_logger_initialized():
+                return method(*args, **kwargs)
+
+            ctx_value = ctx_fn(*args, **kwargs)
+            with get_event_logger().with_context(ctx_value):
+                return method(*args, **kwargs)
 
         return wrapper
 
