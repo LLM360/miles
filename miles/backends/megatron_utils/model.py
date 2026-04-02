@@ -55,6 +55,14 @@ from .bridge_lora_helpers import _ensure_model_list, _setup_lora_model_via_bridg
 from .lora_utils import save_lora_checkpoint
 
 
+def _build_miles_kwargs(batch: dict) -> dict:
+    """Build the miles_kwargs dict passed to GPTModel.forward()."""
+    kwargs: dict = {}
+    if (witness_ids := batch.get("witness_ids")) is not None:
+        kwargs["witness_ids"] = witness_ids
+    return kwargs
+
+
 def get_optimizer_param_scheduler(args: Namespace, optimizer: MegatronOptimizer) -> OptimizerParamScheduler:
     """Create and configure the optimizer learning-rate/weight-decay scheduler.
 
@@ -269,8 +277,7 @@ def forward_only(
             "packed_seq_params": packed_seq_params,
             "loss_mask": batch["full_loss_masks"],
         }
-        if (x := batch.get("witness_ids")) is not None:
-            forward_kwargs["witness_ids"] = x
+        forward_kwargs["miles_kwargs"] = _build_miles_kwargs(batch)
         if (x := batch["multimodal_train_inputs"]) is not None:
             forward_kwargs.update(x)
         output_tensor = model(**forward_kwargs)
@@ -434,7 +441,6 @@ def train_one_step(
                 labels=None,
                 packed_seq_params=get_packed_seq_params(batch, args),
                 loss_mask=batch["full_loss_masks"],
-                witness_ids=batch.get("witness_ids"),
             )
         else:
             forward_kwargs = {
@@ -449,8 +455,7 @@ def train_one_step(
             if args.enable_mtp_training:
                 forward_kwargs["mtp_kwargs"] = {"mtp_labels": batch["tokens"]}
 
-            if (witness_ids := batch.get("witness_ids")) is not None:
-                forward_kwargs["witness_ids"] = witness_ids
+            forward_kwargs["miles_kwargs"] = _build_miles_kwargs(batch)
 
             if batch["multimodal_train_inputs"] is not None:
                 forward_kwargs.update(batch["multimodal_train_inputs"])

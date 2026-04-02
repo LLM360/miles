@@ -26,7 +26,11 @@ class _FakeGPTModel(nn.Module):
         self.decoder = _FakeDecoder()
         self.embedding = nn.Embedding(100, 16)
 
-    def forward(self, input_ids: torch.Tensor, witness_ids: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        miles_kwargs: dict | None = None,
+    ) -> torch.Tensor:
         # Simulate _preprocess
         if self.pre_process:
             decoder_input = self.embedding(input_ids)
@@ -34,6 +38,7 @@ class _FakeGPTModel(nn.Module):
             decoder_input = None
 
         # Witness injection (mirrors Megatron GPTModel.forward)
+        witness_ids = (miles_kwargs or {}).get("witness_ids")
         if hasattr(self, 'head_witness') and witness_ids is not None:
             witness_out = self.head_witness(witness_ids)
             if decoder_input is not None:
