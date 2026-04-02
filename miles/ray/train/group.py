@@ -150,7 +150,7 @@ class RayTrainGroup:
             )
             self._check_train_one_attempt(results)
 
-            self._log_step_end_event(results)
+            self._log_step_end_event(rollout_id=rollout_id, results=results)
 
         await retry(_fn)
 
@@ -174,7 +174,7 @@ class RayTrainGroup:
 
         return witness_info
 
-    def _log_step_end_event(self, results):
+    def _log_step_end_event(self, *, rollout_id: int, results):
         if is_event_logger_initialized():
             cell_outcomes: dict[int, str] = {}
             for cell, cell_results in zip(
