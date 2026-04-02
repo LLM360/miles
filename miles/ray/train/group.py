@@ -133,7 +133,7 @@ class RayTrainGroup:
         """Do one rollout training"""
         run_analysis_from_args(self.args)
 
-        async def _fn(attempt_counter):
+        async def _fn(attempt: int):
             # NOTE: Need to allocate *new* witness ids for each retry
             sample_indices = rollout_data_pack["sample_indices"]
 
@@ -145,7 +145,7 @@ class RayTrainGroup:
                         WitnessAllocateIdEvent,
                         dict(
                             rollout_id=rollout_id,
-                            attempt=current_attempt,
+                            attempt=attempt,
                             witness_id_to_sample_index=dict(
                                 zip(witness_info.witness_ids, sample_indices, strict=True)
                             ),
