@@ -126,10 +126,12 @@ class RayTrainGroup:
         """Do one rollout training"""
         run_analysis_from_args(self.args)
 
-        rollout_sample_indices = rollout_data_pack["sample_indices"]
-        TODO_compute_witness_ids
-
         async def _fn():
+            # NOTE: Need to allocate *new* witness ids for each retry
+            rollout_sample_indices = rollout_data_pack["sample_indices"]
+            witness_ids = witness_allocator.allocate()
+            log_event(WitnessAllocateIdEvent())
+
             await self._refresh_cells()
             results = await self._execute_all_alive_and_catch(
                 "train",

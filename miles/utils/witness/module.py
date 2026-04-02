@@ -83,6 +83,7 @@ class WitnessIdAllocator:
 
         self._counter: int = 0
 
+    # TODO: rename to allocate()
     def allocate_for_sequences(self, num_sequences: int) -> list[int]:
         ids = [(self._counter + i) % self._buffer_size for i in range(num_sequences)]
         self._counter += num_sequences
