@@ -46,7 +46,7 @@ def create_indep_dp_group(
         f"Configured independent DP PG: {indep_dp_info}, "
         f"megatron_rank={megatron_rank}, megatron_world_size={megatron_world_size}"
     )
-    return GroupInfo(rank=indep_dp_info.alive_rank, size=indep_dp_info.alive_size, group=nccl_pg, gloo_group=gloo_pg)
+    return GroupInfo(rank=indep_dp_info.alive_rank, size=indep_dp_info.alive_size, group=nccl_pg, gloo_group=gloo_pg, quorum_id=indep_dp_info.quorum_id)
 
 
 def reconfigure_indep_dp_group(
