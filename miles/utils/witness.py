@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 def init_witness_allocator(*, model: Sequence[nn.Module]) -> None:
     """Find all witnesses in model chunks and set up the global allocator."""
     witnesses = _find_all_witnesses_in_model_chunks(model)
-    if witnesses:
-        _set_witness_id_allocator(WitnessIdAllocator(
-            witnesses=witnesses,
-        ))
+    assert len(witnesses) > 0
+    _set_witness_id_allocator(WitnessIdAllocator(
+        witnesses=witnesses,
+    ))
 
 
 def get_witness_id_allocator() -> "WitnessIdAllocator":
