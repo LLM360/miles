@@ -9,9 +9,8 @@ The scenario is called as a *step callback* — it receives the current
 """
 
 import logging
-import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from miles.ray.train.group import RayTrainGroup
@@ -37,13 +36,6 @@ class FTTestContext:
     current_step: int = 0
     random_seed: int = 42
     crash_probability: float = 0.1
-
-
-@dataclass(frozen=True)
-class _FaultEvent:
-    step: int
-    cell: int
-    action: Literal["crash", "restart"]
 
 
 class FTTestScenarioBase:
@@ -123,61 +115,55 @@ class DeterministicScenario(FTTestScenarioBase):
 
 @register_scenario("random_failure")
 class RandomFailureScenario(FTTestScenarioBase):
-    """Task 4: Random unexpected crashes via background thread in train actors.
+    """Task 4: Random unexpected crashes in train actor background threads.
 
-    Unlike tasks 1-3, this uses the mini FT controller for automatic recovery
-    rather than coordinated stop/start. The scenario randomly selects a cell
-    to crash at each step boundary. The actual crash is simulated by calling
-    stop_cell() to emulate an unexpected failure detected by the health checker.
+    Unlike tasks 1-3 (coordinated stop/start from the orchestrator), this
+    scenario injects *genuine* unexpected crashes inside the train actors:
 
-    NOTE: True unexpected crashes (os.kill, sys.exit in actor background thread)
-    require ray concurrency group integration in the train actor. This scenario
-    provides the orchestration layer; the actor-side crash injection is a
-    separate concern that plugs into the actor's concurrency group.
+    1. On ``before_step`` of step 0, fires ``start_fault_injector.remote()``
+       on every actor in every cell. Each actor runs a background loop (in a
+       dedicated ray concurrency group thread) that randomly crashes the
+       process (SIGKILL, os._exit, segfault, or GIL deadlock).
+
+    2. The health checker detects dead actors via heartbeat timeout.
+
+    3. The mini FT controller auto-recovers (suspend → resume).
+
+    The scenario itself does nothing after step 0 — all fault injection
+    happens autonomously inside actors.
     """
 
-    def __init__(self, ctx: FTTestContext) -> None:
-        super().__init__(ctx)
-        self._crash_probability: float = ctx.crash_probability
-        self._rng: random.Random = random.Random(ctx.random_seed)
-        self._fault_log: list[_FaultEvent] = []
+    def before_step(self, step: int) -> None:
+        if step == 0:
+            self._arm_all_actors()
+
+    def _arm_all_actors(self) -> None:
+        ctx = self.ctx
         logger.info(
-            "RandomFailureScenario: seed=%d, crash_probability=%.3f",
-            ctx.random_seed, self._crash_probability,
+            "RandomFailureScenario: arming fault injectors on all actors "
+            "(seed=%d, crash_probability=%.3f)",
+            ctx.random_seed, ctx.crash_probability,
         )
 
-    def after_step(self, step: int) -> None:
-        if self._rng.random() < self._crash_probability:
-            alive_cells = [
-                i for i in range(self.ctx.num_cells)
-                if self.ctx.group._cells[i].is_alive
-            ]
-            if len(alive_cells) <= 1:
-                logger.info(
-                    "RandomFailureScenario: skipping crash at step %d (only %d alive cells)",
-                    step, len(alive_cells),
+        actor_index = 0
+        for cell_index in range(ctx.num_cells):
+            cell = ctx.group._cells[cell_index]
+            if not cell.is_alive:
+                continue
+            for actor in cell._actors:
+                actor.start_fault_injector.remote(
+                    seed=ctx.random_seed + actor_index,
+                    crash_probability=ctx.crash_probability,
                 )
-                return
+                actor_index += 1
 
-            target = self._rng.choice(alive_cells)
-            logger.info(
-                "RandomFailureScenario: crashing cell %d at step %d",
-                target, step,
-            )
-            self.ctx.group.stop_cell(target)
-            self._fault_log.append(_FaultEvent(step=step, cell=target, action="crash"))
-
-            self.ctx.group.start_cell(target)
-            self._fault_log.append(_FaultEvent(step=step, cell=target, action="restart"))
+        logger.info(
+            "RandomFailureScenario: armed %d actors with fault injectors",
+            actor_index,
+        )
 
     def on_complete(self) -> None:
-        crash_count = sum(1 for e in self._fault_log if e.action == "crash")
-        logger.info(
-            "RandomFailureScenario: completed. Total faults injected: %d",
-            crash_count,
-        )
-        for entry in self._fault_log:
-            logger.info("  Fault event: %s", entry)
+        logger.info("RandomFailureScenario: completed")
 
 
 def get_scenario(name: str, ctx: FTTestContext) -> FTTestScenarioBase:

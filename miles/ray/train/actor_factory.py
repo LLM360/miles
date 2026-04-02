@@ -58,10 +58,14 @@ def allocate_gpus_for_actor(
 
         actor_impl = FSDPTrainRayActor
 
+    concurrency_groups = {"heartbeat_status": 1, "default": 1}
+    if getattr(args, "ci_ft_test_scenario", None) == "random_failure":
+        concurrency_groups["fault_injector"] = 1
+
     TrainRayActor = ray.remote(
         num_gpus=1,
         runtime_env={"env_vars": env_vars},
-        concurrency_groups={"heartbeat_status": 1, "default": 1},
+        concurrency_groups=concurrency_groups,
     )(actor_impl)
 
     # Create worker actors
