@@ -15,7 +15,7 @@ def prepare(mode: FTTestMode) -> None:
 
 
 def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None) -> str:
-    train_gpus: int = mode.num_gpus_total - mode.rollout_gpus
+    train_gpus_per_node: int = (mode.num_gpus_total - mode.rollout_gpus) // mode.num_nodes
 
     ckpt_args = (
         f"--hf-checkpoint /root/models/{mode.model_name} "
@@ -58,8 +58,8 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         "--hidden-dropout 0.0 "
         "--attention-softmax-in-fp32 "
         "--attention-backend flash "
-        f"--actor-num-nodes 1 "
-        f"--actor-num-gpus-per-node {train_gpus} "
+        f"--actor-num-nodes {mode.num_nodes} "
+        f"--actor-num-gpus-per-node {train_gpus_per_node} "
         "--global-batch-size 1 "
         "--moe-token-dispatcher-type alltoall "
         "--advantage-estimator grpo "
@@ -104,6 +104,6 @@ def get_indep_dp_args(mode: FTTestMode) -> str:
 def run_training(train_args: str, mode: FTTestMode) -> None:
     U.execute_train(
         train_args=train_args,
-        num_gpus_per_node=mode.num_gpus_total,
+        num_gpus_per_node=mode.num_gpus_total // mode.num_nodes,
         megatron_model_type=mode.megatron_model_type,
     )

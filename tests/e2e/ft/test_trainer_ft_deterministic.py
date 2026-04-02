@@ -1,12 +1,15 @@
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
 
 # Usage:
-#   python test_trainer_ft_deterministic.py run --mode dp2_cp2_tp2_ep2
+#   python test_trainer_ft_deterministic.py run --mode 8node_dp4_tp4_cp2_ep4
+#   python test_trainer_ft_deterministic.py baseline --mode 8node_dp4_tp4_cp2_ep4 --dump-dir /tmp/ft
+#   python test_trainer_ft_deterministic.py target   --mode 8node_dp4_tp4_cp2_ep4 --dump-dir /tmp/ft
+#   python test_trainer_ft_deterministic.py compare  --mode 8node_dp4_tp4_cp2_ep4 --dump-dir /tmp/ft
 
-# This is a non-comparison test. It verifies that after healing (stop+start
-# without missing any step), the healed cell has bitwise-equal weights and
-# optimizer state compared to the source cell. Verification is done via the
-# existing LocalWeightChecksumEvent + event_analyzer cross_replica_weight_checksum rule.
+# Comparison test: normal DP (baseline) vs indep_dp with stop+start healing (target).
+# The stop+start does NOT miss any step, so the results should be bitwise equal
+# (verified by event_analyzer cross_replica_weight_checksum inside the job).
+# The comparison layer additionally verifies that indep_dp metrics match normal DP.
 
 import sys
 from pathlib import Path
@@ -15,12 +18,17 @@ _MILES_ROOT: Path = Path(__file__).resolve().parents[3]
 if str(_MILES_ROOT) not in sys.path:
     sys.path.insert(0, str(_MILES_ROOT))
 
-from tests.e2e.ft.conftest_ft.app import create_non_comparison_app
+from miles.utils.test_utils.metric_comparison import compare_metrics
+from tests.e2e.ft.conftest_ft.app import create_comparison_app
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args
 from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
 
-def _build_args(mode: FTTestMode, dump_dir: str) -> str:
+def _build_baseline_args(mode: FTTestMode, dump_dir: str) -> str:
+    return get_common_train_args(mode, dump_dir=dump_dir)
+
+
+def _build_target_args(mode: FTTestMode, dump_dir: str) -> str:
     return (
         get_common_train_args(mode, dump_dir=dump_dir)
         + get_indep_dp_args(mode)
@@ -30,19 +38,20 @@ def _build_args(mode: FTTestMode, dump_dir: str) -> str:
     )
 
 
-def _verify(dump_dir: str, mode: FTTestMode) -> None:
-    """Verification is handled by the event analyzer inside the training job.
+def _compare(dump_dir: str, mode: FTTestMode) -> None:
+    compare_metrics(
+        baseline_dir=f"{dump_dir}/baseline",
+        target_dir=f"{dump_dir}/target",
+        rtol=1e-2,
+        key_prefixes=["train/"],
+    )
+    print("Deterministic healing comparison test PASSED")
 
-    The event_analyzer cross_replica_weight_checksum rule asserts bitwise
-    equality of LocalWeightChecksumEvent across all alive cells after healing.
-    If the analyzer finds a mismatch, the training job exits non-zero.
-    """
-    pass
 
-
-app = create_non_comparison_app(
-    build_args=_build_args,
-    verify_fn=_verify,
+app = create_comparison_app(
+    build_baseline_args=_build_baseline_args,
+    build_target_args=_build_target_args,
+    compare_fn=_compare,
 )
 
 if __name__ == "__main__":
