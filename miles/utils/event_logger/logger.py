@@ -24,29 +24,36 @@ class EventLogger:
         self._lock = threading.Lock()
         self._file: TextIO = open(self._log_dir / file_name, "a", encoding="utf-8")
         self._source = source
-        self._context: dict[str, Any] = {}
+        self._local = threading.local()
 
     @property
     def source(self) -> ProcessIdentity:
         return self._source
 
+    def _get_context(self) -> dict[str, Any]:
+        return getattr(self._local, "context", {})
+
+    def _set_context(self, ctx: dict[str, Any]) -> None:
+        self._local.context = ctx
+
     @contextmanager
     def with_context(self, ctx: dict[str, Any]) -> Generator[None, None, None]:
-        """Temporarily merge extra fields into every event logged within this scope."""
-        prev = self._context.copy()
-        self._context.update(ctx)
+        """Temporarily merge extra fields into every event logged within this scope (thread-local)."""
+        prev = self._get_context().copy()
+        merged = {**prev, **ctx}
+        self._set_context(merged)
         try:
             yield
         finally:
-            assert self._context == ctx
-            self._context = prev
+            assert self._get_context() == merged
+            self._set_context(prev)
 
     def log(self, event_cls: Type[EventBase], partial: dict[str, Any], *, print_log: bool = True) -> None:
         event = event_cls(**{
             **partial,
             "timestamp": datetime.now(timezone.utc),
             "source": self._source,
-            **self._context,
+            **self._get_context(),
         })
         line = event.model_dump_json() + "\n"
         with self._lock:
