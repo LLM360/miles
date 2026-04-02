@@ -33,27 +33,18 @@ def get_witness_id_allocator() -> "WitnessIdAllocator":
 
 
 def install_witness(model: nn.Module, *, buffer_size: int) -> None:
-    """Attach head and tail DataWitness submodules to a GPTModel.
-
-    Both participate in DDP, optimizer, and checkpointing automatically.
-    Callers pass ``witness_ids`` to ``GPTModel.forward()`` to activate them.
-    head_witness probes gradients flowing into the decoder;
-    tail_witness probes gradients flowing out of the decoder.
-    """
     model.head_witness = DataWitness(buffer_size=buffer_size)
     model.tail_witness = DataWitness(buffer_size=buffer_size)
 
 
 def dump_witness_params(*, model: Sequence[nn.Module]) -> None:
-    """Find all witness submodules (head + tail) in model chunks and log nonzero param rows."""
     for chunk in model:
         for attr in _WITNESS_ATTRS:
-            witness: Optional[DataWitness] = getattr(chunk.module, attr, None)
-            if witness is not None:
-                _record_and_log_witness_param(
-                    witness=witness,
-                    position=attr,
-                )
+            witness: DataWitness = getattr(chunk.module, attr)
+            _record_and_log_witness_param(
+                witness=witness,
+                position=attr,
+            )
 
 
 # ---------------------------------------------------------------------------
