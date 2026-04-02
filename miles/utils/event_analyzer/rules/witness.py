@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Type
 
 from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.event_logger.models import (
@@ -41,42 +41,22 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
     * Witness' ring buffer will remove old data, thus we need to ignore the appearance/disappearance of
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
-    parsed = _parse_events(events)
-    expected_witness_ids = _build_expected_witness_ids(parsed.allocations_by_rollout)
+
+    allocations_by_rollout = {e.rid: e.mapping for e in _filter_by_type(events, WitnessAllocateIdEvent)}
+    expected_witness_ids = _compute_expected_witness_ids(allocations_by_rollout)
+
     return _find_mismatches(
-        all_step_events=parsed.step_end_events,
-        all_witness_events=parsed.witness_events,
+        all_step_events=_filter_by_type(events, TrainGroupStepEndEvent),
+        all_witness_events=_filter_by_type(events, WitnessSnapshotParamEvent),
         expected_witness_ids=expected_witness_ids,
     )
 
 
-@dataclass
-class _ParsedEvents:
-    allocations_by_rollout: dict[int, dict[int, int]] = field(default_factory=dict)
-    step_end_events: list[TrainGroupStepEndEvent] = field(default_factory=list)
-    witness_events: list[WitnessSnapshotParamEvent] = field(default_factory=list)
+def _filter_by_type(arr: list, ty: Type) -> list:
+    return [x for x in arr if isinstance(x, ty)]
 
 
-def _parse_events(events: list[Event]) -> _ParsedEvents:
-    """Events are assumed to arrive in chronological order."""
-    parsed = _ParsedEvents()
-
-    for event in events:
-        match event:
-            case WitnessAllocateIdEvent(rollout_id=rid, witness_id_to_sample_index=mapping):
-                parsed.allocations_by_rollout[rid] = mapping
-
-            case TrainGroupStepEndEvent():
-                parsed.step_end_events.append(event)
-
-            case WitnessSnapshotParamEvent(source=source):
-                assert isinstance(source, TrainProcessIdentity)
-                parsed.witness_events.append(event)
-
-    return parsed
-
-
-def _build_expected_witness_ids(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
+def _compute_expected_witness_ids(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
     """Precompute cumulative expected witness IDs per rollout_id."""
     ans: dict[int, set[int]] = {}
     running: set[int] = set()
@@ -102,7 +82,7 @@ def _find_mismatches(
                 continue
 
             witness_events_of_cell = [
-                e for e in witness_events_of_step
+                e for e in all_witness_events
                 if e.rollout_id == rollout_id and e.source.cell_index == cell_index
             ]
 
