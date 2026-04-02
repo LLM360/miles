@@ -195,7 +195,7 @@ def get_batch(
 
     batch["tokens"] = tokens
 
-    def _compute_token_like_transform(ids_list: list):
+    def _compute_transform_like_token_ids(ids_list: list):
         assert not allgather_cp, "allgather CP is not supported for FSDP"
         if qkv_format == "bshd":
             ids = [slice_with_cp(p, 0, parallel_state, qkv_format, max_seqlen) for p in ids_list]
@@ -217,10 +217,10 @@ def get_batch(
             pos_ids = torch.arange(seq_len, device=t.device, dtype=torch.long)
             position_ids_list.append(pos_ids)
 
-        batch["position_ids"] = _compute_token_like_transform(position_ids_list)
+        batch["position_ids"] = _compute_transform_like_token_ids(position_ids_list)
 
     if (witness_ids := batch.get("witness_ids")) is not None:
-        batch["witness_ids"] = _compute_token_like_transform(witness_ids)
+        batch["witness_ids"] = _compute_transform_like_token_ids(witness_ids)
 
     # loss masks
     loss_masks = []
