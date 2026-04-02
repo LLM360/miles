@@ -45,7 +45,7 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
     expected_witness_ids = _build_expected_witness_ids(parsed.allocations_by_rollout)
     return _find_mismatches(
         step_end_events=parsed.step_end_events,
-        snapshot_events=parsed.snapshot_events,
+        witness_events=parsed.witness_events,
         expected_witness_ids=expected_witness_ids,
     )
 
@@ -54,7 +54,7 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
 class _ParsedEvents:
     allocations_by_rollout: dict[int, dict[int, int]] = field(default_factory=dict)
     step_end_events: list[TrainGroupStepEndEvent] = field(default_factory=list)
-    snapshot_events: list[WitnessSnapshotParamEvent] = field(default_factory=list)
+    witness_events: list[WitnessSnapshotParamEvent] = field(default_factory=list)
 
 
 def _parse_events(events: list[Event]) -> _ParsedEvents:
@@ -71,7 +71,7 @@ def _parse_events(events: list[Event]) -> _ParsedEvents:
 
             case WitnessSnapshotParamEvent(source=source):
                 assert isinstance(source, TrainProcessIdentity)
-                parsed.snapshot_events.append(event)
+                parsed.witness_events.append(event)
 
     return parsed
 
@@ -89,7 +89,7 @@ def _build_expected_witness_ids(allocations_by_rollout: dict[int, dict[int, int]
 def _find_mismatches(
     *,
     step_end_events: list[TrainGroupStepEndEvent],
-    snapshot_events: list[WitnessSnapshotParamEvent],
+    witness_events: list[WitnessSnapshotParamEvent],
     expected_witness_ids: dict[int, set[int]],
 ) -> list[WitnessDataMismatchIssue]:
     issues: list[WitnessDataMismatchIssue] = []
@@ -98,8 +98,8 @@ def _find_mismatches(
         rollout_id = step_end.rollout_id
 
         matching_snapshots = [
-            snap for snap in snapshot_events
-            if snap.rollout_id == rollout_id
+            event for event in witness_events
+            if event.rollout_id == rollout_id
         ]
 
         for cell_index, outcome in step_end.cell_outcomes.items():
@@ -107,13 +107,13 @@ def _find_mismatches(
                 continue
 
             cell_snapshots = [
-                snap for snap in matching_snapshots
-                if snap.source.cell_index == cell_index
+                event for event in matching_snapshots
+                if event.source.cell_index == cell_index
             ]
 
-            for snap in cell_snapshots:
+            for event in cell_snapshots:
                 issue = _compare_snapshot(
-                    snap=snap, expected=expected_witness_ids.get(rollout_id, set()),
+                    event=event, expected=expected_witness_ids.get(rollout_id, set()),
                     rollout_id=rollout_id, cell_index=cell_index,
                 )
                 if issue is not None:
@@ -128,14 +128,14 @@ def _is_non_normal_outcome(outcome: Literal["error"] | list[TrainStepOutcome]) -
 
 def _compare_snapshot(
     *,
-    snap: WitnessSnapshotParamEvent,
+    event: WitnessSnapshotParamEvent,
     expected: set[int],
     rollout_id: int,
     cell_index: int,
 ) -> WitnessDataMismatchIssue | None:
-    stale_set = set(snap.stale_ids)
+    stale_set = set(event.stale_ids)
     filtered_expected = expected - stale_set
-    filtered_actual = set(snap.nonzero_witness_ids) - stale_set
+    filtered_actual = set(event.nonzero_witness_ids) - stale_set
 
     if filtered_expected == filtered_actual:
         return None
@@ -144,7 +144,7 @@ def _compare_snapshot(
         rollout_id=rollout_id,
         cell_index=cell_index,
         description=(
-            f"Witness data mismatch for instance {snap.instance_id}: "
+            f"Witness data mismatch for instance {event.instance_id}: "
             f"missing={sorted(filtered_expected - filtered_actual)}, "
             f"extra={sorted(filtered_actual - filtered_expected)}"
         ),
