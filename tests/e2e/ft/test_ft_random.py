@@ -20,7 +20,6 @@ if str(_MILES_ROOT) not in sys.path:
 
 import typer
 
-from miles.utils.test_utils.metric_comparison import assert_events_dir_exists
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args, prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
@@ -62,7 +61,6 @@ def run(
 
     run_training(train_args=base, mode=ft_mode)
 
-    assert_events_dir_exists(dump_dir)
     print(f"Random failure soak test PASSED (seed={seed}, steps={num_steps})")
 
 

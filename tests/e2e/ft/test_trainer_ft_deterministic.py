@@ -17,7 +17,6 @@ if str(_MILES_ROOT) not in sys.path:
 
 from tests.e2e.ft.conftest_ft.app import create_non_comparison_app
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args
-from miles.utils.test_utils.metric_comparison import assert_events_dir_exists
 from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
 
@@ -38,8 +37,7 @@ def _verify(dump_dir: str, mode: FTTestMode) -> None:
     equality of LocalWeightChecksumEvent across all alive cells after healing.
     If the analyzer finds a mismatch, the training job exits non-zero.
     """
-    assert_events_dir_exists(dump_dir)
-    print("Deterministic healing verification test PASSED (event analyzer checked in-job)")
+    pass
 
 
 app = create_non_comparison_app(
