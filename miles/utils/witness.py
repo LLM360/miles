@@ -72,13 +72,11 @@ class WitnessIdAllocator:
 
         self._witnesses = witnesses
         self._optimizer = optimizer
+
         self._counter: int = 0
-        self._prev_num_sequences: int = 0
 
     def allocate_for_sequences(self, num_sequences: int) -> list[int]:
-        if self._prev_num_sequences > 0:
-            self._clear_stale(keep_count=self._prev_num_sequences)
-        self._prev_num_sequences = num_sequences
+        self._clear_stale(keep_count=int(self._buffer_size * 0.7))
 
         ids = [
             (self._counter + i) % self._buffer_size

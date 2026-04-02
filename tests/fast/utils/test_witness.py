@@ -117,32 +117,29 @@ class TestWitnessIdAllocator:
             assert torch.all(wids == sid)
 
     def test_auto_clear_stale_zeros_oldest_ids(self) -> None:
-        """Second allocate_for_sequences auto-clears stale IDs from the first batch."""
-        witness = _DataWitness(num_ids=5)
+        """allocate_for_sequences auto-clears stale IDs (keep 70% of buffer)."""
+        # buffer=10, keep=7 → 3 stale slots
+        witness = _DataWitness(num_ids=10)
         optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
         allocator = WitnessIdAllocator(witnesses=[witness], optimizer=optimizer)
 
         witness.witness.weight.data.fill_(1.0)
 
-        # Step 1: allocate 2 IDs (IDs 0, 1)
-        allocator.allocate_for_sequences(2)
+        # Allocate 8 IDs → counter=8, head=8
+        # Active (last 7): IDs 1..7. Stale: IDs 8,9,0
+        allocator.allocate_for_sequences(8)
 
-        # Step 2: allocate 2 more (IDs 2, 3) — triggers auto-clear with keep_count=2
-        allocator.allocate_for_sequences(2)
-
-        # IDs 2,3,4 should be zeroed (stale from perspective of prev batch size=2)
-        # IDs 0,1 were the prev batch, kept
-        for i in [0, 1]:
+        for i in [1, 2, 3, 4, 5, 6, 7]:
             assert witness.witness.weight.data[i].item() != 0.0
-        for i in [2, 3, 4]:
+        for i in [8, 9, 0]:
             assert witness.witness.weight.data[i].item() == 0.0
 
     def test_auto_clear_stale_zeros_optimizer_state(self) -> None:
-        witness = _DataWitness(num_ids=5)
+        witness = _DataWitness(num_ids=10)
         optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
 
         # Run a step to populate optimizer state
-        ids = torch.tensor([0, 1, 2, 3, 4])
+        ids = torch.arange(10)
         out = witness(ids)
         out.sum().backward()
         optimizer.step()
@@ -152,27 +149,12 @@ class TestWitnessIdAllocator:
         assert param in optimizer.state
 
         allocator = WitnessIdAllocator(witnesses=[witness], optimizer=optimizer)
-        # Step 1: allocate 2 IDs
-        allocator.allocate_for_sequences(2)
-        # Step 2: triggers auto-clear of stale (keep_count=2 from step 1)
-        allocator.allocate_for_sequences(2)
+        # Allocate 8 → stale IDs (8,9,0) optimizer state should be zeroed
+        allocator.allocate_for_sequences(8)
 
-        # Stale IDs (2,3,4) optimizer state should be zeroed
-        for i in [2, 3, 4]:
+        for i in [8, 9, 0]:
             assert optimizer.state[param]["exp_avg"][i].item() == 0.0
             assert optimizer.state[param]["exp_avg_sq"][i].item() == 0.0
-
-    def test_first_allocate_does_not_clear(self) -> None:
-        """First call has no previous batch, so nothing to clear."""
-        witness = _DataWitness(num_ids=5)
-        allocator = self._make_allocator(witness)
-
-        witness.witness.weight.data.fill_(1.0)
-        allocator.allocate_for_sequences(2)
-
-        # All weights should remain nonzero (no clear on first call)
-        for i in range(5):
-            assert witness.witness.weight.data[i].item() != 0.0
 
 
 class TestRecordAndLogWitnessParam:
