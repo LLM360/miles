@@ -5,6 +5,7 @@ import asyncio
 
 from miles.ray.train.group import RayTrainGroup
 from miles.utils.control_server.models import Cell, CellCondition, CellMetadata, CellSpec, CellStatus
+from miles.utils.test_utils.fault_injector import FailureMode
 
 
 class _CellHandle(abc.ABC):
@@ -29,7 +30,7 @@ class _CellHandle(abc.ABC):
     @abc.abstractmethod
     async def resume(self) -> None: ...
 
-    async def inject_fault(self, *, mode: str, sub_index: int) -> None:
+    async def inject_fault(self, *, mode: FailureMode, sub_index: int) -> None:
         raise NotImplementedError(f"{type(self).__name__} does not support fault injection")
 
 
@@ -66,7 +67,7 @@ class _ActorCellHandle(_CellHandle):
     async def resume(self) -> None:
         self._group.start_cell(self._cell_index)
 
-    async def inject_fault(self, *, mode: str, sub_index: int) -> None:
+    async def inject_fault(self, *, mode: FailureMode, sub_index: int) -> None:
         """Inject a fault into a specific actor of this cell. Fire-and-forget."""
         cell = self._group._cells[self._cell_index]
         if not cell.is_alive:
@@ -76,7 +77,7 @@ class _ActorCellHandle(_CellHandle):
                 f"sub_index {sub_index} out of range for cell {self._cell_index} "
                 f"(has {len(cell._actors)} actors)"
             )
-        cell._actors[sub_index].inject_fault.remote(mode)
+        cell._actors[sub_index].inject_fault.remote(mode.value)
 
 
 # TODO the code will NOT work before implementing rollout ft

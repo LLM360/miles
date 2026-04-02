@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Literal
 
 from miles.utils.pydantic_utils import StrictBaseModel
+from miles.utils.test_utils.fault_injector import FailureMode
 
 
 class TriState(str, Enum):
@@ -71,7 +72,7 @@ class CellPatch(StrictBaseModel):
 
 
 class FaultInjection(StrictBaseModel):
-    mode: Literal["sigkill", "exit", "segfault", "deadlock"]
+    mode: FailureMode
     sub_index: int = 0
 
 

@@ -15,12 +15,14 @@ from typing import TYPE_CHECKING
 
 import requests
 
+from miles.utils.test_utils.fault_injector import FailureMode
+
 if TYPE_CHECKING:
     from miles.ray.train.group import RayTrainGroup
 
 logger = logging.getLogger(__name__)
 
-_FAILURE_MODES: list[str] = ["sigkill", "exit", "segfault"]
+_FAILURE_MODES: list[FailureMode] = [FailureMode.SIGKILL, FailureMode.EXIT, FailureMode.SEGFAULT]
 
 SCENARIOS: dict[str, "type[FTTestScenarioBase]"] = {}
 
@@ -191,7 +193,7 @@ class RandomFailureScenario(FTTestScenarioBase):
         try:
             resp = requests.post(
                 f"{self._base_url}/api/v1/cells/{cell_name}/inject-fault",
-                json={"mode": mode, "sub_index": sub_index},
+                json={"mode": mode.value, "sub_index": sub_index},
                 timeout=5,
             )
             resp.raise_for_status()
