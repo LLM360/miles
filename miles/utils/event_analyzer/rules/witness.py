@@ -26,7 +26,6 @@ class WitnessDataMismatchIssue(FrozenStrictBaseModel):
 def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
     """
     Related events:
-    * RolloutGenerateCompletedEvent: when a rollout is executed and some data are obtained
     * WitnessAllocateIdEvent: when allocating `witness_id` to `sample_id`
     * WitnessSnapshotParamEvent: near the end of each train() step in MegatronTrainRayActor
         * If a witness_id appears in the weight, it means the corresponding data is consumed at least once.
@@ -39,7 +38,6 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
 
     Remarks:
     * To correlate witness_id vs sample_id utilize WitnessAllocateIdEvent.
-    * To get *all* samples used in a step, must use RolloutGenerateCompletedEvent as source of truth.
     * Witness' ring buffer will remove old data, thus we need to ignore the appearance/disappearance of
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
