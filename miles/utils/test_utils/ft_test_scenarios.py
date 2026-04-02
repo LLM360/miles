@@ -176,13 +176,14 @@ class RandomFailureScenario(FTTestScenarioBase):
         )
 
     def before_step(self, step: int) -> None:
-        if step == 0:
-            self._thread = threading.Thread(
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(
                 target=self._injection_loop,
                 daemon=True,
                 name="ft-random-fault-injector",
-            )
-            self._thread.start()
+        )
+        self._thread.start()
 
     def _injection_loop(self) -> None:
         rng = random.Random(self.ctx.random_seed)
