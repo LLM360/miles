@@ -1,8 +1,9 @@
 import logging
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, Any, Type
 
 from pydantic import TypeAdapter
 
@@ -26,9 +27,19 @@ class EventLogger:
     def source(self) -> ProcessIdentity:
         return self._source
 
-    def log(self, event: EventBase, *, print_log: bool = True) -> None:
-        enriched = event.model_copy(update={"timestamp": datetime.now(timezone.utc), "source": self._source})
-        line = enriched.model_dump_json() + "\n"
+    @contextmanager
+    def with_context(self, ctx: dict[str, Any]):
+        """"""
+        TODO
+
+    def log(self, event_cls: Type[Event], partial: dict[str, Any], *, print_log: bool = True) -> None:
+        event = event_cls(**{
+            **partial,
+            "timestamp": datetime.now(timezone.utc),
+            "source": self._source,
+            **extra_context_TODO,
+        })
+        line = event.model_dump_json() + "\n"
         with self._lock:
             self._file.write(line)
             self._file.flush()

@@ -8,8 +8,8 @@ from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 
 class EventBase(FrozenStrictBaseModel):
-    timestamp: datetime | None = None
-    source: ProcessIdentity | None = None
+    timestamp: datetime
+    source: ProcessIdentity
 
 
 class GenericEvent(EventBase):
