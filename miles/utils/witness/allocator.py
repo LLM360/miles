@@ -1,4 +1,3 @@
-# TODO: move from module.py
 import torch
 import torch.nn as nn
 
@@ -9,7 +8,6 @@ class WitnessInfo(FrozenStrictBaseModel):
     witness_ids: list[int]
 
 
-# TODO: move to allocator.py
 class WitnessIdAllocator:
     def __init__(self, *, witnesses: list, optimizer: torch.optim.Optimizer) -> None:
         buffer_sizes = [x.buffer_size for x in witnesses]

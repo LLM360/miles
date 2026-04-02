@@ -71,7 +71,6 @@ class _DataWitness(nn.Module):
         return out
 
 
-# TODO: move to allocator.py
 class WitnessIdAllocator:
     def __init__(self, *, witnesses: list[_DataWitness], optimizer: torch.optim.Optimizer) -> None:
         buffer_sizes = [x.buffer_size for x in witnesses]
