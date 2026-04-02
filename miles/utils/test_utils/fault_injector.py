@@ -1,10 +1,4 @@
-# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
-"""Actor-side fault injection for FT soak tests.
-
-The inject_fault() function executes immediately in a dedicated ray concurrency
-group thread. The caller (control server or scenario) decides *when* and *which*
-actor to crash — this module only handles the *how*.
-
+"""
 Failure modes modeled after torchft's failure.py:
 https://github.com/meta-pytorch/torchft/blob/main/examples/monarch/utils/failure.py
 """
