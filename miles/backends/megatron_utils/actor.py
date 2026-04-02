@@ -24,6 +24,7 @@ from miles.utils.replay_base import all_replay_managers
 from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
+from miles.utils.witness import WitnessIdAllocator, find_witness_in_model_chunks, set_witness_id_allocator
 
 from ...utils.profile_utils import TrainProfiler
 from ...utils.tensor_backper import TensorBackuper
@@ -137,13 +138,7 @@ class MegatronTrainRayActor(TrainRayActor):
             args, role, checkpointing_context=checkpointing_context
         )
 
-        if getattr(args, "enable_witness", False):
-            from miles.utils.witness import (
-                WitnessIdAllocator,
-                find_witness_in_model_chunks,
-                set_witness_id_allocator,
-            )
-
+        if args.enable_witness:
             head_witness = find_witness_in_model_chunks(self.model)
             if head_witness is not None:
                 set_witness_id_allocator(WitnessIdAllocator(

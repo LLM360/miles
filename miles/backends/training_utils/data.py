@@ -15,6 +15,7 @@ from ...utils.data import process_rollout_data
 from ...utils.ray_utils import Box
 from .cp_utils import slice_log_prob_with_cp, slice_with_cp
 from .parallel import ParallelState
+from miles.utils.witness import get_witness_id_allocator
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,7 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
     rollout_data["loss_masks"] = [
         torch.tensor(t, dtype=torch.int, device=torch.cuda.current_device()) for t in rollout_data["loss_masks"]
     ]
-    if getattr(args, "enable_witness", False):
-        from miles.utils.witness import get_witness_id_allocator
-
+    if args.enable_witness:
         allocator = get_witness_id_allocator()
         seq_ids = allocator.allocate_for_sequences(len(rollout_data["tokens"]))
         rollout_data["witness_ids"] = [

@@ -19,14 +19,13 @@ from megatron.training.arguments import core_transformer_config_from_args
 
 from miles.utils.misc import load_function
 from miles.utils.replay_base import routing_replay_manager
+from miles.utils.witness import DataWitness, install_witness
 
 logger = logging.getLogger(__name__)
 
 
 def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
-    if getattr(args, "enable_witness", False):
-        from miles.utils.witness import DataWitness, install_witness
-
+    if args.enable_witness:
         install_witness(model, DataWitness(num_ids=args.witness_ring_buffer_size))
 
 

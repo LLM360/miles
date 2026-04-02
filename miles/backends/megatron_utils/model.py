@@ -28,6 +28,7 @@ from miles.backends.megatron_utils.indep_dp import _allreduce_grads_across_repli
 from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
 from miles.utils.memory_utils import clear_memory
+from miles.utils.witness import dump_witness_grads
 
 from ..training_utils.ci_utils import check_grad_norm, check_kl
 from ..training_utils.data import DataIterator, get_batch
@@ -268,8 +269,8 @@ def forward_only(
             "packed_seq_params": packed_seq_params,
             "loss_mask": batch["full_loss_masks"],
         }
-        if batch.get("witness_ids") is not None:
-            forward_kwargs["witness_ids"] = batch["witness_ids"]
+        if (witness_ids := batch.get("witness_ids")) is not None:
+            forward_kwargs["witness_ids"] = witness_ids
         if batch["multimodal_train_inputs"] is not None:
             forward_kwargs.update(batch["multimodal_train_inputs"])
         output_tensor = model(**forward_kwargs)
@@ -341,8 +342,6 @@ def _dump_witness_grad(
     step_id: int,
     parallel_state: ParallelState,
 ) -> None:
-    from miles.utils.witness import dump_witness_grads
-
     dump_witness_grads(
         model_chunks=model,
         step=rollout_id * args.num_steps_per_rollout + step_id,
@@ -467,8 +466,8 @@ def train_one_step(
             if args.enable_mtp_training:
                 forward_kwargs["mtp_kwargs"] = {"mtp_labels": batch["tokens"]}
 
-            if batch.get("witness_ids") is not None:
-                forward_kwargs["witness_ids"] = batch["witness_ids"]
+            if (witness_ids := batch.get("witness_ids")) is not None:
+                forward_kwargs["witness_ids"] = witness_ids
 
             if batch["multimodal_train_inputs"] is not None:
                 forward_kwargs.update(batch["multimodal_train_inputs"])
@@ -498,7 +497,7 @@ def train_one_step(
     outcome = TrainStepOutcome.NORMAL
     valid_step = True
 
-    if getattr(args, "enable_witness", False):
+    if args.enable_witness:
         _dump_witness_grad(
             args=args,
             model=model,
