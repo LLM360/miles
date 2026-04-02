@@ -13,10 +13,8 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
 
     optimizer_args = (
         "--optimizer adam "
-        "--lr 1e-3 "
-        "--lr-decay-style constant "
-        "--adam-beta1 0.1 "
-        "--adam-beta2 0.9 "
+        # NOTE: deliberately use huge lr and small adam to make weight change vivid
+        "--lr 1e-3 --lr-decay-style constant --adam-beta1 0.1 --adam-beta2 0.9 "
         "--lr-warmup-fraction 0.0 "
         "--accumulate-allreduce-grads-in-fp32 "
     )
@@ -77,6 +75,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         f"{event_logger_args} "
         f"{mode.parallel_args} "
         f"{misc_args} "
+        f"{ft_args} "
         f"{U.get_default_wandb_args(__file__)} "
     )
 
