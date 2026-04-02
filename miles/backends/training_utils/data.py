@@ -33,6 +33,7 @@ def get_rollout_data(
         rollout_data_ref,
         parallel_state.effective_dp.rank,
         parallel_state.effective_dp.size,
+        witness_info=witness_info,
     )
     # move tokens to GPU in advance
     rollout_data["tokens"] = [
@@ -41,13 +42,10 @@ def get_rollout_data(
     rollout_data["loss_masks"] = [
         torch.tensor(t, dtype=torch.int, device=torch.cuda.current_device()) for t in rollout_data["loss_masks"]
     ]
-    if args.enable_witness and witness_info is not None:
-        seq_witness_ids = witness_info.witness_ids
-        dp_partition: list[int] = rollout_data.pop("_dp_partition")
-        local_witness_ids = [seq_witness_ids[i] for i in dp_partition]
+    if args.enable_witness:
         rollout_data["witness_ids"] = [
             torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
-            for t, sid in zip(rollout_data["tokens"], local_witness_ids, strict=True)
+            for t, sid in zip(rollout_data["tokens"], rollout_data["seq_witness_ids"], strict=True)
         ]
 
     if "multimodal_train_inputs" in rollout_data:
