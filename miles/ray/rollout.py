@@ -444,7 +444,7 @@ class RolloutManager:
         self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=False)
         _log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = self._convert_samples_to_train_data(data)
-        sample_ids = [x.index for x in data]
+        sample_indices = data["sample_indices"]
 
         if self.args.delay_split_train_data_by_dp:
             data = Box(ray.put(data))
@@ -452,7 +452,7 @@ class RolloutManager:
             data = split_train_data_by_dp(self.args, data, dp_size=self.train_parallel_config["dp_size"])
             data = [Box(ray.put(x)) for x in data]
 
-        return dict(sample_ids=sample_ids, data_ref=data)
+        return dict(sample_indices=sample_indices, data_ref=data)
 
     def eval(self, rollout_id):
         if self.args.debug_train_only:

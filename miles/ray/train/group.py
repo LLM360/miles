@@ -126,7 +126,7 @@ class RayTrainGroup:
         """Do one rollout training"""
         run_analysis_from_args(self.args)
 
-        rollout_sample_ids = rollout_data_pack["sample_ids"]
+        rollout_sample_indices = rollout_data_pack["sample_indices"]
         TODO_compute_witness_ids
 
         async def _fn():
