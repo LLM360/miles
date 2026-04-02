@@ -150,20 +150,7 @@ class RayTrainGroup:
             )
             self._check_train_one_attempt(results)
 
-            if is_event_logger_initialized():
-                cell_outcomes: dict[int, str] = {}
-                for cell, cell_results in zip(
-                    [c for c in self._cells if c.is_alive], results, strict=True
-                ):
-                    if isinstance(cell_results, BaseException):
-                        cell_outcomes[cell.cell_index] = "ERROR"
-                    else:
-                        for r in cell_results:
-                            cell_outcomes[cell.cell_index] = r.name
-                get_event_logger().log(
-                    TrainGroupStepEndEvent,
-                    dict(rollout_id=rollout_id, cell_outcomes=cell_outcomes),
-                )
+            self._log_step_end_event(results)
 
         await retry(_fn)
 
@@ -186,6 +173,22 @@ class RayTrainGroup:
             )
 
         return witness_info
+
+    def _log_step_end_event(self, results):
+        if is_event_logger_initialized():
+            cell_outcomes: dict[int, str] = {}
+            for cell, cell_results in zip(
+                    [c for c in self._cells if c.is_alive], results, strict=True
+            ):
+                if isinstance(cell_results, BaseException):
+                    cell_outcomes[cell.cell_index] = "ERROR"
+                else:
+                    for r in cell_results:
+                        cell_outcomes[cell.cell_index] = r.name
+            get_event_logger().log(
+                TrainGroupStepEndEvent,
+                dict(rollout_id=rollout_id, cell_outcomes=cell_outcomes),
+            )
 
     @staticmethod
     def _check_train_one_attempt(results):
