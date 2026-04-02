@@ -210,6 +210,52 @@ class TestWitnessCheck:
         assert 11 not in issues[0].actual_witness_ids
 
 
+    def test_ring_buffer_wrap_with_stale_ids(self) -> None:
+        """After wrap, stale_ids contain wrapped IDs (e.g. [8,9,0]). These should be excluded from comparison."""
+        # buffer_size=10, allocated IDs 0..7 in rollout 0, then 8,9,0,1,2 in rollout 1 (wrap)
+        events: list[Event] = [
+            _make_rollout_completed(rollout_id=0, sample_indices=[0, 1, 2, 3, 4, 5, 6, 7]),
+            _make_allocate(rollout_id=0, witness_id_to_sample_index={i: i for i in range(8)}),
+            _make_snapshot(rollout_id=0, nonzero_witness_ids=list(range(8))),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
+
+            _make_rollout_completed(rollout_id=1, sample_indices=[8, 9, 10, 11, 12]),
+            _make_allocate(rollout_id=1, witness_id_to_sample_index={8: 8, 9: 9, 0: 10, 1: 11, 2: 12}),
+            # After wrap: stale_ids=[3,4,5] (old IDs cleaned), actual nonzero = [0,1,2,6,7,8,9]
+            _make_snapshot(
+                rollout_id=1,
+                nonzero_witness_ids=[0, 1, 2, 6, 7, 8, 9],
+                stale_ids=[3, 4, 5],
+            ),
+            _make_step_end(rollout_id=1, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
+        ]
+        # expected cumulative = {0..9}, minus stale {3,4,5} = {0,1,2,6,7,8,9} — matches actual
+        assert check(events) == []
+
+    def test_ring_buffer_wrap_detects_mismatch(self) -> None:
+        """After wrap, a genuinely missing non-stale ID should still be caught."""
+        events: list[Event] = [
+            _make_rollout_completed(rollout_id=0, sample_indices=[0, 1, 2, 3, 4, 5, 6, 7]),
+            _make_allocate(rollout_id=0, witness_id_to_sample_index={i: i for i in range(8)}),
+            _make_snapshot(rollout_id=0, nonzero_witness_ids=list(range(8))),
+            _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
+
+            _make_rollout_completed(rollout_id=1, sample_indices=[8, 9, 10, 11, 12]),
+            _make_allocate(rollout_id=1, witness_id_to_sample_index={8: 8, 9: 9, 0: 10, 1: 11, 2: 12}),
+            # ID 7 is NOT stale but missing from actual — should be caught
+            _make_snapshot(
+                rollout_id=1,
+                nonzero_witness_ids=[0, 1, 2, 6, 8, 9],  # missing 7
+                stale_ids=[3, 4, 5],
+            ),
+            _make_step_end(rollout_id=1, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
+        ]
+        issues = check(events)
+        assert len(issues) == 1
+        assert 7 in issues[0].expected_witness_ids_of_step
+        assert 7 not in issues[0].actual_witness_ids
+
+
 class TestWitnessEventSerialization:
     def test_roundtrip(self) -> None:
         event = _make_snapshot(
