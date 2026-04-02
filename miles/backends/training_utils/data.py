@@ -37,12 +37,11 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
         torch.tensor(t, dtype=torch.int, device=torch.cuda.current_device()) for t in rollout_data["loss_masks"]
     ]
     if args.enable_witness:
-        seq_witness_ids = get_witness_id_allocator().allocate_for_sequences(len(rollout_data["tokens"]))
+        seq_witness_ids = witness_info.blahblah
         rollout_data["witness_ids"] = [
             torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
             for t, sid in zip(rollout_data["tokens"], seq_witness_ids, strict=True)
         ]
-        TODO(WitnessAllocateIdEvent(witness_id_and_sample_id))
 
     if "multimodal_train_inputs" in rollout_data:
         # Move multimodal training tensors to GPU in advance
