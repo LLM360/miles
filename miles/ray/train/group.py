@@ -166,9 +166,10 @@ class RayTrainGroup:
             ):
                 if isinstance(cell_results, BaseException):
                     cell_outcomes[cell.cell_index] = "ERROR"
+                elif any(r == TrainStepOutcome.DISCARDED_SHOULD_RETRY for r in cell_results):
+                    cell_outcomes[cell.cell_index] = TrainStepOutcome.DISCARDED_SHOULD_RETRY.name
                 else:
-                    for r in cell_results:
-                        cell_outcomes[cell.cell_index] = r.name
+                    cell_outcomes[cell.cell_index] = TrainStepOutcome.NORMAL.name
             get_event_logger().log(
                 TrainGroupStepEndEvent,
                 dict(rollout_id=rollout_id, cell_outcomes=cell_outcomes),
