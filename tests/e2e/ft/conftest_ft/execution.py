@@ -79,8 +79,8 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
     )
 
     dumper_args = (
-        f"--dumper-enable --dumper-dir {dump_dir}/dumps "
-        f"--dumper-fwd-bwd enable_model_value=1 enable_model_grad=1 "
+        f"--dumper-dir {dump_dir}/dumps "
+        f"--dumper-fwd-bwd enable=1 enable_model_value=1 enable_model_grad=1 "
         f"--dumper-source-patcher-config-train {_MEGATRON_SOURCE_PATCHER_CONFIG_PATH} "
     )
 
