@@ -211,8 +211,9 @@ def compare_metrics(
         for key in b_event.metrics:
             if not any(key.startswith(prefix) for prefix in key_prefixes):
                 continue
-            if key not in t_event.metrics:
-                continue
+            assert key in t_event.metrics, (
+                f"Step {step_idx}, metric '{key}' present in baseline but missing in target"
+            )
 
             b_val = b_event.metrics[key]
             t_val = t_event.metrics[key]
