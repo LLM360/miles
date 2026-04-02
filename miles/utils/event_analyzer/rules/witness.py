@@ -51,8 +51,6 @@ def check(events: list[Event]) -> list[WitnessIssue]:
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
 
-    allocations_by_rollout = {e.rid: e.mapping for e in _filter_by_type(events, WitnessAllocateIdEvent)}
-
     return _find_mismatches(
         all_step_events=_filter_by_type(events, TrainGroupStepEndEvent),
         all_witness_events=_filter_by_type(events, WitnessSnapshotParamEvent),
@@ -64,8 +62,10 @@ def _filter_by_type(arr: list, ty: Type) -> list:
     return [x for x in arr if isinstance(x, ty)]
 
 
-def _compute_expected_witness_ids_of_step(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
+def _compute_expected_witness_ids_of_step(events: list[WitnessAllocateIdEvent]) -> dict[int, set[int]]:
     """Precompute cumulative expected witness IDs per rollout_id."""
+    allocations_by_rollout = {e.rid: e.mapping for e in events}
+
     ans: dict[int, set[int]] = {}
     running: set[int] = set()
     for rid in sorted(allocations_by_rollout.keys()):
