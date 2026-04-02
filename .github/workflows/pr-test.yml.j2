@@ -59,6 +59,18 @@
     {'test_file': 'e2e/lora/test_lora_qwen2.5_0.5B.py', 'num_gpus': 8},
 ] %>
 
+<% set ft_tests = [
+    {'name': 'ft-no-failure-dp2-cp2-tp2-ep2', 'test_file': 'e2e/ft/test_trainer_ft_no_failure.py run --mode dp2_cp2_tp2_ep2', 'num_gpus': 8},
+    {'name': 'ft-no-failure-dp2-cp2-pp2', 'test_file': 'e2e/ft/test_trainer_ft_no_failure.py run --mode dp2_cp2_pp2', 'num_gpus': 8},
+    {'name': 'ft-with-failure-dp4-cp2', 'test_file': 'e2e/ft/test_trainer_ft_with_failure.py run --mode dp4_cp2', 'num_gpus': 8},
+    {'name': 'ft-deterministic-dp2-cp2-tp2-ep2', 'test_file': 'e2e/ft/test_trainer_ft_deterministic.py run --mode dp2_cp2_tp2_ep2', 'num_gpus': 8},
+    {'name': 'ft-random-dp4-cp2', 'test_file': 'e2e/ft/test_ft_random.py run --mode dp4_cp2', 'num_gpus': 8},
+] %>
+
+<% set ft_multinode_tests = [
+    {'name': 'ft-no-failure-6node', 'test_file': 'e2e/ft/test_trainer_ft_no_failure.py run --mode 6node_dp4_cp2_tp2_pp2_ep2_etp2', 'num_gpus': 8},
+] %>
+
 <% set jobs = {
     'fast': {
       'test_executor': 'pytest',
@@ -121,6 +133,14 @@
       'image': 'radixark/miles:glm5',
       'skip_deps': true,
       'tests': glm5_tests,
+    },
+    'e2e-test-ft': {
+      'label': 'run-ci-ft',
+      'tests': ft_tests,
+    },
+    'e2e-test-ft-multinode': {
+      'label': 'run-ci-ft-multinode',
+      'tests': ft_multinode_tests,
     },
     'e2e-test-image': {
       'label': 'run-ci-image',
