@@ -41,17 +41,13 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
       all values in the range of 0..`WitnessSnapshotParamEvent.stale_threshold`
     """
 
-    sample_indices_by_rollout: dict[int, list[int]] = {}
     allocations_by_rollout: dict[int, dict[int, int]] = {}
     max_attempt_by_rollout: dict[int, int] = {}
     step_end_events: list[TrainGroupStepEndEvent] = []
     snapshot_events: list[WitnessSnapshotParamEvent] = []
 
     for event in events:
-        if isinstance(event, RolloutGenerateCompletedEvent):
-            sample_indices_by_rollout[event.rollout_id] = event.sample_indices
-
-        elif isinstance(event, WitnessAllocateIdEvent):
+        if isinstance(event, WitnessAllocateIdEvent):
             prev_attempt = max_attempt_by_rollout.get(event.rollout_id, -1)
             if event.attempt > prev_attempt:
                 max_attempt_by_rollout[event.rollout_id] = event.attempt
@@ -63,24 +59,27 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
         elif isinstance(event, WitnessSnapshotParamEvent):
             snapshot_events.append(event)
 
+    # Precompute cumulative expected witness IDs per rollout_id to avoid O(N²) rebuild
+    cumulative_expected: dict[int, set[int]] = {}
+    running: set[int] = set()
+    for rid in sorted(allocations_by_rollout.keys()):
+        running = running | set(allocations_by_rollout[rid].keys())
+        cumulative_expected[rid] = set(running)
+
     issues: list[WitnessDataMismatchIssue] = []
 
     for step_end in step_end_events:
         rollout_id = step_end.rollout_id
+        expected_witness_ids = cumulative_expected.get(rollout_id, set())
+
+        matching_snapshots = [
+            snap for snap in snapshot_events
+            if snap.rollout_id == rollout_id
+        ]
 
         for cell_index, outcome_str in step_end.cell_outcomes.items():
             if outcome_str != "NORMAL":
                 continue
-
-            expected_witness_ids: set[int] = set()
-            for rid in range(rollout_id + 1):
-                if rid in allocations_by_rollout:
-                    expected_witness_ids.update(allocations_by_rollout[rid].keys())
-
-            matching_snapshots = [
-                snap for snap in snapshot_events
-                if snap.rollout_id == rollout_id
-            ]
 
             for snap in matching_snapshots:
                 stale_range = set(range(snap.stale_threshold))

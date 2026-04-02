@@ -29,12 +29,15 @@ def witness_dump_and_clear_stale(
     optimizer: torch.optim.Optimizer,
 ) -> None:
     """Log nonzero witness param rows, then clear stale ring buffer entries."""
+    stale_threshold = max(witness_info.stale_ids) + 1 if witness_info.stale_ids else 0
+
     for chunk_index, chunk in enumerate(model):
         for attr in _WITNESS_ATTRS:
             witness: _DataWitness = getattr(chunk.module, attr)
             _record_and_log_witness_param(
                 witness=witness,
                 instance_id=f"pp{chunk_index}." + attr.replace("_witness", ""),
+                stale_threshold=stale_threshold,
             )
 
     clear_witness_stale_rows(model=model, stale_ids=witness_info.stale_ids, optimizer=optimizer)
@@ -109,6 +112,7 @@ def _record_and_log_witness_param(
         *,
         witness: _DataWitness,
         instance_id: str,
+        stale_threshold: int,
 ) -> None:
     weight = witness.witness.weight.data
     nonzero_witness_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
@@ -118,6 +122,7 @@ def _record_and_log_witness_param(
         dict(
             instance_id=instance_id,
             nonzero_witness_ids=nonzero_witness_ids,
+            stale_threshold=stale_threshold,
         ),
         print_log=False,
     )

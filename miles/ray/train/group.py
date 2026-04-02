@@ -143,14 +143,15 @@ class RayTrainGroup:
             witness_info: WitnessInfo | None = None
             if self._witness_allocator is not None:
                 witness_info = self._witness_allocator.allocate(num_ids=len(sample_indices))
-                witness_id_to_sample_index = dict(zip(witness_info.witness_ids, sample_indices, strict=True))
                 if is_event_logger_initialized():
                     get_event_logger().log(
                         WitnessAllocateIdEvent,
                         dict(
                             rollout_id=rollout_id,
                             attempt=attempt_counter,
-                            witness_id_to_sample_index=witness_id_to_sample_index,
+                            witness_id_to_sample_index=dict(
+                                zip(witness_info.witness_ids, sample_indices, strict=True)
+                            ),
                         ),
                     )
 
