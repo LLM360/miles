@@ -54,7 +54,7 @@ def check(events: list[Event]) -> list[WitnessIssue]:
     return _find_mismatches(
         all_step_events=_filter_by_type(events, TrainGroupStepEndEvent),
         all_witness_events=_filter_by_type(events, WitnessSnapshotParamEvent),
-        expected_witness_ids_of_step=_compute_expected_witness_ids_of_step(allocations_by_rollout),
+        expected_witness_ids_of_step=_compute_expected_witness_ids_of_step(_filter_by_type(events, WitnessAllocateIdEvent)),
     )
 
 
