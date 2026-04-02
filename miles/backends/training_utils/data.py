@@ -43,10 +43,8 @@ def get_rollout_data(
     ]
     if args.enable_witness and witness_info is not None:
         seq_witness_ids = witness_info.witness_ids
-        dp_rank = parallel_state.effective_dp.rank
-        dp_size = parallel_state.effective_dp.size
-        per_rank = len(seq_witness_ids) // dp_size
-        local_witness_ids = seq_witness_ids[dp_rank * per_rank : (dp_rank + 1) * per_rank]
+        dp_partition: list[int] = rollout_data.pop("_dp_partition")
+        local_witness_ids = [seq_witness_ids[i] for i in dp_partition]
         rollout_data["witness_ids"] = [
             torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
             for t, sid in zip(rollout_data["tokens"], local_witness_ids, strict=True)

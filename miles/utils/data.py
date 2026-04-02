@@ -286,5 +286,6 @@ def process_rollout_data(args, rollout_data_ref, dp_rank, dp_size):
     # save the seqlen of the whole rollout batch
     Timer().seq_lens = total_lengths
     rollout_data["total_lengths"] = [total_lengths[i] for i in partition]
+    rollout_data["_dp_partition"] = list(partition)
 
     return rollout_data
