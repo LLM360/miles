@@ -339,3 +339,39 @@ def slice_log_prob_with_cp(
         return chunk_1 + chunk_2
     else:
         return torch.cat([chunk_1, chunk_2], dim=0)
+
+
+def cp_slice_and_pack_1d(
+    tensors: list[torch.Tensor],
+    *,
+    pad_value: int,
+    pad: int,
+    parallel_state: ParallelState,
+    qkv_format: str,
+    allgather_cp: bool,
+    max_seqlen: int | None,
+) -> torch.Tensor:
+    """Apply the same CP slicing / padding / reshape that ``get_batch`` uses for tokens.
+
+    Works for any per-sequence 1-D tensor list (witness_ids, position_ids, etc.).
+    Returns a tensor with shape ``[B, T_padded]`` (bshd) or ``[1, T_padded]`` (thd).
+    """
+    if qkv_format == "bshd":
+        assert max_seqlen is not None
+        result = [slice_with_cp(t, pad_value, parallel_state, qkv_format, max_seqlen) for t in tensors]
+        return torch.stack(result)
+
+    assert qkv_format == "thd"
+    cp_size = parallel_state.cp.size
+    cp_rank = parallel_state.cp.rank
+    if allgather_cp:
+        result = torch.cat(tensors, dim=0)
+        if pad != 0:
+            result = F.pad(result, (0, pad), value=pad_value)
+        result = result.chunk(cp_size, dim=0)[cp_rank]
+    else:
+        result_list = [slice_with_cp(t, pad_value, parallel_state, qkv_format) for t in tensors]
+        result = torch.cat(result_list)
+        if pad != 0:
+            result = F.pad(result, (0, pad), value=pad_value)
+    return result.unsqueeze(0)

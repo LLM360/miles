@@ -13,7 +13,7 @@ from miles.utils.types import RolloutBatch
 
 from ...utils.data import process_rollout_data
 from ...utils.ray_utils import Box
-from .cp_utils import slice_log_prob_with_cp, slice_with_cp
+from .cp_utils import slice_log_prob_with_cp, slice_with_cp, cp_slice_and_pack_1d
 from .parallel import ParallelState
 from miles.utils.witness import get_witness_id_allocator
 
@@ -91,42 +91,6 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
     if "rollout_routed_experts" in rollout_data:
         rollout_data["rollout_routed_experts"] = [torch.from_numpy(r) for r in rollout_data["rollout_routed_experts"]]
     return rollout_data
-
-
-def _cp_slice_and_pack_1d(
-    tensors: list[torch.Tensor],
-    *,
-    pad_value: int,
-    pad: int,
-    parallel_state: ParallelState,
-    qkv_format: str,
-    allgather_cp: bool,
-    max_seqlen: int | None,
-) -> torch.Tensor:
-    """Apply the same CP slicing / padding / reshape that ``get_batch`` uses for tokens.
-
-    Works for any per-sequence 1-D tensor list (witness_ids, position_ids, etc.).
-    Returns a tensor with shape ``[B, T_padded]`` (bshd) or ``[1, T_padded]`` (thd).
-    """
-    if qkv_format == "bshd":
-        assert max_seqlen is not None
-        result = [slice_with_cp(t, pad_value, parallel_state, qkv_format, max_seqlen) for t in tensors]
-        return torch.stack(result)
-
-    assert qkv_format == "thd"
-    cp_size = parallel_state.cp.size
-    cp_rank = parallel_state.cp.rank
-    if allgather_cp:
-        result = torch.cat(tensors, dim=0)
-        if pad != 0:
-            result = F.pad(result, (0, pad), value=pad_value)
-        result = result.chunk(cp_size, dim=0)[cp_rank]
-    else:
-        result_list = [slice_with_cp(t, pad_value, parallel_state, qkv_format) for t in tensors]
-        result = torch.cat(result_list)
-        if pad != 0:
-            result = F.pad(result, (0, pad), value=pad_value)
-    return result.unsqueeze(0)
 
 
 def get_batch(
@@ -235,7 +199,7 @@ def get_batch(
 
     witness_ids = batch.get("witness_ids")
     if witness_ids is not None:
-        batch["witness_ids"] = _cp_slice_and_pack_1d(
+        batch["witness_ids"] = cp_slice_and_pack_1d(
             witness_ids,
             pad_value=0,
             pad=pad,
@@ -251,7 +215,7 @@ def get_batch(
             torch.arange(t.size(0), device=t.device, dtype=torch.long)
             for t in batch["unconcat_tokens"]
         ]
-        batch["position_ids"] = _cp_slice_and_pack_1d(
+        batch["position_ids"] = cp_slice_and_pack_1d(
             position_ids_list,
             pad_value=0,
             pad=pad,
