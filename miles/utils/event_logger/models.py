@@ -63,12 +63,18 @@ class TrainGroupStepEndEvent(EventBase):
     cell_outcomes: dict[int, Literal["error"] | list[TrainStepOutcome]]
 
 
+class MetricEvent(EventBase):
+    type: Literal["metric"] = "metric"
+    metrics: dict[str, float]
+
+
 Event = Annotated[
     LocalWeightChecksumEvent
     | WitnessSnapshotParamEvent
     | RolloutGenerateCompletedEvent
     | WitnessAllocateIdEvent
-    | TrainGroupStepEndEvent,
+    | TrainGroupStepEndEvent
+    | MetricEvent,
     Discriminator("type"),
 ]
 

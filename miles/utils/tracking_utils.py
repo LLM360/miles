@@ -1,6 +1,8 @@
 import logging
 
 import wandb
+from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
+from miles.utils.event_logger.models import MetricEvent
 from miles.utils.tensorboard_utils import _TensorboardAdapter
 
 from . import wandb_utils
@@ -35,3 +37,8 @@ def log(args, metrics, step_key: str):
             "driver and workers can resolve the miles_prometheus_collector Ray actor."
         )
         prom.update.remote(metrics)
+
+    if is_event_logger_initialized():
+        float_metrics = {k: float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
+        if float_metrics:
+            get_event_logger().log(MetricEvent, {"metrics": float_metrics}, print_log=False)
