@@ -136,6 +136,8 @@ class RayTrainGroup:
 
         async def _fn():
             nonlocal attempt_counter
+            current_attempt = attempt_counter
+            attempt_counter += 1
 
             # NOTE: Need to allocate *new* witness ids for each retry
             sample_indices = rollout_data_pack["sample_indices"]
@@ -148,7 +150,7 @@ class RayTrainGroup:
                         WitnessAllocateIdEvent,
                         dict(
                             rollout_id=rollout_id,
-                            attempt=attempt_counter,
+                            attempt=current_attempt,
                             witness_id_to_sample_index=dict(
                                 zip(witness_info.witness_ids, sample_indices, strict=True)
                             ),
@@ -178,8 +180,6 @@ class RayTrainGroup:
                     TrainGroupStepEndEvent,
                     dict(rollout_id=rollout_id, cell_outcomes=cell_outcomes),
                 )
-
-            attempt_counter += 1
 
         await retry(_fn)
 
