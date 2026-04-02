@@ -49,6 +49,10 @@ class ScriptArgs(U.ExecuteTrainConfig):
     nvfp4_keep_first_n: int = 0
     nvfp4_keep_last_n: int = 0
     optimizer_cpu_offload: bool = False
+    # Megatron parallelism overrides (0 = auto-select based on model/GPU count)
+    train_tp: int = 0
+    train_pp: int = 0
+    train_ep: int = 0
 
     def __post_init__(self):
         if (layer_count := _get_layer_count(self.model_name)) is not None:
@@ -95,26 +99,31 @@ def _prepare_nvfp4_ckpt(args: ScriptArgs):
     )
 
 
+def _get_5layer_parallel_config(args: ScriptArgs) -> tuple[int, int, int]:
+    """Return (TP, PP, EP) for 5-layer model. Respects explicit overrides."""
+    tp = args.train_tp or 1
+    pp = args.train_pp or (1 if args.rollout_nvfp4 else 2)
+    ep = args.train_ep or (4 if args.rollout_nvfp4 else 1)
+    return tp, pp, ep
+
+
 def _prepare_megatron_ckpt(args: ScriptArgs):
     # TODO unify 5layer w/ 20layer, also maybe unify the whole script
-    extra_args = "--tensor-model-parallel-size 1 " "--expert-tensor-parallel-size 1 "
+    extra_args = "--expert-tensor-parallel-size 1 "
     num_gpus_per_node = args.num_gpus_per_node
     multinode = True
     num_nodes = None
     layer_count = _get_layer_count(args.model_name)
     if layer_count == 5:
-        if args.rollout_nvfp4:
-            # EP=4 layout: all layers on each GPU, experts split across EP.
-            extra_args += (
-                "--pipeline-model-parallel-size 1 "
-                "--expert-model-parallel-size 4 "
-            )
-        else:
-            extra_args += (
-                "--pipeline-model-parallel-size 2 "
-                "--decoder-last-pipeline-num-layers 2 "
-                "--expert-model-parallel-size 1 "
-            )
+        tp, pp, ep = _get_5layer_parallel_config(args)
+        extra_args += (
+            f"--tensor-model-parallel-size {tp} "
+            f"--pipeline-model-parallel-size {pp} "
+            f"--expert-model-parallel-size {ep} "
+        )
+        if pp >= 2:
+            last_pp_layers = 5 - (5 // pp) * (pp - 1)
+            extra_args += f"--decoder-last-pipeline-num-layers {last_pp_layers} "
         num_gpus_per_node = min(4, num_gpus_per_node)
         multinode = False
     elif layer_count == 20:
@@ -232,14 +241,19 @@ def _execute_train(args: ScriptArgs):
 
     layer_count = _get_layer_count(args.model_name)
     if args.num_nodes <= 2 and layer_count == 5 and args.rollout_nvfp4:
-        # EP=4 layout for NVFP4: all layers on each GPU, experts split.
+        tp, pp, ep = _get_5layer_parallel_config(args)
         perf_args = (
-            "--tensor-model-parallel-size 1 "
-            "--pipeline-model-parallel-size 1 "
+            f"--tensor-model-parallel-size {tp} "
+            f"--pipeline-model-parallel-size {pp} "
             "--context-parallel-size 1 "
-            "--expert-model-parallel-size 4 "
+            f"--expert-model-parallel-size {ep} "
             "--expert-tensor-parallel-size 1 "
         )
+        if pp >= 2:
+            last_pp_layers = 5 - (5 // pp) * (pp - 1)
+            perf_args += f"--decoder-last-pipeline-num-layers {last_pp_layers} "
+        if tp > 1:
+            perf_args += "--sequence-parallel "
     elif args.num_nodes <= 2 and layer_count == 5:
         perf_args = (
             "--tensor-model-parallel-size 1 "

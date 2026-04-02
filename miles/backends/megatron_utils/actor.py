@@ -604,6 +604,11 @@ class MegatronTrainRayActor(TrainRayActor):
                 # Convert BF16→NVFP4 (subprocess) and restart engine.
                 self._convert_and_link_nvfp4_checkpoint(bf16_dir)
 
+                # Clean GPU allocator state on all ranks before restarting SGLang,
+                # otherwise torch_memory_saver's reserved pools cause CUDA errors
+                # during the new engine's CUDA graph capture.
+                clear_memory()
+                dist.barrier(group=get_gloo_group())
                 if dist.get_rank() == 0:
                     ray.get(self.rollout_manager.restart_rollout_engines.remote())
             else:
