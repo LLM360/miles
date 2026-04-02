@@ -1,3 +1,4 @@
+import contextvars
 import functools
 import logging
 import threading
@@ -24,36 +25,35 @@ class EventLogger:
         self._lock = threading.Lock()
         self._file: TextIO = open(self._log_dir / file_name, "a", encoding="utf-8")
         self._source = source
-        self._local = threading.local()
+        self._context_var: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
+            "event_logger_context", default={}
+        )
 
     @property
     def source(self) -> ProcessIdentity:
         return self._source
 
-    def _get_context(self) -> dict[str, Any]:
-        return getattr(self._local, "context", {})
-
-    def _set_context(self, ctx: dict[str, Any]) -> None:
-        self._local.context = ctx
-
     @contextmanager
     def with_context(self, ctx: dict[str, Any]) -> Generator[None, None, None]:
-        """Temporarily merge extra fields into every event logged within this scope (thread-local)."""
-        prev = self._get_context().copy()
+        """Temporarily merge extra fields into every event logged within this scope.
+
+        Safe for both threads and asyncio tasks (uses contextvars).
+        """
+        prev = self._context_var.get()
         merged = {**prev, **ctx}
-        self._set_context(merged)
+        token = self._context_var.set(merged)
         try:
             yield
         finally:
-            assert self._get_context() == merged
-            self._set_context(prev)
+            assert self._context_var.get() == merged
+            self._context_var.reset(token)
 
     def log(self, event_cls: Type[EventBase], partial: dict[str, Any], *, print_log: bool = True) -> None:
         event = event_cls(**{
             **partial,
             "timestamp": datetime.now(timezone.utc),
             "source": self._source,
-            **self._get_context(),
+            **self._context_var.get(),
         })
         line = event.model_dump_json() + "\n"
         with self._lock:
