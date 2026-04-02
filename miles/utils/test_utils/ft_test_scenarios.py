@@ -182,7 +182,7 @@ class RandomFailureScenario(FTTestScenarioBase):
 
         target_cell = self._rng.choice(alive_cells)
         cell = self.ctx.group._cells[target_cell]
-        sub_index = self._rng.randrange(len(cell._actors))
+        sub_index = self._rng.randrange(len(cell._get_actor_handles()))
         mode = self._rng.choice(_FAILURE_MODES)
         cell_name = f"actor-{target_cell}"
 

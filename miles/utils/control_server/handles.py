@@ -72,12 +72,13 @@ class _ActorCellHandle(_CellHandle):
         cell = self._group._cells[self._cell_index]
         if not cell.is_alive:
             raise RuntimeError(f"Cell {self._cell_index} is not alive, cannot inject fault")
-        if sub_index < 0 or sub_index >= len(cell._actors):
+        actors = cell._get_actor_handles()
+        if sub_index < 0 or sub_index >= len(actors):
             raise IndexError(
                 f"sub_index {sub_index} out of range for cell {self._cell_index} "
-                f"(has {len(cell._actors)} actors)"
+                f"(has {len(actors)} actors)"
             )
-        cell._actors[sub_index].inject_fault.remote(mode.value)
+        actors[sub_index].inject_fault.remote(mode.value)
 
 
 # TODO the code will NOT work before implementing rollout ft

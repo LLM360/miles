@@ -43,6 +43,7 @@ def run(
     base = (
         get_common_train_args(ft_mode, dump_dir=dump_dir, num_steps=num_steps)
         + get_indep_dp_args(ft_mode)
+        + "--control-server-port 18080 "
         + "--mini-ft-controller-enable "
         + f"--ci-ft-test-scenario random_failure "
         + f"--ci-ft-test-random-seed {seed} "
