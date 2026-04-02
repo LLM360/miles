@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import torch
 import torch.nn as nn
 
-from miles.utils.witness.module import _DataWitness, _record_and_log_witness_param, _zero_witness_rows, clear_witness_stale_rows, install_witness
+from miles.utils.witness.module import _DataWitness, _record_and_log_witness_param, _zero_witness_rows, _clear_witness_stale_rows, install_witness
 
 
 class TestDataWitnessForward:

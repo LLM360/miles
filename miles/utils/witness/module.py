@@ -38,22 +38,7 @@ def witness_dump_and_clear_stale(
                 stale_ids=witness_info.stale_ids,
             )
 
-    clear_witness_stale_rows(model=model, stale_ids=witness_info.stale_ids, optimizer=optimizer)
-
-
-def clear_witness_stale_rows(
-    *,
-    model: Sequence[nn.Module],
-    stale_ids: list[int],
-    optimizer: torch.optim.Optimizer,
-) -> None:
-    if not stale_ids:
-        return
-
-    witnesses = list(_get_all_witnesses_in_model(model))
-    for witness in witnesses:
-        idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
-        _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
+    _clear_witness_stale_rows(model=model, stale_ids=witness_info.stale_ids, optimizer=optimizer)
 
 
 # ---------------------------------------------------------------------------
@@ -124,3 +109,18 @@ def _record_and_log_witness_param(
         ),
         print_log=False,
     )
+
+
+def _clear_witness_stale_rows(
+        *,
+        model: Sequence[nn.Module],
+        stale_ids: list[int],
+        optimizer: torch.optim.Optimizer,
+) -> None:
+    if not stale_ids:
+        return
+
+    witnesses = list(_get_all_witnesses_in_model(model))
+    for witness in witnesses:
+        idx = torch.tensor(stale_ids, dtype=torch.long, device=witness.witness.weight.device)
+        _zero_witness_rows(witness=witness, idx=idx, optimizer=optimizer)
