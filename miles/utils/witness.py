@@ -41,10 +41,13 @@ def install_witness(model: nn.Module, *, buffer_size: int) -> None:
 
 def witness_dump_and_clear_stale(*, model: Sequence[nn.Module]) -> None:
     """Log nonzero witness param rows, then clear stale ring buffer entries."""
-    for chunk in model:
+    for chunk_index, chunk in enumerate(model):
         for attr in _WITNESS_ATTRS:
             witness: _DataWitness = getattr(chunk.module, attr)
-            _record_and_log_witness_param(witness=witness, position=attr.replace("_witness", ""))
+            _record_and_log_witness_param(
+                witness=witness,
+                instance_id=f"pp{chunk_index}." + attr.replace("_witness", ""),
+            )
 
     get_witness_id_allocator().clear_stale()
 
@@ -148,16 +151,16 @@ def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.o
 def _record_and_log_witness_param(
     *,
     witness: _DataWitness,
-    position: str,
+    instance_id: str,
 ) -> None:
     weight = witness.witness.weight.data
-    nonzero_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
+    nonzero_witness_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()
 
     get_event_logger().log(
         WitnessSnapshotParamEvent,
         dict(
-            position=position,
-            nonzero_ids=nonzero_ids,
+            instance_id=instance_id,
+            nonzero_witness_ids=nonzero_witness_ids,
         ),
         print_log=False,
     )

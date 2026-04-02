@@ -95,8 +95,9 @@ class LocalWeightChecksumEvent(_ActorTrainEventBase):
 
 class WitnessSnapshotParamEvent(_ActorTrainEventBase):
     type: Literal["witness_snapshot_param"] = "witness_snapshot_param"
-    position: str
-    nonzero_ids: list[int]
+    instance_id: str
+    # TODO: may shrink a contiguous range of numbers into a pair, if this is too large/slow
+    nonzero_witness_ids: list[int]
 
 
 Event = Annotated[
