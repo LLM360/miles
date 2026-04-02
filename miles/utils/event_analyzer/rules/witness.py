@@ -23,7 +23,16 @@ class WitnessDataMismatchIssue(FrozenStrictBaseModel):
     actual_witness_ids: list[int]
 
 
-def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
+class WitnessMissingSnapshotIssue(FrozenStrictBaseModel):
+    rollout_id: int
+    cell_index: int
+    description: str
+
+
+WitnessIssue = WitnessDataMismatchIssue | WitnessMissingSnapshotIssue
+
+
+def check(events: list[Event]) -> list[WitnessIssue]:
     """
     Related events:
     * WitnessAllocateIdEvent: when allocating `witness_id` to `sample_id`
@@ -71,8 +80,8 @@ def _find_mismatches(
     all_step_events: list[TrainGroupStepEndEvent],
     all_witness_events: list[WitnessSnapshotParamEvent],
     expected_witness_ids: dict[int, set[int]],
-) -> list[WitnessDataMismatchIssue]:
-    issues: list[WitnessDataMismatchIssue] = []
+) -> list[WitnessIssue]:
+    issues: list[WitnessIssue] = []
 
     for step_event in all_step_events:
         rollout_id = step_event.rollout_id
@@ -85,6 +94,14 @@ def _find_mismatches(
                 e for e in all_witness_events
                 if e.rollout_id == rollout_id and e.source.cell_index == cell_index
             ]
+
+            if not witness_events_of_cell:
+                issues.append(WitnessMissingSnapshotIssue(
+                    rollout_id=rollout_id,
+                    cell_index=cell_index,
+                    description=f"Cell {cell_index} reported NORMAL for rollout {rollout_id} but no WitnessSnapshotParamEvent was found",
+                ))
+                continue
 
             for event in witness_events_of_cell:
                 issue = _compare_snapshot(
