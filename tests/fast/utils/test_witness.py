@@ -5,19 +5,19 @@ from unittest.mock import MagicMock, patch
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import DataWitness, WitnessIdAllocator, _record_and_log_witness_param
+from miles.utils.witness import _DataWitness, WitnessIdAllocator, _record_and_log_witness_param
 
 
 class TestDataWitnessForward:
     def test_forward_is_bitwise_zero(self) -> None:
-        witness = DataWitness(num_ids=10)
+        witness = _DataWitness(num_ids=10)
         ids = torch.tensor([0, 1, 2, 3])
         out = witness(ids)
         assert torch.all(out == 0.0)
         assert out.shape == (4, 1)
 
     def test_forward_zero_after_optimizer_step(self) -> None:
-        witness = DataWitness(num_ids=10)
+        witness = _DataWitness(num_ids=10)
         optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
 
         ids = torch.tensor([0, 1, 2])
@@ -33,7 +33,7 @@ class TestDataWitnessForward:
         assert torch.all(out2 == 0.0)
 
     def test_backward_records_gradient(self) -> None:
-        witness = DataWitness(num_ids=10)
+        witness = _DataWitness(num_ids=10)
         ids = torch.tensor([2, 5])
 
         # Need a downstream loss to propagate grads
@@ -66,7 +66,7 @@ class TestDataWitnessForward:
         linear.zero_grad()
 
         # Compute loss with witness
-        witness = DataWitness(num_ids=10)
+        witness = _DataWitness(num_ids=10)
         ids = torch.tensor([0, 0, 0, 0])
         witness_out = witness(ids)  # (4, 1) of zeros
 
@@ -82,7 +82,7 @@ class TestDataWitnessForward:
 
 class TestWitnessIdAllocator:
     def test_monotonic_and_wraps(self) -> None:
-        witness = DataWitness(num_ids=5)
+        witness = _DataWitness(num_ids=5)
         allocator = WitnessIdAllocator(ring_buffer_size=5, witnesses=[witness])
 
         ids1 = allocator.allocate_for_sequences(3)
@@ -92,13 +92,13 @@ class TestWitnessIdAllocator:
         assert ids2 == [3, 4, 0, 1]
 
     def test_allocate_for_sequences_returns_correct_count(self) -> None:
-        witness = DataWitness(num_ids=100)
+        witness = _DataWitness(num_ids=100)
         allocator = WitnessIdAllocator(ring_buffer_size=100, witnesses=[witness])
         ids = allocator.allocate_for_sequences(7)
         assert len(ids) == 7
 
     def test_per_sequence_id_same_for_all_tokens(self) -> None:
-        witness = DataWitness(num_ids=100)
+        witness = _DataWitness(num_ids=100)
         allocator = WitnessIdAllocator(ring_buffer_size=100, witnesses=[witness])
         seq_ids = allocator.allocate_for_sequences(3)
 
@@ -112,7 +112,7 @@ class TestWitnessIdAllocator:
             assert torch.all(wids == sid)
 
     def test_clear_stale_zeros_oldest_ids(self) -> None:
-        witness = DataWitness(num_ids=5)
+        witness = _DataWitness(num_ids=5)
         optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
 
         # Make all weights nonzero
@@ -135,7 +135,7 @@ class TestWitnessIdAllocator:
             assert witness.witness.weight.data[i].item() != 0.0
 
     def test_clear_stale_zeros_optimizer_state(self) -> None:
-        witness = DataWitness(num_ids=5)
+        witness = _DataWitness(num_ids=5)
         optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
 
         # Run a step to populate optimizer state
@@ -160,7 +160,7 @@ class TestWitnessIdAllocator:
             assert optimizer.state[param]["exp_avg_sq"][i].item() == 0.0
 
     def test_clear_stale_no_stale_when_all_recent(self) -> None:
-        witness = DataWitness(num_ids=5)
+        witness = _DataWitness(num_ids=5)
         optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
 
         witness.witness.weight.data.fill_(1.0)
@@ -177,7 +177,7 @@ class TestWitnessIdAllocator:
 
 class TestRecordAndLogWitnessParam:
     def test_logs_nonzero_weight_rows(self) -> None:
-        witness = DataWitness(num_ids=10)
+        witness = _DataWitness(num_ids=10)
         witness.witness.weight.data[3] = 1.0
         witness.witness.weight.data[7] = 2.0
 
@@ -194,7 +194,7 @@ class TestRecordAndLogWitnessParam:
             assert partial["position"] == "head_witness"
 
     def test_record_and_log_event_fields(self) -> None:
-        witness = DataWitness(num_ids=10)
+        witness = _DataWitness(num_ids=10)
         witness.witness.weight.data[1] = 0.5
         witness.witness.weight.data[4] = -0.3
 

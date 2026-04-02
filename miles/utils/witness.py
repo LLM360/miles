@@ -33,14 +33,14 @@ def get_witness_id_allocator() -> "WitnessIdAllocator":
 
 
 def install_witness(model: nn.Module, *, buffer_size: int) -> None:
-    model.head_witness = DataWitness(buffer_size=buffer_size)
-    model.tail_witness = DataWitness(buffer_size=buffer_size)
+    model.head_witness = _DataWitness(buffer_size=buffer_size)
+    model.tail_witness = _DataWitness(buffer_size=buffer_size)
 
 
 def dump_witness_params(*, model: Sequence[nn.Module]) -> None:
     for chunk in model:
         for attr in _WITNESS_ATTRS:
-            witness: DataWitness = getattr(chunk.module, attr)
+            witness: _DataWitness = getattr(chunk.module, attr)
             _record_and_log_witness_param(witness=witness, position=attr.replace("_witness", ""))
 
 
@@ -49,7 +49,7 @@ def dump_witness_params(*, model: Sequence[nn.Module]) -> None:
 # ---------------------------------------------------------------------------
 
 
-class DataWitness(nn.Module):
+class _DataWitness(nn.Module):
     def __init__(self, buffer_size: int) -> None:
         super().__init__()
         self.buffer_size = buffer_size
@@ -64,7 +64,7 @@ class DataWitness(nn.Module):
 
 
 class WitnessIdAllocator:
-    def __init__(self, *, witnesses: list[DataWitness]) -> None:
+    def __init__(self, *, witnesses: list[_DataWitness]) -> None:
         buffer_sizes = [x.buffer_size for x in witnesses]
         assert all(buffer_sizes[0] == x for x in buffer_sizes)
         self._buffer_size = buffer_sizes[0]
@@ -126,11 +126,11 @@ def _set_witness_id_allocator(allocator: Optional[WitnessIdAllocator]) -> None:
 _WITNESS_ATTRS = ("head_witness", "tail_witness")
 
 
-def _find_all_witnesses_in_model_chunks(model_chunks: Sequence[nn.Module]) -> list[DataWitness]:
-    witnesses: list[DataWitness] = []
+def _find_all_witnesses_in_model_chunks(model_chunks: Sequence[nn.Module]) -> list[_DataWitness]:
+    witnesses: list[_DataWitness] = []
     for chunk in model_chunks:
         for attr in _WITNESS_ATTRS:
-            w: Optional[DataWitness] = getattr(chunk.module, attr, None)
+            w: Optional[_DataWitness] = getattr(chunk.module, attr, None)
             if w is not None:
                 witnesses.append(w)
         if witnesses:
@@ -138,7 +138,7 @@ def _find_all_witnesses_in_model_chunks(model_chunks: Sequence[nn.Module]) -> li
     return witnesses
 
 
-def _zero_witness_rows(*, witness: DataWitness, idx: Tensor, optimizer: torch.optim.Optimizer) -> None:
+def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.optim.Optimizer) -> None:
     model_weight = witness.witness.weight
     model_weight.data[idx] = 0.0
 
@@ -159,7 +159,7 @@ def _zero_witness_rows(*, witness: DataWitness, idx: Tensor, optimizer: torch.op
 
 def _record_and_log_witness_param(
     *,
-    witness: DataWitness,
+    witness: _DataWitness,
     position: str,
 ) -> None:
     weight = witness.witness.weight.data

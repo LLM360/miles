@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import DataWitness, install_witness
+from miles.utils.witness import _DataWitness, install_witness
 
 
 class _FakeDecoder(nn.Module):
@@ -50,7 +50,7 @@ class _FakeGPTModel(nn.Module):
 class TestInstallWitnessHook:
     def test_witness_is_submodule(self) -> None:
         model = _FakeGPTModel()
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         assert hasattr(model, "head_witness")
@@ -59,7 +59,7 @@ class TestInstallWitnessHook:
 
     def test_witness_in_parameters(self) -> None:
         model = _FakeGPTModel()
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         param_names = [name for name, _ in model.named_parameters()]
@@ -67,7 +67,7 @@ class TestInstallWitnessHook:
 
     def test_hook_adds_zero_to_decoder_input(self) -> None:
         model = _FakeGPTModel()
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         tokens = torch.tensor([[1, 2, 3]])
@@ -83,7 +83,7 @@ class TestInstallWitnessHook:
 
     def test_hook_produces_gradient_on_witness(self) -> None:
         model = _FakeGPTModel()
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         tokens = torch.tensor([[1, 2, 3]])
@@ -100,7 +100,7 @@ class TestInstallWitnessHook:
 
     def test_no_witness_ids_no_effect(self) -> None:
         model = _FakeGPTModel()
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         tokens = torch.tensor([[1, 2, 3]])
@@ -109,7 +109,7 @@ class TestInstallWitnessHook:
 
     def test_witness_in_state_dict(self) -> None:
         model = _FakeGPTModel()
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         sd = model.state_dict()
@@ -117,7 +117,7 @@ class TestInstallWitnessHook:
 
     def test_witness_checkpoint_roundtrip(self) -> None:
         model = _FakeGPTModel()
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         # Make witness weights nonzero
@@ -127,7 +127,7 @@ class TestInstallWitnessHook:
 
         # Create new model and load
         model2 = _FakeGPTModel()
-        witness2 = DataWitness(buffer_size=10)
+        witness2 = _DataWitness(buffer_size=10)
         install_witness(model2, witness2)
         model2.load_state_dict(sd)
 
@@ -141,7 +141,7 @@ class TestInstallWitnessHook:
     def test_witness_middle_pp_stage_modifies_input_tensor(self) -> None:
         """Non-pre_process stage: witness should modify decoder.input_tensor, not decoder_input."""
         model = _FakeGPTModel(pre_process=False)
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         # Simulate hidden states from previous PP stage
@@ -157,7 +157,7 @@ class TestInstallWitnessHook:
 
     def test_witness_middle_pp_stage_produces_gradient(self) -> None:
         model = _FakeGPTModel(pre_process=False)
-        witness = DataWitness(buffer_size=10)
+        witness = _DataWitness(buffer_size=10)
         install_witness(model, witness)
 
         hidden = torch.randn(1, 4, 16, requires_grad=True)
@@ -175,7 +175,7 @@ class TestInstallWitnessHook:
         assert 5 in nonzero
 
     def test_witness_forward_bitwise_zero_bf16(self) -> None:
-        witness = DataWitness(buffer_size=10).to(dtype=torch.bfloat16)
+        witness = _DataWitness(buffer_size=10).to(dtype=torch.bfloat16)
         # Make weights nonzero
         witness.witness.weight.data.fill_(3.14)
         ids = torch.tensor([0, 1, 2])
