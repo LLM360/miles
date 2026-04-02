@@ -33,13 +33,16 @@ def get_witness_id_allocator() -> "WitnessIdAllocator":
     return _witness_id_allocator
 
 
-def install_witness(model: nn.Module, witness: "DataWitness") -> None:
-    """Attach a DataWitness as a submodule of a GPTModel.
+def install_witness(model: nn.Module, *, num_ids: int) -> None:
+    """Attach head and tail DataWitness submodules to a GPTModel.
 
-    The witness participates in DDP, optimizer, and checkpointing automatically.
-    Callers pass ``witness_ids`` to ``GPTModel.forward()`` to activate it.
+    Both participate in DDP, optimizer, and checkpointing automatically.
+    Callers pass ``witness_ids`` to ``GPTModel.forward()`` to activate them.
+    head_witness probes gradients flowing into the decoder;
+    tail_witness probes gradients flowing out of the decoder.
     """
-    model.head_witness = witness
+    model.head_witness = DataWitness(num_ids=num_ids)
+    model.tail_witness = DataWitness(num_ids=num_ids)
 
 
 def dump_witness_grads(
@@ -49,16 +52,18 @@ def dump_witness_grads(
     quorum_id: int,
     rank: int,
 ) -> None:
-    """Find all witness submodules in model chunks and log their gradients."""
+    """Find all witness submodules (head + tail) in model chunks and log their gradients."""
     for chunk in model_chunks:
-        witness: Optional[DataWitness] = getattr(chunk.module, "head_witness", None)
-        if witness is not None:
-            _record_and_log_witness_grad(
-                step=step,
-                quorum_id=quorum_id,
-                rank=rank,
-                witness=witness,
-            )
+        for attr in ("head_witness", "tail_witness"):
+            witness: Optional[DataWitness] = getattr(chunk.module, attr, None)
+            if witness is not None:
+                _record_and_log_witness_grad(
+                    step=step,
+                    quorum_id=quorum_id,
+                    rank=rank,
+                    witness=witness,
+                    position=attr,
+                )
 
 
 # ---------------------------------------------------------------------------
