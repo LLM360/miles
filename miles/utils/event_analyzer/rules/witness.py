@@ -19,7 +19,7 @@ class WitnessDataMismatchIssue(FrozenStrictBaseModel):
     rollout_id: int
     cell_index: int
     description: str
-    expected_witness_ids: list[int]
+    expected_witness_ids_of_step: list[int]
     actual_witness_ids: list[int]
 
 
@@ -52,12 +52,11 @@ def check(events: list[Event]) -> list[WitnessIssue]:
     """
 
     allocations_by_rollout = {e.rid: e.mapping for e in _filter_by_type(events, WitnessAllocateIdEvent)}
-    expected_witness_ids = _compute_expected_witness_ids(allocations_by_rollout)
 
     return _find_mismatches(
         all_step_events=_filter_by_type(events, TrainGroupStepEndEvent),
         all_witness_events=_filter_by_type(events, WitnessSnapshotParamEvent),
-        expected_witness_ids=expected_witness_ids,
+        expected_witness_ids_of_step=_compute_expected_witness_ids_of_step(allocations_by_rollout),
     )
 
 
@@ -65,7 +64,7 @@ def _filter_by_type(arr: list, ty: Type) -> list:
     return [x for x in arr if isinstance(x, ty)]
 
 
-def _compute_expected_witness_ids(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
+def _compute_expected_witness_ids_of_step(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
     """Precompute cumulative expected witness IDs per rollout_id."""
     ans: dict[int, set[int]] = {}
     running: set[int] = set()
@@ -79,7 +78,7 @@ def _find_mismatches(
     *,
     all_step_events: list[TrainGroupStepEndEvent],
     all_witness_events: list[WitnessSnapshotParamEvent],
-    expected_witness_ids: dict[int, set[int]],
+    expected_witness_ids_of_step: dict[int, set[int]],
 ) -> list[WitnessIssue]:
     issues: list[WitnessIssue] = []
 
@@ -105,7 +104,7 @@ def _find_mismatches(
 
             for event in witness_events_of_cell:
                 issue = _compare_snapshot(
-                    event=event, expected=expected_witness_ids.get(rollout_id, set()),
+                    event=event, expected=expected_witness_ids_of_step.get(rollout_id, set()),
                     rollout_id=rollout_id, cell_index=cell_index,
                 )
                 if issue is not None:
@@ -136,6 +135,6 @@ def _compare_snapshot(
             f"missing={sorted(filtered_expected - filtered_actual)}, "
             f"extra={sorted(filtered_actual - filtered_expected)}"
         ),
-        expected_witness_ids=sorted(filtered_expected),
+        expected_witness_ids_of_step=sorted(filtered_expected),
         actual_witness_ids=sorted(filtered_actual),
     )
