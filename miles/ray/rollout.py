@@ -538,6 +538,34 @@ class RolloutManager:
         if srv:
             srv.num_new_engines = 0
 
+    def restart_rollout_engines(self):
+        """Restart all rollout engines in-place for NVFP4 restart-sync."""
+        self.health_monitoring_pause()
+
+        srv = self._get_updatable_server()
+        if srv is None:
+            logger.warning("restart_rollout_engines: no updatable server found")
+            return
+
+        for g in srv.server_groups:
+            for i, engine in enumerate(g.all_engines):
+                if engine is None:
+                    continue
+                try:
+                    ray.get(engine.shutdown.remote())
+                except Exception as e:
+                    logger.warning(f"Failed to shutdown rollout engine {i}: {e}")
+                try:
+                    ray.kill(engine)
+                except Exception as e:
+                    logger.warning(f"Failed to kill rollout engine {i}: {e}")
+                g.all_engines[i] = None
+
+        srv.recover()
+        # recover() already handles offload/onload for new engines
+        srv.num_new_engines = 0
+        logger.info(f"Restarted rollout engines")
+
     def check_weights(self, action: str):
         return ray.get([engine.check_weights.remote(action=action) for engine in self.rollout_engines])
 
