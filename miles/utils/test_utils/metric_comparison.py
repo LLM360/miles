@@ -20,6 +20,7 @@ def compare_metrics(
 
     baseline_metrics = _read_metric_events(Path(baseline_dir))
     target_metrics = _read_metric_events(Path(target_dir))
+    print(f"Metrics: {baseline_metrics=} {target_metrics=}")
 
     assert len(baseline_metrics) > 0, f"No MetricEvents found in baseline dir: {baseline_dir}"
     assert len(target_metrics) > 0, f"No MetricEvents found in target dir: {target_dir}"
