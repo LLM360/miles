@@ -24,11 +24,6 @@ from miles.utils.witness import DataWitness, install_witness
 logger = logging.getLogger(__name__)
 
 
-def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
-    if args.enable_witness:
-        install_witness(model, DataWitness(num_ids=args.witness_ring_buffer_size))
-
-
 # Adapt from https://github.com/volcengine/verl/blob/c3b20575d2bc815fcccd84bddb4c0401fc4b632b/verl/models/llama/megatron/layers/parallel_linear.py#L82
 class LinearForLastLayer(torch.nn.Linear):
     def __init__(
@@ -88,12 +83,11 @@ def get_model_provider_func(
                 model.output_layer = LinearForLastLayer(
                     input_size=model.config.hidden_size, output_size=1, config=model.config
                 )
-            _maybe_install_witness(args, model)
             return model
 
-        return wrapped_model_provider
+        base_provider = wrapped_model_provider
 
-    if args.megatron_to_hf_mode == "bridge":
+    elif args.megatron_to_hf_mode == "bridge":
         from megatron.bridge import AutoBridge
 
         bridge = AutoBridge.from_hf_pretrained(args.hf_checkpoint, trust_remote_code=True)
@@ -127,13 +121,12 @@ def get_model_provider_func(
             pg_collection=None,
         ) -> GPTModel:
             assert config is None, "miles builds the config from args, so it expects config to be None"
-            model = provider.provide(pre_process=pre_process, post_process=post_process, vp_stage=vp_stage)
-            _maybe_install_witness(args, model)
-            return model
+            return provider.provide(pre_process=pre_process, post_process=post_process, vp_stage=vp_stage)
 
-        return wrapped_bridge_provider
+        base_provider = wrapped_bridge_provider
 
-    def model_provider(
+    else:
+        def model_provider(
         pre_process: bool = True,
         post_process: bool = True,
         vp_stage: int | None = None,
@@ -254,8 +247,16 @@ def get_model_provider_func(
         if post_process and role == "critic":
             model.output_layer = LinearForLastLayer(input_size=config.hidden_size, output_size=1, config=config)
 
-        _maybe_install_witness(args, model)
-
         return model
 
-    return model_provider
+    base_provider = model_provider
+
+    if not args.enable_witness:
+        return base_provider
+
+    def _witness_provider(*a, **kw) -> GPTModel:
+        model = base_provider(*a, **kw)
+        install_witness(model, DataWitness(num_ids=args.witness_ring_buffer_size))
+        return model
+
+    return _witness_provider
