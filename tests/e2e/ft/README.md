@@ -15,12 +15,15 @@ Each test runs with `--mode`:
 
 All modes are **disaggregated** (training and rollout on separate nodes). Modes without rollout use debug rollout data.
 
-| Mode | Train Nodes | DP cells | Parallelism | Rollout | Coverage |
-|------|-------------|----------|-------------|---------|----------|
-| `dp2_cp2_tp2_ep2` | 1 | 2 | CP2 TP2 EP2 | debug data | TP + EP |
-| `dp2_cp2_pp2` | 1 | 2 | CP2 PP2 | debug data | PP |
-| `dp4_cp2` | 1 | 4 | CP2 | debug data | Multi-replica (>=4 cells) |
-| `6node_dp4_cp2_tp2_pp2_ep2_etp2` | 4 (+2 rollout) | 4 | CP2 TP2 PP2 EP2 ETP2 | 2 engines × 8 GPU | Large-scale, disagg, all parallelism |
+| Mode | Nodes | DP cells | Batch | Parallelism | Rollout | Coverage |
+|------|-------|----------|-------|-------------|---------|----------|
+| `dp2_cp2_tp2_ep2` | 1 | 2 | 3 | CP2 TP2 EP2 | debug data | TP + EP |
+| `dp2_cp2_pp2` | 1 | 2 | 3 | CP2 PP2 | debug data | PP |
+| `dp4_cp2` | 1 | 4 | 5 | CP2 | debug data | Multi-replica (>=4 cells) |
+| `dp2_cp2_real_rollout` | 1 | 2 | 3 | CP2 | 4 engines × 1 GPU | Real weight update path |
+| `6node_dp4_cp2_tp2_pp2_ep2_etp2` | 4+2 | 4 | 5 | CP2 TP2 PP2 EP2 ETP2 | 2 engines × 8 GPU | Large-scale, all parallelism |
+
+Batch sizes are deliberately **not** divisible by num_cells to test uneven sample distribution across replicas (e.g. DP4 + batch 5 → 2,1,1,1).
 
 ## Running
 

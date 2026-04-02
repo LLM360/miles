@@ -61,7 +61,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         "--attention-backend flash "
         f"--actor-num-nodes {mode.train_num_nodes} "
         f"--actor-num-gpus-per-node {mode.train_gpus_per_node} "
-        "--global-batch-size 1 "
+        f"--global-batch-size {mode.global_batch_size} "
         "--moe-token-dispatcher-type alltoall "
         "--advantage-estimator grpo "
         "--eps-clip 0.2 "
