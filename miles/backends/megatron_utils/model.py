@@ -334,23 +334,6 @@ class TrainStepOutcome(StrEnum):
     DISCARDED_SHOULD_RETRY = auto()
 
 
-def _dump_witness_grad(
-    *,
-    args: Namespace,
-    model: Sequence[DDP],
-    rollout_id: int,
-    step_id: int,
-    parallel_state: ParallelState,
-) -> None:
-    dump_witness_grads(
-        model_chunks=model,
-        step=rollout_id * args.num_steps_per_rollout + step_id,
-        # GroupInfo does not carry quorum_id; fall back to 0
-        quorum_id=getattr(parallel_state.indep_dp, "quorum_id", 0),
-        rank=parallel_state.indep_dp.rank if parallel_state.indep_dp.size > 1 else 0,
-    )
-
-
 def train_one_step(
     args: Namespace,
     rollout_id: int,
@@ -498,12 +481,12 @@ def train_one_step(
     valid_step = True
 
     if args.enable_witness:
-        _dump_witness_grad(
-            args=args,
-            model=model,
-            rollout_id=rollout_id,
-            step_id=step_id,
-            parallel_state=parallel_state,
+        dump_witness_grads(
+            model_chunks=model,
+            step=rollout_id * args.num_steps_per_rollout + step_id,
+            # GroupInfo does not carry quorum_id; fall back to 0
+            quorum_id=getattr(parallel_state.indep_dp, "quorum_id", 0),
+            rank=parallel_state.indep_dp.rank if parallel_state.indep_dp.size > 1 else 0,
         )
 
     if parallel_state.indep_dp.size > 1:
