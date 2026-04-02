@@ -434,6 +434,7 @@ def train_one_step(
                 labels=None,
                 packed_seq_params=get_packed_seq_params(batch, args),
                 loss_mask=batch["full_loss_masks"],
+                witness_ids=batch.get("witness_ids"),
             )
         else:
             forward_kwargs = {
