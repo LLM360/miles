@@ -107,8 +107,11 @@ def _find_mismatches(
         ]
 
         for cell_index, outcome in step_end.cell_outcomes.items():
-            if outcome == "error" or any(r != TrainStepOutcome.NORMAL for r in outcome):
-                continue
+            match outcome:
+                case "error":
+                    continue
+                case steps if any(r != TrainStepOutcome.NORMAL for r in steps):
+                    continue
 
             cell_snapshots = [
                 snap for snap in matching_snapshots
