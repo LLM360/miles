@@ -33,7 +33,7 @@ DEFAULT_CRASH_PROBABILITY: float = 0.1
 
 @app.command()
 def run(
-    mode: Annotated[str, typer.Option(help="Test mode variant")] = "dp4_cp2",
+    mode: Annotated[str, typer.Option(help="Test mode variant")],
     seed: Annotated[int, typer.Option(help="Random seed for fault injection")] = 42,
     num_steps: Annotated[int, typer.Option(help="Number of train() calls")] = DEFAULT_NUM_STEPS,
     crash_probability: Annotated[float, typer.Option(help="Per-step crash probability per cell")] = DEFAULT_CRASH_PROBABILITY,

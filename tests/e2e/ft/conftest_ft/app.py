@@ -34,11 +34,11 @@ def create_comparison_app(
         side: str,
         build_fn: Callable[[FTTestMode, str], str],
         mode: str,
-        dump_dir: str,
+        dump_dir: str | None,
         phase: str,
     ) -> None:
         ft_mode = resolve_mode(mode)
-        if not dump_dir:
+        if dump_dir is None:
             dump_dir = str(Path(tempfile.mkdtemp(prefix="ft_test_")) / "dumps")
         sub = _get_dump_subdir(side, phase)
         full_dump_dir = f"{dump_dir}/{sub}"
@@ -48,8 +48,8 @@ def create_comparison_app(
 
     @app.command()
     def baseline(
-        mode: Annotated[str, typer.Option(help="Test mode variant")] = "dp2_cp2_tp2_ep2",
-        dump_dir: Annotated[str, typer.Option(help="Dump base directory")] = "",
+        mode: Annotated[str, typer.Option(help="Test mode variant")],
+        dump_dir: Annotated[str | None, typer.Option(help="Dump base directory")] = None,
         phase: Annotated[str, typer.Option(help="Phase name (multi-phase tests)")] = "",
     ) -> None:
         """Run baseline (normal DP) training."""
@@ -57,8 +57,8 @@ def create_comparison_app(
 
     @app.command()
     def target(
-        mode: Annotated[str, typer.Option(help="Test mode variant")] = "dp2_cp2_tp2_ep2",
-        dump_dir: Annotated[str, typer.Option(help="Dump base directory")] = "",
+        mode: Annotated[str, typer.Option(help="Test mode variant")],
+        dump_dir: Annotated[str | None, typer.Option(help="Dump base directory")] = None,
         phase: Annotated[str, typer.Option(help="Phase name (multi-phase tests)")] = "",
     ) -> None:
         """Run target (indep_dp) training."""
@@ -66,8 +66,8 @@ def create_comparison_app(
 
     @app.command()
     def compare(
-        mode: Annotated[str, typer.Option(help="Test mode variant")] = "dp2_cp2_tp2_ep2",
-        dump_dir: Annotated[str, typer.Option(help="Dump base directory")] = "",
+        mode: Annotated[str, typer.Option(help="Test mode variant")],
+        dump_dir: Annotated[str | None, typer.Option(help="Dump base directory")] = None,
     ) -> None:
         """Compare baseline and target dumps."""
         ft_mode = resolve_mode(mode)
@@ -75,7 +75,7 @@ def create_comparison_app(
 
     @app.command()
     def run(
-        mode: Annotated[str, typer.Option(help="Test mode variant")] = "dp2_cp2_tp2_ep2",
+        mode: Annotated[str, typer.Option(help="Test mode variant")],
     ) -> None:
         """Full pipeline: prepare + all phases + compare."""
         ft_mode = resolve_mode(mode)
@@ -109,7 +109,7 @@ def create_non_comparison_app(
 
     @app.command()
     def run(
-        mode: Annotated[str, typer.Option(help="Test mode variant")] = "dp2_cp2_tp2_ep2",
+        mode: Annotated[str, typer.Option(help="Test mode variant")],
     ) -> None:
         """Full pipeline: prepare + execute + verify."""
         ft_mode = resolve_mode(mode)
