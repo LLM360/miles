@@ -10,7 +10,7 @@ The scenario is called as a *step callback* — it receives the current
 
 import logging
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:

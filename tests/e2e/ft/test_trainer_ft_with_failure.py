@@ -15,26 +15,23 @@ _MILES_ROOT: Path = Path(__file__).resolve().parents[3]
 if str(_MILES_ROOT) not in sys.path:
     sys.path.insert(0, str(_MILES_ROOT))
 
-from tests.e2e.ft.conftest_ft import (
-    FTTestMode,
-    compare_metrics,
-    create_comparison_app,
-    get_common_train_args,
-    get_indep_dp_args,
-)
+from tests.e2e.ft.conftest_ft.app import create_comparison_app
+from tests.e2e.ft.conftest_ft.args import get_common_train_args, get_indep_dp_args
+from tests.e2e.ft.conftest_ft.comparison import compare_metrics
+from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
 NUM_PHASE_A_STEPS: int = 1
 NUM_PHASE_B_STEPS: int = 4
 
 
 def _build_baseline_args_phase_a(mode: FTTestMode, dump_dir: str) -> str:
-    base = get_common_train_args(mode, dump_dir=dump_dir)
+    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_PHASE_A_STEPS)
     base += f"--save {dump_dir}/ckpt --save-interval 1 "
     return base
 
 
 def _build_target_args_phase_a(mode: FTTestMode, dump_dir: str) -> str:
-    base = get_common_train_args(mode, dump_dir=dump_dir)
+    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_PHASE_A_STEPS)
     base += get_indep_dp_args(mode)
     base += f"--save {dump_dir}/ckpt --save-interval 1 "
     return base
@@ -42,14 +39,14 @@ def _build_target_args_phase_a(mode: FTTestMode, dump_dir: str) -> str:
 
 def _build_baseline_args_phase_b(mode: FTTestMode, dump_dir: str) -> str:
     phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
-    base = get_common_train_args(mode, dump_dir=dump_dir)
+    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_PHASE_B_STEPS)
     base += f"--load {phase_a_dir}/ckpt "
     return base
 
 
 def _build_target_args_phase_b(mode: FTTestMode, dump_dir: str) -> str:
     phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
-    base = get_common_train_args(mode, dump_dir=dump_dir)
+    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_PHASE_B_STEPS)
     base += get_indep_dp_args(mode)
     base += f"--load {phase_a_dir}/ckpt "
     base += "--ci-ft-test-scenario with_failure "

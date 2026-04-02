@@ -10,7 +10,6 @@ DEBUG_ROLLOUT_DATA_HF_REPO: str = "fzyzcjy/miles-ft-test-debug-rollout-data"
 
 @dataclass(frozen=True)
 class FTTestMode:
-    name: str
     model_name: str
     megatron_model_type: str
     num_gpus_total: int
@@ -22,7 +21,6 @@ class FTTestMode:
 
 MODES: dict[str, FTTestMode] = {
     "dp2_cp2_tp2_ep2": FTTestMode(
-        name="dp2_cp2_tp2_ep2",
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
         num_gpus_total=8,
@@ -34,7 +32,6 @@ MODES: dict[str, FTTestMode] = {
         ),
     ),
     "dp2_cp2_pp2": FTTestMode(
-        name="dp2_cp2_pp2",
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
         num_gpus_total=8,
@@ -43,7 +40,6 @@ MODES: dict[str, FTTestMode] = {
         parallel_args="--pipeline-model-parallel-size 2 --context-parallel-size 2",
     ),
     "dp4_cp2": FTTestMode(
-        name="dp4_cp2",
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
         num_gpus_total=8,
@@ -52,7 +48,6 @@ MODES: dict[str, FTTestMode] = {
         parallel_args="--context-parallel-size 2",
     ),
     "dp2_cp2_real_rollout": FTTestMode(
-        name="dp2_cp2_real_rollout",
         model_name=MODEL_NAME,
         megatron_model_type=MODEL_TYPE,
         num_gpus_total=8,

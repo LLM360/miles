@@ -20,15 +20,10 @@ if str(_MILES_ROOT) not in sys.path:
 
 import typer
 
-from tests.e2e.ft.conftest_ft import (
-    FTTestMode,
-    assert_events_dir_exists,
-    get_common_train_args,
-    get_indep_dp_args,
-    prepare,
-    resolve_mode,
-    run_training,
-)
+from tests.e2e.ft.conftest_ft.args import get_common_train_args, get_indep_dp_args, run_training
+from tests.e2e.ft.conftest_ft.comparison import assert_events_dir_exists
+from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
+from tests.e2e.ft.conftest_ft.prepare import prepare
 
 app: typer.Typer = typer.Typer()
 
