@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass, field
+from typing import Literal
 
 from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.event_logger.models import (
@@ -107,7 +108,7 @@ def _find_mismatches(
         ]
 
         for cell_index, outcome in step_end.cell_outcomes.items():
-            if outcome == "error" or any(r != TrainStepOutcome.NORMAL for r in outcome):
+            if _is_non_normal_outcome(outcome):
                 continue
 
             cell_snapshots = [
@@ -116,21 +117,42 @@ def _find_mismatches(
             ]
 
             for snap in cell_snapshots:
-                stale_set = set(snap.stale_ids)
-                filtered_expected = expected_witness_ids - stale_set
-                filtered_actual = set(snap.nonzero_witness_ids) - stale_set
-
-                if filtered_expected != filtered_actual:
-                    issues.append(WitnessDataMismatchIssue(
-                        rollout_id=rollout_id,
-                        cell_index=cell_index,
-                        description=(
-                            f"Witness data mismatch for instance {snap.instance_id}: "
-                            f"missing={sorted(filtered_expected - filtered_actual)}, "
-                            f"extra={sorted(filtered_actual - filtered_expected)}"
-                        ),
-                        expected_witness_ids=sorted(filtered_expected),
-                        actual_witness_ids=sorted(filtered_actual),
-                    ))
+                issue = _compare_snapshot(
+                    snap=snap, expected=expected_witness_ids,
+                    rollout_id=rollout_id, cell_index=cell_index,
+                )
+                if issue is not None:
+                    issues.append(issue)
 
     return issues
+
+
+def _is_non_normal_outcome(outcome: Literal["error"] | list[TrainStepOutcome]) -> bool:
+    return outcome == "error" or any(r != TrainStepOutcome.NORMAL for r in outcome)
+
+
+def _compare_snapshot(
+    *,
+    snap: WitnessSnapshotParamEvent,
+    expected: set[int],
+    rollout_id: int,
+    cell_index: int,
+) -> WitnessDataMismatchIssue | None:
+    stale_set = set(snap.stale_ids)
+    filtered_expected = expected - stale_set
+    filtered_actual = set(snap.nonzero_witness_ids) - stale_set
+
+    if filtered_expected == filtered_actual:
+        return None
+
+    return WitnessDataMismatchIssue(
+        rollout_id=rollout_id,
+        cell_index=cell_index,
+        description=(
+            f"Witness data mismatch for instance {snap.instance_id}: "
+            f"missing={sorted(filtered_expected - filtered_actual)}, "
+            f"extra={sorted(filtered_actual - filtered_expected)}"
+        ),
+        expected_witness_ids=sorted(filtered_expected),
+        actual_witness_ids=sorted(filtered_actual),
+    )
