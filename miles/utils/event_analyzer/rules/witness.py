@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 
+from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.event_logger.models import (
     Event,
     TrainGroupStepEndEvent,
@@ -105,8 +106,8 @@ def _find_mismatches(
             if snap.rollout_id == rollout_id
         ]
 
-        for cell_index, outcome_str in step_end.cell_outcomes.items():
-            if outcome_str != "NORMAL":
+        for cell_index, outcome in step_end.cell_outcomes.items():
+            if outcome == "error" or any(r != TrainStepOutcome.NORMAL for r in outcome):
                 continue
 
             cell_snapshots = [
