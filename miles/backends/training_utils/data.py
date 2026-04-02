@@ -41,7 +41,7 @@ def get_rollout_data(args: Namespace, rollout_data_ref: Box, parallel_state: Par
         seq_ids = allocator.allocate_for_sequences(len(rollout_data["tokens"]))
         rollout_data["witness_ids"] = [
             torch.full((len(t),), fill_value=sid, dtype=torch.long, device=torch.cuda.current_device())
-            for t, sid in zip(rollout_data["tokens"], seq_ids)
+            for t, sid in zip(rollout_data["tokens"], seq_ids, strict=True)
         ]
 
     if "multimodal_train_inputs" in rollout_data:
