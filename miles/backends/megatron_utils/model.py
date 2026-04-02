@@ -46,7 +46,7 @@ from .initialize import is_first_replica_megatron_main_rank
 from .lora_utils import is_lora_enabled, is_lora_model
 from .model_provider import get_model_provider_func
 from .parallel import get_packed_seq_params
-
+from ...utils.misc import filter_keys
 
 logger = logging.getLogger(__name__)
 
@@ -261,19 +261,16 @@ def forward_only(
         packed_seq_params = get_packed_seq_params(batch, args)
         total_lengths = batch["total_lengths"]
         response_lengths = batch["response_lengths"]
-        forward_kwargs = {
-            "input_ids": tokens,
-            "position_ids": None,
-            "attention_mask": None,
-            "labels": None,
-            "packed_seq_params": packed_seq_params,
-            "loss_mask": batch["full_loss_masks"],
-        }
-        if (x := batch.get("witness_ids")) is not None:
-            forward_kwargs["witness_ids"] = x
-        if (x := batch["multimodal_train_inputs"]) is not None:
-            forward_kwargs.update(x)
-        output_tensor = model(**forward_kwargs)
+        output_tensor = model(
+            input_ids=tokens,
+            position_ids=None,
+            attention_mask=None,
+            labels=None,
+            packed_seq_params=packed_seq_params,
+            loss_mask=batch["full_loss_masks"],
+            **filter_keys(batch, ["witness_ids"]),
+            **(batch["multimodal_train_inputs"] if batch["multimodal_train_inputs"] is not None else {}),
+        )
 
         return output_tensor, partial(
             f,
