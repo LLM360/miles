@@ -38,11 +38,14 @@ def install_witness(model: nn.Module, *, buffer_size: int) -> None:
     model.tail_witness = _DataWitness(buffer_size=buffer_size)
 
 
-def dump_witness_params(*, model: Sequence[nn.Module]) -> None:
+def witness_dump_and_clear_stale(*, model: Sequence[nn.Module]) -> None:
+    """Log nonzero witness param rows, then clear stale ring buffer entries."""
     for chunk in model:
         for attr in _WITNESS_ATTRS:
             witness: _DataWitness = getattr(chunk.module, attr)
             _record_and_log_witness_param(witness=witness, position=attr.replace("_witness", ""))
+
+    get_witness_id_allocator().clear_stale()
 
 
 # ---------------------------------------------------------------------------
@@ -76,14 +79,15 @@ class WitnessIdAllocator:
         self._counter: int = 0
 
     def allocate_for_sequences(self, num_sequences: int) -> list[int]:
-        self._clear_stale(keep_count=int(self._buffer_size * 0.7))
-
         ids = [
             (self._counter + i) % self._buffer_size
             for i in range(num_sequences)
         ]
         self._counter += num_sequences
         return ids
+
+    def clear_stale(self) -> None:
+        self._clear_stale(keep_count=int(self._buffer_size * 0.7))
 
     def _clear_stale(self, *, keep_count: int) -> None:
         stale_ids = self._compute_stale_ids(keep_count=keep_count)
