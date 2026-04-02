@@ -10,12 +10,12 @@ from miles.utils.data import get_minimum_num_micro_batch_size
 from miles.utils.process_group_utils import GeneralPGUtil
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.types import RolloutBatch
+from miles.utils.witness import get_witness_id_allocator
 
 from ...utils.data import process_rollout_data
 from ...utils.ray_utils import Box
 from .cp_utils import slice_log_prob_with_cp, slice_with_cp
 from .parallel import ParallelState
-from miles.utils.witness import get_witness_id_allocator
 
 logger = logging.getLogger(__name__)
 

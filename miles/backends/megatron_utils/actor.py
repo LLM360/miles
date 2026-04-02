@@ -15,6 +15,7 @@ from miles.ray.train_actor import TrainRayActor
 from miles.utils import train_dump_utils
 from miles.utils.context_utils import with_defer
 from miles.utils.distributed_utils import get_gloo_group, init_process_group
+from miles.utils.event_logger.logger import event_logger_context
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.processing_utils import load_tokenizer
@@ -25,7 +26,6 @@ from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
 from miles.utils.witness import init_witness_allocator
-from miles.utils.event_logger.logger import event_logger_context
 
 from ...utils.profile_utils import TrainProfiler
 from ...utils.tensor_backper import TensorBackuper

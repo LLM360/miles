@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import torch
 import torch.nn as nn
 
-from miles.utils.witness import _DataWitness, WitnessIdAllocator, _record_and_log_witness_param, install_witness
+from miles.utils.witness import WitnessIdAllocator, _DataWitness, _record_and_log_witness_param, install_witness
 
 
 class TestDataWitnessForward:
@@ -81,7 +81,9 @@ class TestDataWitnessForward:
 
 
 class TestWitnessIdAllocator:
-    def _make_allocator(self, witness: _DataWitness, optimizer: torch.optim.Optimizer | None = None) -> WitnessIdAllocator:
+    def _make_allocator(
+        self, witness: _DataWitness, optimizer: torch.optim.Optimizer | None = None
+    ) -> WitnessIdAllocator:
         if optimizer is None:
             optimizer = torch.optim.Adam(witness.parameters(), lr=0.1)
         return WitnessIdAllocator(witnesses=[witness], optimizer=optimizer)
@@ -109,8 +111,7 @@ class TestWitnessIdAllocator:
 
         token_lengths = [10, 20, 15]
         witness_ids_list = [
-            torch.full((length,), fill_value=sid, dtype=torch.long)
-            for length, sid in zip(token_lengths, seq_ids)
+            torch.full((length,), fill_value=sid, dtype=torch.long) for length, sid in zip(token_lengths, seq_ids)
         ]
 
         for wids, sid in zip(witness_ids_list, seq_ids):

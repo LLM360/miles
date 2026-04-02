@@ -1,6 +1,5 @@
 import logging
-from collections.abc import Sequence
-from typing import Optional, Iterable
+from collections.abc import Iterable, Sequence
 
 import torch
 import torch.nn as nn
@@ -21,10 +20,12 @@ def init_witness_allocator(*, model: Sequence[nn.Module], optimizer: torch.optim
     """Find all witnesses in model chunks and set up the global allocator."""
     witnesses = list(_get_all_witnesses_in_model(model))
     assert len(witnesses) > 0
-    _set_witness_id_allocator(WitnessIdAllocator(
-        witnesses=witnesses,
-        optimizer=optimizer,
-    ))
+    _set_witness_id_allocator(
+        WitnessIdAllocator(
+            witnesses=witnesses,
+            optimizer=optimizer,
+        )
+    )
 
 
 def get_witness_id_allocator() -> "WitnessIdAllocator":
@@ -79,10 +80,7 @@ class WitnessIdAllocator:
         self._counter: int = 0
 
     def allocate_for_sequences(self, num_sequences: int) -> list[int]:
-        ids = [
-            (self._counter + i) % self._buffer_size
-            for i in range(num_sequences)
-        ]
+        ids = [(self._counter + i) % self._buffer_size for i in range(num_sequences)]
         self._counter += num_sequences
         return ids
 
@@ -90,7 +88,9 @@ class WitnessIdAllocator:
         self._clear_stale(keep_count=int(self._buffer_size * 0.7))
 
     def _clear_stale(self, *, keep_count: int) -> None:
-        stale_ids = self._compute_stale_ids(keep_count=keep_count, counter=self._counter, buffer_size=self._buffer_size)
+        stale_ids = self._compute_stale_ids(
+            keep_count=keep_count, counter=self._counter, buffer_size=self._buffer_size
+        )
         if not stale_ids:
             return
 
@@ -113,10 +113,10 @@ class WitnessIdAllocator:
 # ---------------------------------------------------------------------------
 
 
-_witness_id_allocator: Optional[WitnessIdAllocator] = None
+_witness_id_allocator: WitnessIdAllocator | None = None
 
 
-def _set_witness_id_allocator(allocator: Optional[WitnessIdAllocator]) -> None:
+def _set_witness_id_allocator(allocator: WitnessIdAllocator | None) -> None:
     global _witness_id_allocator
     _witness_id_allocator = allocator
 

@@ -26,8 +26,12 @@ class TestEventModelsDiscriminatedUnion:
         assert parsed.cell_index == 0
 
     def test_discriminator_distinguishes_types(self) -> None:
-        e1 = CellStateChangedEvent(timestamp=_FIXED_TS, source=_FIXED_SOURCE, cell_index=0, old_state="a", new_state="b")
-        e2 = QuorumChangedEvent(timestamp=_FIXED_TS, source=_FIXED_SOURCE, quorum_id=1, alive_cell_indices=[0], num_cells=1)
+        e1 = CellStateChangedEvent(
+            timestamp=_FIXED_TS, source=_FIXED_SOURCE, cell_index=0, old_state="a", new_state="b"
+        )
+        e2 = QuorumChangedEvent(
+            timestamp=_FIXED_TS, source=_FIXED_SOURCE, quorum_id=1, alive_cell_indices=[0], num_cells=1
+        )
         p1 = _event_adapter.validate_json(e1.model_dump_json())
         p2 = _event_adapter.validate_json(e2.model_dump_json())
         assert type(p1) is not type(p2)

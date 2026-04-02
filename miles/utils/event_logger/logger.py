@@ -6,7 +6,7 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, TextIO, Type
+from typing import Any, TextIO
 
 from pydantic import TypeAdapter
 
@@ -48,13 +48,15 @@ class EventLogger:
             assert self._context_var.get() == merged
             self._context_var.reset(token)
 
-    def log(self, event_cls: Type[EventBase], partial: dict[str, Any], *, print_log: bool = True) -> None:
-        event = event_cls(**{
-            **partial,
-            "timestamp": datetime.now(timezone.utc),
-            "source": self._source,
-            **self._context_var.get(),
-        })
+    def log(self, event_cls: type[EventBase], partial: dict[str, Any], *, print_log: bool = True) -> None:
+        event = event_cls(
+            **{
+                **partial,
+                "timestamp": datetime.now(timezone.utc),
+                "source": self._source,
+                **self._context_var.get(),
+            }
+        )
         line = event.model_dump_json() + "\n"
         with self._lock:
             self._file.write(line)

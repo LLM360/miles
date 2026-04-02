@@ -205,5 +205,5 @@ def filter_keys(d: Dict[str, Any], interest_keys: Sequence[str]) -> Dict[str, An
     try:
         return {k: d[k] for k in interest_keys}
     except Exception:
-        logger_main.message(f'filter_keys d.keys={list(d)} {interest_keys=}')
+        logger_main.message(f"filter_keys d.keys={list(d)} {interest_keys=}")
         raise
