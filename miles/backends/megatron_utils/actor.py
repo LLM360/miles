@@ -330,12 +330,12 @@ class MegatronTrainRayActor(TrainRayActor):
                 store_prefix=store_prefix,
             )
 
-    @event_logger_context(lambda _self, rollout_id, rollout_data_ref, witness_info=None: dict(rollout_id=rollout_id))
+    @event_logger_context(lambda _self, rollout_id, rollout_data_ref, witness_info: dict(rollout_id=rollout_id))
     def train(
         self,
         rollout_id: int,
         rollout_data_ref: Box,
-        witness_info: WitnessInfo | None = None,
+        witness_info: WitnessInfo | None,
     ) -> TrainStepOutcome:
         self._heartbeat.bump()
         self._last_rollout_id = rollout_id
@@ -392,7 +392,7 @@ class MegatronTrainRayActor(TrainRayActor):
         return getattr(self.args, f"use_rollout_{m.name}_replay")
 
     def train_actor(
-        self, rollout_id: int, rollout_data: RolloutBatch, *, witness_info: WitnessInfo | None = None
+        self, rollout_id: int, rollout_data: RolloutBatch, *, witness_info: WitnessInfo | None
     ) -> TrainStepOutcome:
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, self.parallel_state, rollout_data)

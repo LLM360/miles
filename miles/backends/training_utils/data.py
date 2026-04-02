@@ -24,7 +24,7 @@ def get_rollout_data(
     args: Namespace,
     rollout_data_ref: Box,
     parallel_state: ParallelState,
-    witness_info: WitnessInfo | None = None,
+    witness_info: WitnessInfo | None,
 ) -> RolloutBatch:
     # Fetch data through ray on CPU, not sure if this will be performance bottleneck.
     # Both first pp stage and the last pp stage will receive the data.
