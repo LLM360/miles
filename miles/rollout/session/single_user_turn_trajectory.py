@@ -12,6 +12,11 @@ from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizer
 logger = logging.getLogger(__name__)
 
 
+# TODO: hardcoded to 1 for now; if multi-step rollback is actually needed,
+#  raise this limit or make it configurable and remove the restriction.
+MAX_ASSISTANT_ROLLBACK_STEPS = 1
+
+
 def _assert_no_user_after_assistant(messages: list[dict[str, Any]]) -> None:
     """Assert no user message appears after the first assistant message."""
     seen_assistant = False
@@ -32,8 +37,7 @@ class SingleUserTurnTrajectory:
     Tracks the full message history and accumulated token IDs for one session.
     The typical message sequence is: [system?, user, assistant, tool, assistant, tool, …],
     but the agent may retry from an earlier point (e.g. re-running a tool call),
-    in which case the session is rolled back to the last matching assistant
-    checkpoint and re-extended from there.
+    in which case the session is rolled back at most one assistant step.
 
     Concurrency contract: all mutating methods must be called under ``self.lock``.
     """
@@ -70,7 +74,7 @@ class SingleUserTurnTrajectory:
 
         # 1. Reject multi-turn (user after assistant) — single-user-turn only.
         _assert_no_user_after_assistant(request_messages)
-        # 2. Detect agent retries and roll back to the last matching checkpoint.
+        # 2. Detect agent retries and roll back (at most one assistant step).
         self._try_detect_and_rollback_to_assistant_checkpoint(request_messages)
         # 3. Confirm the (possibly rolled-back) stored messages are a prefix of request.
         try:
@@ -143,6 +147,16 @@ class SingleUserTurnTrajectory:
         but diverges before the end.  This method truncates session state back
         to the last assistant checkpoint within the matching prefix.
 
+        Only a single-step rollback is allowed (controlled by
+        ``MAX_ASSISTANT_ROLLBACK_STEPS``).  Discarding exactly one assistant
+        message means the agent is retrying from the preceding checkpoint —
+        the request shares the stored prefix up to that assistant and then
+        continues with whatever the agent chooses (same or different tool
+        result, additional messages, etc.).  Any request that would need to
+        discard more than one assistant (i.e. jump back across multiple
+        turns) is rejected with ``MessageValidationError`` and no state is
+        modified.
+
         Example — agent retries after the first tool call::
 
             stored:  [sys, user, assistant₁, tool₁, assistant₂]
@@ -154,6 +168,7 @@ class SingleUserTurnTrajectory:
 
             match_len = 3  (sys, user, assistant₁ all match)
             Last assistant in matched prefix → assistant₁ (checkpoint 0)
+            discard_count = 2 - 1 = 1  (≤ MAX_ASSISTANT_ROLLBACK_STEPS)
 
             After rollback:
               messages           = [sys, user, assistant₁]
@@ -197,12 +212,23 @@ class SingleUserTurnTrajectory:
                 f"request has {len(request_messages)} messages)"
             )
 
+        discard_count = self.num_assistant - (checkpoint_index + 1)
+        if discard_count > MAX_ASSISTANT_ROLLBACK_STEPS:
+            raise MessageValidationError(
+                f"rollback failed: discard_count={discard_count} exceeds "
+                f"max_assistant_rollback_steps={MAX_ASSISTANT_ROLLBACK_STEPS} "
+                f"(stored has {len(stored)} messages, "
+                f"request has {len(request_messages)} messages)"
+            )
+
         logger.info(
-            "Rolling back session: stored %d messages / %d checkpoints -> " "checkpoint %d (messages[:%d])",
+            "Rolling back session: stored %d messages / %d checkpoints -> "
+            "checkpoint %d (messages[:%d]), discarding %d assistant(s)",
             len(stored),
             self.num_assistant,
             checkpoint_index,
             rollback_msg_end,
+            discard_count,
         )
 
         self.messages = stored[:rollback_msg_end]
