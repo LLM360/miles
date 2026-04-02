@@ -48,7 +48,7 @@ def _run_fault_injection_loop(
             resp.raise_for_status()
             cells = resp.json()["items"]
         except Exception:
-            logger.debug("Failed to list cells from control server", exc_info=True)
+            logger.info("Failed to list cells from control server", exc_info=True)
             continue
 
         alive = [c for c in cells if c["status"]["phase"] == "Running"]
@@ -66,7 +66,7 @@ def _run_fault_injection_loop(
                 timeout=5,
             )
         except Exception:
-            logger.debug("Failed to inject fault into %s", cell_name, exc_info=True)
+            logger.info("Failed to inject fault into %s", cell_name, exc_info=True)
 
 
 @app.command()
