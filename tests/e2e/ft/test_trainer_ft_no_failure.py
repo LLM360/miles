@@ -1,10 +1,5 @@
+# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
-
-# Usage:
-#   python test_trainer_ft_no_failure.py baseline --mode dp2_cp2_tp2_ep2 --dump-dir /tmp/ft
-#   python test_trainer_ft_no_failure.py target   --mode dp2_cp2_tp2_ep2 --dump-dir /tmp/ft
-#   python test_trainer_ft_no_failure.py compare  --mode dp2_cp2_tp2_ep2 --dump-dir /tmp/ft
-#   python test_trainer_ft_no_failure.py run      --mode dp2_cp2_tp2_ep2
 
 import sys
 from pathlib import Path

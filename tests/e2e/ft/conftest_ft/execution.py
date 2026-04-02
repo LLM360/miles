@@ -1,3 +1,5 @@
+# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
+
 import miles.utils.external_utils.command_utils as U
 
 from tests.e2e.ft.conftest_ft.modes import DEBUG_ROLLOUT_DATA_HF_REPO, MODEL_HF_REPO, FTTestMode

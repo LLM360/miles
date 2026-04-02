@@ -1,15 +1,5 @@
+# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
-
-# Usage:
-#   python test_trainer_ft_deterministic.py run --mode 8node_dp4_tp4_cp2_ep4
-#   python test_trainer_ft_deterministic.py baseline --mode 8node_dp4_tp4_cp2_ep4 --dump-dir /tmp/ft
-#   python test_trainer_ft_deterministic.py target   --mode 8node_dp4_tp4_cp2_ep4 --dump-dir /tmp/ft
-#   python test_trainer_ft_deterministic.py compare  --mode 8node_dp4_tp4_cp2_ep4 --dump-dir /tmp/ft
-
-# Comparison test: normal DP (baseline) vs indep_dp with stop+start healing (target).
-# The stop+start does NOT miss any step, so the results should be bitwise equal
-# (verified by event_analyzer cross_replica_weight_checksum inside the job).
-# The comparison layer additionally verifies that indep_dp metrics match normal DP.
 
 import sys
 from pathlib import Path

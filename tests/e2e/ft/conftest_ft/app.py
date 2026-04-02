@@ -1,3 +1,5 @@
+# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
+
 import tempfile
 from collections.abc import Callable
 from pathlib import Path

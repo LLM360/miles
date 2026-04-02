@@ -1,13 +1,5 @@
+# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
-
-# Usage:
-#   python test_ft_random_failure.py run --mode dp4_cp2
-#   python test_ft_random_failure.py run --mode dp4_cp2 --seed 42 --num-steps 50
-
-# This is a non-comparison soak test. Train actors randomly crash themselves
-# via ray concurrency group background threads. The mini FT controller
-# auto-recovers crashed cells. Verifies no hangs, no assertion failures,
-# and final weights are loadable.
 
 import sys
 import tempfile

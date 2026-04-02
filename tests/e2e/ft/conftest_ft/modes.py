@@ -1,3 +1,5 @@
+# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
+
 from dataclasses import dataclass
 
 import typer

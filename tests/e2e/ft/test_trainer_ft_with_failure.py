@@ -1,12 +1,5 @@
+# NOTE: Please refer to tests/e2e/ft/README.md for documentations and source-of-truth
 # WARNING: Do NOT relax any assert logic in this file. All assertions must remain strict.
-
-# Usage:
-#   python test_trainer_ft_with_failure.py baseline phase_a --mode dp4_cp2 --dump-dir /tmp/ft
-#   python test_trainer_ft_with_failure.py target   phase_a --mode dp4_cp2 --dump-dir /tmp/ft
-#   python test_trainer_ft_with_failure.py baseline phase_b --mode dp4_cp2 --dump-dir /tmp/ft
-#   python test_trainer_ft_with_failure.py target   phase_b --mode dp4_cp2 --dump-dir /tmp/ft
-#   python test_trainer_ft_with_failure.py compare          --mode dp4_cp2 --dump-dir /tmp/ft
-#   python test_trainer_ft_with_failure.py run              --mode dp4_cp2
 
 import sys
 from pathlib import Path
