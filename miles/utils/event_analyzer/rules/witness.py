@@ -5,6 +5,7 @@ from typing import Literal
 from miles.backends.megatron_utils.model import TrainStepOutcome
 from miles.utils.event_logger.models import (
     Event,
+    RolloutGenerateCompletedEvent,
     TrainGroupStepEndEvent,
     WitnessAllocateIdEvent,
     WitnessSnapshotParamEvent,
@@ -23,7 +24,14 @@ class WitnessDataMismatchIssue(FrozenStrictBaseModel):
     actual_witness_ids: list[int]
 
 
-def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
+class WitnessAllocationMismatchIssue(FrozenStrictBaseModel):
+    rollout_id: int
+    description: str
+    rollout_sample_indices: list[int]
+    allocated_sample_indices: list[int]
+
+
+def check(events: list[Event]) -> list[WitnessDataMismatchIssue | WitnessAllocationMismatchIssue]:
     """
     Related events:
     * RolloutGenerateCompletedEvent: when a rollout is executed and some data are obtained
@@ -33,27 +41,42 @@ def check(events: list[Event]) -> list[WitnessDataMismatchIssue]:
     * TrainGroupStepEndEvent: after each train() step in RayTrainGroup
 
     Check:
-    1. For each (rollout_id, cell_index),
+    1. For each rollout_id, verify that the samples from RolloutGenerateCompletedEvent (source of truth)
+       match the samples allocated witness IDs in WitnessAllocateIdEvent.
+    2. For each (rollout_id, cell_index),
        if TrainGroupStepEndEvent claims the cell ends with TrainStepOutcome.NORMAL,
        then its WitnessSnapshotParamEvent should observe *EXACTLY* the training data in rollout_id=0~curr.
 
     Remarks:
-    * To correlate witness_id vs sample_id utilize WitnessAllocateIdEvent.
-    * To get *all* samples used in a step, must use RolloutGenerateCompletedEvent as source of truth.
+    * RolloutGenerateCompletedEvent is the source of truth for which samples exist per rollout.
+    * WitnessAllocateIdEvent provides the witness_id <-> sample_index mapping.
     * Witness' ring buffer will remove old data, thus we need to ignore the appearance/disappearance of
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
     parsed = _parse_events(events)
+
+    issues: list[WitnessDataMismatchIssue | WitnessAllocationMismatchIssue] = []
+
+    # Step 1: Cross-validate rollout samples vs witness allocation
+    issues.extend(_check_allocation_coverage(
+        sample_indices_by_rollout=parsed.sample_indices_by_rollout,
+        allocations_by_rollout=parsed.allocations_by_rollout,
+    ))
+
+    # Step 2: Check witness snapshots against cumulative expected witness IDs
     cumulative_expected = _build_cumulative_expected(parsed.allocations_by_rollout)
-    return _find_mismatches(
+    issues.extend(_find_mismatches(
         step_end_events=parsed.step_end_events,
         snapshot_events=parsed.snapshot_events,
         cumulative_expected=cumulative_expected,
-    )
+    ))
+
+    return issues
 
 
 @dataclass
 class _ParsedEvents:
+    sample_indices_by_rollout: dict[int, list[int]] = field(default_factory=dict)
     allocations_by_rollout: dict[int, dict[int, int]] = field(default_factory=dict)
     step_end_events: list[TrainGroupStepEndEvent] = field(default_factory=list)
     snapshot_events: list[WitnessSnapshotParamEvent] = field(default_factory=list)
@@ -65,6 +88,9 @@ def _parse_events(events: list[Event]) -> _ParsedEvents:
 
     for event in events:
         match event:
+            case RolloutGenerateCompletedEvent(rollout_id=rid, sample_indices=indices):
+                parsed.sample_indices_by_rollout[rid] = indices
+
             case WitnessAllocateIdEvent(rollout_id=rid, witness_id_to_sample_index=mapping):
                 parsed.allocations_by_rollout[rid] = mapping
 
@@ -76,6 +102,39 @@ def _parse_events(events: list[Event]) -> _ParsedEvents:
                 parsed.snapshot_events.append(event)
 
     return parsed
+
+
+def _check_allocation_coverage(
+    *,
+    sample_indices_by_rollout: dict[int, list[int]],
+    allocations_by_rollout: dict[int, dict[int, int]],
+) -> list[WitnessAllocationMismatchIssue]:
+    """Verify that witness allocation covers exactly the samples from each rollout."""
+    issues: list[WitnessAllocationMismatchIssue] = []
+
+    for rid, rollout_samples in sample_indices_by_rollout.items():
+        if rid not in allocations_by_rollout:
+            issues.append(WitnessAllocationMismatchIssue(
+                rollout_id=rid,
+                description=f"Rollout {rid} produced samples but no WitnessAllocateIdEvent was emitted",
+                rollout_sample_indices=sorted(rollout_samples),
+                allocated_sample_indices=[],
+            ))
+            continue
+
+        allocated_samples = sorted(allocations_by_rollout[rid].values())
+        if sorted(rollout_samples) != allocated_samples:
+            issues.append(WitnessAllocationMismatchIssue(
+                rollout_id=rid,
+                description=(
+                    f"Rollout {rid} sample set mismatch: "
+                    f"rollout has {len(rollout_samples)} samples, allocation has {len(allocated_samples)}"
+                ),
+                rollout_sample_indices=sorted(rollout_samples),
+                allocated_sample_indices=allocated_samples,
+            ))
+
+    return issues
 
 
 def _build_cumulative_expected(allocations_by_rollout: dict[int, dict[int, int]]) -> dict[int, set[int]]:
