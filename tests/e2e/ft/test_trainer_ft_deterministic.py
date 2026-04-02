@@ -22,12 +22,13 @@ from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
 
 def _build_args(mode: FTTestMode, dump_dir: str) -> str:
-    base = get_common_train_args(mode, dump_dir=dump_dir)
-    base += get_indep_dp_args(mode)
-    base += "--ci-ft-test-scenario deterministic "
-    base += "--save-local-weight-checksum "
-    base += "--enable-event-analyzer "
-    return base
+    return (
+        get_common_train_args(mode, dump_dir=dump_dir)
+        + get_indep_dp_args(mode)
+        + "--ci-ft-test-scenario deterministic "
+        + "--save-local-weight-checksum "
+        + "--enable-event-analyzer "
+    )
 
 
 def _verify(dump_dir: str, mode: FTTestMode) -> None:

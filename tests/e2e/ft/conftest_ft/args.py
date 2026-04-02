@@ -51,8 +51,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         "--advantage-estimator grpo --eps-clip 0.2 "
     )
 
-    effective_num_steps: int = num_steps if num_steps is not None else mode.num_steps
-    misc_args += f"--num-rollout {effective_num_steps} "
+    misc_args += f"--num-rollout {num_steps if num_steps is not None else mode.num_steps} "
 
     if mode.rollout_gpus > 0:
         misc_args += f"--rollout-num-gpus {mode.rollout_gpus} --colocate "

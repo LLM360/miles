@@ -24,45 +24,31 @@ NUM_PHASE_A_STEPS: int = 1
 NUM_PHASE_B_STEPS: int = 4
 
 
-def _build_baseline_args_phase_a(mode: FTTestMode, dump_dir: str) -> str:
-    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_PHASE_A_STEPS)
-    base += f"--save {dump_dir}/ckpt --save-interval 1 "
-    return base
+def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> str:
+    is_phase_a: bool = dump_dir.endswith("phase_a")
+    num_steps = NUM_PHASE_A_STEPS if is_phase_a else NUM_PHASE_B_STEPS
+    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=num_steps)
 
+    if is_target:
+        base += get_indep_dp_args(mode)
 
-def _build_target_args_phase_a(mode: FTTestMode, dump_dir: str) -> str:
-    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_PHASE_A_STEPS)
-    base += get_indep_dp_args(mode)
-    base += f"--save {dump_dir}/ckpt --save-interval 1 "
-    return base
+    if is_phase_a:
+        base += f"--save {dump_dir}/ckpt --save-interval 1 "
+    else:
+        phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
+        base += f"--load {phase_a_dir}/ckpt "
+        if is_target:
+            base += "--ci-ft-test-scenario with_failure "
 
-
-def _build_baseline_args_phase_b(mode: FTTestMode, dump_dir: str) -> str:
-    phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
-    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_PHASE_B_STEPS)
-    base += f"--load {phase_a_dir}/ckpt "
-    return base
-
-
-def _build_target_args_phase_b(mode: FTTestMode, dump_dir: str) -> str:
-    phase_a_dir = dump_dir.replace("/phase_b", "/phase_a")
-    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_PHASE_B_STEPS)
-    base += get_indep_dp_args(mode)
-    base += f"--load {phase_a_dir}/ckpt "
-    base += "--ci-ft-test-scenario with_failure "
     return base
 
 
 def _build_baseline_args(mode: FTTestMode, dump_dir: str) -> str:
-    if dump_dir.endswith("phase_a"):
-        return _build_baseline_args_phase_a(mode, dump_dir)
-    return _build_baseline_args_phase_b(mode, dump_dir)
+    return _build_phase_args(mode, dump_dir, is_target=False)
 
 
 def _build_target_args(mode: FTTestMode, dump_dir: str) -> str:
-    if dump_dir.endswith("phase_a"):
-        return _build_target_args_phase_a(mode, dump_dir)
-    return _build_target_args_phase_b(mode, dump_dir)
+    return _build_phase_args(mode, dump_dir, is_target=True)
 
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:

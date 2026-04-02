@@ -50,17 +50,16 @@ def run(
 
     prepare(ft_mode)
 
-    base = get_common_train_args(ft_mode, dump_dir=dump_dir, num_steps=num_steps)
-    base += get_indep_dp_args(ft_mode)
-
-    base += "--mini-ft-controller-enable "
-
-    base += f"--ci-ft-test-scenario random_failure "
-    base += f"--ci-ft-random-seed {seed} "
-    base += f"--ci-ft-crash-probability {crash_probability} "
-
-    base += "--save-local-weight-checksum "
-    base += "--enable-event-analyzer "
+    base = (
+        get_common_train_args(ft_mode, dump_dir=dump_dir, num_steps=num_steps)
+        + get_indep_dp_args(ft_mode)
+        + "--mini-ft-controller-enable "
+        + f"--ci-ft-test-scenario random_failure "
+        + f"--ci-ft-random-seed {seed} "
+        + f"--ci-ft-crash-probability {crash_probability} "
+        + "--save-local-weight-checksum "
+        + "--enable-event-analyzer "
+    )
 
     run_training(train_args=base, mode=ft_mode)
 
