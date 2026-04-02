@@ -163,7 +163,7 @@ class RayTrainGroup:
     def _log_step_end_event(self, *, rollout_id: int, snapshot_alive_cells: list, results: list):
         if is_event_logger_initialized():
             cell_outcomes = {
-                ("ERROR" if isinstance(cell_results, BaseException) else [r.name for r in cell_results])
+                cell.cell_index: ("error" if isinstance(cell_results, BaseException) else [r for r in cell_results])
                 for cell, cell_results in zip(snapshot_alive_cells, results, strict=True)
             }
             get_event_logger().log(
