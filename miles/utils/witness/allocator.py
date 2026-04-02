@@ -3,11 +3,10 @@ from miles.utils.pydantic_utils import FrozenStrictBaseModel
 
 
 class WitnessIdAllocator:
-    def allocate(self, sample_indices: list[int]) -> "WitnessInfo":
+    def allocate(self, num_ids: int) -> "WitnessInfo":
         do_allocate_things
-        log_event(WitnessAllocateIdEvent())
         return TODO
 
 
 class WitnessInfo(FrozenStrictBaseModel):
-    witness_id_of_sample_index: dict[int, int]
+    witness_ids: list[int]

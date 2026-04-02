@@ -130,6 +130,7 @@ class RayTrainGroup:
         async def _fn():
             # NOTE: Need to allocate *new* witness ids for each retry
             witness_info = witness_allocator.allocate()
+            log_event(WitnessAllocateIdEvent(witness_id_and_sample_id_etc))
 
             await self._refresh_cells()
             results = await self._execute_all_alive_and_catch(
