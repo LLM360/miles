@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from argparse import Namespace
 from collections.abc import Callable, Mapping, Sequence
@@ -6,14 +8,17 @@ import ray
 import torch
 import torch.distributed as dist
 from ray.actor import ActorHandle
-from sglang.srt import server_args as server_args_module
-from sglang.srt.configs.device_config import DeviceConfig
-from sglang.srt.configs.load_config import LoadConfig
-from sglang.srt.configs.model_config import ModelConfig
-from sglang.srt.distributed.parallel_state import ParallelismContext, RankParallelismConfig
-from sglang.srt.model_loader import get_model
-from sglang.srt.model_loader.parameter_mapper import ParameterMapper
-from sglang.srt.server_args import ServerArgs
+try:
+    from sglang.srt import server_args as server_args_module
+    from sglang.srt.configs.device_config import DeviceConfig
+    from sglang.srt.configs.load_config import LoadConfig
+    from sglang.srt.configs.model_config import ModelConfig
+    from sglang.srt.distributed.parallel_state import ParallelismContext, RankParallelismConfig
+    from sglang.srt.model_loader import get_model
+    from sglang.srt.model_loader.parameter_mapper import ParameterMapper
+    from sglang.srt.server_args import ServerArgs
+except ImportError:
+    pass  # P2P weight transfer requires newer sglang; broadcast mode still works
 from tqdm import tqdm
 
 from miles.utils.distributed_utils import get_gloo_group

@@ -1,8 +1,12 @@
 import logging
+import os
 import random
+import shutil
 import socket
+import subprocess
 from argparse import Namespace
 from contextlib import nullcontext
+from pathlib import Path
 
 import ray
 import torch
@@ -170,6 +174,8 @@ class MegatronTrainRayActor(TrainRayActor):
             self.sleep()
 
         self.rollout_engines = None
+        self._rollout_sync_initialized = False
+        self._rollout_sync_seq = 0
 
         self.rollout_data_postprocess = None
         if self.args.rollout_data_postprocess_path is not None:
@@ -216,6 +222,95 @@ class MegatronTrainRayActor(TrainRayActor):
     def _set_replay_stage(self, stage: str) -> None:
         for m in all_replay_managers:
             m.stage = stage
+
+    def _use_rollout_nvfp4_restart_sync(self) -> bool:
+        return bool(getattr(self.args, "rollout_nvfp4_restart_sync", False))
+
+    def _cleanup_rollout_sync_dirs(self, parent_dir: Path, prefix: str, keep: int = 2) -> None:
+        candidates = sorted([path for path in parent_dir.glob(f"{prefix}_*") if path.is_dir()])
+        for path in candidates[:-keep]:
+            logger.info(f"Removing stale rollout sync directory {path}")
+            shutil.rmtree(path, ignore_errors=False)
+
+    def _export_hf_bf16_checkpoint(self) -> Path:
+        """Export BF16 HF checkpoint via HfWeightIterator for NVFP4 re-quantization."""
+        import json
+
+        import safetensors.torch
+
+        parent_dir = Path(getattr(self.args, "rollout_refresh_parent_dir", None) or "")
+        if not parent_dir or str(parent_dir) == "":
+            raise ValueError("--rollout-refresh-parent-dir is required when --rollout-nvfp4-restart-sync is enabled.")
+        parent_dir.mkdir(parents=True, exist_ok=True)
+
+        bf16_dir = parent_dir / f"hf_bf16_sync_{self._rollout_sync_seq:06d}"
+        bf16_dir.mkdir(parents=True, exist_ok=True)
+
+        rank = dist.get_rank()
+        megatron_local_weights = self.weights_backuper.get("actor")
+
+        orig_qconfig = self.weight_updater._hf_weight_iterator.quantization_config
+        self.weight_updater._hf_weight_iterator.quantization_config = None
+        try:
+            all_hf: dict[str, torch.Tensor] = {}
+            for chunk in self.weight_updater._hf_weight_iterator.get_hf_weight_chunks(megatron_local_weights):
+                for name, param in chunk:
+                    all_hf[name] = param.cpu().contiguous()
+        finally:
+            self.weight_updater._hf_weight_iterator.quantization_config = orig_qconfig
+
+        if rank == 0:
+            safetensors.torch.save_file(all_hf, str(bf16_dir / "model.safetensors"))
+            weight_map = {k: "model.safetensors" for k in all_hf}
+            total_size = sum(t.numel() * t.element_size() for t in all_hf.values())
+            with open(bf16_dir / "model.safetensors.index.json", "w") as f:
+                json.dump({"metadata": {"total_size": total_size}, "weight_map": weight_map}, f, indent=2)
+
+            src_dir = Path(getattr(self.args, "bridge_hf_checkpoint", None) or self.args.hf_checkpoint)
+            for fname in ("config.json", "tokenizer.json", "tokenizer_config.json", "configuration_deepseek.py"):
+                src_file = src_dir / fname
+                if src_file.exists():
+                    shutil.copy2(str(src_file), str(bf16_dir / fname))
+            logger.info("Saved BF16 HF checkpoint (%d params) to %s", len(all_hf), bf16_dir)
+
+        del all_hf
+        clear_memory()
+        dist.barrier(group=get_gloo_group())
+        return bf16_dir
+
+    def _convert_and_link_nvfp4_checkpoint(self, bf16_dir: Path) -> None:
+        """Convert BF16 to NVFP4 and update symlink."""
+        parent_dir = bf16_dir.parent
+        nvfp4_dir = parent_dir / f"nvfp4_sync_{self._rollout_sync_seq:06d}"
+        current_link = Path(self.args.hf_checkpoint)
+
+        if dist.get_rank() == 0:
+            tool_path = Path(__file__).resolve().parents[3] / "tools" / "convert_hf_to_nvfp4.py"
+            cmd = [
+                "python", str(tool_path),
+                "--model-dir", str(bf16_dir),
+                "--save-dir", str(nvfp4_dir),
+            ]
+            keep_first_n = int(getattr(self.args, "rollout_refresh_keep_first_n", 0) or 0)
+            keep_last_n = int(getattr(self.args, "rollout_refresh_keep_last_n", 0) or 0)
+            if keep_first_n > 0:
+                cmd.extend(["--keep-first-n", str(keep_first_n)])
+            if keep_last_n > 0:
+                cmd.extend(["--keep-last-n", str(keep_last_n)])
+
+            logger.info("Converting refreshed BF16 checkpoint to NVFP4: %s", " ".join(cmd))
+            subprocess.run(cmd, check=True)
+
+            current_link.parent.mkdir(parents=True, exist_ok=True)
+            tmp_link = current_link.parent / f".{current_link.name}.tmp"
+            if tmp_link.exists() or tmp_link.is_symlink():
+                tmp_link.unlink()
+            os.symlink(nvfp4_dir, tmp_link)
+            os.replace(tmp_link, current_link)
+            self._cleanup_rollout_sync_dirs(parent_dir, "hf_bf16_sync")
+            self._cleanup_rollout_sync_dirs(parent_dir, "nvfp4_sync")
+
+        dist.barrier(group=get_gloo_group())
 
     def _fill_replay_data(
         self,
@@ -512,6 +607,32 @@ class MegatronTrainRayActor(TrainRayActor):
             dist.barrier(group=get_gloo_group())
             if dist.get_rank() == 0:
                 ray.get(self.rollout_manager.clear_updatable_num_new_engines.remote())
+
+        if self._use_rollout_nvfp4_restart_sync():
+            print_memory("before rollout checkpoint refresh")
+            if self._rollout_sync_initialized:
+                self._rollout_sync_seq += 1
+
+                with torch_memory_saver.disable() if self.args.offload_train else nullcontext():
+                    with timer("nvfp4_bf16_export"):
+                        bf16_dir = self._export_hf_bf16_checkpoint()
+
+                self._convert_and_link_nvfp4_checkpoint(bf16_dir)
+
+                clear_memory()
+                if dist.get_rank() == 0:
+                    ray.get(self.rollout_manager.restart_rollout_engines.remote())
+                dist.barrier(group=get_gloo_group())
+            else:
+                logger.info("Skip initial rollout refresh because rollout engine already loaded the initial NVFP4 checkpoint.")
+                self._rollout_sync_initialized = True
+                dist.barrier(group=get_gloo_group())
+
+            print_memory("after rollout checkpoint refresh")
+
+            if self.args.offload_train:
+                destroy_process_groups()
+            return
 
         if self.args.offload_train and is_lora_enabled(self.args):
             # For LoRA, we must resume() to restore GPU memory backing for adapter

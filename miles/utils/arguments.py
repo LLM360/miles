@@ -442,6 +442,44 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Interval for updating the weights",
             )
             parser.add_argument(
+                "--rollout-nvfp4-restart-sync",
+                action="store_true",
+                help=(
+                    "Disable in-place rollout weight update and instead refresh rollout weights by "
+                    "exporting a BF16 HF checkpoint, converting it to NVFP4, and restarting rollout engines."
+                ),
+            )
+            parser.add_argument(
+                "--bridge-hf-checkpoint",
+                type=str,
+                default=None,
+                help=(
+                    "HF checkpoint path used by Megatron bridge save/load helpers. "
+                    "Useful when rollout uses a quantized checkpoint but BF16 export should use another source config."
+                ),
+            )
+            parser.add_argument(
+                "--rollout-refresh-parent-dir",
+                type=str,
+                default=None,
+                help=(
+                    "Parent directory used by rollout NVFP4 restart sync. "
+                    "Each sync writes BF16 and NVFP4 checkpoints under this directory."
+                ),
+            )
+            parser.add_argument(
+                "--rollout-refresh-keep-first-n",
+                type=int,
+                default=0,
+                help="Keep the first N transformer layers in higher precision during rollout NVFP4 refresh.",
+            )
+            parser.add_argument(
+                "--rollout-refresh-keep-last-n",
+                type=int,
+                default=0,
+                help="Keep the last N transformer layers in higher precision during rollout NVFP4 refresh.",
+            )
+            parser.add_argument(
                 "--keep-old-actor",
                 action="store_true",
                 help="Whether to keep the rollout model on training process",

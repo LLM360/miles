@@ -64,7 +64,17 @@ def convert_checkpoint(
 
 
 def rsync_simple(path_src: str, path_dst: str):
-    exec_command_all_ray_node(f"mkdir -p {path_dst} && rsync -a --info=progress2 {path_src}/ {path_dst}")
+    src = Path(path_src).resolve()
+    dst = Path(path_dst).resolve()
+    if src == dst:
+        print(f"rsync skip {path_src} -> {path_dst} since source and destination are identical")
+        return
+    cmd = f"mkdir -p {path_dst} && rsync -a --info=progress2 {path_src}/ {path_dst}"
+    num_nodes = int(os.environ.get("SLURM_JOB_NUM_NODES", "1"))
+    if num_nodes <= 1:
+        exec_command(cmd)
+        return
+    exec_command_all_ray_node(cmd, num_nodes=num_nodes)
 
 
 def hf_download_dataset(full_name: str, data_dir: str = "/root/datasets"):
