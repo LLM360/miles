@@ -20,7 +20,7 @@ class TestRetryBasic:
         call_count = 0
         fake_sleep = _FakeSleep()
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
 
@@ -33,7 +33,7 @@ class TestRetryBasic:
         call_count = 0
         fake_sleep = _FakeSleep()
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count < 4:
@@ -48,7 +48,7 @@ class TestRetryBasic:
         call_count = 0
         fake_sleep = _FakeSleep()
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count < 2:
@@ -59,12 +59,26 @@ class TestRetryBasic:
         assert call_count == 2
         assert len(fake_sleep.delays) == 1
 
+    async def test_fn_receives_correct_attempt_number(self):
+        """First call gets attempt=0, first retry gets attempt=1, etc."""
+        received_attempts: list[int] = []
+        fake_sleep = _FakeSleep()
+
+        async def fn(attempt):
+            received_attempts.append(attempt)
+            if len(received_attempts) < 4:
+                raise ValueError("not yet")
+
+        await retry(fn, initial_delay=1.0, sleep_fn=fake_sleep)
+
+        assert received_attempts == [0, 1, 2, 3]
+
 
 class TestRetryLogging:
     async def test_logs_on_retry(self, caplog):
         call_count = 0
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -77,7 +91,7 @@ class TestRetryLogging:
         assert len(retry_messages) == 2
 
     async def test_no_log_on_first_success(self, caplog):
-        async def fn():
+        async def fn(_attempt):
             pass
 
         with caplog.at_level("WARNING"):
@@ -88,7 +102,7 @@ class TestRetryLogging:
     async def test_logs_include_exc_info(self, caplog):
         call_count = 0
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count < 2:
@@ -104,7 +118,7 @@ class TestRetryLogging:
     async def test_log_message_includes_delay(self, caplog):
         call_count = 0
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count < 2:
@@ -123,7 +137,7 @@ class TestRetryBackoff:
         call_count = 0
         fake_sleep = _FakeSleep()
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count <= 4:
@@ -137,7 +151,7 @@ class TestRetryBackoff:
         call_count = 0
         fake_sleep = _FakeSleep()
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count <= 5:
@@ -151,7 +165,7 @@ class TestRetryBackoff:
         call_count = 0
         fake_sleep = _FakeSleep()
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count <= 3:
@@ -165,7 +179,7 @@ class TestRetryBackoff:
         call_count = 0
         fake_sleep = _FakeSleep()
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -188,7 +202,7 @@ class TestRetryBackoff:
         call_count = 0
         fake_sleep = _FakeSleep()
 
-        async def fn():
+        async def fn(_attempt):
             nonlocal call_count
             call_count += 1
             if call_count <= 8:
