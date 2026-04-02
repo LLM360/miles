@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 import torch
 import torch.nn as nn
 
-from miles.utils.witness.module import _DataWitness, _record_and_log_witness_param, _zero_witness_rows, _clear_witness_stale_rows, install_witness
+from miles.utils.witness.allocator import WitnessInfo
+from miles.utils.witness.module import _DataWitness, _record_and_log_witness_param, _zero_witness_rows, _clear_witness_stale_rows, install_witness, witness_dump_and_clear_stale
 
 
 class TestDataWitnessForward:
@@ -282,3 +283,101 @@ class TestZeroWitnessRows:
             assert state[key][6].item() == 0.0
             non_stale = [i for i in range(10) if i not in [3, 6]]
             assert not torch.all(state[key][non_stale] == 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for witness_dump_and_clear_stale tests
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_chunk(buffer_size: int = 10) -> nn.Module:
+    """Create a fake model chunk with .module.head_witness and .module.tail_witness."""
+    inner = nn.Module()
+    inner.head_witness = _DataWitness(buffer_size=buffer_size)
+    inner.tail_witness = _DataWitness(buffer_size=buffer_size)
+    chunk = nn.Module()
+    chunk.module = inner
+    return chunk
+
+
+class TestWitnessDumpAndClearStale:
+    def test_witness_dump_and_clear_stale_logs_all_witnesses(self) -> None:
+        """2 chunks x 2 witnesses = 4 log events with correct instance_ids."""
+        chunk0 = _make_fake_chunk()
+        chunk1 = _make_fake_chunk()
+        chunk0.module.head_witness.witness.weight.data[1] = 1.0
+        chunk0.module.tail_witness.witness.weight.data[2] = 1.0
+        chunk1.module.head_witness.witness.weight.data[3] = 1.0
+        chunk1.module.tail_witness.witness.weight.data[4] = 1.0
+
+        model = [chunk0, chunk1]
+        all_params = list(chunk0.parameters()) + list(chunk1.parameters())
+        optimizer = torch.optim.Adam(all_params, lr=0.01)
+        witness_info = WitnessInfo(witness_ids=[1, 2, 3, 4], stale_ids=[5, 6])
+
+        with patch("miles.utils.witness.module.get_event_logger") as mock_get_logger:
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+
+            witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
+
+            assert mock_logger.log.call_count == 4
+            logged_instance_ids = [call[0][1]["instance_id"] for call in mock_logger.log.call_args_list]
+            assert logged_instance_ids == ["pp0.head", "pp0.tail", "pp1.head", "pp1.tail"]
+
+            logged_stale_ids = [call[0][1]["stale_ids"] for call in mock_logger.log.call_args_list]
+            for stale in logged_stale_ids:
+                assert stale == [5, 6]
+
+    def test_witness_dump_and_clear_stale_clears_stale_rows(self) -> None:
+        """Stale IDs should have their weight rows zeroed after the call."""
+        chunk = _make_fake_chunk(buffer_size=10)
+        chunk.module.head_witness.witness.weight.data.fill_(1.0)
+        chunk.module.tail_witness.witness.weight.data.fill_(1.0)
+
+        model = [chunk]
+        optimizer = torch.optim.Adam(chunk.parameters(), lr=0.01)
+        witness_info = WitnessInfo(witness_ids=[0], stale_ids=[3, 7])
+
+        with patch("miles.utils.witness.module.get_event_logger") as mock_get_logger:
+            mock_get_logger.return_value = MagicMock()
+            witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
+
+        for witness_attr in ("head_witness", "tail_witness"):
+            witness = getattr(chunk.module, witness_attr)
+            assert witness.witness.weight.data[3].item() == 0.0
+            assert witness.witness.weight.data[7].item() == 0.0
+            assert witness.witness.weight.data[0].item() == 1.0
+
+    def test_witness_dump_and_clear_stale_empty_stale_ids(self) -> None:
+        """Empty stale_ids should not trigger any zeroing."""
+        chunk = _make_fake_chunk(buffer_size=10)
+        chunk.module.head_witness.witness.weight.data.fill_(1.0)
+        chunk.module.tail_witness.witness.weight.data.fill_(1.0)
+
+        model = [chunk]
+        optimizer = torch.optim.Adam(chunk.parameters(), lr=0.01)
+        witness_info = WitnessInfo(witness_ids=[0], stale_ids=[])
+
+        with patch("miles.utils.witness.module.get_event_logger") as mock_get_logger:
+            mock_get_logger.return_value = MagicMock()
+            witness_dump_and_clear_stale(model=model, witness_info=witness_info, optimizer=optimizer)
+
+        for witness_attr in ("head_witness", "tail_witness"):
+            witness = getattr(chunk.module, witness_attr)
+            assert torch.all(witness.witness.weight.data == 1.0)
+
+    def test_record_and_log_witness_param_includes_stale_ids(self) -> None:
+        """Log event should contain the correct stale_ids field."""
+        witness = _DataWitness(buffer_size=10)
+        witness.witness.weight.data[2] = 1.0
+
+        with patch("miles.utils.witness.module.get_event_logger") as mock_get_logger:
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
+
+            _record_and_log_witness_param(witness=witness, instance_id="pp0.head", stale_ids=[8, 9])
+
+            mock_logger.log.assert_called_once()
+            partial = mock_logger.log.call_args[0][1]
+            assert partial["stale_ids"] == [8, 9]
