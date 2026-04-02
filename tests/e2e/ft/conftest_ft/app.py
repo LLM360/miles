@@ -5,9 +5,8 @@ from typing import Annotated
 
 import typer
 
-from tests.e2e.ft.conftest_ft.execution import run_training
+from tests.e2e.ft.conftest_ft.execution import prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
-from tests.e2e.ft.conftest_ft.prepare import prepare
 
 
 def create_comparison_app(
