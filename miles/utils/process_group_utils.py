@@ -171,7 +171,7 @@ class _RawPGUtil(GeneralPGUtil):
     def all_gather(
         self, output_tensors: list[torch.Tensor], input_tensor: torch.Tensor, group: dist.ProcessGroup
     ) -> None:
-        _check_wait(group.allgather([output_tensors], [[input_tensor]]), "allgather")
+        _check_wait(group.allgather([output_tensors], [input_tensor]), "allgather")
 
     def gather(
         self,
@@ -181,7 +181,7 @@ class _RawPGUtil(GeneralPGUtil):
         group: dist.ProcessGroup,
     ) -> None:
         output = [gather_list] if gather_list is not None else []
-        _check_wait(group.gather(output, [[input_tensor]], dist.GatherOptions(rootRank=dst)), "gather")
+        _check_wait(group.gather(output, [input_tensor], dist.GatherOptions(rootRank=dst)), "gather")
 
     def gather_object(
         self, obj: Any, object_gather_list: list[Any] | None, dst: int, group: dist.ProcessGroup
