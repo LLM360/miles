@@ -39,6 +39,48 @@ def compare_dumps(
     print(f"Dump comparison passed: {baseline_path} vs {target_path}")
 
 
+def _run_comparator(
+        *,
+        baseline_path: Path,
+        target_path: Path,
+        diff_threshold: float,
+        allow_skipped_pattern: str,
+        extra_args: list[str] | None,
+) -> subprocess.CompletedProcess[str]:
+    cmd: list[str] = [
+        sys.executable,
+        "-m",
+        "sglang.srt.debug_utils.comparator",
+        "--baseline-path",
+        str(baseline_path),
+        "--target-path",
+        str(target_path),
+        "--output-format",
+        "json",
+        "--preset",
+        "sglang_megatron",
+        "--diff-threshold",
+        str(diff_threshold),
+        "--allow-skipped-pattern",
+        allow_skipped_pattern,
+    ]
+    if extra_args:
+        cmd.extend(extra_args)
+
+    result: subprocess.CompletedProcess[str] = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.stdout.strip():
+        print(f"[comparator stdout]\n{result.stdout}")
+    if result.stderr.strip():
+        print(f"[comparator stderr]\n{result.stderr}")
+
+    return result
+
+
 def compare_metrics(
     baseline_dir: str,
     target_dir: str,
@@ -137,48 +179,6 @@ def _check_required_keys_exist(events: list[MetricEvent], issues: list[str]) -> 
                 f"Required metric '{required}' not found in any baseline MetricEvent. "
                 f"Available keys: {sorted(all_keys)}"
             )
-
-
-def _run_comparator(
-    *,
-    baseline_path: Path,
-    target_path: Path,
-    diff_threshold: float,
-    allow_skipped_pattern: str,
-    extra_args: list[str] | None,
-) -> subprocess.CompletedProcess[str]:
-    cmd: list[str] = [
-        sys.executable,
-        "-m",
-        "sglang.srt.debug_utils.comparator",
-        "--baseline-path",
-        str(baseline_path),
-        "--target-path",
-        str(target_path),
-        "--output-format",
-        "json",
-        "--preset",
-        "sglang_megatron",
-        "--diff-threshold",
-        str(diff_threshold),
-        "--allow-skipped-pattern",
-        allow_skipped_pattern,
-    ]
-    if extra_args:
-        cmd.extend(extra_args)
-
-    result: subprocess.CompletedProcess[str] = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-    )
-
-    if result.stdout.strip():
-        print(f"[comparator stdout]\n{result.stdout}")
-    if result.stderr.strip():
-        print(f"[comparator stderr]\n{result.stderr}")
-
-    return result
 
 
 def _read_metric_events(dump_dir: Path) -> list[MetricEvent]:
