@@ -162,14 +162,6 @@ class MilesRouter:
                 "status_code": response.status_code,
                 "headers": dict(response.headers),
             }
-        except httpx.TransportError:
-            logger.warning("Proxy transport error for %s %s", request.method, url, exc_info=True)
-            return {
-                "request_body": body,
-                "response_body": json.dumps({"error": "Bad Gateway"}).encode(),
-                "status_code": 502,
-                "headers": {"content-type": "application/json"},
-            }
         finally:
             self._finish_url(worker_url)
 
