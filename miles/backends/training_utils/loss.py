@@ -26,14 +26,13 @@ from .cp_utils import (
     get_logits_and_tokens_offset_with_cp,
     get_sum_of_sample_mean,
 )
-from .parallel import ParallelState
+from .parallel import get_parallel_state
 
 
 def get_responses(
     logits: torch.Tensor,
     *,
     args: Namespace,
-    parallel_state: ParallelState,
     unconcat_tokens: list[torch.Tensor],
     total_lengths: list[int],
     response_lengths: list[int],
@@ -60,6 +59,7 @@ def get_responses(
         `[R, V]` (policy) or `[R, 1]` (value) and `tokens_chunk` is shape `[R]`
         (1D int64), both aligned to response tokens for one sample.
     """
+    parallel_state = get_parallel_state()
     qkv_format = args.qkv_format
 
     assert logits.dtype == torch.float32, f"{logits.dtype}"
@@ -117,7 +117,7 @@ def get_responses(
         else:
             # TODO: this is super ugly... do better abstraction.
             chunk_size, chunks_offset, logits_offset, tokens_offset = get_logits_and_tokens_offset_with_cp(
-                total_length, response_length, parallel_state, qkv_format, max_seq_len
+                total_length, response_length, qkv_format, max_seq_len
             )
 
             logits_0, logits_1 = logits[end : end + chunk_size], logits[end + chunk_size : end + 2 * chunk_size]
@@ -144,7 +144,6 @@ def get_log_probs_and_entropy(
     logits: torch.Tensor,
     *,
     args: Namespace,
-    parallel_state: ParallelState,
     unconcat_tokens: list[torch.Tensor],
     total_lengths: list[int],
     response_lengths: list[int],
@@ -174,13 +173,13 @@ def get_log_probs_and_entropy(
         sample. If `with_entropy` is True, also includes "entropy" key with
         a list of `[R]` tensors.
     """
+    parallel_state = get_parallel_state()
     assert non_loss_data
     log_probs_list = []
     entropy_list = []
     for logits_chunk, tokens_chunk in get_responses(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=unconcat_tokens,
         total_lengths=total_lengths,
         response_lengths=response_lengths,
@@ -210,7 +209,6 @@ def get_log_probs_and_entropy(
             res,
             logits=logits,
             args=args,
-            parallel_state=parallel_state,
             total_lengths=total_lengths,
             response_lengths=response_lengths,
             max_seq_lens=max_seq_lens,
@@ -223,7 +221,6 @@ def get_values(
     logits: torch.Tensor,
     *,
     args: Namespace,
-    parallel_state: ParallelState,
     unconcat_tokens: list[torch.Tensor],
     total_lengths: list[int],
     response_lengths: list[int],
@@ -254,7 +251,6 @@ def get_values(
     for logits_chunk, _ in get_responses(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=unconcat_tokens,
         total_lengths=total_lengths,
         response_lengths=response_lengths,
@@ -272,7 +268,6 @@ def get_values(
             res,
             logits=logits,
             args=args,
-            parallel_state=parallel_state,
             total_lengths=total_lengths,
             response_lengths=response_lengths,
             max_seq_lens=max_seq_lens,
@@ -281,7 +276,7 @@ def get_values(
     return res
 
 
-def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelState, rollout_data: RolloutBatch) -> None:
+def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) -> None:
     """Compute advantages and returns in-place based on `args.advantage_estimator`.
 
     This function extracts rewards, log-probs, values, and masks from
@@ -302,6 +297,7 @@ def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelStat
             "total_lengths"). Modified in-place to add "advantages" and
             "returns" keys, each mapping to lists of tensors per sample.
     """
+    parallel_state = get_parallel_state()
     log_probs: list[torch.Tensor] = rollout_data.get("rollout_log_probs" if args.use_rollout_logprobs else "log_probs")
     ref_log_probs: list[torch.Tensor] = rollout_data.get("ref_log_probs")
     rewards: list[float] = rollout_data.get("rewards")
@@ -407,7 +403,7 @@ def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelStat
                 max_seq_len = max_seq_lens[i] if max_seq_lens is not None else None
 
                 _, _, _, token_offsets = get_logits_and_tokens_offset_with_cp(
-                    total_len, response_len, parallel_state, args.qkv_format, max_seq_len
+                    total_len, response_len, args.qkv_format, max_seq_len
                 )
 
                 # Convert global offsets to response-space offsets
@@ -543,7 +539,6 @@ def policy_loss_function(
     log_probs_and_entropy = get_log_probs_and_entropy(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=batch["unconcat_tokens"],
         total_lengths=total_lengths,
         response_lengths=response_lengths,
@@ -560,13 +555,13 @@ def policy_loss_function(
     full_old_log_probs = None
     if need_full_log_probs:
         full_log_probs = [
-            all_gather_with_cp(log_prob, total_length, response_length, parallel_state)
+            all_gather_with_cp(log_prob, total_length, response_length)
             for log_prob, total_length, response_length in zip(
                 log_probs, total_lengths, response_lengths, strict=False
             )
         ]
         full_old_log_probs = [
-            all_gather_with_cp(old_log_prob, total_length, response_length, parallel_state)
+            all_gather_with_cp(old_log_prob, total_length, response_length)
             for old_log_prob, total_length, response_length in zip(
                 old_log_probs, total_lengths, response_lengths, strict=False
             )
@@ -641,7 +636,6 @@ def policy_loss_function(
             total_lengths,
             response_lengths,
             modified_response_masks,
-            parallel_state,
             args.calculate_per_token_loss,
             args.qkv_format,
             max_seq_lens,
@@ -752,7 +746,6 @@ def value_loss_function(
     values = get_values(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=batch["unconcat_tokens"],
         total_lengths=batch["total_lengths"],
         response_lengths=batch["response_lengths"],
@@ -812,7 +805,6 @@ def sft_loss_function(
     log_probs_and_entropy = get_log_probs_and_entropy(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=batch["unconcat_tokens"],
         total_lengths=total_lengths,
         response_lengths=response_lengths,
@@ -838,7 +830,6 @@ def sft_loss_function(
 
 def loss_function(
     args: Namespace,
-    parallel_state: ParallelState,
     batch: RolloutBatch,
     num_microbatches: int,
     logits: torch.Tensor,
@@ -867,6 +858,7 @@ def loss_function(
         - `logging_dict` has keys "keys" (list of str metric names) and
           "values" (1D tensor: [count, metric1, metric2, ...]).
     """
+    parallel_state = get_parallel_state()
     num_tokens = sum([torch.clamp_min(loss_mask.sum(), 1) for loss_mask in batch["loss_masks"]])
     num_samples = len(batch["response_lengths"])
 
@@ -874,7 +866,6 @@ def loss_function(
         batch["total_lengths"],
         batch["response_lengths"],
         batch["loss_masks"],
-        parallel_state,
         args.calculate_per_token_loss,
         args.qkv_format,
         batch.get("max_seq_lens", None),
