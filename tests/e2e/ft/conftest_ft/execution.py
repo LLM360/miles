@@ -55,7 +55,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
     rollout_args: str
     if not mode.has_rollout:
         rollout_args = (
-            "--load-debug-rollout-data /root/datasets/ft-test-debug-rollout-data/{rollout_id}.pt "
+            "--load-debug-rollout-data /root/datasets/miles-ft-test-debug-rollout-data/{rollout_id}.pt "
             "--debug-train-only "
         )
     else:
