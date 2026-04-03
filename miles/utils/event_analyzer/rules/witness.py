@@ -61,7 +61,14 @@ def _filter_by_type(arr: list, ty: Type) -> list:
 
 
 def _compute_expected_witness_ids_of_step(events: list[WitnessAllocateIdEvent]) -> dict[int, set[int]]:
-    allocated_witness_ids_of_rollout_id = {e.rollout_id: list(e.witness_id_to_sample_index.keys()) for e in events}
+    latest_by_rollout: dict[int, WitnessAllocateIdEvent] = {}
+    for e in events:
+        if e.rollout_id not in latest_by_rollout or e.attempt > latest_by_rollout[e.rollout_id].attempt:
+            latest_by_rollout[e.rollout_id] = e
+
+    allocated_witness_ids_of_rollout_id = {
+        rid: list(e.witness_id_to_sample_index.keys()) for rid, e in latest_by_rollout.items()
+    }
 
     ans: dict[int, set[int]] = {}
     running: set[int] = set()

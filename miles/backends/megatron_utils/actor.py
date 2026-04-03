@@ -338,7 +338,7 @@ class MegatronTrainRayActor(TrainRayActor):
                 store_prefix=store_prefix,
             )
 
-    @event_logger_context(lambda _self, rollout_id, rollout_data_ref, witness_info, attempt: dict(rollout_id=rollout_id))
+    @event_logger_context(lambda _self, rollout_id, rollout_data_ref, witness_info, attempt: dict(rollout_id=rollout_id, attempt=attempt))
     def train(
         self,
         rollout_id: int,

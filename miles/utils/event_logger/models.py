@@ -15,6 +15,7 @@ class EventBase(FrozenStrictBaseModel):
 
 class _ActorTrainEventBase(EventBase):
     rollout_id: int
+    attempt: int = 0
 
 
 class OptimizerStateInfo(FrozenStrictBaseModel):

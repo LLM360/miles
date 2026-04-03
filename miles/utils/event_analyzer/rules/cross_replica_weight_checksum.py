@@ -24,12 +24,13 @@ def check(events: list[Event]) -> list[ChecksumMismatchIssue]:
 
     all_mismatches: list[ChecksumMismatchIssue] = []
 
-    events_by_rollout: dict[int, list[LocalWeightChecksumEvent]] = {}
+    events_by_key: dict[tuple[int, int], list[LocalWeightChecksumEvent]] = {}
     for event in checksum_events:
-        events_by_rollout.setdefault(event.rollout_id, []).append(event)
+        key = (event.rollout_id, event.attempt)
+        events_by_key.setdefault(key, []).append(event)
 
-    for rollout_id in sorted(events_by_rollout.keys()):
-        all_mismatches += list(_check_one_step(events=events_by_rollout[rollout_id]))
+    for key in sorted(events_by_key.keys()):
+        all_mismatches += list(_check_one_step(events=events_by_key[key]))
 
     return all_mismatches
 
