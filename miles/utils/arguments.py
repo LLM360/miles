@@ -1393,12 +1393,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Maximum number of unique witness IDs before recycling.",
             )
             parser.add_argument(
-                "--ci-ft-test-scenario",
+                "--ci-ft-test-actions",
                 type=str,
                 default=None,
-                help="Name of the fault tolerance test scenario to execute inside the training job. "
-                "When set, the training loop invokes the corresponding scenario from "
-                "miles.utils.test_utils.ft_test_scenarios at step boundaries for coordinated fault injection.",
+                help="JSON array of fault injection actions. Each action: "
+                '{"after_step": N, "action": "stop_cell"|"start_cell", "cell_index": I}. '
+                "cell_index -1 means last cell.",
             )
             parser.add_argument(
                 "--env-report",
