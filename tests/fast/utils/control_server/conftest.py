@@ -138,6 +138,14 @@ class MockRayTrainCell:
     def is_stopped(self) -> bool:
         return self._is_stopped
 
+    def cell_status(self) -> "CellStatus":
+        from miles.utils.control_server.models import CellCondition, CellStatus
+
+        return CellStatus(
+            phase=self._phase,
+            conditions=[CellCondition(**c) for c in self._conditions],
+        )
+
 
 def make_mock_group(cells: list[MockRayTrainCell]) -> object:
     from miles.ray.train.group import RayTrainGroup
