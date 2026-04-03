@@ -58,7 +58,7 @@ def add_convertion_args(parser):
 
 
 def get_args():
-    miles_extra_args = get_miles_extra_args_provider(add_convertion_args)
+    miles_extra_args = get_miles_extra_args_provider()
     args = parse_args(miles_extra_args)
     args = set_default_megatron_args(args)
 
