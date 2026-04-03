@@ -27,6 +27,8 @@ Batch sizes are deliberately **not** divisible by num_cells to test uneven sampl
 
 ## Running
 
+**Required**: `MILES_SCRIPT_OUTPUT_DIR` environment variable must be set. Dump files are written to `$MILES_SCRIPT_OUTPUT_DIR/dumps/<test_name>/`.
+
 ### Comparison tests (`test_trainer_ft_no_failure.py`, `test_trainer_ft_with_failure.py`, `test_trainer_ft_deterministic.py`)
 
 These compare baseline (normal DP) against target (indep_dp). They support 4 subcommands:
@@ -61,20 +63,20 @@ python tests/e2e/ft/test_ft_random.py run --mode dp4_cp2 --seed 42 --num-steps 5
 
 ## Debug Rollout Data
 
-FT tests use pre-recorded rollout data (`--load-debug-rollout-data --debug-train-only`) to skip real rollout generation and save GPU resources.
+Modes without rollout engines (`has_rollout == False`) use pre-recorded rollout data via `--load-debug-rollout-data --debug-train-only`, skipping real rollout generation.
 
-`conftest_ft/execution.py` `prepare()` downloads the data via `U.hf_download_dataset()`. Then `get_common_train_args()` passes `--load-debug-rollout-data` and `--debug-train-only` to the training command (for modes with `rollout_gpus == 0`).
+`conftest_ft/execution.py` `prepare()` downloads the data via `U.hf_download_dataset()`.
 
 ### How to regenerate
 
-Any `run_*.py` script with `--mode debug_minimal` already dumps rollout data via `--save-debug-rollout-data` (part of dump details):
+Any `run_*.py` script with `--dump-details` (enabled by default) saves rollout data. To regenerate:
 
 ```bash
-# Step 1: Run with debug_minimal to dump rollout data
-python scripts/run_qwen3_30b_a3b.py --mode debug_minimal --num-rollout 10
+# Step 1: Run training (dump_details automatically saves rollout data)
+python scripts/run_qwen3_30b_a3b.py --mode debug_minimal
 
 # Step 2: Locate the dumped rollout data
-ls /root/output/<run_id>/dump_details/
+ls <output_dir>/<run_id>/dump_details/rollout_data/
 
 # Step 3: Upload to HF
 huggingface-cli upload --repo-type dataset fzyzcjy/miles-ft-test-debug-rollout-data <path>
@@ -149,12 +151,13 @@ Phase B — target timeline:
   2. After rollout 2: stop_cell_at_end(last) + start_cell_at_end(last) — trigger healing
   3. Rollout 3: healing at start (recv_ckpt from cell_0), then normal execution
 
+Both baseline and target use --deterministic-mode + env vars (NCCL_ALGO=Ring,
+NVTE_ALLOW_NONDETERMINISTIC_ALGO=0, CUBLAS_WORKSPACE_CONFIG=:4096:8) for
+bitwise reproducibility.
+
 Bitwise verification: --use-fault-tolerance --ft-components train auto-enables
 --save-local-weight-checksum and --enable-event-analyzer. The event_analyzer
 cross_replica_weight_checksum rule checks cell-to-cell bitwise equality after healing.
-
-Dumper note: dumper_phase_util.finalize() only runs on NORMAL outcome, so
-the discarded retry attempt in rollout 4 does not produce a dump file.
 ```
 
 ### `test_ft_random.py`
