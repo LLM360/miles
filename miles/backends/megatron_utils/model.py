@@ -345,6 +345,7 @@ def train_one_step(
     parallel_state: ParallelState,
     witness_info: "WitnessInfo | None",
     attempt: int = 0,
+    ft_actor_executor: "FTTestActionActorExecutor | None" = None,
 ) -> tuple[dict[str, float], float, TrainStepOutcome]:
     """Execute a single pipeline-parallel training step.
 
@@ -482,13 +483,8 @@ def train_one_step(
     if parallel_state.indep_dp.size > 1:
         assert step_id == 0, "indep-dp does not support multi step per train yet"
 
-        FTTestActionActorExecutor.from_args(args).maybe_crash(
-            rollout_id=rollout_id,
-            attempt=attempt,
-            cell_index=args.ci_ft_cell_index,
-            rank=args.ci_ft_rank,
-            num_cells=args.ci_ft_num_cells,
-        )
+        if ft_actor_executor is not None:
+            ft_actor_executor.maybe_crash(rollout_id=rollout_id, attempt=attempt)
 
         ok = _allreduce_grads_across_replicas(args, model, parallel_state)
         if not ok:
@@ -558,6 +554,7 @@ def train(
     parallel_state: ParallelState,
     witness_info: "WitnessInfo | None",
     attempt: int = 0,
+    ft_actor_executor: "FTTestActionActorExecutor | None" = None,
 ) -> TrainStepOutcome:
     """Run training over a rollout consisting of multiple steps.
 
@@ -654,6 +651,7 @@ def train(
             parallel_state,
             witness_info=witness_info,
             attempt=attempt,
+            ft_actor_executor=ft_actor_executor,
         )
 
         if step_id == 0:

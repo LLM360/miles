@@ -64,32 +64,39 @@ class FTTestActionGroupExecutor:
 class FTTestActionActorExecutor:
     """Runs in train_one_step() before allreduce. Handles crash_before_allreduce."""
 
-    def __init__(self, *, actions: list[FTTestAction]) -> None:
+    def __init__(self, *, actions: list[FTTestAction], cell_index: int, num_cells: int, rank: int) -> None:
         self._actions = actions
+        self._cell_index = cell_index
+        self._num_cells = num_cells
+        self._rank = rank
 
     @staticmethod
-    def from_args(args: object) -> "FTTestActionActorExecutor":
+    def from_args(
+        args: object, *, cell_index: int, num_cells: int, rank: int,
+    ) -> "FTTestActionActorExecutor":
         raw: str | None = getattr(args, "ci_ft_test_actions", None)
         all_actions = _parse_ft_test_actions(raw)
         actions = [a for a in all_actions if a.action in _ACTOR_ACTIONS]
         if actions:
             logger.info("FT test actor actions activated: %d actions", len(actions))
-        return FTTestActionActorExecutor(actions=actions)
+        return FTTestActionActorExecutor(
+            actions=actions, cell_index=cell_index, num_cells=num_cells, rank=rank,
+        )
 
-    def maybe_crash(self, *, rollout_id: int, attempt: int, cell_index: int, rank: int, num_cells: int) -> None:
+    def maybe_crash(self, *, rollout_id: int, attempt: int) -> None:
         for action in self._actions:
-            resolved_cell = action.cell_index if action.cell_index >= 0 else num_cells - 1
+            resolved_cell = action.cell_index if action.cell_index >= 0 else self._num_cells - 1
             if (
                 action.at_rollout == rollout_id
                 and action.attempt == attempt
-                and resolved_cell == cell_index
-                and action.rank == rank
+                and resolved_cell == self._cell_index
+                and action.rank == self._rank
             ):
                 logger.warning(
                     "FT test action: crash_before_allreduce at rollout %d attempt %d cell %d rank %d — calling os._exit(1)",
                     rollout_id,
                     attempt,
-                    cell_index,
-                    rank,
+                    self._cell_index,
+                    self._rank,
                 )
                 os._exit(1)

@@ -18,6 +18,7 @@ from miles.utils.distributed_utils import get_gloo_group, init_process_group
 from miles.utils.event_logger.logger import event_logger_context
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.memory_utils import clear_memory, print_memory
+from miles.utils.test_utils.ft_test_actions import FTTestActionActorExecutor
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.ray_utils import Box
 from miles.utils.reloadable_process_group import destroy_process_groups, monkey_patch_torch_dist, reload_process_groups
@@ -83,9 +84,12 @@ class MegatronTrainRayActor(TrainRayActor):
             indep_dp_info=indep_dp_info,
         )
 
-        args.ci_ft_cell_index = indep_dp_info.cell_index
-        args.ci_ft_num_cells = indep_dp_info.num_cells
-        args.ci_ft_rank = self._rank
+        self._ft_actor_executor = FTTestActionActorExecutor.from_args(
+            args,
+            cell_index=indep_dp_info.cell_index,
+            num_cells=indep_dp_info.num_cells,
+            rank=self._rank,
+        )
 
         if args.dumper_enable:
             from sglang.srt.debug_utils.dumper import dumper
@@ -476,6 +480,7 @@ class MegatronTrainRayActor(TrainRayActor):
                     self.parallel_state,
                     witness_info=witness_info,
                     attempt=attempt,
+                    ft_actor_executor=self._ft_actor_executor,
                 )
 
             self.prof.step(rollout_id=rollout_id)
