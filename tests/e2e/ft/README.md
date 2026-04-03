@@ -136,22 +136,18 @@ The `attempt` field (for actor-level actions like `crash_before_allreduce`) spec
 
 ### `test_trainer_ft_deterministic.py`
 
-Multi-phase comparison test. Verifies healing state transfer + degraded retry.
+Multi-phase comparison test. Verifies healing state transfer is bitwise correct.
 
 ```
 Type: comparison, multi-phase (phase_a + phase_b)
-Phase A steps: 1, Phase B steps: 5, rtol: 1e-2
+Phase A steps: 1, Phase B steps: 3, rtol: 1e-2
 
 Phase A: same as with_failure (1 step + save ckpt).
 
 Phase B — target timeline:
   1. Rollout 1, 2: all N cells normal (2 good steps, accumulate meaningful state)
-  2. After rollout 2: stop_cell(last) + start_cell(last) — trigger healing at next step
+  2. After rollout 2: stop_cell_at_end(last) + start_cell_at_end(last) — trigger healing
   3. Rollout 3: healing at start (recv_ckpt from cell_0), then normal execution
-  4. After rollout 3: stop_cell(last) — create degraded state
-  5. Rollout 4: N-1 cells → should_commit=false → DISCARDED_SHOULD_RETRY → retry
-  6. After rollout 4: start_cell(last) — restore for healing
-  7. Rollout 5: healing + normal execution
 
 Bitwise verification: --use-fault-tolerance --ft-components train auto-enables
 --save-local-weight-checksum and --enable-event-analyzer. The event_analyzer

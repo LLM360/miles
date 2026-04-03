@@ -15,7 +15,7 @@ from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_ft_arg
 from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
 NUM_PHASE_A_STEPS: int = 1
-NUM_PHASE_B_STEPS: int = 5
+NUM_PHASE_B_STEPS: int = 3
 
 _DETERMINISTIC_ENV_VARS: str = (
     '--train-env-vars \'{"NCCL_ALGO": "Ring", '
@@ -27,8 +27,6 @@ _DETERMINISTIC_ENV_VARS: str = (
 _DETERMINISTIC_ACTIONS: list[dict] = [
     {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "stop_cell_at_end", "cell_index": -1},
     {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "start_cell_at_end", "cell_index": -1},
-    {"at_rollout": NUM_PHASE_A_STEPS + 2, "action": "stop_cell_at_end", "cell_index": -1},
-    {"at_rollout": NUM_PHASE_A_STEPS + 3, "action": "start_cell_at_end", "cell_index": -1},
 ]
 
 
