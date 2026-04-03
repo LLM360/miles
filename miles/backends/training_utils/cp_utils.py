@@ -303,9 +303,7 @@ def _allgather_cp_redistribute(
         ):
             max_seq_len = max_seq_lens[idx] if max_seq_lens is not None else None
             new_values.append(
-                slice_log_prob_with_cp(
-                    full_resp, total_length, response_length, args.qkv_format, max_seq_len
-                )
+                slice_log_prob_with_cp(full_resp, total_length, response_length, args.qkv_format, max_seq_len)
             )
 
         res[key] = new_values

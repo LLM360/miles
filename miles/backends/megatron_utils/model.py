@@ -433,9 +433,7 @@ def train_one_step(
         for m, old_stage in zip(all_replay_managers, old_stages, strict=True):
             m.stage = old_stage
 
-        return output_tensor, partial(
-            loss_function, args, batch, num_microbatches, apply_megatron_loss_scaling=True
-        )
+        return output_tensor, partial(loss_function, args, batch, num_microbatches, apply_megatron_loss_scaling=True)
 
     # Forward pass.
     forward_backward_func = get_forward_backward_func()

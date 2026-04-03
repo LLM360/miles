@@ -2,7 +2,6 @@ from typing import Any
 
 import torch
 
-from miles.backends.training_utils.parallel import get_parallel_state
 
 # NOTE:
 # - `compute_mis_weights` is a lightweight, standalone function that is useful to unit-test on CPU.

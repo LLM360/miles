@@ -93,9 +93,7 @@ def aggregate_forward_results(
     return rollout_data
 
 
-def log_rollout_data(
-    rollout_id: int, args: Namespace, rollout_data: RolloutBatch
-) -> None:
+def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatch) -> None:
     """
     Summarize rollout fields and log reduced metrics on PP last stage, TP rank 0.
 
@@ -258,9 +256,7 @@ def log_rollout_data(
                 rollout_data["correct_entropy"] = [0] * num_correct_responses
 
 
-def log_multi_turn_data(
-    rollout_id: int, args: Namespace, rollout_data: RolloutBatch
-) -> None:
+def log_multi_turn_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatch) -> None:
     """
     Log multi-turn auxiliary metrics such as raw/observed response lengths and rounds.
 

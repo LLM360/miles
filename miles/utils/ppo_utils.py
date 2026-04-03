@@ -6,7 +6,6 @@ from argparse import Namespace
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from miles.backends.training_utils.parallel import get_parallel_state
 
 
 @torch.compile(dynamic=True)
