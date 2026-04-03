@@ -246,7 +246,8 @@ class TestDumpLocalWeightChecksums:
             model = [_make_mock_model_chunk(params={"w": weight})]
             optimizer = _make_mock_optimizer_with_state_dict(params=[weight])
 
-            dump_local_weight_checksums(args=args, model=model, optimizer=optimizer)
+            with event_logger.with_context({"rollout_id": 0, "attempt": 0}):
+                dump_local_weight_checksums(args=args, model=model, optimizer=optimizer)
 
             event_logger.close()
 
