@@ -39,13 +39,116 @@ def compare_dumps(
     print(f"Dump comparison passed: {baseline_path} vs {target_path}")
 
 
+def compare_metrics(
+    baseline_dir: str,
+    target_dir: str,
+    *,
+    rtol: float = 1e-3,
+    key_prefixes: list[str] | None = None,
+) -> None:
+    if key_prefixes is None:
+        key_prefixes = ["train/"]
+
+    baseline_events = _read_metric_events(Path(baseline_dir))
+    target_events = _read_metric_events(Path(target_dir))
+    print(f"Metrics: {baseline_events=} {target_events=}")
+
+    issues: list[str] = []
+    issues += _check_event_counts(baseline_events, target_events, baseline_dir, target_dir)
+
+    if not issues:
+        for step_idx, (b_event, t_event) in enumerate(zip(baseline_events, target_events, strict=True)):
+            issues += _check_step_metrics(step_idx, b_event, t_event, key_prefixes, rtol)
+
+    issues += _check_required_keys_exist(baseline_events)
+
+    assert not issues, (
+        f"MetricEvent comparison found {len(issues)} issue(s):\n" + "\n".join(f"  - {i}" for i in issues)
+    )
+    print(f"MetricEvent comparison passed: {len(baseline_events)} steps compared")
+
+
+def _check_event_counts(
+    baseline: list[MetricEvent],
+    target: list[MetricEvent],
+    baseline_dir: str,
+    target_dir: str,
+) -> list[str]:
+    issues: list[str] = []
+    if len(baseline) == 0:
+        issues.append(f"No MetricEvents found in baseline dir: {baseline_dir}")
+    if len(target) == 0:
+        issues.append(f"No MetricEvents found in target dir: {target_dir}")
+    if len(baseline) > 0 and len(target) > 0 and len(baseline) != len(target):
+        issues.append(
+            f"MetricEvent count mismatch: baseline={len(baseline)}, target={len(target)}"
+        )
+    return issues
+
+
+def _check_step_metrics(
+    step_idx: int,
+    baseline_event: MetricEvent,
+    target_event: MetricEvent,
+    key_prefixes: list[str],
+    rtol: float,
+) -> list[str]:
+    issues: list[str] = []
+    for key in baseline_event.metrics:
+        if not any(key.startswith(prefix) for prefix in key_prefixes):
+            continue
+
+        if key not in target_event.metrics:
+            issues.append(f"Step {step_idx}: metric '{key}' present in baseline but missing in target")
+            continue
+
+        issues += _check_single_metric(step_idx, key, baseline_event.metrics[key], target_event.metrics[key], rtol)
+    return issues
+
+
+def _check_single_metric(
+    step_idx: int,
+    key: str,
+    baseline_val: object,
+    target_val: object,
+    rtol: float,
+) -> list[str]:
+    if not isinstance(baseline_val, (int, float)) or not isinstance(target_val, (int, float)):
+        return []
+    if baseline_val == 0.0 and target_val == 0.0:
+        return []
+
+    rel_diff = abs(baseline_val - target_val) / max(abs(baseline_val), abs(target_val), 1e-12)
+    if rel_diff > rtol:
+        return [
+            f"Step {step_idx}, metric '{key}': baseline={baseline_val}, target={target_val}, "
+            f"rel_diff={rel_diff:.6f} > rtol={rtol}"
+        ]
+    return []
+
+
+def _check_required_keys_exist(events: list[MetricEvent]) -> list[str]:
+    all_keys: set[str] = set()
+    for event in events:
+        all_keys.update(event.metrics.keys())
+
+    issues: list[str] = []
+    for required in _REQUIRED_METRIC_KEYS:
+        if required not in all_keys:
+            issues.append(
+                f"Required metric '{required}' not found in any baseline MetricEvent. "
+                f"Available keys: {sorted(all_keys)}"
+            )
+    return issues
+
+
 def _run_comparator(
-        *,
-        baseline_path: Path,
-        target_path: Path,
-        diff_threshold: float,
-        allow_skipped_pattern: str,
-        extra_args: list[str] | None,
+    *,
+    baseline_path: Path,
+    target_path: Path,
+    diff_threshold: float,
+    allow_skipped_pattern: str,
+    extra_args: list[str] | None,
 ) -> subprocess.CompletedProcess[str]:
     cmd: list[str] = [
         sys.executable,
@@ -79,106 +182,6 @@ def _run_comparator(
         print(f"[comparator stderr]\n{result.stderr}")
 
     return result
-
-
-def compare_metrics(
-    baseline_dir: str,
-    target_dir: str,
-    *,
-    rtol: float = 1e-3,
-    key_prefixes: list[str] | None = None,
-) -> None:
-    if key_prefixes is None:
-        key_prefixes = ["train/"]
-
-    baseline_events = _read_metric_events(Path(baseline_dir))
-    target_events = _read_metric_events(Path(target_dir))
-    print(f"Metrics: {baseline_events=} {target_events=}")
-
-    issues: list[str] = []
-
-    _check_event_counts(baseline_events, target_events, baseline_dir, target_dir, issues)
-
-    if not issues:
-        for step_idx, (b_event, t_event) in enumerate(zip(baseline_events, target_events, strict=True)):
-            _check_step_metrics(step_idx, b_event, t_event, key_prefixes, rtol, issues)
-
-    _check_required_keys_exist(baseline_events, issues)
-
-    assert not issues, (
-        f"MetricEvent comparison found {len(issues)} issue(s):\n" + "\n".join(f"  - {i}" for i in issues)
-    )
-    print(f"MetricEvent comparison passed: {len(baseline_events)} steps compared")
-
-
-def _check_event_counts(
-    baseline: list[MetricEvent],
-    target: list[MetricEvent],
-    baseline_dir: str,
-    target_dir: str,
-    issues: list[str],
-) -> None:
-    if len(baseline) == 0:
-        issues.append(f"No MetricEvents found in baseline dir: {baseline_dir}")
-    if len(target) == 0:
-        issues.append(f"No MetricEvents found in target dir: {target_dir}")
-    if len(baseline) > 0 and len(target) > 0 and len(baseline) != len(target):
-        issues.append(
-            f"MetricEvent count mismatch: baseline={len(baseline)}, target={len(target)}"
-        )
-
-
-def _check_step_metrics(
-    step_idx: int,
-    baseline_event: MetricEvent,
-    target_event: MetricEvent,
-    key_prefixes: list[str],
-    rtol: float,
-    issues: list[str],
-) -> None:
-    for key in baseline_event.metrics:
-        if not any(key.startswith(prefix) for prefix in key_prefixes):
-            continue
-
-        if key not in target_event.metrics:
-            issues.append(f"Step {step_idx}: metric '{key}' present in baseline but missing in target")
-            continue
-
-        _check_single_metric(step_idx, key, baseline_event.metrics[key], target_event.metrics[key], rtol, issues)
-
-
-def _check_single_metric(
-    step_idx: int,
-    key: str,
-    baseline_val: object,
-    target_val: object,
-    rtol: float,
-    issues: list[str],
-) -> None:
-    if not isinstance(baseline_val, (int, float)) or not isinstance(target_val, (int, float)):
-        return
-    if baseline_val == 0.0 and target_val == 0.0:
-        return
-
-    rel_diff = abs(baseline_val - target_val) / max(abs(baseline_val), abs(target_val), 1e-12)
-    if rel_diff > rtol:
-        issues.append(
-            f"Step {step_idx}, metric '{key}': baseline={baseline_val}, target={target_val}, "
-            f"rel_diff={rel_diff:.6f} > rtol={rtol}"
-        )
-
-
-def _check_required_keys_exist(events: list[MetricEvent], issues: list[str]) -> None:
-    all_keys: set[str] = set()
-    for event in events:
-        all_keys.update(event.metrics.keys())
-
-    for required in _REQUIRED_METRIC_KEYS:
-        if required not in all_keys:
-            issues.append(
-                f"Required metric '{required}' not found in any baseline MetricEvent. "
-                f"Available keys: {sorted(all_keys)}"
-            )
 
 
 def _read_metric_events(dump_dir: Path) -> list[MetricEvent]:
