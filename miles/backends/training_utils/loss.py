@@ -26,7 +26,7 @@ from .cp_utils import (
     get_logits_and_tokens_offset_with_cp,
     get_sum_of_sample_mean,
 )
-from .parallel import ParallelState, get_parallel_state
+from .parallel import get_parallel_state
 
 
 def get_responses(
@@ -499,7 +499,6 @@ def icepop_function(
 
 def policy_loss_function(
     args: Namespace,
-    parallel_state: ParallelState,
     batch: RolloutBatch,
     logits: torch.Tensor,
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
@@ -528,6 +527,7 @@ def policy_loss_function(
         "tis", "ois", "tis_clipfrac" are included when the respective features
         are enabled.
     """
+    parallel_state = get_parallel_state()
     advantages = torch.cat(batch["advantages"], dim=0)
     old_log_probs = batch["rollout_log_probs"] if args.use_rollout_logprobs else batch["log_probs"]
 
@@ -718,7 +718,6 @@ def policy_loss_function(
 
 def value_loss_function(
     args: Namespace,
-    parallel_state: ParallelState,
     batch: RolloutBatch,
     logits: torch.Tensor,
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
@@ -777,7 +776,6 @@ def value_loss_function(
 
 def sft_loss_function(
     args: Namespace,
-    parallel_state: ParallelState,
     batch: RolloutBatch,
     logits: torch.Tensor,
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
@@ -886,13 +884,12 @@ def loss_function(
         loss, log = checkpoint(
             func,
             args,
-            parallel_state,
             batch,
             logits,
             sum_of_sample_mean,
         )
     else:
-        loss, log = func(args, parallel_state, batch, logits, sum_of_sample_mean)
+        loss, log = func(args, batch, logits, sum_of_sample_mean)
 
     # With allgather-CP, some CP ranks may have no loss-contributing tokens (e.g., all
     # padding). Without this, gradient doesn't flow through their attention path, so
