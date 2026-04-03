@@ -1,7 +1,7 @@
 """Tests for process_group_utils: GroupInfo, GroupsInfo, GeneralPGUtil, MultiPGUtil."""
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -45,11 +45,14 @@ class TestGroupsInfo:
         assert result.groups_inner_to_outer == [None]
         assert result.gloo_groups_inner_to_outer == [None]
 
+    @patch.object(GroupInfo, "__post_init__", lambda self: None)
     def test_from_single_with_gloo(self) -> None:
-        info = GroupInfo(rank=0, size=2, group=None, gloo_group=None)
+        sentinel_group = object()
+        sentinel_gloo = object()
+        info = GroupInfo(rank=0, size=2, group=sentinel_group, gloo_group=sentinel_gloo)
         result = GroupsInfo.from_single(info)
-        assert result.groups_inner_to_outer == [None]
-        assert result.gloo_groups_inner_to_outer == [None]
+        assert result.groups_inner_to_outer == [sentinel_group]
+        assert result.gloo_groups_inner_to_outer == [sentinel_gloo]
 
     def test_from_pair(self) -> None:
         inner = GroupInfo(rank=1, size=3, group=None)
@@ -59,11 +62,14 @@ class TestGroupsInfo:
         assert result.size == 4 * 3  # 12
         assert result.gloo_groups_inner_to_outer == [None, None]
 
+    @patch.object(GroupInfo, "__post_init__", lambda self: None)
     def test_from_pair_with_gloo(self) -> None:
-        inner = GroupInfo(rank=0, size=2, group=None, gloo_group=None)
-        outer = GroupInfo(rank=0, size=3, group=None, gloo_group=None)
+        inner_gloo = object()
+        outer_gloo = object()
+        inner = GroupInfo(rank=0, size=2, group=None, gloo_group=inner_gloo)
+        outer = GroupInfo(rank=0, size=3, group=None, gloo_group=outer_gloo)
         result = GroupsInfo.from_pair(inner=inner, outer=outer)
-        assert result.gloo_groups_inner_to_outer == [None, None]
+        assert result.gloo_groups_inner_to_outer == [inner_gloo, outer_gloo]
 
     def test_from_pair_rank_zero_only_when_both_zero(self) -> None:
         result = GroupsInfo.from_pair(
@@ -148,8 +154,8 @@ def test_pg_util_ops() -> None:
     run_multiprocess(_worker_pg_util_ops, world_size=4)
 
 
-def _worker_gather_object_native_vs_raw(rank: int, world_size: int, port: int) -> None:
-    """Verify _NativePGUtil and _RawPGUtil gather_object produce identical results."""
+def _worker_gather_object(rank: int, world_size: int, port: int) -> None:
+    """Verify _NativePGUtil gather_object returns correct results on rank 0."""
     init_gloo(rank, world_size, port=port)
     try:
         group = dist.new_group(ranks=list(range(world_size)), backend="gloo")
@@ -161,25 +167,61 @@ def _worker_gather_object_native_vs_raw(rank: int, world_size: int, port: int) -
             (rank, {"nested": True}),
         ]
 
-        def _gather(util: GeneralPGUtil, obj: Any) -> list[Any] | None:
+        util = _NativePGUtil()
+        for obj in test_objects:
             if rank == 0:
                 result: list[Any] = [None] * world_size
                 util.gather_object(obj, result, dst=0, group=group)
-                return result
+                assert all(r is not None for r in result), f"Incomplete gather for obj type={type(obj)}"
             else:
                 util.gather_object(obj, None, dst=0, group=group)
-                return None
-
-        for obj in test_objects:
-            native_result = _gather(_NativePGUtil(), obj)
-            if rank == 0:
-                assert native_result is not None, f"Expected gather result on rank 0 for obj={obj}"
     finally:
         dist.destroy_process_group()
 
 
-def test_gather_object_native_vs_raw() -> None:
-    run_multiprocess(_worker_gather_object_native_vs_raw, world_size=4)
+def test_gather_object() -> None:
+    run_multiprocess(_worker_gather_object, world_size=4)
+
+
+class TestRawPGUtilUnit:
+    """Unit tests for _RawPGUtil using mock groups (torchft-style with _rank attr)."""
+
+    def test_get_rank_returns_group_rank(self) -> None:
+        group = MagicMock()
+        group._rank = 3
+        assert _RawPGUtil().get_rank(group) == 3
+
+    def test_get_size_returns_group_size(self) -> None:
+        group = MagicMock()
+        group.size.return_value = 8
+        assert _RawPGUtil().get_size(group) == 8
+
+    def test_all_reduce_calls_group_allreduce(self) -> None:
+        group = MagicMock()
+        work = MagicMock()
+        work.wait.return_value = True
+        group.allreduce.return_value = work
+        tensor = torch.tensor([1.0])
+        _RawPGUtil().all_reduce(tensor, group, op=dist.ReduceOp.SUM)
+        group.allreduce.assert_called_once()
+
+    def test_reduce_calls_group_reduce(self) -> None:
+        group = MagicMock()
+        work = MagicMock()
+        work.wait.return_value = True
+        group.reduce.return_value = work
+        tensor = torch.tensor([1.0])
+        _RawPGUtil().reduce(tensor, group, op=dist.ReduceOp.SUM)
+        group.reduce.assert_called_once()
+
+    def test_broadcast_calls_group_broadcast(self) -> None:
+        group = MagicMock()
+        work = MagicMock()
+        work.wait.return_value = True
+        group.broadcast.return_value = work
+        tensor = torch.tensor([1.0])
+        _RawPGUtil().broadcast(tensor, group)
+        group.broadcast.assert_called_once()
 
 
 # -- MultiPGUtil tests --
