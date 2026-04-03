@@ -8,24 +8,30 @@ import pytest
 from miles.utils.event_analyzer.analyzer import run_analysis, run_analysis_from_args
 from miles.utils.event_logger.logger import EventLogger
 from miles.utils.event_logger.models import LocalWeightChecksumEvent, LocalWeightChecksumState
-from miles.utils.process_identity import MainProcessIdentity
+from miles.utils.process_identity import TrainProcessIdentity
 
 
-def _make_event(
-    step: int,
-    rank: int,
+def _log_checksum_event(
+    event_logger: EventLogger,
+    *,
+    rollout_id: int,
     param_hashes: dict[str, str] | None = None,
-) -> LocalWeightChecksumEvent:
-    return LocalWeightChecksumEvent(
-        step=step,
-        cell_index=0,
-        rank_within_cell=rank,
-        state=LocalWeightChecksumState(
-            param_hashes=param_hashes or {},
-            buffer_hashes={},
-            optimizer_hashes=[],
+) -> None:
+    event_logger.log(
+        LocalWeightChecksumEvent,
+        dict(
+            rollout_id=rollout_id,
+            state=LocalWeightChecksumState(
+                param_hashes=param_hashes or {},
+                buffer_hashes={},
+                optimizer_hashes=[],
+            ),
         ),
     )
+
+
+def _make_source(*, cell_index: int = 0, rank: int = 0) -> TrainProcessIdentity:
+    return TrainProcessIdentity(component="actor", cell_index=cell_index, rank_within_cell=rank)
 
 
 class TestRunAnalysis:
@@ -33,10 +39,13 @@ class TestRunAnalysis:
         assert run_analysis(event_dir=tmp_path) == []
 
     def test_delegates_to_rules_and_returns_issues(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        event_logger.log(_make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"}))
-        event_logger.log(_make_event(step=0, rank=1, param_hashes={"pp0.w": "zzz"}))
-        event_logger.close()
+        logger_a = EventLogger(log_dir=tmp_path, file_name="a.jsonl", source=_make_source(rank=0))
+        _log_checksum_event(logger_a, rollout_id=0, param_hashes={"pp0.w": "aaa"})
+        logger_a.close()
+
+        logger_b = EventLogger(log_dir=tmp_path, file_name="b.jsonl", source=_make_source(rank=1))
+        _log_checksum_event(logger_b, rollout_id=0, param_hashes={"pp0.w": "zzz"})
+        logger_b.close()
 
         issues = run_analysis(event_dir=tmp_path)
         assert len(issues) == 1
@@ -52,20 +61,26 @@ class TestRunAnalysisFromArgs:
         run_analysis_from_args(args)
 
     def test_raises_on_mismatch(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        event_logger.log(_make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"}))
-        event_logger.log(_make_event(step=0, rank=1, param_hashes={"pp0.w": "zzz"}))
-        event_logger.close()
+        logger_a = EventLogger(log_dir=tmp_path, file_name="a.jsonl", source=_make_source(rank=0))
+        _log_checksum_event(logger_a, rollout_id=0, param_hashes={"pp0.w": "aaa"})
+        logger_a.close()
+
+        logger_b = EventLogger(log_dir=tmp_path, file_name="b.jsonl", source=_make_source(rank=1))
+        _log_checksum_event(logger_b, rollout_id=0, param_hashes={"pp0.w": "zzz"})
+        logger_b.close()
 
         args = Namespace(enable_event_analyzer=True, save_debug_event_data=str(tmp_path))
         with pytest.raises(ValueError, match="issues"):
             run_analysis_from_args(args)
 
     def test_passes_when_all_match(self, tmp_path: Path) -> None:
-        event_logger = EventLogger(log_dir=tmp_path, source=MainProcessIdentity())
-        event_logger.log(_make_event(step=0, rank=0, param_hashes={"pp0.w": "aaa"}))
-        event_logger.log(_make_event(step=0, rank=1, param_hashes={"pp0.w": "aaa"}))
-        event_logger.close()
+        logger_a = EventLogger(log_dir=tmp_path, file_name="a.jsonl", source=_make_source(rank=0))
+        _log_checksum_event(logger_a, rollout_id=0, param_hashes={"pp0.w": "aaa"})
+        logger_a.close()
+
+        logger_b = EventLogger(log_dir=tmp_path, file_name="b.jsonl", source=_make_source(rank=1))
+        _log_checksum_event(logger_b, rollout_id=0, param_hashes={"pp0.w": "aaa"})
+        logger_b.close()
 
         args = Namespace(enable_event_analyzer=True, save_debug_event_data=str(tmp_path))
         run_analysis_from_args(args)

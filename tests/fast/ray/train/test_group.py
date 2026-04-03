@@ -529,16 +529,16 @@ class TestPerCellErrorIsolation:
 
 
 class TestExecuteFirstAliveFallback:
-    async def test_first_cell_fails_falls_back_to_next(self):
-        """If the first alive cell fails, _execute_first_alive tries the next."""
+    async def test_first_cell_fails_retry_falls_back_to_next(self):
+        """If the first alive cell fails, retry in save_model marks it errored and picks the next."""
         group = await _make_alive_group(num_cells=3)
 
         # Step 1: Make cell 0 fail on save_model
         for handle in group._cells[0]._get_actor_handles():
             ray.get(handle.set_fail_methods.remote(["save_model"]))
 
-        # Step 2: Execute first alive
-        await group._execute_first_alive("save_model", 42)
+        # Step 2: save_model uses retry(lambda _: self._execute_first_alive(...))
+        await group.save_model(rollout_id=42)
 
         # Step 3: Cell 0 errored, cell 1 handled it
         assert group._cells[0].is_errored
@@ -548,16 +548,17 @@ class TestExecuteFirstAliveFallback:
             calls = ray.get(handle.get_calls.remote())
             assert any(c[0] == "save_model" for c in calls)
 
-    async def test_all_cells_fail_raises_runtime_error(self):
-        """If all cells fail, RuntimeError is raised."""
+    async def test_single_execute_first_alive_raises_on_failure(self):
+        """A single _execute_first_alive call raises (no retry) when the first cell fails."""
         group = await _make_alive_group(num_cells=2)
 
-        for cell in group._cells:
-            for handle in cell._get_actor_handles():
-                ray.get(handle.set_fail_methods.remote(["save_model"]))
+        for handle in group._cells[0]._get_actor_handles():
+            ray.get(handle.set_fail_methods.remote(["save_model"]))
 
-        with pytest.raises(RuntimeError, match="All cells failed for save_model"):
+        with pytest.raises(Exception):
             await group._execute_first_alive("save_model", 42)
+
+        assert group._cells[0].is_errored
 
 
 def _make_failing_actor_factory() -> Callable:

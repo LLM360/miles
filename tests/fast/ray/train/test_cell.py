@@ -5,6 +5,8 @@ import ray
 
 from tests.fast.ray.train.conftest import make_alive_cell, make_cell, make_indep_dp_info
 
+pytestmark = pytest.mark.asyncio
+
 
 class TestInitialState:
     def test_starts_as_uninitialized_after_init(self):
@@ -217,16 +219,15 @@ class TestErroredToStopped:
 
 
 class TestAsyncInit:
-    def test_dispatches_init_and_marks_alive(self):
+    async def test_dispatches_init_and_marks_alive(self):
         cell = make_cell(actor_count=2)
         info = make_indep_dp_info()
 
-        refs = cell.async_init(indep_dp_info=info)
+        results = await cell.init(indep_dp_info=info)
 
-        assert len(refs) == 2
+        assert len(results) == 2
         assert cell.is_alive
         assert cell.indep_dp_info == info
-        ray.get(refs)
 
         for handle in cell._get_actor_handles():
             calls = ray.get(handle.get_calls.remote())

@@ -252,7 +252,7 @@ class TestWitnessCheck:
         ]
         issues = check(events)
         assert len(issues) == 1
-        assert 7 in issues[0].expected_witness_ids_of_step
+        assert 7 in issues[0].expected_witness_ids
         assert 7 not in issues[0].actual_witness_ids
 
 
