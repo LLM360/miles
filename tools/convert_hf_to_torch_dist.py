@@ -63,6 +63,7 @@ def get_args():
     # set to pass megatron validate_args
     args.save_interval = 1
     args.micro_batch_size = 1
+    args.indep_dp = False
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     args.global_batch_size = int(os.environ.get("WORLD_SIZE", "1"))
 
