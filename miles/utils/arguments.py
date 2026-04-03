@@ -1841,6 +1841,9 @@ def miles_validate_args(args):
         )
 
     if args.indep_dp:
+        assert args.train_backend == "megatron", (
+            f"indep_dp requires train_backend='megatron', got '{args.train_backend}'"
+        )
         per_replica_size = compute_megatron_world_size_except_dp(args)
         logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica_size} (per-cell)")
         args.world_size = per_replica_size
