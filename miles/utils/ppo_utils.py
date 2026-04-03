@@ -390,7 +390,6 @@ def get_advantages_and_returns_batch(
         returns_list:      list[Tensor], same shape
     """
 
-
     with torch.no_grad():
         B = len(response_lengths)
         assert B == len(values_list)

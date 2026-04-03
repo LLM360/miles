@@ -11,8 +11,8 @@ from megatron.core.transformer.transformer_layer import get_transformer_layer_of
 from ray.actor import ActorHandle
 
 from miles.backends.megatron_utils.misc_utils import strip_param_name_prefix
-from miles.utils.types import ParamInfo
 from miles.backends.training_utils.parallel import get_parallel_state
+from miles.utils.types import ParamInfo
 
 logger = logging.getLogger(__name__)
 

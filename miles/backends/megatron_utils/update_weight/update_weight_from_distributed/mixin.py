@@ -3,14 +3,13 @@ from collections.abc import Callable
 import ray
 import torch
 import torch.distributed as dist
-
 from tqdm import tqdm
 
+from miles.backends.training_utils.parallel import get_parallel_state
 from miles.utils.distributed_utils import get_gloo_group
 
 from ...megatron_to_hf import convert_to_hf
 from ..common import all_gather_param, collect_named_tensors_for_weight_transfer, post_process_weights
-from miles.backends.training_utils.parallel import get_parallel_state
 
 
 class DistBucketedWeightUpdateMixin:
@@ -108,9 +107,7 @@ class DistBucketedWeightUpdateMixin:
                 ep_names
             ), f"mismatch names length: {len(named_tensors)} != {len(ep_names)}"
 
-        all_gathered_params: list[list[tuple[str, torch.Tensor]]] = [
-            [] for _ in range(get_parallel_state().ep.size)
-        ]
+        all_gathered_params: list[list[tuple[str, torch.Tensor]]] = [[] for _ in range(get_parallel_state().ep.size)]
         handles = []
         for i, (_name, param) in enumerate(named_tensors):
             params = [

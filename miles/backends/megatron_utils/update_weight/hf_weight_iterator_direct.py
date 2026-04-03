@@ -6,6 +6,7 @@ import torch
 import torch.distributed as dist
 from tqdm import tqdm
 
+from miles.backends.training_utils.parallel import get_parallel_state
 from miles.utils.distributed_utils import get_gloo_group
 from miles.utils.types import ParamInfo
 
@@ -13,7 +14,6 @@ from ..megatron_to_hf import convert_to_hf
 from ..sglang import monkey_patch_torch_reductions
 from .common import all_gather_params_async, named_params_and_buffers
 from .hf_weight_iterator_base import HfWeightIteratorBase
-from miles.backends.training_utils.parallel import get_parallel_state
 
 
 class HfWeightIteratorDirect(HfWeightIteratorBase):
