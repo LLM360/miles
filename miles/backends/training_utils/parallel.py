@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import torch.distributed as dist
 
@@ -53,9 +53,9 @@ class ParallelState:
     intra_dp_cp: GroupInfo
     cp: GroupInfo
     tp: GroupInfo
-    pp: GroupInfo = field(default_factory=lambda: GroupInfo(rank=0, size=1, group=None))
-    ep: GroupInfo = field(default_factory=lambda: GroupInfo(rank=0, size=1, group=None))
-    expert_tp: GroupInfo = field(default_factory=lambda: GroupInfo(rank=0, size=1, group=None))
+    pp: GroupInfo
+    ep: GroupInfo
+    expert_tp: GroupInfo
     is_pp_last_stage: bool = True
     vpp_size: int | None = 1
     microbatch_group_size_per_vp_stage: int | None = None
