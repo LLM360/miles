@@ -37,7 +37,12 @@ class FTTestActionExecutor:
             if action.after_step == self._step:
                 cell_index = action.cell_index if action.cell_index >= 0 else self._num_cells - 1
                 logger.info("FT test action: %s cell %d after step %d", action.action, cell_index, self._step)
-                getattr(self._group, action.action)(cell_index)
+
+                if action.action == "stop_cell":
+                    self._group.stop_cell(cell_index)
+                elif action.action == "start_cell":
+                    self._group.start_cell(cell_index)
+
         self._step += 1
 
 
