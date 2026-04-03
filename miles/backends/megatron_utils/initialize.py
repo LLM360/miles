@@ -62,9 +62,15 @@ def _initialize_distributed(args, get_embedding_ranks=None, get_position_embeddi
 
 def init(
     args,
-    indep_dp_store_addr: str | None,
-    indep_dp_info: IndepDPInfo,
+    indep_dp_store_addr: str | None = None,
+    indep_dp_info: IndepDPInfo | None = None,
 ):
+    if indep_dp_info is None:
+        indep_dp_info = IndepDPInfo(
+            cell_index=0, num_cells=1, alive_rank=0, alive_size=1,
+            quorum_id=0, alive_cell_indices=[0],
+        )
+
     set_args(args)
     if args.enable_experimental:
         logger.info("Enable megatron experimental")
@@ -83,7 +89,7 @@ def init(
     set_parallel_state(create_megatron_parallel_state(indep_dp=indep_dp))
 
     # sanity check
-    if args.indep_dp:
+    if getattr(args, "indep_dp", False):
         assert args.data_parallel_size == 1
 
     # https://github.com/NVIDIA/Megatron-LM/issues/1563

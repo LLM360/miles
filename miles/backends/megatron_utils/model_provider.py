@@ -257,5 +257,5 @@ def get_model_provider_func(
 
 
 def _maybe_install_witness(args: argparse.Namespace, model: GPTModel) -> None:
-    if args.enable_witness:
+    if getattr(args, "enable_witness", False):
         install_witness(model, buffer_size=args.witness_buffer_size)
