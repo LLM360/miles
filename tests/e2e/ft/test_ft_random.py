@@ -19,7 +19,7 @@ if str(_MILES_ROOT) not in sys.path:
 import typer
 
 from miles.utils.test_utils.fault_injector import FailureMode
-from tests.e2e.ft.conftest_ft.app import _resolve_dump_dir
+from tests.e2e.ft.conftest_ft.app import resolve_dump_dir
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_ft_args, prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
@@ -84,7 +84,7 @@ def run(
     via the control server HTTP API. The mini FT controller auto-recovers.
     """
     ft_mode: FTTestMode = resolve_mode(mode)
-    dump_dir: str = _resolve_dump_dir(Path(__file__).stem)
+    dump_dir: str = resolve_dump_dir(Path(__file__).stem)
     print(f"Dump directory: {dump_dir}")
     mean_interval: float = _MEAN_INTERVAL_SECONDS / max(crash_probability, 0.01)
     print(f"Seed: {seed}, Steps: {num_steps}, Mean injection interval: {mean_interval:.1f}s")

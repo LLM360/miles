@@ -11,7 +11,7 @@ from tests.e2e.ft.conftest_ft.execution import prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
 
-def _resolve_dump_dir(test_name: str) -> str:
+def resolve_dump_dir(test_name: str) -> str:
     output_dir = os.environ.get("MILES_SCRIPT_OUTPUT_DIR")
     if output_dir is None:
         raise RuntimeError(
@@ -53,7 +53,7 @@ def create_comparison_app(
     ) -> None:
         ft_mode = resolve_mode(mode)
         if dump_dir is None:
-            dump_dir = _resolve_dump_dir(test_name)
+            dump_dir = resolve_dump_dir(test_name)
         sub = _get_dump_subdir(side, phase)
         full_dump_dir = f"{dump_dir}/{sub}"
         args = build_fn(ft_mode, full_dump_dir)
@@ -93,7 +93,7 @@ def create_comparison_app(
     ) -> None:
         """Full pipeline: prepare + all phases + compare."""
         ft_mode = resolve_mode(mode)
-        dump_dir: str = _resolve_dump_dir(test_name)
+        dump_dir: str = resolve_dump_dir(test_name)
         print(f"Dump directory: {dump_dir}")
 
         prepare(ft_mode)
@@ -128,7 +128,7 @@ def create_non_comparison_app(
     ) -> None:
         """Full pipeline: prepare + execute + verify."""
         ft_mode = resolve_mode(mode)
-        dump_dir: str = _resolve_dump_dir(test_name)
+        dump_dir: str = resolve_dump_dir(test_name)
         print(f"Dump directory: {dump_dir}")
 
         prepare(ft_mode)

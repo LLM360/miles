@@ -76,12 +76,13 @@ class FTTestActionActorExecutor:
             logger.info("FT test actor actions activated: %d actions", len(actions))
         return FTTestActionActorExecutor(actions=actions)
 
-    def maybe_crash(self, *, rollout_id: int, attempt: int, cell_index: int, rank: int) -> None:
+    def maybe_crash(self, *, rollout_id: int, attempt: int, cell_index: int, rank: int, num_cells: int) -> None:
         for action in self._actions:
+            resolved_cell = action.cell_index if action.cell_index >= 0 else num_cells - 1
             if (
                 action.at_rollout == rollout_id
                 and action.attempt == attempt
-                and action.cell_index == cell_index
+                and resolved_cell == cell_index
                 and action.rank == rank
             ):
                 logger.warning(

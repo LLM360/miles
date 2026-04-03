@@ -485,8 +485,9 @@ def train_one_step(
         FTTestActionActorExecutor.from_args(args).maybe_crash(
             rollout_id=rollout_id,
             attempt=attempt,
-            cell_index=getattr(args, "ci_ft_cell_index", -999),
-            rank=getattr(args, "ci_ft_rank", -999),
+            cell_index=args.ci_ft_cell_index,
+            rank=args.ci_ft_rank,
+            num_cells=args.ci_ft_num_cells,
         )
 
         ok = _allreduce_grads_across_replicas(args, model, parallel_state)

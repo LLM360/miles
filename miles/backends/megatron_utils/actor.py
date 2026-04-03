@@ -84,6 +84,7 @@ class MegatronTrainRayActor(TrainRayActor):
         )
 
         args.ci_ft_cell_index = indep_dp_info.cell_index
+        args.ci_ft_num_cells = indep_dp_info.num_cells
         args.ci_ft_rank = self._rank
 
         if args.dumper_enable:
