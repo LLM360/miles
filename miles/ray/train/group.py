@@ -16,7 +16,7 @@ from miles.utils.health_checker import NoopHealthChecker, SimpleHealthCheckerCon
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.retry_utils import retry
-from miles.utils.test_utils.ft_test_actions import FTTestAction, parse_ft_test_actions
+from miles.utils.test_utils.ft_test_actions import FTTestActionExecutor
 from miles.utils.witness.allocator import WitnessIdAllocator, WitnessInfo
 
 if TYPE_CHECKING:
@@ -111,12 +111,7 @@ class RayTrainGroup:
             WitnessIdAllocator(buffer_size=args.witness_buffer_size) if args.enable_witness else None
         )
 
-        self._ft_actions: list[FTTestAction] = parse_ft_test_actions(
-            getattr(args, "ci_ft_test_actions", None)
-        )
-        self._num_cells: int = num_cells
-
-        self._rollout_step: int = 0
+        self._ft_executor = FTTestActionExecutor.from_args(args, group=self, num_cells=num_cells)
 
     # ------------------------ API :: train ------------------------
 
@@ -124,8 +119,6 @@ class RayTrainGroup:
         """Do one rollout training"""
 
         run_analysis_from_args(self.args)
-
-        step = self._rollout_step
 
         async def _fn(attempt: int):
             witness_info = self._allocate_witness_info(
@@ -149,13 +142,7 @@ class RayTrainGroup:
 
         await retry(_fn)
 
-        for action in self._ft_actions:
-            if action.after_step == step:
-                cell_index = action.cell_index if action.cell_index >= 0 else self._num_cells - 1
-                logger.info("FT test action: %s cell %d after step %d", action.action, cell_index, step)
-                getattr(self, action.action)(cell_index)
-
-        self._rollout_step += 1
+        self._ft_executor.run_after_step()
 
     def _allocate_witness_info(self, *, rollout_id: int, attempt: int, sample_indices):
         if self._witness_allocator is None:
