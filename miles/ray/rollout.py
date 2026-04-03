@@ -39,11 +39,14 @@ from miles.utils.logging_utils import configure_logger
 from miles.utils.metric_checker import MetricChecker
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_statistics, dict_add_prefix
 from miles.utils.misc import load_function
+from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
+from miles.utils.event_logger.models import RolloutGenerateCompletedEvent
+from miles.utils.process_identity import RolloutManagerProcessIdentity
 from miles.utils.ray_utils import Box
-from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import Sample
 
+from ..utils.data_utils import split_train_data_by_dp
 from ..utils.metric_utils import has_repetition
 from .utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST, Lock
 
@@ -335,7 +338,7 @@ class RolloutManager:
     """The class to run rollout and convert rollout data to training data."""
 
     def __init__(self, args, pg):
-        configure_logger()
+        configure_logger(args, source=RolloutManagerProcessIdentity())
 
         self.pg = pg
         self.args = args
@@ -451,7 +454,21 @@ class RolloutManager:
         self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=False)
         _log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = self._convert_samples_to_train_data(data)
-        return self._split_train_data_by_dp(data, self.train_parallel_config["dp_size"])
+        sample_indices = data.get("sample_indices")
+
+        if is_event_logger_initialized():
+            get_event_logger().log(
+                RolloutGenerateCompletedEvent,
+                dict(rollout_id=rollout_id, sample_indices=sample_indices),
+            )
+
+        if self.args.delay_split_train_data_by_dp:
+            data = Box(ray.put(data))
+        else:
+            data = split_train_data_by_dp(self.args, data, dp_size=self.train_parallel_config["dp_size"])
+            data = [Box(ray.put(x)) for x in data]
+
+        return dict(sample_indices=sample_indices, data_ref=data)
 
     def eval(self, rollout_id):
         if self.args.debug_train_only:
@@ -786,7 +803,6 @@ class RolloutManager:
                 rollout_data[key] = data[key]
             rollout_data_refs.append(Box(ray.put(rollout_data)))
         return rollout_data_refs
-
 
 # ---------------------------------------------------------------------------
 # Port allocation helpers
