@@ -1398,7 +1398,8 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help="JSON array of fault injection actions. Each action: "
-                '{"after_step": N, "action": "stop_cell"|"start_cell", "cell_index": I}. '
+                '{"at_rollout": N, "action": "stop_cell_at_end"|"start_cell_at_end"|"crash_before_allreduce", '
+                '"cell_index": I, "rank": 0, "attempt": 0}. '
                 "cell_index -1 means last cell.",
             )
             parser.add_argument(
