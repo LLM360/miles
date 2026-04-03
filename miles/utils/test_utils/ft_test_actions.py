@@ -85,8 +85,10 @@ class FTTestActionActorExecutor:
                 and action.resolve_cell_index(self._num_cells) == self._cell_index
                 and action.rank == self._rank
             ):
-                logger.warning(
-                    "FT test action: crash_before_allreduce at rollout %d attempt %d cell %d rank %d — calling os._exit(1)",
-                    rollout_id, attempt, self._cell_index, self._rank,
+                msg = (
+                    f"FT test action: crash_before_allreduce at rollout {rollout_id} "
+                    f"attempt {attempt} cell {self._cell_index} rank {self._rank} — calling os._exit(1)"
                 )
+                logger.warning(msg)
+                print(msg, flush=True)
                 os._exit(1)
