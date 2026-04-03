@@ -8,7 +8,7 @@ from ray.util.state import list_nodes
 
 from miles.utils.async_utils import eager_create_task
 
-from .actor_group import RayTrainGroup
+from miles.ray.train.group import RayTrainGroup
 from .rollout import RolloutManager
 
 logger = logging.getLogger(__name__)

@@ -15,6 +15,7 @@ from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
 from miles.utils.health_checker import SimpleHealthCheckerConfig
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
+from miles.utils.logging_utils import configure_logger_raw
 from miles.utils.misc import load_function
 
 logger = logging.getLogger(__name__)
