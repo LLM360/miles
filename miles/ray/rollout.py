@@ -26,20 +26,24 @@ from miles.rollout.inference_rollout.compatibility import call_rollout_function,
 from miles.utils import dumper_utils, tracking_utils
 from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.health_monitor import RolloutHealthMonitor
-from miles.utils.http_utils import _wrap_ipv6, find_available_port, get_host_info, init_http_client, is_port_available
+from miles.utils.http_utils import (
+    _wrap_ipv6,
+    find_available_port,
+    get_host_info,
+    init_http_client,
+    is_port_available,
+    wait_for_server_ready,
+)
 from miles.utils.iter_utils import group_by
 from miles.utils.logging_utils import configure_logger
 from miles.utils.metric_checker import MetricChecker
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_statistics, dict_add_prefix
 from miles.utils.misc import load_function
-from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
-from miles.utils.event_logger.models import RolloutGenerateCompletedEvent
-from miles.utils.process_identity import RolloutManagerProcessIdentity
 from miles.utils.ray_utils import Box
+from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import Sample
 
-from ..utils.data_utils import split_train_data_by_dp
 from ..utils.metric_utils import has_repetition
 from .utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST, Lock
 
@@ -331,7 +335,7 @@ class RolloutManager:
     """The class to run rollout and convert rollout data to training data."""
 
     def __init__(self, args, pg):
-        configure_logger(args, source=RolloutManagerProcessIdentity())
+        configure_logger()
 
         self.pg = pg
         self.args = args
@@ -365,6 +369,7 @@ class RolloutManager:
         else:
             init_http_client(args)
             self.servers = start_rollout_servers(args, pg)
+            _start_session_server(args)
         self.rollout_engine_lock = Lock.options(num_cpus=1, num_gpus=0).remote()
         self.rollout_id = -1
 
@@ -446,21 +451,7 @@ class RolloutManager:
         self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=False)
         _log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
         data = self._convert_samples_to_train_data(data)
-        sample_indices = data.get("sample_indices")
-
-        if is_event_logger_initialized():
-            get_event_logger().log(
-                RolloutGenerateCompletedEvent,
-                dict(rollout_id=rollout_id, sample_indices=sample_indices),
-            )
-
-        if self.args.delay_split_train_data_by_dp:
-            data = Box(ray.put(data))
-        else:
-            data = split_train_data_by_dp(self.args, data, dp_size=self.train_parallel_config["dp_size"])
-            data = [Box(ray.put(x)) for x in data]
-
-        return dict(sample_indices=sample_indices, data_ref=data)
+        return self._split_train_data_by_dp(data, self.train_parallel_config["dp_size"])
 
     def eval(self, rollout_id):
         if self.args.debug_train_only:
@@ -745,6 +736,57 @@ class RolloutManager:
     def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
 
+    def _split_train_data_by_dp(self, data, dp_size):
+        """Split the train data by data parallel size."""
+        rollout_data = {}
+
+        if "prompt" in data:
+            rollout_data["prompt"] = data["prompt"]
+
+        total_lengths = [len(t) for t in data["tokens"]]
+        data["total_lengths"] = total_lengths
+
+        if self.args.balance_data:
+            partitions = get_seqlen_balanced_partitions(total_lengths, dp_size, equal_size=True)
+        else:
+            partitions = [range(i, len(total_lengths), dp_size) for i in range(dp_size)]
+
+        rollout_data_refs = []
+
+        for i in range(dp_size):
+            rollout_data = {}
+            partition = partitions[i]
+            rollout_data["partition"] = partition
+            for key in [
+                "tokens",
+                "multimodal_train_inputs",
+                "response_lengths",
+                "rewards",
+                "truncated",
+                "loss_masks",
+                "round_number",
+                "sample_indices",
+                "rollout_log_probs",
+                "rollout_routed_experts",
+                "prompt",
+                "teacher_log_probs",
+            ]:
+                if key not in data:
+                    continue
+                val = [data[key][j] for j in partition]
+                rollout_data[key] = val
+            # keys that need to be splited at train side
+            for key in [
+                "raw_reward",
+                "total_lengths",
+                "dynamic_global_batch_size",
+            ]:
+                if key not in data:
+                    continue
+                rollout_data[key] = data[key]
+            rollout_data_refs.append(Box(ray.put(rollout_data)))
+        return rollout_data_refs
+
 
 # ---------------------------------------------------------------------------
 # Port allocation helpers
@@ -830,6 +872,8 @@ def _allocate_rollout_engine_addr_and_ports_normal(
             addr_and_ports[current_rank]["host"] = get_addr()
             addr_and_ports[current_rank]["port"] = get_port()
             addr_and_ports[current_rank]["nccl_port"] = get_port()
+            # Always allocate a unique engine_info_bootstrap_port per engine
+            addr_and_ports[current_rank]["engine_info_bootstrap_port"] = get_port()
 
             if worker_type == "prefill":
                 addr_and_ports[current_rank]["disaggregation_bootstrap_port"] = get_port()
@@ -915,8 +959,7 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
     )
     process.daemon = True
     process.start()
-    time.sleep(3)
-    assert process.is_alive()
+    wait_for_server_ready(router_ip, router_port, process, timeout=30)
     logger.info(f"Router launched at {router_ip}:{router_port}")
     return router_ip, router_port
 
@@ -1051,6 +1094,43 @@ def _resolve_sglang_config(args) -> SglangConfig:
 # ---------------------------------------------------------------------------
 # Logging / metrics helpers (unchanged)
 # ---------------------------------------------------------------------------
+
+
+def _start_session_server(args):
+    """Start a standalone session server when ``--use-session-server`` is set.
+
+    The session server runs as a separate process with its own port and proxies
+    inference requests directly to SGLang worker engines.  It is always started
+    as a standalone process regardless of whether ``--use-miles-router`` is active.
+    """
+    if not getattr(args, "use_session_server", False):
+        return
+
+    hf_checkpoint = getattr(args, "hf_checkpoint", None)
+    if not hf_checkpoint:
+        raise ValueError("--use-session-server requires --hf-checkpoint to be set.")
+
+    if getattr(args, "session_server_ip", None) is None:
+        args.session_server_ip = args.sglang_router_ip
+    if getattr(args, "session_server_port", None) is None:
+        args.session_server_port = find_available_port(random.randint(5000, 6000))
+
+    ip, port = args.session_server_ip, args.session_server_port
+    if not is_port_available(port):
+        raise RuntimeError(
+            f"Port {port} is already in use — a stale session server may still be running. "
+            f"Run 'pkill -9 python' to kill it, then retry."
+        )
+
+    router_url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}"
+
+    from miles.rollout.session.session_server import run_session_server
+
+    process = multiprocessing.Process(target=run_session_server, args=(args, router_url))
+    process.daemon = True
+    process.start()
+    wait_for_server_ready(ip, port, process, timeout=30)
+    logger.info(f"Session server launched at {ip}:{port}")
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):
