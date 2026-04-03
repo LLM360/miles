@@ -52,10 +52,10 @@ def _make_mock_optimizer_with_state_dict(
         "param_groups": [{"params": list(range(len(params))), "lr": 0.001}],
     }
 
-    sub_opt = MagicMock()
+    sub_opt = MagicMock(spec=["optimizer"])
     sub_opt.optimizer = inner
 
-    optimizer = MagicMock()
+    optimizer = MagicMock(spec=["chained_optimizers"])
     optimizer.chained_optimizers = [sub_opt]
     return optimizer
 
