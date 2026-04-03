@@ -119,7 +119,7 @@ def _get_megatron_local_param_info_buckets(args: Namespace, model: Sequence[torc
     for info in param_infos:
         # Expert params use expert-TP size, others use regular-TP size
         if ".experts." in info.name:
-            tp_size = get_parallel_state().expert_tp.size
+            tp_size = get_parallel_state().etp.size
         else:
             tp_size = get_parallel_state().tp.size
 

@@ -48,7 +48,7 @@ def create_megatron_parallel_state() -> ParallelState:
             size=mpu.get_expert_model_parallel_world_size(),
             group=mpu.get_expert_model_parallel_group(),
         ),
-        expert_tp=GroupInfo(
+        etp=GroupInfo(
             rank=dist.get_rank(mpu.get_expert_tensor_parallel_group()),
             size=mpu.get_expert_tensor_parallel_world_size(),
             group=mpu.get_expert_tensor_parallel_group(),

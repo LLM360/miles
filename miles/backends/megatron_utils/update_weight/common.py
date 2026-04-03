@@ -60,8 +60,8 @@ def all_gather_param(args: Namespace, name: str, param: torch.nn.Parameter) -> t
         return param.data
 
     if ".experts." in name:
-        tp_size = get_parallel_state().expert_tp.size
-        tp_group = get_parallel_state().expert_tp.group
+        tp_size = get_parallel_state().etp.size
+        tp_group = get_parallel_state().etp.group
     else:
         tp_size = get_parallel_state().tp.size
         tp_group = get_parallel_state().tp.group
@@ -100,8 +100,8 @@ def all_gather_params_async(
         else:
             # Start async all_gather
             if ".experts." in info.name:
-                tp_size = get_parallel_state().expert_tp.size
-                tp_group = get_parallel_state().expert_tp.group
+                tp_size = get_parallel_state().etp.size
+                tp_group = get_parallel_state().etp.group
             else:
                 tp_size = get_parallel_state().tp.size
                 tp_group = get_parallel_state().tp.group
