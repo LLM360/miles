@@ -147,7 +147,7 @@ jobs:
             --push
 
       - name: Point latest to current dev
-        if: github.event_name != 'workflow_dispatch'
+        if: github.event_name == 'schedule' || inputs.simulate_schedule == true
         run: |
           docker buildx imagetools create -t radixark/miles:latest radixark/miles:dev
 
