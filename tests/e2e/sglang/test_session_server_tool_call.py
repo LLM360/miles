@@ -16,9 +16,6 @@ register_cuda_ci(est_time=600, suite="stage-b-sglang-1-gpu", num_gpus=1)
 import json
 import os
 from dataclasses import dataclass
-
-import pytest
-
 import miles.utils.external_utils.command_utils as U
 
 # ---------------------------------------------------------------------------
@@ -152,7 +149,6 @@ def execute():
     )
 
 
-@pytest.mark.system
 def test_session_server_tool_call():
     prepare()
     for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
