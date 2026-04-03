@@ -655,9 +655,7 @@ class TestCheckTrainOneAttempt:
         [
             [[NORMAL]],  # single cell, single actor
             [[NORMAL, NORMAL], [NORMAL]],  # multi cell, multi actor
-            [_ERR],  # all errored → vacuously ok
             [_ERR, [NORMAL, NORMAL]],  # errored + normal → ok
-            [_ERR, _ERR2],  # multiple errored, no successful → vacuously ok
             [],  # no cells at all → vacuously ok
             [[]],  # cell with empty actor list → vacuously ok
         ],
@@ -677,6 +675,17 @@ class TestCheckTrainOneAttempt:
     )
     def test_retry_when_discarded_exists(self, results):
         with pytest.raises(ValueError, match="DISCARDED_SHOULD_RETRY"):
+            RayTrainGroup._check_train_one_attempt(results)
+
+    @pytest.mark.parametrize(
+        "results",
+        [
+            [_ERR],  # single cell errored
+            [_ERR, _ERR2],  # multiple cells all errored
+        ],
+    )
+    def test_raises_when_all_cells_errored(self, results):
+        with pytest.raises(RuntimeError, match="All cells failed"):
             RayTrainGroup._check_train_one_attempt(results)
 
 
