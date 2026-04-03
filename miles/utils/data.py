@@ -277,7 +277,7 @@ def process_rollout_data(
     witness_info: WitnessInfo | None,
 ):
     if args.delay_split_train_data_by_dp:
-        raw = ray.get(rollout_data_ref).inner
+        raw = ray.get(rollout_data_ref.inner)
         if (x := witness_info) is not None:
             raw = {**raw, "seq_witness_ids": x.witness_ids}
         raw = split_train_data_by_dp(args, raw, dp_size=dp_size)
