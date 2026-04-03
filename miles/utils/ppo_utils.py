@@ -266,7 +266,7 @@ def get_reinforce_plus_plus_returns(
 
         # Step 4: Pick up the results corresponding to our local chunk's parts.
         if cp_size > 1:
-            from miles.backends.megatron_utils.cp_utils import slice_log_prob_with_cp
+            from miles.backends.training_utils.cp_utils import slice_log_prob_with_cp
 
             local_returns_chunk = slice_log_prob_with_cp(returns_for_seq, total_len, response_len)
         else:
@@ -359,7 +359,7 @@ def get_advantages_and_returns(
     full_returns = full_advantages + full_values
 
     if cp_size > 1:
-        from miles.backends.megatron_utils.cp_utils import slice_log_prob_with_cp
+        from miles.backends.training_utils.cp_utils import slice_log_prob_with_cp
 
         advantages = slice_log_prob_with_cp(full_advantages, total_len, response_len)
         returns = slice_log_prob_with_cp(full_returns, total_len, response_len)
