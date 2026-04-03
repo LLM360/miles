@@ -344,7 +344,7 @@ def train_one_step(
     num_microbatches: int,
     parallel_state: ParallelState,
     witness_info: "WitnessInfo | None",
-    attempt: int = 0,
+    attempt: int,
     ft_actor_executor: "FTTestActionActorExecutor | None" = None,
 ) -> tuple[dict[str, float], float, TrainStepOutcome]:
     """Execute a single pipeline-parallel training step.
@@ -553,7 +553,7 @@ def train(
     num_microbatches: Sequence[int],
     parallel_state: ParallelState,
     witness_info: "WitnessInfo | None",
-    attempt: int = 0,
+    attempt: int,
     ft_actor_executor: "FTTestActionActorExecutor | None" = None,
 ) -> TrainStepOutcome:
     """Run training over a rollout consisting of multiple steps.
