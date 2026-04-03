@@ -100,7 +100,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
     return train_args
 
 
-def get_indep_dp_args(mode: FTTestMode) -> str:
+def get_ft_args(mode: FTTestMode) -> str:
     return (
         "--use-fault-tolerance "
         "--ft-components train "

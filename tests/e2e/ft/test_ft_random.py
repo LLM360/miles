@@ -20,7 +20,7 @@ if str(_MILES_ROOT) not in sys.path:
 import typer
 
 from miles.utils.test_utils.fault_injector import FailureMode
-from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args, prepare, run_training
+from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_ft_args, prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
 app: typer.Typer = typer.Typer()
@@ -92,12 +92,12 @@ def run(
     prepare(ft_mode)
 
     train_args = (
-        get_common_train_args(ft_mode, dump_dir=dump_dir, num_steps=num_steps)
-        + get_indep_dp_args(ft_mode)
-        + f"--control-server-port {_CONTROL_SERVER_PORT} "
-        + "--mini-ft-controller-enable "
-        + "--save-local-weight-checksum "
-        + "--enable-event-analyzer "
+            get_common_train_args(ft_mode, dump_dir=dump_dir, num_steps=num_steps)
+            + get_ft_args(ft_mode)
+            + f"--control-server-port {_CONTROL_SERVER_PORT} "
+            + "--mini-ft-controller-enable "
+            + "--save-local-weight-checksum "
+            + "--enable-event-analyzer "
     )
 
     base_url = f"http://localhost:{_CONTROL_SERVER_PORT}"

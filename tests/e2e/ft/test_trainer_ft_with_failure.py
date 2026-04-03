@@ -10,7 +10,7 @@ if str(_MILES_ROOT) not in sys.path:
     sys.path.insert(0, str(_MILES_ROOT))
 
 from tests.e2e.ft.conftest_ft.app import create_comparison_app
-from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_indep_dp_args
+from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_ft_args
 from miles.utils.test_utils.comparisons import compare_dumps, compare_metrics
 from tests.e2e.ft.conftest_ft.modes import FTTestMode
 
@@ -30,7 +30,7 @@ def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> st
     base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=num_steps)
 
     if is_target:
-        base += get_indep_dp_args(mode)
+        base += get_ft_args(mode)
 
     if is_phase_a:
         base += f"--save {dump_dir}/ckpt --save-interval 1 "
