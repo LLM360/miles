@@ -111,7 +111,11 @@ class RayTrainGroup:
             WitnessIdAllocator(buffer_size=args.witness_buffer_size) if args.enable_witness else None
         )
 
-        self._ft_executor = FTTestActionExecutor.from_args(args, group=self, num_cells=num_cells)
+        self._test_action_executor = FTTestActionExecutor.from_args(args, group=self)
+
+    @property
+    def num_cells(self) -> int:
+        return len(self._cells)
 
     # ------------------------ API :: train ------------------------
 
@@ -142,7 +146,7 @@ class RayTrainGroup:
 
         await retry(_fn)
 
-        self._ft_executor.run_after_step()
+        self._test_action_executor.run_after_step(rollout_id=rollout_id)
 
     def _allocate_witness_info(self, *, rollout_id: int, attempt: int, sample_indices):
         if self._witness_allocator is None:

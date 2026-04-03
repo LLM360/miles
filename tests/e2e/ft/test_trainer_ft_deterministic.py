@@ -17,11 +17,12 @@ from tests.e2e.ft.conftest_ft.modes import FTTestMode
 NUM_PHASE_A_STEPS: int = 1
 NUM_PHASE_B_STEPS: int = 5
 
+# rollout_id in phase_b starts from NUM_PHASE_A_STEPS (ckpt resume offset)
 _DETERMINISTIC_ACTIONS: list[dict] = [
-    {"after_step": 1, "action": "stop_cell", "cell_index": -1},
-    {"after_step": 1, "action": "start_cell", "cell_index": -1},
-    {"after_step": 2, "action": "stop_cell", "cell_index": -1},
-    {"after_step": 3, "action": "start_cell", "cell_index": -1},
+    {"after_step": NUM_PHASE_A_STEPS + 1, "action": "stop_cell", "cell_index": -1},
+    {"after_step": NUM_PHASE_A_STEPS + 1, "action": "start_cell", "cell_index": -1},
+    {"after_step": NUM_PHASE_A_STEPS + 2, "action": "stop_cell", "cell_index": -1},
+    {"after_step": NUM_PHASE_A_STEPS + 3, "action": "start_cell", "cell_index": -1},
 ]
 
 

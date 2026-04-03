@@ -18,32 +18,28 @@ class FTTestAction(FrozenStrictBaseModel):
 
 
 class FTTestActionExecutor:
-    def __init__(self, *, actions: list[FTTestAction], group: "RayTrainGroup", num_cells: int) -> None:
+    def __init__(self, *, actions: list[FTTestAction], group: "RayTrainGroup") -> None:
         self._actions = actions
         self._group = group
-        self._num_cells = num_cells
-        self._step: int = 0
 
     @staticmethod
-    def from_args(args: object, *, group: "RayTrainGroup", num_cells: int) -> "FTTestActionExecutor":
+    def from_args(args: object, *, group: "RayTrainGroup") -> "FTTestActionExecutor":
         raw: str | None = getattr(args, "ci_ft_test_actions", None)
         actions = _parse_ft_test_actions(raw)
         if actions:
             logger.info("FT test actions activated: %d actions", len(actions))
-        return FTTestActionExecutor(actions=actions, group=group, num_cells=num_cells)
+        return FTTestActionExecutor(actions=actions, group=group)
 
-    def run_after_step(self) -> None:
+    def run_after_step(self, rollout_id: int) -> None:
         for action in self._actions:
-            if action.after_step == self._step:
-                cell_index = action.cell_index if action.cell_index >= 0 else self._num_cells - 1
-                logger.info("FT test action: %s cell %d after step %d", action.action, cell_index, self._step)
+            if action.after_step == rollout_id:
+                cell_index = action.cell_index if action.cell_index >= 0 else self._group.num_cells - 1
+                logger.info("FT test action: %s cell %d after rollout %d", action.action, cell_index, rollout_id)
 
                 if action.action == "stop_cell":
                     self._group.stop_cell(cell_index)
                 elif action.action == "start_cell":
                     self._group.start_cell(cell_index)
-
-        self._step += 1
 
 
 _ACTION_LIST_ADAPTER: TypeAdapter[list[FTTestAction]] = TypeAdapter(list[FTTestAction])

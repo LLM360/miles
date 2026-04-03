@@ -17,9 +17,10 @@ from tests.e2e.ft.conftest_ft.modes import FTTestMode
 NUM_PHASE_A_STEPS: int = 1
 NUM_PHASE_B_STEPS: int = 4
 
+# rollout_id in phase_b starts from NUM_PHASE_A_STEPS (ckpt resume offset)
 _WITH_FAILURE_ACTIONS: list[dict] = [
-    {"after_step": 0, "action": "stop_cell", "cell_index": -1},
-    {"after_step": 1, "action": "start_cell", "cell_index": -1},
+    {"after_step": NUM_PHASE_A_STEPS + 0, "action": "stop_cell", "cell_index": -1},
+    {"after_step": NUM_PHASE_A_STEPS + 1, "action": "start_cell", "cell_index": -1},
 ]
 
 
