@@ -16,7 +16,6 @@ from mbridge.core.bridge import Bridge
 from miles.backends.megatron_utils.arguments import set_default_megatron_args
 from miles.backends.megatron_utils.initialize import init
 from miles.backends.megatron_utils.model_provider import get_model_provider_func
-from miles.utils.arguments import get_miles_extra_args_provider
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.logging_utils import configure_logger_raw
 from miles.utils.memory_utils import print_memory
@@ -58,13 +57,15 @@ def add_convertion_args(parser):
 
 
 def get_args():
-    miles_extra_args = get_miles_extra_args_provider()
-    args = parse_args(miles_extra_args)
+    args = parse_args(add_convertion_args)
     args = set_default_megatron_args(args)
 
     # set to pass megatron validate_args
     args.save_interval = 1
     args.micro_batch_size = 1
+    # miles-specific attrs accessed by init() and get_model_provider_func()
+    args.indep_dp = False
+    args.enable_witness = False
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     args.global_batch_size = int(os.environ.get("WORLD_SIZE", "1"))
 
