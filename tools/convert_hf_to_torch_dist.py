@@ -16,7 +16,6 @@ from mbridge.core.bridge import Bridge
 from miles.backends.megatron_utils.arguments import set_default_megatron_args
 from miles.backends.megatron_utils.initialize import init
 from miles.backends.megatron_utils.model_provider import get_model_provider_func
-from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.logging_utils import configure_logger_raw
 from miles.utils.memory_utils import print_memory
 from miles_plugins.models.hf_attention import _load_hf_config
@@ -63,9 +62,6 @@ def get_args():
     # set to pass megatron validate_args
     args.save_interval = 1
     args.micro_batch_size = 1
-    # miles-specific attrs accessed by init() and get_model_provider_func()
-    args.indep_dp = False
-    args.enable_witness = False
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     args.global_batch_size = int(os.environ.get("WORLD_SIZE", "1"))
 
@@ -131,14 +127,7 @@ def main():
         device_id=torch.device(f"cuda:{local_rank}"),
     )
     args = get_args()
-    init(
-        args,
-        indep_dp_store_addr=None,
-        indep_dp_info=IndepDPInfo(
-            cell_index=0, num_cells=1, alive_rank=0, alive_size=1,
-            quorum_id=0, alive_cell_indices=[0],
-        ),
-    )
+    init(args)
     model = get_model(get_model_provider_func(args), ModelType.encoder_or_decoder, wrap_with_ddp=False)
 
     # Load model

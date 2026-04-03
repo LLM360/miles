@@ -69,24 +69,17 @@ Modes without rollout engines (`has_rollout == False`) use pre-recorded rollout 
 
 ### How to regenerate
 
-The debug rollout data is stored at HF dataset `fzyzcjy/miles-test-rollout-Qwen3-30B-A3B`. It contains synthetic samples generated with the full Qwen3-30B-A3B tokenizer.
-
-To regenerate and upload:
+Any `run_*.py` script with `--dump-details` (enabled by default) saves rollout data. To regenerate:
 
 ```bash
-# Step 1: Download the full model (for tokenizer)
-huggingface-cli download Qwen/Qwen3-30B-A3B --local-dir /root/models/Qwen3-30B-A3B
+# Step 1: Run training (dump_details automatically saves rollout data)
+python scripts/run_qwen3_30b_a3b.py --mode debug_minimal
 
-# Step 2: Generate synthetic rollout data
-python tools/generate_debug_rollout_data.py \
-  --model-path /root/models/Qwen3-30B-A3B \
-  --output-dir /tmp/debug_rollout_data \
-  --num-rollouts 10 \
-  --samples-per-rollout 8
+# Step 2: Locate the dumped rollout data
+ls <output_dir>/<run_id>/dump_details/rollout_data/
 
-# Step 3: Upload to HF (requires write access to fzyzcjy namespace)
-huggingface-cli upload --repo-type dataset \
-  fzyzcjy/miles-test-rollout-Qwen3-30B-A3B /tmp/debug_rollout_data .
+# Step 3: Upload to HF
+huggingface-cli upload --repo-type dataset fzyzcjy/miles-ft-test-debug-rollout-data <path>
 ```
 
 ---
