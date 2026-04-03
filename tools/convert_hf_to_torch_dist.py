@@ -16,6 +16,7 @@ from mbridge.core.bridge import Bridge
 from miles.backends.megatron_utils.arguments import set_default_megatron_args
 from miles.backends.megatron_utils.initialize import init
 from miles.backends.megatron_utils.model_provider import get_model_provider_func
+from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.logging_utils import configure_logger_raw
 from miles.utils.memory_utils import print_memory
 from miles_plugins.models.hf_attention import _load_hf_config
@@ -127,7 +128,14 @@ def main():
         device_id=torch.device(f"cuda:{local_rank}"),
     )
     args = get_args()
-    init(args)
+    init(
+        args,
+        indep_dp_store_addr=None,
+        indep_dp_info=IndepDPInfo(
+            cell_index=0, num_cells=1, alive_rank=0, alive_size=1,
+            quorum_id=0, alive_cell_indices=[0],
+        ),
+    )
     model = get_model(get_model_provider_func(args), ModelType.encoder_or_decoder, wrap_with_ddp=False)
 
     # Load model
