@@ -337,7 +337,7 @@ class TestControllerBackoff:
         await asyncio.wait_for(controller.run(), timeout=5.0)
 
         assert backoff.consecutive_failures == 0
-        assert backoff.next_attempt_at == 0.0
+        assert backoff.next_attempt_at == clock.now
 
 
 class TestControllerNotApplicable:
@@ -454,9 +454,11 @@ class TestControllerLifecycle:
 
         controller = _make_controller()
         controller_ref = [controller]
-        controller._get_cells = AsyncMock(
-            side_effect=lambda: failing_then_stopping(controller_ref),
-        )
+
+        async def _side_effect() -> list[_CellSnapshot]:
+            return await failing_then_stopping(controller_ref)
+
+        controller._get_cells = AsyncMock(side_effect=_side_effect)
 
         await asyncio.wait_for(controller.run(), timeout=5.0)
 
@@ -570,6 +572,7 @@ class TestArgumentValidation:
             ft_components=None,
             eval_datasets=None,
             eval_data=None,
+            eval_config=None,
         )
 
         with pytest.raises(ValueError, match="--mini-ft-controller-enable requires --control-server-port"):
