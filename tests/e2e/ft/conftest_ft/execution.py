@@ -13,6 +13,8 @@ from tests.e2e.ft.conftest_ft.modes import DEBUG_ROLLOUT_DATA_HF_REPO, FTTestMod
 _RUN_DIR: Path = Path(tempfile.mkdtemp(prefix="ft_test_dumper_"))
 _MEGATRON_SOURCE_PATCHER_CONFIG_PATH: Path = _RUN_DIR / "megatron_source_patcher.yaml"
 _MEGATRON_PATH: str = os.environ.get("MILES_SCRIPT_MEGATRON_PATH", "/root/Megatron-LM")
+_MODEL_DIR: str = os.environ.get("MILES_SCRIPT_MODEL_DIR", "/root/models")
+_DATA_DIR: str = os.environ.get("MILES_SCRIPT_DATA_DIR", "/root/datasets")
 
 
 def _get_hf_num_layers(model_path: str) -> int:
@@ -21,10 +23,10 @@ def _get_hf_num_layers(model_path: str) -> int:
 
 
 def prepare(mode: FTTestMode) -> None:
-    U.exec_command("mkdir -p /root/models /root/datasets")
-    U.exec_command(f"hf download {mode.model_hf_repo} --local-dir /root/models/{mode.model_name}")
+    U.exec_command(f"mkdir -p {_MODEL_DIR} {_DATA_DIR}")
+    U.exec_command(f"hf download {mode.model_hf_repo} --local-dir {_MODEL_DIR}/{mode.model_name}")
 
-    hf_model_path = f"/root/models/{mode.model_name}"
+    hf_model_path = f"{_MODEL_DIR}/{mode.model_name}"
     num_layers = _get_hf_num_layers(hf_model_path)
     convert_gpus = min(mode.train_gpus_per_node, num_layers)
 
@@ -33,10 +35,12 @@ def prepare(mode: FTTestMode) -> None:
         megatron_model_type=mode.megatron_model_type,
         num_gpus_per_node=convert_gpus,
         megatron_path=_MEGATRON_PATH,
+        hf_checkpoint=hf_model_path,
+        dir_dst=_MODEL_DIR,
     )
     if not mode.has_real_rollout:
-        U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
-    U.hf_download_dataset("zhuzilin/gsm8k")
+        U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO, data_dir=_DATA_DIR)
+    U.hf_download_dataset("zhuzilin/gsm8k", data_dir=_DATA_DIR)
 
     megatron_yaml: str = MEGATRON_PATCHER_YAMLS["thd"]
     _MEGATRON_SOURCE_PATCHER_CONFIG_PATH.write_text(megatron_yaml)
@@ -44,8 +48,8 @@ def prepare(mode: FTTestMode) -> None:
 
 def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None, enable_dumper: bool = True) -> str:
     ckpt_args = (
-        f"--hf-checkpoint /root/models/{mode.model_name} "
-        f"--ref-load /root/{mode.model_name}_torch_dist "
+        f"--hf-checkpoint {_MODEL_DIR}/{mode.model_name} "
+        f"--ref-load {_MODEL_DIR}/{mode.model_name}_torch_dist "
     )
 
     optimizer_args = (
@@ -62,15 +66,15 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
     rollout_args: str
     if not mode.has_real_rollout:
         rollout_args = (
-            "--prompt-data /root/datasets/gsm8k/train.parquet "
-            "--load-debug-rollout-data /root/datasets/miles-test-rollout-Qwen3-30B-A3B-5layer/{rollout_id}.pt "
+            f"--prompt-data {_DATA_DIR}/gsm8k/train.parquet "
+            f"--load-debug-rollout-data {_DATA_DIR}/miles-test-rollout-Qwen3-30B-A3B-5layer/{{rollout_id}}.pt "
             "--debug-train-only "
             "--rollout-batch-size 32 "
             "--n-samples-per-prompt 8 "
         )
     else:
         rollout_args = (
-            "--prompt-data /root/datasets/gsm8k/train.parquet "
+            f"--prompt-data {_DATA_DIR}/gsm8k/train.parquet "
             "--input-key messages "
             "--label-key label "
             "--apply-chat-template "
