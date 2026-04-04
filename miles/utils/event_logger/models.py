@@ -64,8 +64,10 @@ class TrainGroupStepEndEvent(EventBase):
     cell_outcomes: dict[int, Literal["error"] | list[TrainStepOutcome]]
 
 
-class MetricEvent(_ActorTrainEventBase):
+class MetricEvent(EventBase):
     type: Literal["metric"] = "metric"
+    rollout_id: int | None = None
+    attempt: int | None = None
     metrics: dict[str, Any]
 
 
