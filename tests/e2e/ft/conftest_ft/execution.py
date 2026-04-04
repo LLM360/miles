@@ -34,7 +34,8 @@ def prepare(mode: FTTestMode) -> None:
         num_gpus_per_node=convert_gpus,
         megatron_path=_MEGATRON_PATH,
     )
-    U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
+    if not mode.has_real_rollout:
+        U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
     U.hf_download_dataset("zhuzilin/gsm8k")
 
     megatron_yaml: str = MEGATRON_PATCHER_YAMLS["thd"]
