@@ -2,7 +2,6 @@
 
 import json
 import os
-import shutil
 import tempfile
 from pathlib import Path
 
@@ -131,11 +130,8 @@ def run_training(
     train_args: str,
     mode: FTTestMode,
     *,
-    dump_dir: str | None = None,
     extra_env_vars: dict[str, str] | None = None,
 ) -> None:
-    if dump_dir is not None and os.path.exists(dump_dir):
-        shutil.rmtree(dump_dir)
     U.execute_train(
         train_args=train_args,
         num_gpus_per_node=mode.train_gpus_per_node,

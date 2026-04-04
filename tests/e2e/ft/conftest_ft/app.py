@@ -102,13 +102,11 @@ def create_comparison_app(
             sub_baseline = _get_dump_subdir("baseline", phase)
             sub_target = _get_dump_subdir("target", phase)
 
-            baseline_dump = f"{dump_dir}/{sub_baseline}"
-            baseline_args = build_baseline_args(ft_mode, baseline_dump)
-            run_training(train_args=baseline_args, mode=ft_mode, dump_dir=baseline_dump)
+            baseline_args = build_baseline_args(ft_mode, f"{dump_dir}/{sub_baseline}")
+            run_training(train_args=baseline_args, mode=ft_mode)
 
-            target_dump = f"{dump_dir}/{sub_target}"
-            target_args = build_target_args(ft_mode, target_dump)
-            run_training(train_args=target_args, mode=ft_mode, dump_dir=target_dump)
+            target_args = build_target_args(ft_mode, f"{dump_dir}/{sub_target}")
+            run_training(train_args=target_args, mode=ft_mode)
 
         compare_fn(dump_dir, ft_mode)
 
@@ -135,7 +133,7 @@ def create_non_comparison_app(
 
         prepare(ft_mode)
         args = build_args(ft_mode, dump_dir)
-        run_training(train_args=args, mode=ft_mode, dump_dir=dump_dir)
+        run_training(train_args=args, mode=ft_mode)
 
         if verify_fn is not None:
             verify_fn(dump_dir, ft_mode)
