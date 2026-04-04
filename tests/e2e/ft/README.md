@@ -73,7 +73,7 @@ Any `run_*.py` script with `--dump-details` (enabled by default) saves rollout d
 
 ```bash
 # Step 1: Run training (dump_details automatically saves rollout data)
-# NOTE: We use most realistic mode (e.g. not debug-minimal mode) to capture realistic data
+# NOTE: We use most realistic mode to capture realistic data. Do *NOT* use anything like --debug-minimal.
 python scripts/run_qwen3_30b_a3b.py
 
 # Step 2: Locate the dumped rollout data
