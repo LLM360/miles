@@ -1,6 +1,7 @@
 # NOTE: You MUST read tests/e2e/ft/README.md as source-of-truth and documentations
 
 import os
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
@@ -11,7 +12,7 @@ from tests.e2e.ft.conftest_ft.execution import prepare, run_training
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
 
-def resolve_dump_dir(test_name: str) -> str:
+def resolve_dump_dir(test_name: str, *, clean: bool = False) -> str:
     output_dir = os.environ.get("MILES_SCRIPT_OUTPUT_DIR")
     if output_dir is None:
         raise RuntimeError(
@@ -19,6 +20,8 @@ def resolve_dump_dir(test_name: str) -> str:
             "Set it to the output directory for this test run."
         )
     dump_dir = str(Path(output_dir) / "dumps" / test_name)
+    if clean and os.path.exists(dump_dir):
+        shutil.rmtree(dump_dir)
     os.makedirs(dump_dir, exist_ok=True)
     return dump_dir
 
@@ -93,7 +96,7 @@ def create_comparison_app(
     ) -> None:
         """Full pipeline: prepare + all phases + compare."""
         ft_mode = resolve_mode(mode)
-        dump_dir: str = resolve_dump_dir(test_name)
+        dump_dir: str = resolve_dump_dir(test_name, clean=True)
         print(f"Dump directory: {dump_dir}")
 
         prepare(ft_mode)
@@ -128,7 +131,7 @@ def create_non_comparison_app(
     ) -> None:
         """Full pipeline: prepare + execute + verify."""
         ft_mode = resolve_mode(mode)
-        dump_dir: str = resolve_dump_dir(test_name)
+        dump_dir: str = resolve_dump_dir(test_name, clean=True)
         print(f"Dump directory: {dump_dir}")
 
         prepare(ft_mode)
