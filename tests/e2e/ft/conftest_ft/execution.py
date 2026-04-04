@@ -89,7 +89,6 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         f"--actor-num-nodes {mode.train_num_nodes} "
         f"--actor-num-gpus-per-node {mode.train_gpus_per_node} "
         f"--global-batch-size {mode.global_batch_size} "
-        "--decrease-batch-size-if-needed "
         "--delay-split-train-data-by-dp "
         "--use-dynamic-batch-size "
         "--max-tokens-per-gpu 32768 "
