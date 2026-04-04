@@ -345,11 +345,8 @@ class RolloutManager:
         # TODO make args immutable
         init_tracking(args, primary=False, router_addr=f"http://{args.sglang_router_ip}:{args.sglang_router_port}")
 
-        if not self.args.debug_train_only:
-            data_source_cls = load_function(self.args.data_source_path)
-            self.data_source = data_source_cls(args)
-        else:
-            self.data_source = None
+        data_source_cls = load_function(self.args.data_source_path)
+        self.data_source = data_source_cls(args)
 
         self.use_experimental_refactor = enable_experimental_rollout_refactor()
         if self.use_experimental_refactor:
