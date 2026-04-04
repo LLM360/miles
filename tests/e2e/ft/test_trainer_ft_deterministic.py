@@ -30,10 +30,10 @@ _DETERMINISTIC_ACTIONS: list[dict] = [
 ]
 
 
-def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> str:
+def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool, enable_dumper: bool = True) -> str:
     is_phase_a: bool = dump_dir.endswith("phase_a")
     num_steps = NUM_PHASE_A_STEPS if is_phase_a else NUM_PHASE_B_STEPS
-    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=num_steps)
+    base = get_common_train_args(mode, dump_dir=dump_dir, num_steps=num_steps, enable_dumper=enable_dumper)
     base += "--deterministic-mode " + _DETERMINISTIC_ENV_VARS
 
     if is_target:
@@ -50,12 +50,12 @@ def _build_phase_args(mode: FTTestMode, dump_dir: str, *, is_target: bool) -> st
     return base
 
 
-def _build_baseline_args(mode: FTTestMode, dump_dir: str) -> str:
-    return _build_phase_args(mode, dump_dir, is_target=False)
+def _build_baseline_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = True) -> str:
+    return _build_phase_args(mode, dump_dir, is_target=False, enable_dumper=enable_dumper)
 
 
-def _build_target_args(mode: FTTestMode, dump_dir: str) -> str:
-    return _build_phase_args(mode, dump_dir, is_target=True)
+def _build_target_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = True) -> str:
+    return _build_phase_args(mode, dump_dir, is_target=True, enable_dumper=enable_dumper)
 
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:

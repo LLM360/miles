@@ -11,22 +11,7 @@ from tests.e2e.ft.conftest_ft.execution import get_common_train_args, prepare, r
 from tests.e2e.ft.conftest_ft.modes import FTTestMode, resolve_mode
 
 
-def _strip_dumper_args(args: str) -> str:
-    """Remove --dumper-* arguments and their values from a training args string."""
-    tokens = args.split()
-    result: list[str] = []
-    skip_values = False
-    for token in tokens:
-        if token.startswith("--dumper-"):
-            skip_values = True
-            continue
-        if skip_values:
-            if token.startswith("--"):
-                skip_values = False
-                result.append(token)
-            continue
-        result.append(token)
-    return " ".join(result)
+BuildArgsFn = Callable[[FTTestMode, str, bool], str]
 
 
 def resolve_dump_dir(test_name: str) -> str:
@@ -44,8 +29,8 @@ def resolve_dump_dir(test_name: str) -> str:
 def create_comparison_app(
     *,
     test_name: str,
-    build_baseline_args: Callable[[FTTestMode, str], str],
-    build_target_args: Callable[[FTTestMode, str], str],
+    build_baseline_args: BuildArgsFn,
+    build_target_args: BuildArgsFn,
     compare_fn: Callable[[str, FTTestMode], None],
     phases: list[str] | None = None,
 ) -> typer.Typer:
@@ -64,7 +49,7 @@ def create_comparison_app(
 
     def _run_side(
         side: str,
-        build_fn: Callable[[FTTestMode, str], str],
+        build_fn: BuildArgsFn,
         mode: str,
         dump_dir: str | None,
         phase: str,
@@ -76,9 +61,7 @@ def create_comparison_app(
             dump_dir = resolve_dump_dir(test_name)
         sub = _get_dump_subdir(side, phase)
         full_dump_dir = f"{dump_dir}/{sub}"
-        args = build_fn(ft_mode, full_dump_dir)
-        if no_dump:
-            args = _strip_dumper_args(args)
+        args = build_fn(ft_mode, full_dump_dir, not no_dump)
         prepare(ft_mode)
         run_training(train_args=args, mode=ft_mode, dump_dir=full_dump_dir)
 
@@ -127,16 +110,14 @@ def create_comparison_app(
             sub_baseline = _get_dump_subdir("baseline", phase)
             sub_target = _get_dump_subdir("target", phase)
 
+            enable_dumper = not no_dump
+
             baseline_dump = f"{dump_dir}/{sub_baseline}"
-            baseline_args = build_baseline_args(ft_mode, baseline_dump)
-            if no_dump:
-                baseline_args = _strip_dumper_args(baseline_args)
+            baseline_args = build_baseline_args(ft_mode, baseline_dump, enable_dumper)
             run_training(train_args=baseline_args, mode=ft_mode, dump_dir=baseline_dump)
 
             target_dump = f"{dump_dir}/{sub_target}"
-            target_args = build_target_args(ft_mode, target_dump)
-            if no_dump:
-                target_args = _strip_dumper_args(target_args)
+            target_args = build_target_args(ft_mode, target_dump, enable_dumper)
             run_training(train_args=target_args, mode=ft_mode, dump_dir=target_dump)
 
         if not no_dump:

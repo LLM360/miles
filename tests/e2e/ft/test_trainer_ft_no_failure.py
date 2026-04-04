@@ -17,12 +17,12 @@ from tests.e2e.ft.conftest_ft.modes import FTTestMode
 NUM_STEPS: int = 2
 
 
-def _build_baseline_args(mode: FTTestMode, dump_dir: str) -> str:
-    return get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_STEPS)
+def _build_baseline_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = True) -> str:
+    return get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_STEPS, enable_dumper=enable_dumper)
 
 
-def _build_target_args(mode: FTTestMode, dump_dir: str) -> str:
-    return get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_STEPS) + get_ft_args(mode)
+def _build_target_args(mode: FTTestMode, dump_dir: str, enable_dumper: bool = True) -> str:
+    return get_common_train_args(mode, dump_dir=dump_dir, num_steps=NUM_STEPS, enable_dumper=enable_dumper) + get_ft_args(mode)
 
 
 def _compare(dump_dir: str, mode: FTTestMode) -> None:
