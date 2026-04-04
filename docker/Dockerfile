@@ -87,8 +87,6 @@ RUN pip install git+https://github.com/yushengsu-thu/Megatron-Bridge.git@merged-
 RUN pip install megatron-energon --no-deps
 RUN pip install multi-storage-client --no-deps
 
-RUN pip install torchft
-
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
