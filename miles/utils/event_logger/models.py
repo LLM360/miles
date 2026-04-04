@@ -64,7 +64,7 @@ class TrainGroupStepEndEvent(EventBase):
     cell_outcomes: dict[int, Literal["error"] | list[TrainStepOutcome]]
 
 
-class MetricEvent(EventBase):
+class MetricEvent(_ActorTrainEventBase):
     type: Literal["metric"] = "metric"
     metrics: dict[str, Any]
 
