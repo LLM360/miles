@@ -422,6 +422,12 @@ def train_one_step(
         for m in all_replay_managers:
             m.stage = "replay_forward"
 
+        logger.info(
+            f"[DEBUG_COMPARE] forward_step: "
+            f"tokens_shape={batch['tokens'].shape}, "
+            f"return_schedule_plan={return_schedule_plan}"
+        )
+
         if return_schedule_plan:
             assert not args.enable_mtp_training, "MTP training should not be enabled when using combined 1f1b"
             assert not args.enable_witness, "Witness is not supported with combined 1f1b (build_schedule_plan)"
