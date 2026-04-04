@@ -91,6 +91,8 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
         f"--global-batch-size {mode.global_batch_size} "
         "--decrease-batch-size-if-needed "
         "--delay-split-train-data-by-dp "
+        "--use-dynamic-batch-size "
+        "--max-tokens-per-gpu 32768 "
         "--moe-token-dispatcher-type alltoall "
         "--advantage-estimator grpo "
         "--eps-clip 0.2 "
