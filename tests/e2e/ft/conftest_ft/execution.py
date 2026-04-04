@@ -1,6 +1,7 @@
 # NOTE: You MUST read tests/e2e/ft/README.md as source-of-truth and documentations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from tests.e2e.ft.conftest_ft.modes import DEBUG_ROLLOUT_DATA_HF_REPO, FTTestMod
 
 _RUN_DIR: Path = Path(tempfile.mkdtemp(prefix="ft_test_dumper_"))
 _MEGATRON_SOURCE_PATCHER_CONFIG_PATH: Path = _RUN_DIR / "megatron_source_patcher.yaml"
+_MEGATRON_PATH: str = os.environ.get("MILES_SCRIPT_MEGATRON_PATH", "/root/Megatron-LM")
 
 
 def _get_hf_num_layers(model_path: str) -> int:
@@ -29,6 +31,7 @@ def prepare(mode: FTTestMode) -> None:
         model_name=mode.model_name,
         megatron_model_type=mode.megatron_model_type,
         num_gpus_per_node=convert_gpus,
+        megatron_path=_MEGATRON_PATH,
     )
     U.hf_download_dataset(DEBUG_ROLLOUT_DATA_HF_REPO)
     if mode.has_rollout:
@@ -130,4 +133,5 @@ def run_training(
         num_gpus_per_node=mode.train_gpus_per_node,
         megatron_model_type=mode.megatron_model_type,
         extra_env_vars=extra_env_vars or {},
+        megatron_path=_MEGATRON_PATH,
     )
