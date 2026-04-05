@@ -555,7 +555,7 @@ class TestExecuteFirstAliveFallback:
         for handle in group._cells[0]._get_actor_handles():
             ray.get(handle.set_fail_methods.remote(["save_model"]))
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             await group._execute_first_alive("save_model", 42)
 
         assert group._cells[0].is_errored

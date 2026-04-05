@@ -26,7 +26,7 @@ class EventLogger:
         self._file: TextIO = open(self._log_dir / file_name, "a", encoding="utf-8")
         self._source = source
         self._context_var: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
-            "event_logger_context", default={}
+            "event_logger_context",
         )
 
     @property
@@ -39,7 +39,7 @@ class EventLogger:
 
         Safe for both threads and asyncio tasks (uses contextvars).
         """
-        prev = self._context_var.get()
+        prev = self._context_var.get({})
         merged = {**prev, **ctx}
         token = self._context_var.set(merged)
         try:
@@ -54,7 +54,7 @@ class EventLogger:
                 **partial,
                 "timestamp": datetime.now(timezone.utc),
                 "source": self._source,
-                **self._context_var.get(),
+                **self._context_var.get({}),
             }
         )
         line = event.model_dump_json() + "\n"

@@ -24,7 +24,7 @@ def _make_mock_model_chunk(
     chunk = MagicMock()
 
     param_list = sorted(params.items(), key=lambda x: x[0])
-    for name, tensor in param_list:
+    for _name, tensor in param_list:
         tensor.main_param = tensor
 
     chunk.named_parameters.return_value = param_list

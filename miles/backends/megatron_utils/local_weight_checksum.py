@@ -10,13 +10,16 @@ import hashlib
 import logging
 from argparse import Namespace
 from collections.abc import Iterator, Sequence
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import torch
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer.optimizer import MegatronOptimizer
 
 from miles.backends.megatron_utils.ci_utils import _hash_tensor_bytes
+
+if TYPE_CHECKING:
+    from miles.utils.event_logger.models import LocalWeightChecksumState, OptimizerStateInfo
 
 logger = logging.getLogger(__name__)
 

@@ -357,6 +357,7 @@ def train_one_step(
         Tuple of (reduced loss dict, gradient norm, step outcome).
     """
     args = get_args()
+    parallel_state = get_parallel_state()
     dumper_phase_util = DumperMegatronUtil(args, model, DumperPhase.FWD_BWD)
 
     # Set grad to zero.
