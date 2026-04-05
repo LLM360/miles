@@ -204,10 +204,10 @@ def get_batch(
     def _compute_transform_like_token_ids(ids_list: list):
         assert not allgather_cp, "allgather CP is not supported for FSDP"
         if qkv_format == "bshd":
-            ids = [slice_with_cp(p, 0, parallel_state, qkv_format, max_seqlen) for p in ids_list]
+            ids = [slice_with_cp(p, 0, qkv_format, max_seqlen) for p in ids_list]
             ids = torch.stack(ids)
         elif qkv_format == "thd":
-            ids = [slice_with_cp(p, 0, parallel_state, qkv_format) for p in ids_list]
+            ids = [slice_with_cp(p, 0, qkv_format) for p in ids_list]
             ids = torch.cat(ids)
             if pad != 0:
                 ids = F.pad(ids, (0, pad), value=0)
