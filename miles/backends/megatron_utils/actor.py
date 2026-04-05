@@ -294,7 +294,7 @@ class MegatronTrainRayActor(TrainRayActor):
         store_prefix: str = "",
     ) -> dict[str, list[torch.Tensor]]:
 
-        with timer(f"{store_prefix}log_probs"), self.prof.profile_train_log_probs():
+        with timer(f"{store_prefix}log_probs"):
             return forward_only(
                 get_log_probs_and_entropy,
                 self.args,
@@ -418,7 +418,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
             # Train
             self._set_replay_stage("replay_backward")
-            with timer("actor_train"), self.prof.profile_train_actor():
+            with timer("actor_train"):
                 train(
                     rollout_id,
                     self.model,

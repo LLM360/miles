@@ -1,7 +1,6 @@
 import logging
 import time
 import traceback
-from contextlib import contextmanager
 from pathlib import Path
 
 import torch
@@ -45,16 +44,6 @@ class TrainProfiler:
     def iterate_train_log_probs(self, iterator):
         return _profile_simple_loop(iterator, self.args, name="train_log_probs")
 
-    @contextmanager
-    def profile_train_actor(self):
-        with _profile_simple_context(self.args, name="train_actor"):
-            yield
-
-    @contextmanager
-    def profile_train_log_probs(self):
-        with _profile_simple_context(self.args, name="train_log_probs"):
-            yield
-
 
 def _profile_simple_loop(iterator, args, name):
     if not (args.use_pytorch_profiler and (name in args.profile_target)):
@@ -65,20 +54,6 @@ def _profile_simple_loop(iterator, args, name):
     torch_profiler.start()
     for item in iterator:
         yield item
-        torch_profiler.step()
-
-
-@contextmanager
-def _profile_simple_context(args, name):
-    if not (args.use_pytorch_profiler and (name in args.profile_target)):
-        yield
-        return
-
-    torch_profiler = _create_torch_profiler(args, name=name)
-    torch_profiler.start()
-    try:
-        yield
-    finally:
         torch_profiler.step()
 
 
