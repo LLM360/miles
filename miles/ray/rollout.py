@@ -25,6 +25,8 @@ from miles.rollout.base_types import (
 from miles.rollout.inference_rollout.compatibility import call_rollout_function, load_rollout_function
 from miles.utils import dumper_utils, tracking_utils
 from miles.utils.environ import enable_experimental_rollout_refactor
+from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
+from miles.utils.event_logger.models import RolloutGenerateCompletedEvent
 from miles.utils.health_monitor import RolloutHealthMonitor
 from miles.utils.http_utils import (
     _wrap_ipv6,
@@ -39,8 +41,6 @@ from miles.utils.logging_utils import configure_logger
 from miles.utils.metric_checker import MetricChecker
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_statistics, dict_add_prefix
 from miles.utils.misc import load_function
-from miles.utils.event_logger.logger import get_event_logger, is_event_logger_initialized
-from miles.utils.event_logger.models import RolloutGenerateCompletedEvent
 from miles.utils.process_identity import RolloutManagerProcessIdentity
 from miles.utils.ray_utils import Box
 from miles.utils.tracking_utils import init_tracking
@@ -752,6 +752,7 @@ class RolloutManager:
 
     def set_train_parallel_config(self, config: dict):
         self.train_parallel_config = config
+
 
 # ---------------------------------------------------------------------------
 # Port allocation helpers

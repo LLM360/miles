@@ -273,7 +273,10 @@ def get_minimum_num_micro_batch_size(total_lengths, max_tokens_per_gpu):
 
 
 def process_rollout_data(
-    args, rollout_data_ref, dp_rank, dp_size,
+    args,
+    rollout_data_ref,
+    dp_rank,
+    dp_size,
     witness_info: WitnessInfo | None,
 ):
     if args.delay_split_train_data_by_dp:

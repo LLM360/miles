@@ -18,11 +18,11 @@ from miles.utils.distributed_utils import get_gloo_group, init_process_group
 from miles.utils.event_logger.logger import event_logger_context
 from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.memory_utils import clear_memory, print_memory
-from miles.utils.test_utils.ft_test_actions import FTTestActionActorExecutor
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.ray_utils import Box
 from miles.utils.reloadable_process_group import destroy_process_groups, monkey_patch_torch_dist, reload_process_groups
 from miles.utils.replay_base import all_replay_managers
+from miles.utils.test_utils.ft_test_actions import FTTestActionActorExecutor
 from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
@@ -336,7 +336,9 @@ class MegatronTrainRayActor(TrainRayActor):
                 store_prefix=store_prefix,
             )
 
-    @event_logger_context(lambda _self, rollout_id, rollout_data_ref, witness_info, attempt: dict(rollout_id=rollout_id, attempt=attempt))
+    @event_logger_context(
+        lambda _self, rollout_id, rollout_data_ref, witness_info, attempt: dict(rollout_id=rollout_id, attempt=attempt)
+    )
     def train(
         self,
         rollout_id: int,

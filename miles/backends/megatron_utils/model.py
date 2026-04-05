@@ -334,9 +334,9 @@ def train_one_step(
     optimizer: MegatronOptimizer,
     opt_param_scheduler: OptimizerParamScheduler,
     num_microbatches: int,
-    witness_info: "WitnessInfo | None",
+    witness_info: WitnessInfo | None,
     attempt: int,
-    ft_actor_executor: "FTTestActionActorExecutor | None" = None,
+    ft_actor_executor: FTTestActionActorExecutor | None = None,
 ) -> tuple[dict[str, float], float, TrainStepOutcome]:
     """Execute a single pipeline-parallel training step.
 
@@ -545,9 +545,9 @@ def train(
     opt_param_scheduler: OptimizerParamScheduler,
     data_iterator: Sequence[DataIterator],
     num_microbatches: Sequence[int],
-    witness_info: "WitnessInfo | None",
+    witness_info: WitnessInfo | None,
     attempt: int,
-    ft_actor_executor: "FTTestActionActorExecutor | None" = None,
+    ft_actor_executor: FTTestActionActorExecutor | None = None,
 ) -> TrainStepOutcome:
     """Run training over a rollout consisting of multiple steps.
 

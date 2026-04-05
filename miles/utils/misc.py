@@ -3,8 +3,9 @@ import importlib
 import logging
 import re
 import subprocess
+from collections.abc import Sequence
 from contextlib import contextmanager
-from typing import Any, Sequence
+from typing import Any
 
 import ray
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy

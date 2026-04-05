@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Iterator
-from typing import Type
 
 from miles.backends.megatron_utils.types import TrainStepOutcome
 from miles.utils.event_logger.models import (
@@ -50,14 +49,18 @@ def check(events: list[Event]) -> list[WitnessIssue]:
       all values in `WitnessSnapshotParamEvent.stale_ids`
     """
 
-    return list(_find_mismatches(
-        all_step_events=_filter_by_type(events, TrainGroupStepEndEvent),
-        all_witness_events=_filter_by_type(events, WitnessSnapshotParamEvent),
-        expected_witness_ids_of_step=_compute_expected_witness_ids_of_step(_filter_by_type(events, WitnessAllocateIdEvent)),
-    ))
+    return list(
+        _find_mismatches(
+            all_step_events=_filter_by_type(events, TrainGroupStepEndEvent),
+            all_witness_events=_filter_by_type(events, WitnessSnapshotParamEvent),
+            expected_witness_ids_of_step=_compute_expected_witness_ids_of_step(
+                _filter_by_type(events, WitnessAllocateIdEvent)
+            ),
+        )
+    )
 
 
-def _filter_by_type(arr: list, ty: Type) -> list:
+def _filter_by_type(arr: list, ty: type) -> list:
     return [x for x in arr if isinstance(x, ty)]
 
 
@@ -95,8 +98,7 @@ def _find_mismatches(
                 continue
 
             matching_events = [
-                e for e in all_witness_events
-                if e.rollout_id == rollout_id and e.source.cell_index == cell_index
+                e for e in all_witness_events if e.rollout_id == rollout_id and e.source.cell_index == cell_index
             ]
             if matching_events:
                 latest_attempt = max(e.attempt for e in matching_events)
@@ -114,8 +116,10 @@ def _find_mismatches(
 
             for event in witness_events_of_cell:
                 issue = _compare_snapshot(
-                    event=event, expected=expected_witness_ids_of_step.get(rollout_id, set()),
-                    rollout_id=rollout_id, cell_index=cell_index,
+                    event=event,
+                    expected=expected_witness_ids_of_step.get(rollout_id, set()),
+                    rollout_id=rollout_id,
+                    cell_index=cell_index,
                 )
                 if issue is not None:
                     yield issue

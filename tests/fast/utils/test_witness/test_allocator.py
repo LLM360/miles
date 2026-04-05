@@ -123,7 +123,7 @@ class TestComputeStaleIds:
             for keep in [0, 1, 3, 7, 10, 15]:
                 stale = _compute_stale_ids(keep_count=keep, counter=counter, buffer_size=10)
                 if counter == 0:
-                    assert stale == [], f"counter=0 → no stale IDs"
+                    assert stale == [], "counter=0 → no stale IDs"
                     continue
                 active_count = min(keep, counter, 10)
                 assert len(stale) == 10 - active_count, f"counter={counter}, keep={keep}"

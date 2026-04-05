@@ -18,7 +18,7 @@ from miles.utils.indep_dp import IndepDPInfo
 from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.retry_utils import retry
 from miles.utils.test_utils.ft_test_actions import FTTestActionGroupExecutor
-from miles.utils.witness.allocator import WitnessIdAllocator, WitnessInfo
+from miles.utils.witness.allocator import WitnessIdAllocator
 
 if TYPE_CHECKING:
     import torch
@@ -139,7 +139,9 @@ class RayTrainGroup:
             self._check_train_one_attempt(results)
 
             self._log_step_end_event(
-                rollout_id=rollout_id, snapshot_alive_cells=snapshot_alive_cells, results=results,
+                rollout_id=rollout_id,
+                snapshot_alive_cells=snapshot_alive_cells,
+                results=results,
             )
 
         await retry(_fn)
@@ -158,9 +160,7 @@ class RayTrainGroup:
                 dict(
                     rollout_id=rollout_id,
                     attempt=attempt,
-                    witness_id_to_sample_index=dict(
-                        zip(witness_info.witness_ids, sample_indices, strict=True)
-                    ),
+                    witness_id_to_sample_index=dict(zip(witness_info.witness_ids, sample_indices, strict=True)),
                 ),
             )
 
@@ -349,6 +349,7 @@ class RayTrainGroup:
     @property
     def num_cells(self) -> int:
         return len(self._cells)
+
 
 PGTuple = tuple[PlacementGroup, list[int], list[int]]
 

@@ -95,9 +95,7 @@ class GeneralPGUtil:
     ) -> None:
         raise NotImplementedError
 
-    def gather_object(
-        self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup
-    ) -> None:
+    def gather_object(self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup) -> None:
         raise NotImplementedError
 
 
@@ -130,9 +128,7 @@ class _NativePGUtil(GeneralPGUtil):
     ) -> None:
         dist.gather(input_tensor, gather_list=gather_list, dst=dist.get_global_rank(group, 0), group=group)
 
-    def gather_object(
-        self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup
-    ) -> None:
+    def gather_object(self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup) -> None:
         dist.gather_object(obj, object_gather_list, dst=dist.get_global_rank(group, 0), group=group)
 
 
@@ -187,9 +183,7 @@ class _RawPGUtil(GeneralPGUtil):
         output = [gather_list] if gather_list is not None else []
         _check_wait(group.gather(output, [input_tensor], dist.GatherOptions(rootRank=0)), "gather")
 
-    def gather_object(
-        self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup
-    ) -> None:
+    def gather_object(self, obj: Any, object_gather_list: list[Any] | None, group: dist.ProcessGroup) -> None:
         _gather_object_via_util(self, obj, object_gather_list, group=group)
 
 

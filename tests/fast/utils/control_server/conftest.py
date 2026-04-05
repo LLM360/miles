@@ -138,7 +138,7 @@ class MockRayTrainCell:
     def is_stopped(self) -> bool:
         return self._is_stopped
 
-    def cell_status(self) -> "CellStatus":
+    def cell_status(self) -> CellStatus:
         from miles.utils.control_server.models import CellCondition, CellStatus
 
         return CellStatus(

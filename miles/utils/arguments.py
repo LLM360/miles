@@ -14,8 +14,8 @@ from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizerType
 from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
 from miles.utils.health_checker import SimpleHealthCheckerConfig
-from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.logging_utils import configure_logger_raw
+from miles.utils.megatron_args_utils import compute_megatron_world_size_except_dp
 from miles.utils.misc import load_function
 
 logger = logging.getLogger(__name__)
@@ -1890,9 +1890,9 @@ def miles_validate_args(args):
         )
 
     if args.indep_dp:
-        assert args.train_backend == "megatron", (
-            f"indep_dp requires train_backend='megatron', got '{args.train_backend}'"
-        )
+        assert (
+            args.train_backend == "megatron"
+        ), f"indep_dp requires train_backend='megatron', got '{args.train_backend}'"
         per_replica_size = compute_megatron_world_size_except_dp(args)
         logger.info(f"indep_dp: adjusting args.world_size from {args.world_size} to {per_replica_size} (per-cell)")
         args.world_size = per_replica_size

@@ -6,9 +6,9 @@ from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy, PlacementGroupSchedulingStrategy
 from ray.util.state import list_nodes
 
+from miles.ray.train.group import RayTrainGroup
 from miles.utils.async_utils import eager_create_task
 
-from miles.ray.train.group import RayTrainGroup
 from .rollout import RolloutManager
 
 logger = logging.getLogger(__name__)

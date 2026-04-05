@@ -164,14 +164,12 @@ class TestWitnessCheck:
             _make_allocate(rollout_id=0, witness_id_to_sample_index={10: 0}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=[10]),
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
-
             _make_rollout_completed(rollout_id=1, sample_indices=[1]),
             _make_allocate(rollout_id=1, witness_id_to_sample_index={11: 1}),
             _make_snapshot(rollout_id=1, nonzero_witness_ids=[10, 11]),
             _make_step_end(rollout_id=1, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
         ]
         assert check(events) == []
-
 
     def test_missing_snapshot_for_normal_cell_returns_issue(self) -> None:
         """Cell claims NORMAL but has no WitnessSnapshotParamEvent — should return WitnessMissingSnapshotIssue."""
@@ -210,7 +208,6 @@ class TestWitnessCheck:
         assert 11 in issues[0].expected_witness_ids
         assert 11 not in issues[0].actual_witness_ids
 
-
     def test_ring_buffer_wrap_with_stale_ids(self) -> None:
         """After wrap, stale_ids contain wrapped IDs (e.g. [8,9,0]). These should be excluded from comparison."""
         # buffer_size=10, allocated IDs 0..7 in rollout 0, then 8,9,0,1,2 in rollout 1 (wrap)
@@ -219,7 +216,6 @@ class TestWitnessCheck:
             _make_allocate(rollout_id=0, witness_id_to_sample_index={i: i for i in range(8)}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=list(range(8))),
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
-
             _make_rollout_completed(rollout_id=1, sample_indices=[8, 9, 10, 11, 12]),
             _make_allocate(rollout_id=1, witness_id_to_sample_index={8: 8, 9: 9, 0: 10, 1: 11, 2: 12}),
             # After wrap: stale_ids=[3,4,5] (old IDs cleaned), actual nonzero = [0,1,2,6,7,8,9]
@@ -240,7 +236,6 @@ class TestWitnessCheck:
             _make_allocate(rollout_id=0, witness_id_to_sample_index={i: i for i in range(8)}),
             _make_snapshot(rollout_id=0, nonzero_witness_ids=list(range(8))),
             _make_step_end(rollout_id=0, cell_outcomes={0: [TrainStepOutcome.NORMAL]}),
-
             _make_rollout_completed(rollout_id=1, sample_indices=[8, 9, 10, 11, 12]),
             _make_allocate(rollout_id=1, witness_id_to_sample_index={8: 8, 9: 9, 0: 10, 1: 11, 2: 12}),
             # ID 7 is NOT stale but missing from actual — should be caught

@@ -11,15 +11,22 @@ if str(_MILES_ROOT) not in sys.path:
 
 from tests.e2e.ft.conftest_ft.app import create_comparison_app
 from tests.e2e.ft.conftest_ft.execution import get_common_train_args, get_ft_args
-from miles.utils.test_utils.comparisons import compare_dumps, compare_metrics
 from tests.e2e.ft.conftest_ft.modes import FTTestMode
+
+from miles.utils.test_utils.comparisons import compare_dumps, compare_metrics
 
 NUM_PHASE_A_STEPS: int = 1
 NUM_PHASE_B_STEPS: int = 4
 
 # rollout_id in phase_b starts from NUM_PHASE_A_STEPS (ckpt resume offset)
 _WITH_FAILURE_ACTIONS: list[dict] = [
-    {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "crash_before_allreduce", "cell_index": -1, "rank": 0, "attempt": 0},
+    {
+        "at_rollout": NUM_PHASE_A_STEPS + 1,
+        "action": "crash_before_allreduce",
+        "cell_index": -1,
+        "rank": 0,
+        "attempt": 0,
+    },
     {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "stop_cell_at_end", "cell_index": -1},
     {"at_rollout": NUM_PHASE_A_STEPS + 1, "action": "start_cell_at_end", "cell_index": -1},
 ]

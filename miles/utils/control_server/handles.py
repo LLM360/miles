@@ -75,8 +75,7 @@ class _ActorCellHandle(_CellHandle):
         actors = cell._get_actor_handles()
         if sub_index < 0 or sub_index >= len(actors):
             raise IndexError(
-                f"sub_index {sub_index} out of range for cell {self._cell_index} "
-                f"(has {len(actors)} actors)"
+                f"sub_index {sub_index} out of range for cell {self._cell_index} " f"(has {len(actors)} actors)"
             )
         actors[sub_index].inject_fault.remote(mode.value)
 

@@ -69,10 +69,10 @@ _WITNESS_ATTRS = ("head_witness", "tail_witness")
 
 
 def _clear_witness_stale_rows(
-        *,
-        model: Sequence[nn.Module],
-        stale_ids: list[int],
-        optimizer: torch.optim.Optimizer,
+    *,
+    model: Sequence[nn.Module],
+    stale_ids: list[int],
+    optimizer: torch.optim.Optimizer,
 ) -> None:
     if not stale_ids:
         return
@@ -107,10 +107,10 @@ def _zero_witness_rows(*, witness: _DataWitness, idx: Tensor, optimizer: torch.o
 
 
 def _record_and_log_witness_param(
-        *,
-        witness: _DataWitness,
-        instance_id: str,
-        stale_ids: list[int],
+    *,
+    witness: _DataWitness,
+    instance_id: str,
+    stale_ids: list[int],
 ) -> None:
     weight = witness.witness.weight.data
     nonzero_witness_ids: list[int] = weight.squeeze(-1).nonzero(as_tuple=True)[0].tolist()

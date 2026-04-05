@@ -33,9 +33,7 @@ def compare_dumps(
         extra_args=extra_args,
     )
 
-    assert result.returncode == 0, (
-        f"Dump comparator failed (rc={result.returncode})\nstderr: {result.stderr[-2000:]}"
-    )
+    assert result.returncode == 0, f"Dump comparator failed (rc={result.returncode})\nstderr: {result.stderr[-2000:]}"
     print(f"Dump comparison passed: {baseline_path} vs {target_path}")
 
 
@@ -62,8 +60,8 @@ def compare_metrics(
 
     issues += _check_required_keys_exist(baseline_events)
 
-    assert not issues, (
-        f"MetricEvent comparison found {len(issues)} issue(s):\n" + "\n".join(f"  - {i}" for i in issues)
+    assert not issues, f"MetricEvent comparison found {len(issues)} issue(s):\n" + "\n".join(
+        f"  - {i}" for i in issues
     )
     print(f"MetricEvent comparison passed: {len(baseline_events)} steps compared")
 
@@ -80,9 +78,7 @@ def _check_event_counts(
     if len(target) == 0:
         issues.append(f"No MetricEvents found in target dir: {target_dir}")
     if len(baseline) > 0 and len(target) > 0 and len(baseline) != len(target):
-        issues.append(
-            f"MetricEvent count mismatch: baseline={len(baseline)}, target={len(target)}"
-        )
+        issues.append(f"MetricEvent count mismatch: baseline={len(baseline)}, target={len(target)}")
     return issues
 
 

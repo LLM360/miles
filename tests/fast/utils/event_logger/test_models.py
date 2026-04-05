@@ -30,9 +30,7 @@ class TestEventModelsDiscriminatedUnion:
         assert parsed.sample_indices == [0, 1]
 
     def test_discriminator_distinguishes_types(self) -> None:
-        e1 = RolloutGenerateCompletedEvent(
-            timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, sample_indices=[0]
-        )
+        e1 = RolloutGenerateCompletedEvent(timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, sample_indices=[0])
         e2 = WitnessAllocateIdEvent(
             timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, attempt=0, witness_id_to_sample_index={0: 0}
         )
@@ -116,14 +114,14 @@ class TestWitnessSnapshotParamEventWithStaleIds:
 class TestDiscriminatedUnionParsesAllEvents:
     def test_all_event_types_parse(self) -> None:
         events = [
-            RolloutGenerateCompletedEvent(
-                timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, sample_indices=[0]
-            ),
+            RolloutGenerateCompletedEvent(timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, sample_indices=[0]),
             WitnessAllocateIdEvent(
                 timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0, attempt=0, witness_id_to_sample_index={0: 0}
             ),
             TrainGroupStepEndEvent(
-                timestamp=_FIXED_TS, source=_FIXED_SOURCE, rollout_id=0,
+                timestamp=_FIXED_TS,
+                source=_FIXED_SOURCE,
+                rollout_id=0,
                 cell_outcomes={0: [TrainStepOutcome.NORMAL]},
             ),
         ]

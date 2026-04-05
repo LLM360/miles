@@ -6,9 +6,10 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import miles.utils.external_utils.command_utils as U
 from tests.e2e.conftest_dumper import MEGATRON_PATCHER_YAMLS
 from tests.e2e.ft.conftest_ft.modes import DEBUG_ROLLOUT_DATA_HF_REPO, FTTestMode
+
+import miles.utils.external_utils.command_utils as U
 
 _RUN_DIR: Path = Path(tempfile.mkdtemp(prefix="ft_test_dumper_"))
 _MEGATRON_SOURCE_PATCHER_CONFIG_PATH: Path = _RUN_DIR / "megatron_source_patcher.yaml"
@@ -46,10 +47,11 @@ def prepare(mode: FTTestMode) -> None:
     _MEGATRON_SOURCE_PATCHER_CONFIG_PATH.write_text(megatron_yaml)
 
 
-def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None, enable_dumper: bool = True) -> str:
+def get_common_train_args(
+    mode: FTTestMode, *, dump_dir: str, num_steps: int | None = None, enable_dumper: bool = True
+) -> str:
     ckpt_args = (
-        f"--hf-checkpoint {_MODEL_DIR}/{mode.model_name} "
-        f"--ref-load {_MODEL_DIR}/{mode.model_name}_torch_dist "
+        f"--hf-checkpoint {_MODEL_DIR}/{mode.model_name} " f"--ref-load {_MODEL_DIR}/{mode.model_name}_torch_dist "
     )
 
     optimizer_args = (
@@ -132,11 +134,7 @@ def get_common_train_args(mode: FTTestMode, *, dump_dir: str, num_steps: int | N
 
 
 def get_ft_args(mode: FTTestMode) -> str:
-    return (
-        "--use-fault-tolerance "
-        "--ft-components train "
-        "--control-server-port 0 "
-    )
+    return "--use-fault-tolerance " "--ft-components train " "--control-server-port 0 "
 
 
 def run_training(

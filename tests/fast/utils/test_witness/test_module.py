@@ -6,7 +6,13 @@ import torch
 import torch.nn as nn
 
 from miles.utils.witness.allocator import WitnessInfo
-from miles.utils.witness.module import _DataWitness, _record_and_log_witness_param, _zero_witness_rows, _clear_witness_stale_rows, install_witness, witness_dump_and_clear_stale
+from miles.utils.witness.module import (
+    _DataWitness,
+    _record_and_log_witness_param,
+    _zero_witness_rows,
+    install_witness,
+    witness_dump_and_clear_stale,
+)
 
 
 class TestDataWitnessForward:

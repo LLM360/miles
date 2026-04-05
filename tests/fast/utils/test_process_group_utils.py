@@ -10,7 +10,6 @@ from tests.fast.dist_utils import init_gloo, run_multiprocess
 from torch.distributed.device_mesh import init_device_mesh
 
 from miles.utils.process_group_utils import (
-    GeneralPGUtil,
     GroupInfo,
     GroupsInfo,
     MultiPGUtil,

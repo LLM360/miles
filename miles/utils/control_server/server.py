@@ -115,12 +115,15 @@ def _create_control_app(registry: _CellRegistry) -> FastAPI:
             await handle.inject_fault(mode=body.mode, sub_index=body.sub_index)
         except NotImplementedError as err:
             raise _K8sError(
-                status_code=400, reason="BadRequest", message=str(err),
+                status_code=400,
+                reason="BadRequest",
+                message=str(err),
             ) from err
         except Exception as err:
             logger.error("Failed to inject fault into cell %s", name, exc_info=True)
             raise _K8sError(
-                status_code=500, reason="InternalError",
+                status_code=500,
+                reason="InternalError",
                 message=f"Failed to inject fault into cell '{name}'",
             ) from err
         return _OkResponse()

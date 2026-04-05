@@ -70,11 +70,17 @@ class FTTestActionActorExecutor:
 
     @staticmethod
     def from_args(
-        args: object, *, cell_index: int, num_cells: int, rank: int,
+        args: object,
+        *,
+        cell_index: int,
+        num_cells: int,
+        rank: int,
     ) -> "FTTestActionActorExecutor":
         return FTTestActionActorExecutor(
             actions=_load_actions(args, _ACTOR_ACTIONS),
-            cell_index=cell_index, num_cells=num_cells, rank=rank,
+            cell_index=cell_index,
+            num_cells=num_cells,
+            rank=rank,
         )
 
     def maybe_crash(self, *, rollout_id: int, attempt: int) -> None:

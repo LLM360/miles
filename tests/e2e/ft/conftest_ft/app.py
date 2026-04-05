@@ -121,7 +121,9 @@ def create_comparison_app(
     def generate_data(
         mode: Annotated[str, typer.Option(help="Test mode variant (must have real rollout)")],
         num_steps: Annotated[int, typer.Option(help="Number of rollout steps to generate")] = 12,
-        output_dir: Annotated[str, typer.Option(help="Output directory for rollout data")] = "/tmp/generated_rollout_data",
+        output_dir: Annotated[
+            str, typer.Option(help="Output directory for rollout data")
+        ] = "/tmp/generated_rollout_data",
     ) -> None:
         """Generate debug rollout data using real rollout (no dumper)."""
         ft_mode = resolve_mode(mode)
