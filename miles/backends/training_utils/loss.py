@@ -630,10 +630,25 @@ def policy_loss_function(
     if log_probs.numel() == 0:
         loss += 0 * logits.sum()
 
+    # Current and old policy log probs for policy_shift panel
+    log_probs_metric = sum_of_sample_mean(log_probs).clone().detach()
+    old_log_probs_metric = sum_of_sample_mean(old_log_probs).clone().detach()
+
+    # Train-inference mismatch: compare inference engine vs FSDP at rollout time
     train_rollout_logprob_abs_diff = None
+    train_rollout_logprob_diff = None
     if "rollout_log_probs" in batch and batch["rollout_log_probs"]:
-        rollout_log_probs = torch.cat(batch["rollout_log_probs"], dim=0)
-        train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs).abs())
+        rollout_log_probs_cat = torch.cat(batch["rollout_log_probs"], dim=0)
+        log_probs_batch_cat = torch.cat(batch["log_probs"], dim=0)
+        train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs_cat).abs()).clone().detach()
+        # signed: log π(inf) − log π(fsdp rollout)
+        train_rollout_logprob_diff = sum_of_sample_mean(rollout_log_probs_cat - log_probs_batch_cat).clone().detach()
+
+    # KL vs reference model — always log when ref present, regardless of use_kl_loss
+    ref_kl_metric = None
+    if "ref_log_probs" in batch and batch["ref_log_probs"]:
+        ref_log_probs_cat = torch.cat(batch["ref_log_probs"], dim=0)
+        ref_kl_metric = sum_of_sample_mean(log_probs - ref_log_probs_cat).clone().detach()
 
     reported_loss = {
         "loss": loss.clone().detach(),
@@ -641,10 +656,16 @@ def policy_loss_function(
         "entropy_loss": entropy_loss.clone().detach(),
         "pg_clipfrac": pg_clipfrac.clone().detach(),
         "ppo_kl": ppo_kl.clone().detach(),
+        "log_probs": log_probs_metric,
+        "old_log_probs": old_log_probs_metric,
     }
 
     if train_rollout_logprob_abs_diff is not None:
-        reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff.clone().detach()
+        reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff
+        reported_loss["train_rollout_logprob_diff"] = train_rollout_logprob_diff
+
+    if ref_kl_metric is not None:
+        reported_loss["ref_kl"] = ref_kl_metric
 
     if args.use_kl_loss:
         reported_loss["kl_loss"] = kl_loss.clone().detach()
