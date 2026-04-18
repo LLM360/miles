@@ -1617,9 +1617,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--tito-allowed-append-roles",
                 nargs="+",
                 default=["tool"],
-                choices=["tool", "user", "system"],
+                choices=["tool", "user", "system", "assistant"],
                 help="Message roles allowed to be appended after the pretokenized "
-                "assistant prefix in TITO sessions (default: tool).",
+                "assistant prefix in TITO sessions (default: tool). Include "
+                "'assistant' for multi-turn agents (e.g. terminus-2) that "
+                "append their own planning/self-reflection turns before the "
+                "next tool or user message.",
             )
             return parser
 
