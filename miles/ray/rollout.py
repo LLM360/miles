@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import random
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +140,13 @@ class ServerGroup:
                 }.items()
             }
             env_vars.update(dumper_utils.get_sglang_env(self.args))
+            # Propagate PYTHONPATH so Ray remote actors import the same miles
+            # / sglang modules as the driver. Without this, SGLangEngine
+            # actors inherit only the container's default PYTHONPATH and
+            # `import miles` falls back to a pip-installed /root/miles,
+            # silently bypassing any MILES_OVERRIDE on the driver's PYTHONPATH.
+            if "PYTHONPATH" in os.environ:
+                env_vars["PYTHONPATH"] = os.environ["PYTHONPATH"]
 
             rollout_engine = RolloutRayActor.options(
                 num_cpus=num_cpus,
@@ -723,6 +731,9 @@ class RolloutManager:
         if any(sample.multimodal_train_inputs is not None for sample in samples):
             train_data["multimodal_train_inputs"] = [sample.multimodal_train_inputs for sample in samples]
 
+        if any(sample.weight_versions for sample in samples):
+            train_data["weight_versions"] = [sample.weight_versions for sample in samples]
+
         if "teacher_log_probs" in samples[0].__dict__:
             train_data["teacher_log_probs"] = [sample.teacher_log_probs for sample in samples]
 
@@ -770,6 +781,7 @@ class RolloutManager:
                 "rollout_routed_experts",
                 "prompt",
                 "teacher_log_probs",
+                "weight_versions",
             ]:
                 if key not in data:
                     continue
@@ -940,6 +952,9 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
         router_args.prometheus_port = find_available_port(random.randint(4000, 5000))
         router_args.log_level = "warn"
         router_args.request_timeout_secs = args.sglang_router_request_timeout_secs
+
+        if args.sglang_router_policy:
+            router_args.policy = args.sglang_router_policy
 
         if has_pd_disaggregation:
             router_args.pd_disaggregation = True
@@ -1114,6 +1129,8 @@ def _start_session_server(args):
         args.session_server_ip = args.sglang_router_ip
     if getattr(args, "session_server_port", None) is None:
         args.session_server_port = find_available_port(random.randint(5000, 6000))
+    if getattr(args, "session_server_instance_id", None) is None:
+        args.session_server_instance_id = uuid.uuid4().hex
 
     ip, port = args.session_server_ip, args.session_server_port
     if not is_port_available(port):
@@ -1196,6 +1213,12 @@ def compute_metrics_from_samples(args, samples):
     log_dict["repetition_frac"] = np.mean([int(has_repetition(s.response)) for s in samples]).item()
     log_dict["truncated_ratio"] = np.mean([int(s.status == Sample.Status.TRUNCATED) for s in samples]).item()
 
+    oldest_versions = [s.oldest_weight_version for s in samples if s.oldest_weight_version is not None]
+    if oldest_versions:
+        log_dict |= dict_add_prefix(compute_statistics(oldest_versions), "weight_version/")
+        mixed = sum(1 for s in samples if len(set(s.weight_versions)) > 1)
+        log_dict["weight_version/mixed_version_ratio"] = mixed / len(samples)
+
     tito_vals = [s.metadata.get("tito_session_mismatch") for s in samples]
     tito_vals = [v for v in tito_vals if v is not None]
     if tito_vals:
@@ -1260,10 +1283,18 @@ def _compute_zero_std_metrics(args, all_samples: list[Sample]):
         rewards = [sample.get_reward_value(args) for sample in samples]
         return len(rewards) == 0 or all(rewards[0] == r for r in rewards)
 
+    def _reward_label(sample: Sample) -> str:
+        # Aborted / None-reward samples have no numeric reward to round; bucket
+        # them under a dedicated label so downstream round() never sees None.
+        reward = sample.get_reward_value(args)
+        if reward is None:
+            return "none"
+        return str(round(reward, 1))
+
     all_sample_groups = group_by(all_samples, lambda s: s.group_index)
     interesting_sample_groups = [g for g in all_sample_groups.values() if _is_zero_std(g)]
 
-    interesting_rewards = [str(round(g[0].get_reward_value(args), 1)) for g in interesting_sample_groups]
+    interesting_rewards = [_reward_label(g[0]) for g in interesting_sample_groups]
 
     return {f"zero_std/count_{reward}": len(items) for reward, items in group_by(interesting_rewards).items()}
 

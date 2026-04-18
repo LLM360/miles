@@ -26,6 +26,8 @@ def setup_session_routes(app, backend, args):
         logger.info("[session] Skipping session routes (hf_checkpoint not set).")
         return
 
+    session_server_instance_id = getattr(args, "session_server_instance_id", None)
+
     tokenizer = load_tokenizer(
         hf_checkpoint, chat_template_path=getattr(args, "chat_template_path", None), trust_remote_code=True
     )
@@ -37,6 +39,13 @@ def setup_session_routes(app, backend, args):
     )
 
     registry = SessionRegistry(args, tokenizer, tito_tokenizer=tito_tokenizer)
+
+    @app.get("/health")
+    async def health():
+        body = {"status": "ok"}
+        if session_server_instance_id is not None:
+            body["session_server_instance_id"] = session_server_instance_id
+        return body
 
     # --- DEBUG: track in-flight chat_completions ---
     _inflight_chat = {"count": 0}
@@ -67,7 +76,9 @@ def setup_session_routes(app, backend, args):
 
     @app.get("/sessions/{session_id}")
     async def get_session(session_id: str):
-        session = registry.get_session(session_id)
+        session = registry.sessions.get(session_id)
+        if session is None:
+            return GetSessionResponse(session_id=session_id, records=[], metadata={})
         metadata = {}
         try:
             mismatch = registry.compute_session_mismatch(session)
@@ -114,7 +125,7 @@ def setup_session_routes(app, backend, args):
         """
         _inflight_chat["count"] += 1
         try:
-            session = registry.get_session(session_id)
+            session = registry.get_or_create_session(session_id)
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
@@ -167,7 +178,28 @@ def setup_session_routes(app, backend, args):
             # pass it through to the agent without recording — the agent can retry
             # or handle the error.
             if result["status_code"] != 200:
-                return backend.build_proxy_response(result)
+                # Rollback failures indicate corrupted prefix-cache state in SGLang.
+                # Retry once without pretokenized input_ids so SGLang processes the
+                # request from scratch instead of attempting prefix continuation.
+                error_body = result.get("response_body") or b""
+                if isinstance(error_body, bytes):
+                    error_body = error_body.decode("utf-8", errors="replace")
+                if (
+                    result["status_code"] == 400
+                    and "rollback failed" in error_body.lower()
+                    and "input_ids" in request_body
+                ):
+                    logger.warning(
+                        "SGLang rollback failed for session %s, retrying without prefix continuation",
+                        session_id,
+                    )
+                    request_body.pop("input_ids", None)
+                    retry_body = json.dumps(request_body).encode()
+                    result = await backend.do_proxy(request, "v1/chat/completions", body=retry_body)
+                    if result["status_code"] != 200:
+                        return backend.build_proxy_response(result)
+                else:
+                    return backend.build_proxy_response(result)
 
             response = json.loads(result["response_body"])
 
