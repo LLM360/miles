@@ -19,6 +19,38 @@ from .parallel import get_parallel_state
 
 logger = logging.getLogger(__name__)
 
+# Maps bare metric names to their W&B top-level section(s).
+# Keys appearing in multiple sections (e.g. pg_loss) are emitted under each.
+_TRAIN_METRIC_GROUPS: dict[str, list[str]] = {
+    "ppo_kl":                         ["policy_shift"],
+    "ois":                            ["policy_shift"],
+    "pg_clipfrac":                    ["policy_shift"],
+    "pg_loss":                        ["policy_shift", "optimization"],
+    "log_probs":                      ["policy_shift"],   # current policy (training forward pass)
+    "old_log_probs":                  ["policy_shift"],   # old policy (rollout or FSDP rollout)
+    "ref_kl":                         ["policy_shift"],
+    "train_rollout_logprob_abs_diff": ["train_inference_mismatch"],
+    "train_rollout_logprob_diff":     ["train_inference_mismatch"],
+    "tis":                            ["train_inference_mismatch"],
+    "tis_abs":                        ["train_inference_mismatch"],
+    "tis_clipfrac":                   ["train_inference_mismatch"],
+    "loss":                           ["optimization"],
+    "entropy_loss":                   ["optimization"],
+    "kl_loss":                        ["optimization"],
+    "grad_norm":                      ["optimization"],
+}
+
+# Maps rollout batch field names to their W&B top-level section.
+_ROLLOUT_DATA_METRIC_GROUPS: dict[str, str] = {
+    "log_probs":         "train_inference_mismatch",  # FSDP log probs at rollout time
+    "rollout_log_probs": "train_inference_mismatch",  # inference engine log probs
+    "ref_log_probs":     "policy_shift",              # reference model log probs
+    "rewards":           "reward",
+    "raw_reward":        "reward",
+    "advantages":        "reward",
+    "returns":           "reward",
+}
+
 
 def gather_log_data(
     metric_name: str,
@@ -185,6 +217,17 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
             if "rollout/entropy" in reduced_log_dict:
                 assert 0 < reduced_log_dict["rollout/entropy"] < 0.7
 
+        # Emit top-level grouped keys from reduced values (only on DP source rank)
+        if reduced_log_dict is not None:
+            top_level = {}
+            for key, group in _ROLLOUT_DATA_METRIC_GROUPS.items():
+                rollout_key = f"rollout/{key}"
+                if rollout_key in reduced_log_dict:
+                    top_level[f"{group}/{key}"] = reduced_log_dict[rollout_key]
+            if top_level:
+                step = compute_rollout_step(args, rollout_id)
+                top_level["rollout/step"] = step
+                tracking_utils.log(args, top_level, step_key="rollout/step")
         if args.ci_test and args.true_on_policy_mode:
             assert log_dict["log_probs"] == log_dict["rollout_log_probs"], (
                 f"CI check failed: true_on_policy_mode is enabled, but log_probs "
@@ -435,6 +478,20 @@ def log_train_step(
             log_dict_out[f"train/{role_tag}{key}"] = val
 
     log_dict_out["train/step"] = accumulated_step_id
+
+    # Emit top-level grouped copies for W&B panel organization (existing train/ keys unchanged)
+    grouped_additions = {}
+    prefix = f"train/{role_tag}"
+    for full_key, val in log_dict_out.items():
+        if not full_key.startswith(prefix):
+            continue
+        bare_key = full_key[len(prefix):]
+        if bare_key in _TRAIN_METRIC_GROUPS:
+            for group in _TRAIN_METRIC_GROUPS[bare_key]:
+                grouped_additions[f"{group}/{bare_key}"] = val
+        elif bare_key.startswith("lr-pg_"):
+            grouped_additions[f"optimization/{bare_key}"] = val
+    log_dict_out.update(grouped_additions)
 
     if should_log is None:
         should_log = dist.get_rank() == 0
