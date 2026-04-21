@@ -71,6 +71,11 @@ class MegatronTrainRayActor(TrainRayActor):
         if self._is_main_rank:
             init_tracking(args, primary=False)
 
+        unsupported = {"train_actor", "train_log_probs"} & set(args.profile_target)
+        if unsupported and args.use_pytorch_profiler:
+            raise NotImplementedError(
+                f"--profile-target {' '.join(sorted(unsupported))} is not supported for Megatron backend"
+            )
         self.prof = TrainProfiler(args)
 
         # read config and tokenizer serialized to prevent concurrent writing bug.
@@ -109,6 +114,15 @@ class MegatronTrainRayActor(TrainRayActor):
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
             args, role
         )
+
+        parallel_state = get_parallel_state()
+        if parallel_state.cp.size > 1:
+            from miles_plugins.models.cp_utils import detect_and_setup_hybrid_cp
+
+            for model_chunk in self.model:
+                detect_and_setup_hybrid_cp(
+                    model_chunk, parallel_state.cp.group, parallel_state.cp.rank, parallel_state.cp.size
+                )
 
         verify_megatron_parallel_state(self.model)
 
@@ -163,9 +177,8 @@ class MegatronTrainRayActor(TrainRayActor):
         # empty cache after initialization
         clear_memory()
 
+        self._switch_model("actor")
         if self.args.offload_train:
-            # recover to actor in the end.
-            self._switch_model("actor")
             self.sleep()
 
         self.rollout_engines = None
