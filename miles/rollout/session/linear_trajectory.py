@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -292,6 +293,7 @@ class SessionRegistry:
 
     def __init__(self, args, tokenizer: Any, *, tito_tokenizer: TITOTokenizer):
         self.sessions: dict[str, LinearTrajectory] = {}
+        self._session_last_access: dict[str, float] = {}
         self.args = args
         self.tokenizer = tokenizer
         self.tito_tokenizer = tito_tokenizer
@@ -307,6 +309,36 @@ class SessionRegistry:
         if session is None:
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
         return session
+
+    def get_or_create_session(self, session_id: str) -> LinearTrajectory:
+        session = self.sessions.get(session_id)
+        if session is None:
+            self._evict_stale_sessions()
+            logger.warning("Auto-creating session %s (not found, likely router restart)", session_id)
+            session = LinearTrajectory()
+            self.sessions[session_id] = session
+            self._session_last_access[session_id] = time.monotonic()
+        else:
+            self._session_last_access[session_id] = time.monotonic()
+        return session
+
+    _SESSION_TTL_SECS: int = 7200  # 2 hours
+    _MAX_AUTO_CREATED: int = 10000
+
+    def _evict_stale_sessions(self) -> None:
+        """Remove auto-created sessions older than _SESSION_TTL_SECS."""
+        if not self._session_last_access:
+            return
+        now = time.monotonic()
+        stale = [
+            sid for sid, ts in self._session_last_access.items()
+            if now - ts > self._SESSION_TTL_SECS
+        ]
+        for sid in stale:
+            self.sessions.pop(sid, None)
+            self._session_last_access.pop(sid, None)
+        if stale:
+            logger.info("Evicted %d stale auto-created sessions", len(stale))
 
     def remove_session(self, session_id: str) -> None:
         if self.sessions.pop(session_id, None) is None:
