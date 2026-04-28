@@ -177,7 +177,7 @@ class ServerGroup:
                 args=self.args, rollout_engines=rollout_engines
             )
         else:
-            base_port = max(port_cursors.values()) if port_cursors else 15000
+            base_port = max(port_cursors.values()) if port_cursors else 17500
             addr_and_ports, port_cursors = _allocate_rollout_engine_addr_and_ports_normal(
                 args=self.args,
                 rollout_engines=rollout_engines,
@@ -826,7 +826,7 @@ def _allocate_rollout_engine_addr_and_ports_normal(
     worker_type="regular",
     num_gpus_per_engine=None,
     rank_offset=0,
-    base_port=15000,
+    base_port=17500,
 ):
     # get ports
     # there are 4 ports we need to allocate
@@ -854,8 +854,17 @@ def _allocate_rollout_engine_addr_and_ports_normal(
         num_engines_on_this_node = num_engines_per_node - (local_rank % num_engines_per_node)
 
         def get_addr_and_ports(engine, node_idx):
-            # use small ports to prevent ephemeral port between 32768 and 65536.
-            # also, ray uses port 10002-19999, thus we avoid near-10002 to avoid racing condition
+            # Port range constraints (all must hold):
+            #   - < 32768 to stay clear of the ephemeral port range (32768-65535)
+            #   - > 10002 but away from 10002 to avoid races with Ray (10002-19999)
+            #   - > 17000 to stay clear of Mooncake's RPC handshake range
+            #     (rpc_min_port=15000..rpc_max_port=17000 from
+            #     mooncake-transfer-engine/include/config.h). Prior default of
+            #     15000 fully overlapped mooncake and caused intermittent
+            #     EADDRINUSE when mooncake's TransferEngine grabbed a port
+            #     inside the miles-allocated range before sglang's Uvicorn
+            #     could bind it.
+            # 17500+ satisfies all three.
             start_port = node_port_cursor.get(node_idx, base_port)
 
             def port(consecutive=1):
