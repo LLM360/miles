@@ -84,6 +84,19 @@ class BaseReplayManager:
         for replay in self.replays:
             replay.clear_forward()
 
+    @staticmethod
+    def _fill_replay_padding(top_indices, scores):
+        # Attention indices retain partial padding; fully padded rows must not
+        # contain invalid reads in downstream kernels.
+        all_invalid = (top_indices == -1).all(dim=-1)
+        if all_invalid.any():
+            ar = (
+                torch.arange(top_indices.shape[1], device=top_indices.device, dtype=top_indices.dtype)
+                % scores.shape[1]
+            )
+            top_indices = torch.where(all_invalid.unsqueeze(-1), ar, top_indices)
+        return top_indices
+
     def get_topk_fn(self, old_topk_fn, return_probs):
         manager = self
 
@@ -99,14 +112,7 @@ class BaseReplayManager:
             if self.enable_check_replay_result:
                 self.check_replay_result(old_topk_fn, scores, topk, top_indices, *args, **kwargs)
 
-            # fill padding tokens with arange to avoid invalid reading
-            all_invalid = (top_indices == -1).all(dim=-1)
-            if all_invalid.any():
-                ar = (
-                    torch.arange(top_indices.shape[1], device=top_indices.device, dtype=top_indices.dtype)
-                    % scores.shape[1]
-                )
-                top_indices = torch.where(all_invalid.unsqueeze(-1), ar, top_indices)
+            top_indices = self._fill_replay_padding(top_indices, scores)
 
             if return_probs:
                 return scores.gather(1, top_indices), top_indices
@@ -223,6 +229,32 @@ class RoutingReplayManager(BaseReplayManager):
     if_sp_region = True
     enable_check_replay_result = False
     replay_check_max_mismatch_fraction = 1e-2
+
+    @staticmethod
+    def _fill_replay_padding(top_indices, scores):
+        """Fill missing expert slots without duplicating existing picks.
+
+        Duplicate picks collapse in the routing map and make the MoE
+        dispatcher's split sizes disagree with its permuted token buffer.
+        Attention-index replay has a different padding contract and uses the
+        base implementation.
+        """
+        padding_mask = top_indices == -1
+        if not padding_mask.any():
+            return top_indices
+
+        # one_hot requires int64; preserve the replay payload's index dtype.
+        used_mask = (
+            torch.nn.functional.one_hot(top_indices.clamp(min=0).long(), num_classes=scores.shape[1])
+            .mul((~padding_mask).long().unsqueeze(-1))
+            .sum(dim=1)
+            .bool()
+        )
+        masked_scores = scores.masked_fill(used_mask, float("-inf"))
+        _, sorted_free = masked_scores.sort(dim=1, descending=True)
+        pad_cumsum = torch.cumsum(padding_mask.long(), dim=1) - 1
+        fill_values = torch.gather(sorted_free, 1, pad_cumsum.clamp(min=0)).to(top_indices.dtype)
+        return torch.where(padding_mask, fill_values, top_indices)
 
 
 class IndexerReplayManager(BaseReplayManager):

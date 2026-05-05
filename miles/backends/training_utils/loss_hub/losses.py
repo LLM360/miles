@@ -8,6 +8,7 @@ from miles.backends.training_utils.cp_utils import (
     all_gather_with_cp,
     get_local_response_loss_masks,
     get_sum_of_sample_mean,
+    resolve_loss_agg_mode,
 )
 from miles.backends.training_utils.loss_hub.corrections import vanilla_tis_function
 from miles.backends.training_utils.loss_hub.logit_processors import get_log_probs_and_entropy, get_values
@@ -90,6 +91,9 @@ def policy_loss_function(
         are enabled.
     """
     parallel_state = get_parallel_state()
+    uses_token_normalization = (
+        resolve_loss_agg_mode(args.calculate_per_token_loss, getattr(args, "loss_agg_mode", None)) != "sample-mean"
+    )
     advantages_list = [advantage.detach() for advantage in batch["advantages"]]
     advantages = torch.cat(advantages_list, dim=0)
     rollout_old_log_probs = (
@@ -266,7 +270,7 @@ def policy_loss_function(
             total_lengths,
             response_lengths,
             modified_response_masks,
-            args.calculate_per_token_loss,
+            uses_token_normalization,
             args.qkv_format,
             max_seq_lens,
             denominators=batch.get("rollout_mask_sums", None),
@@ -278,7 +282,7 @@ def policy_loss_function(
         # Determine which loss_masks to use for pg_loss reducer
         pg_loss_masks = modified_response_masks if (args.get_mismatch_metrics or args.use_tis) else batch["loss_masks"]
         pg_loss_reducer = custom_pg_loss_reducer_func(
-            total_lengths, response_lengths, pg_loss_masks, args.calculate_per_token_loss
+            total_lengths, response_lengths, pg_loss_masks, uses_token_normalization
         )
     else:
         pg_loss_reducer = sum_of_sample_mean
@@ -293,7 +297,7 @@ def policy_loss_function(
         response_lengths=response_lengths,
         qkv_format=args.qkv_format,
         max_seq_lens=max_seq_lens,
-        calculate_per_token_loss=args.calculate_per_token_loss,
+        calculate_per_token_loss=uses_token_normalization,
     )
 
     pg_loss = pg_loss_reducer(pg_loss)
@@ -366,10 +370,20 @@ def policy_loss_function(
         "pg_clipfrac": pg_clipfrac.clone().detach(),
         "ppo_kl": ppo_kl.clone().detach(),
         "ess_ratio": ess_ratio_sum.squeeze(),
+        "log_probs": sum_of_sample_mean(log_probs).detach(),
+        "old_log_probs": sum_of_sample_mean(old_log_probs).detach(),
     }
 
     if train_rollout_logprob_abs_diff is not None:
         reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff.clone().detach()
+    if rollout_old_log_probs and trainer_scored_log_probs is not None:
+        signed_diff = torch.cat(rollout_old_log_probs) - torch.cat(trainer_scored_log_probs)
+        signed_diff = torch.where(active_tokens, signed_diff, signed_diff.new_zeros(()))
+        reported_loss["train_rollout_logprob_diff"] = sum_of_sample_mean(signed_diff).detach()
+    if reference_log_probs:
+        ref_diff = log_probs - torch.cat(reference_log_probs)
+        ref_diff = torch.where(active_tokens, ref_diff, ref_diff.new_zeros(()))
+        reported_loss["ref_kl"] = sum_of_sample_mean(ref_diff).detach()
     if train_rollout_kl is not None:
         reported_loss["train_rollout_kl"] = train_rollout_kl.clone().detach()
 

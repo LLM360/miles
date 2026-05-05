@@ -12,6 +12,8 @@ class SessionServerConfig(FrozenStrictBaseModel):
     hf_checkpoint: str | None
     chat_template_path: str | None
     tito_model: str
+    tito_allowed_append_roles: list[str] | None = None
+    sglang_served_model_name: str | None = None
     apply_chat_template_kwargs: dict[str, Any] | None
     use_rollout_routing_replay: bool
     use_rollout_indexer_replay: bool
@@ -40,6 +42,8 @@ def compute_session_server_config(
         hf_checkpoint=args.hf_checkpoint,
         chat_template_path=args.chat_template_path,
         tito_model=args.tito_model,
+        tito_allowed_append_roles=getattr(args, "tito_allowed_append_roles", None),
+        sglang_served_model_name=getattr(args, "sglang_served_model_name", None),
         apply_chat_template_kwargs=args.apply_chat_template_kwargs,
         use_rollout_routing_replay=args.use_rollout_routing_replay,
         use_rollout_indexer_replay=args.use_rollout_indexer_replay,

@@ -2,7 +2,11 @@ from argparse import Namespace
 import torch
 from torch.utils.checkpoint import checkpoint
 
-from miles.backends.training_utils.cp_utils import get_local_response_loss_masks, get_sum_of_sample_mean
+from miles.backends.training_utils.cp_utils import (
+    get_local_response_loss_masks,
+    get_sum_of_sample_mean,
+    resolve_loss_agg_mode,
+)
 from miles.backends.training_utils.loss_hub.advantages import compute_advantages, normalize_advantages
 from miles.backends.training_utils.loss_hub.logit_processors import get_log_probs_and_entropy, get_values  # noqa: F401
 from miles.backends.training_utils.loss_hub.losses import get_loss_function
@@ -152,13 +156,15 @@ def loss_function(
         Tuple of `(scaled_loss, normalizer, logging_dict)` where:
         - `scaled_loss` is the loss tensor (scalar) rescaled for Megatron.
         - `normalizer` is `num_tokens` (scalar tensor) if
-          `args.calculate_per_token_loss` is True, else `1` (int).
+          the effective mode is token-mean/token-sum, else `1` (int).
         - `logging_dict` has keys "keys" (list of str metric names) and
           "values" (1D tensor: [count, metric1, metric2, ...]).
     """
     parallel_state = get_parallel_state()
     num_tokens = sum([torch.clamp_min(loss_mask.sum(), 1) for loss_mask in batch["loss_masks"]])
     num_samples = len(batch["response_lengths"])
+    mode = resolve_loss_agg_mode(args.calculate_per_token_loss, getattr(args, "loss_agg_mode", None))
+    uses_token_normalization = mode != "sample-mean"
 
     sum_of_sample_mean = get_sum_of_sample_mean(
         batch["total_lengths"],
@@ -168,6 +174,7 @@ def loss_function(
         args.qkv_format,
         batch.get("max_seq_lens", None),
         denominators=batch.get("rollout_mask_sums", None),
+        loss_agg_mode=mode,
     )
 
     func = get_loss_function(args)
@@ -199,7 +206,7 @@ def loss_function(
     # is applied to the accumulated slot gradient at optimizer-step time.
     if is_multi_lora_enabled(args):
         global_batch_size = 1
-    if not args.calculate_per_token_loss:
+    if not uses_token_normalization:
         if apply_megatron_loss_scaling:
             loss_parallel_size = (
                 parallel_state.intra_dp.size
@@ -212,14 +219,17 @@ def loss_function(
     else:
         if apply_megatron_loss_scaling:
             loss = loss * parallel_state.cp.size
+        elif mode == "token-mean":
+            loss = loss / torch.clamp_min(num_tokens, 1) * parallel_state.intra_dp.size
+        # FSDP token-sum keeps the legacy unnormalized sum.
 
     return (
         loss,
-        torch.tensor(num_tokens if args.calculate_per_token_loss else 1, device=logits.device),
+        torch.tensor(num_tokens if uses_token_normalization else 1, device=logits.device),
         {
             "keys": list(log.keys()),
             "values": torch.tensor(
-                [num_samples if not args.calculate_per_token_loss else num_tokens] + list(log.values()),
+                [num_samples if not uses_token_normalization else num_tokens] + list(log.values()),
                 device=logits.device,
             ),
         },

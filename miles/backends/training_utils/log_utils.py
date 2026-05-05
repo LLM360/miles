@@ -21,6 +21,39 @@ from .parallel import get_parallel_state
 
 logger = logging.getLogger(__name__)
 
+# Maps bare metric names to their W&B top-level section(s).
+# Keys appearing in multiple sections (e.g. pg_loss) are emitted under each.
+_TRAIN_METRIC_GROUPS: dict[str, list[str]] = {
+    "ppo_kl": ["policy_shift"],
+    "ois": ["policy_shift"],
+    "pg_clipfrac": ["policy_shift"],
+    "pg_loss": ["policy_shift", "optimization"],
+    "log_probs": ["policy_shift"],  # current policy (training forward pass)
+    "old_log_probs": ["policy_shift"],  # old policy (rollout or FSDP rollout)
+    "ref_kl": ["policy_shift"],
+    "train_rollout_logprob_abs_diff": ["train_inference_mismatch"],
+    "train_rollout_logprob_diff": ["train_inference_mismatch"],
+    "tis": ["train_inference_mismatch"],
+    "tis_abs": ["train_inference_mismatch"],
+    "tis_clipfrac": ["train_inference_mismatch"],
+    "loss": ["optimization"],
+    "entropy_loss": ["optimization"],
+    "kl_loss": ["optimization"],
+    "grad_norm": ["optimization"],
+}
+
+# Maps rollout batch field names to their W&B top-level section.
+_ROLLOUT_DATA_METRIC_GROUPS: dict[str, str] = {
+    "log_probs": "train_inference_mismatch",  # FSDP log probs at rollout time
+    "rollout_log_probs": "train_inference_mismatch",  # inference engine log probs
+    "ref_log_probs": "policy_shift",  # reference model log probs
+    "rewards": "reward",
+    "raw_reward": "reward",
+    "advantages": "reward",
+    "returns": "reward",
+}
+
+
 _MULTI_TURN_REDUCTION_BY_KEY = {
     "raw_response_length/response_length_max": "max",
     "raw_response_length/response_length_min": "min",
@@ -48,24 +81,21 @@ def reduce_gathered_log_dict(
     if not gathered:
         return {}
 
-    expected_keys = gathered[0].keys()
-    if reduction_by_key is not None:
-        for rank, rank_metrics in enumerate(gathered[1:], start=1):
-            if rank_metrics.keys() != expected_keys:
-                raise ValueError(
-                    f"Metric keys differ across ranks: rank 0={list(expected_keys)}, "
-                    f"rank {rank}={list(rank_metrics.keys())}."
-                )
+    expected_keys = sorted({key for rank_metrics in gathered for key in rank_metrics})
     reduction_by_key = reduction_by_key or {}
 
     reduced: dict[str, float] = {}
     for key in expected_keys:
-        values = [d[key] for d in gathered]
+        # Preserve stable's missing-value signal without another collective.
+        # In particular, an unknown tuple count is not an observed zero count.
+        values = [d[key] for d in gathered if key in d]
         first = values[0]
         reduction = reduction_by_key.get(key, "mean")
         if reduction not in ("mean", "min", "max"):
             raise ValueError(f"Unsupported metric reduction {reduction!r} for {key!r}.")
-        if isinstance(first, tuple) and len(first) == 2:
+        if len(values) != len(gathered):
+            reduced[key] = float("nan")
+        elif isinstance(first, tuple) and len(first) == 2:
             total_sum = sum(v[0] for v in values)
             total_count = sum(v[1] for v in values)
             reduced[key] = total_sum / total_count if total_count else 0.0
@@ -128,6 +158,7 @@ def gather_log_data(
         # Calculate step once to avoid duplication
         step = compute_rollout_step(args, rollout_id)
         reduced_log_dict["rollout/step"] = step
+        reduced_log_dict["train/rollout_id"] = rollout_id
         tracking.log(args, reduced_log_dict, step_key="rollout/step")
 
         return reduced_log_dict
@@ -301,6 +332,18 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
                 f"({log_dict['rollout_log_probs']})"
             )
 
+        # Emit top-level grouped keys from reduced values (only on DP source rank)
+        if reduced_log_dict is not None:
+            top_level = {}
+            for key, group in _ROLLOUT_DATA_METRIC_GROUPS.items():
+                rollout_key = f"rollout/{key}"
+                if rollout_key in reduced_log_dict:
+                    top_level[f"{group}/{key}"] = reduced_log_dict[rollout_key]
+            if top_level:
+                step = compute_rollout_step(args, rollout_id)
+                top_level["rollout/step"] = step
+                tracking.log(args, top_level, step_key="rollout/step")
+
     if args.log_multi_turn:
         log_multi_turn_data(rollout_id, args, rollout_data)
 
@@ -436,7 +479,7 @@ def log_cpu_memory(rollout_id: int, args: Namespace, label: str) -> None:
     logger.info(f"[CPU memory] {label}: {cpu_mem_gb:.2f} GB (rollout_id={rollout_id}, step={step})")
     tracking.log(
         args,
-        {f"perf/cpu_memory_{label}_gb": cpu_mem_gb, "rollout/step": step},
+        {f"perf/cpu_memory_{label}_gb": cpu_mem_gb, "rollout/step": step, "train/rollout_id": rollout_id},
         step_key="rollout/step",
     )
 
@@ -538,6 +581,25 @@ def log_train_step(
             log_dict_out[f"train/{role_tag}{key}"] = val
 
     log_dict_out["train/step"] = accumulated_step_id
+    # Co-log the rollout counter in both forms so train/* metrics can be
+    # cross-plotted against rollout-side axes in the wandb UI.
+    log_dict_out["train/rollout_id"] = rollout_id
+    log_dict_out["train/step_in_rollout"] = step_id
+    log_dict_out["rollout/step"] = compute_rollout_step(args, rollout_id)
+
+    # Emit top-level grouped copies for W&B panel organization (existing train/ keys unchanged)
+    grouped_additions = {}
+    prefix = f"train/{role_tag}"
+    for full_key, val in log_dict_out.items():
+        if not full_key.startswith(prefix):
+            continue
+        bare_key = full_key[len(prefix) :]
+        if bare_key in _TRAIN_METRIC_GROUPS:
+            for group in _TRAIN_METRIC_GROUPS[bare_key]:
+                grouped_additions[f"{group}/{bare_key}"] = val
+        elif bare_key.startswith("lr-pg_"):
+            grouped_additions[f"optimization/{bare_key}"] = val
+    log_dict_out.update(grouped_additions)
 
     if should_log is None:
         should_log = dist.get_rank() == 0

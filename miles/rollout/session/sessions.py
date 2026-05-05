@@ -69,6 +69,7 @@ def setup_session_routes(app, backend, config: SessionServerConfig, *, use_addit
     tito_tokenizer = get_tito_tokenizer(
         tokenizer,
         tokenizer_type=config.tito_model,
+        allowed_append_roles=config.tito_allowed_append_roles,
         chat_template_kwargs=config.apply_chat_template_kwargs,
     )
     merge_inline_system = not detect_inline_system_support(getattr(tokenizer, "chat_template", None))

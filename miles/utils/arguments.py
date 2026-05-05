@@ -1398,6 +1398,21 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             reset_arg(parser, "--seed", type=int, default=1234)
             reset_arg(parser, "--clip-grad", type=float, default=1.0)
             reset_arg(parser, "--calculate-per-token-loss", action="store_true")
+            parser.add_argument(
+                "--loss-agg-mode",
+                type=str,
+                default=None,
+                choices=["sample-mean", "token-mean", "token-sum"],
+                help=(
+                    "Loss aggregation mode. Takes precedence over --calculate-per-token-loss. "
+                    "'sample-mean' (default): per-sample token-mean, then sum across samples. "
+                    "'token-mean': masked sum / total tokens — every token contributes equally. "
+                    "On Megatron backend this is equivalent to --calculate-per-token-loss; "
+                    "on FSDP backend this adds explicit normalization that FSDP otherwise skips. "
+                    "'token-sum': raw masked sum with no local normalization (same as --calculate-per-token-loss). "
+                    "If not set, falls back to --calculate-per-token-loss behavior."
+                ),
+            )
             reset_arg(parser, "--lr", type=float, default=1e-6)
 
             parser.add_argument(
@@ -2605,6 +2620,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "Instance i listens on this port plus i. Defaults to a dynamically allocated port.",
             )
             parser.add_argument(
+                "--tito-allowed-append-roles",
+                nargs="+",
+                default=["tool"],
+                choices=["tool", "user", "system", "assistant"],
+                help="Message roles allowed to be appended after the pretokenized "
+                "assistant prefix in TITO sessions (default: tool). Include "
+                "'assistant' for multi-turn agents (e.g. terminus-2) that "
+                "append their own planning/self-reflection turns before the "
+                "next tool or user message.",
+            )
+            parser.add_argument(
                 "--tito-model",
                 type=str,
                 default="default",
@@ -2926,6 +2952,11 @@ def miles_validate_args(args):
                 logger.info(f"Warning: Argument {k} is already set to {getattr(args, k)}, will override with {v}.")
             setattr(args, k, v)
 
+    # Keep backend and custom-reducer boolean consumers aligned with the
+    # explicit stable option, which takes precedence over the legacy flag.
+    if (loss_agg_mode := getattr(args, "loss_agg_mode", None)) is not None:
+        args.calculate_per_token_loss = loss_agg_mode != "sample-mean"
+
     validate_dashboard_args(args)
 
     args.ft_components = _resolve_ft_components(args)
@@ -3008,7 +3039,8 @@ def miles_validate_args(args):
     # FixedTemplate contract.
     if args.use_session_server and args.tito_model == TITOTokenizerType.DEFAULT.value:
         logger.warning(
-            "--tito-model=default uses a best-effort four-role append surface. "
+            "--tito-model=default has a best-effort four-role append surface, "
+            "further restricted by --tito-allowed-append-roles. "
             "Incremental tokenization assumes appended messages do not change how "
             "earlier turns render, which may not hold for user messages on "
             "context-sensitive chat templates (e.g. last_query_index logic, "

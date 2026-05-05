@@ -95,6 +95,14 @@ def slice_loss_masks_for_local_cp(
     return get_local_response_loss_masks(total_lengths, response_lengths, loss_masks, qkv_format, max_seq_lens)
 
 
+def resolve_loss_agg_mode(calculate_per_token_loss: bool, loss_agg_mode: str | None = None) -> str:
+    """Resolve stable's explicit mode before the legacy per-token flag."""
+    mode = loss_agg_mode or ("token-sum" if calculate_per_token_loss else "sample-mean")
+    if mode not in ("sample-mean", "token-mean", "token-sum"):
+        raise ValueError(f"Unknown loss aggregation mode: {mode!r}")
+    return mode
+
+
 def get_sum_of_sample_mean(
     total_lengths: list[int],
     response_lengths: list[int],
@@ -104,10 +112,13 @@ def get_sum_of_sample_mean(
     max_seq_lens: list[int] | None = None,
     *,
     denominators: list[torch.Tensor] | torch.Tensor | None = None,
+    loss_agg_mode: str | None = None,
 ) -> Callable[[torch.Tensor], torch.Tensor]:
     """Calculate correct sample mean for CP; ``denominators`` overrides each
     sample's own ``loss_mask.sum()`` (e.g. pass ``rollout_mask_sums`` for
-    per-rollout means)."""
+    per-rollout means). Token modes both return a masked sum; downstream
+    loss scaling supplies token-mean normalization for FSDP and Megatron.
+    """
     if denominators is None:
         denominators = [m.sum() for m in loss_masks]
 
@@ -165,7 +176,8 @@ def get_sum_of_sample_mean(
                 ]
             )
 
-    return sum_of_sample_mean if not calculate_per_token_loss else sum_of_token
+    mode = resolve_loss_agg_mode(calculate_per_token_loss, loss_agg_mode)
+    return sum_of_sample_mean if mode == "sample-mean" else sum_of_token
 
 
 def get_local_response_loss_masks(

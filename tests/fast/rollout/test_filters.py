@@ -106,6 +106,24 @@ def test_legacy_filters_preserve_structured_results(legacy_name, samples, expect
     assert result == expected
 
 
+@pytest.mark.parametrize(
+    "filter_fn",
+    [apply_reward_nonzero_std_filter, dynamic_sampling_filters.check_reward_nonzero_std],
+    ids=["canonical", "legacy"],
+)
+@pytest.mark.parametrize(
+    ("reward_key", "samples"),
+    [
+        (None, [make_sample(reward=1.0), make_sample(reward=None)]),
+        ("score", [make_sample(reward={"score": 1.0}), make_sample(reward={"score": None})]),
+        (None, [make_sample(reward=1.0), [make_sample(reward=None)]]),
+    ],
+    ids=["raw", "selected", "nested"],
+)
+def test_nonzero_std_direct_calls_reject_missing_rewards(filter_fn, reward_key, samples):
+    assert filter_fn(Namespace(reward_key=reward_key), samples) == FilterOutput(keep=False, reason="group_has_aborted")
+
+
 def test_iter_samples_preserves_flat_and_mixed_nested_order():
     samples = [Sample(index=index) for index in range(4)]
 

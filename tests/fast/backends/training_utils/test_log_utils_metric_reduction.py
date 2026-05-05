@@ -5,6 +5,7 @@ Averaging them (the old behavior) systematically under-reports the global
 maximum and over-reports the global minimum.
 """
 
+from math import isnan
 from types import SimpleNamespace
 
 import pytest
@@ -82,14 +83,15 @@ def test_sum_count_tuples_ignore_reduction_map():
     assert reduced == {"loss": pytest.approx(2.0), "score_max": 5.0}
 
 
-def test_mismatched_keys_across_ranks_raise():
+def test_missing_worker_metrics_are_reported_as_nan():
     gathered = [
         {"multi_turn_metric/round_number_max": 3.0},
         {"multi_turn_metric/round_number_max": 3.0, "extra": 1.0},
     ]
 
-    with pytest.raises(ValueError, match="Metric keys differ across ranks"):
-        log_utils.reduce_gathered_log_dict(gathered, dp_size=2, reduction_by_key={})
+    result = log_utils.reduce_gathered_log_dict(gathered, dp_size=2, reduction_by_key={})
+    assert result["multi_turn_metric/round_number_max"] == 3.0
+    assert isnan(result["extra"])
 
 
 def test_unknown_reduction_name_raises():
@@ -134,3 +136,12 @@ def test_log_multi_turn_data_passes_explicit_extrema_reductions(monkeypatch):
     assert captured["metric_name"] == "multi_turn"
     assert captured["rollout_id"] == 7
     assert captured["reduction_by_key"] == log_utils._MULTI_TURN_REDUCTION_BY_KEY
+
+
+@pytest.mark.parametrize("reduction", ["mean", "min", "max"])
+def test_missing_scalar_and_weighted_metrics_keep_missing_value_signal(reduction):
+    gathered = [{"weighted": (6.0, 2.0), "scalar": 8.0}, {}]
+    result = log_utils.reduce_gathered_log_dict(gathered, 2, {"scalar": reduction})
+    assert isnan(result["weighted"])
+    assert isnan(result["scalar"])
+    assert gathered == [{"weighted": (6.0, 2.0), "scalar": 8.0}, {}]

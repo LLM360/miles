@@ -8,6 +8,7 @@ The default implementation renders the complete appended suffix and the next gen
 from __future__ import annotations
 
 import logging
+from copy import copy
 from dataclasses import dataclass, field
 
 try:
@@ -120,6 +121,19 @@ class TITOTokenizer:
         self.allowed_append_roles = self.FIXED_TEMPLATE.allowed_append_roles
         self.special_token_ids: set[int] = special_token_ids
 
+    def with_allowed_append_roles(self, roles: list[str] | frozenset[str]) -> TITOTokenizer:
+        """Return a tokenizer restricted to roles supported by its fixed template."""
+        selected_roles = frozenset(roles)
+        supported_roles = self.FIXED_TEMPLATE.allowed_append_roles
+        if not selected_roles <= supported_roles:
+            raise ValueError(
+                f"--tito-allowed-append-roles contains roles unsupported by {type(self).__name__}: "
+                f"{sorted(selected_roles - supported_roles)}; supported={sorted(supported_roles)}"
+            )
+        configured = copy(self)
+        configured.allowed_append_roles = selected_roles
+        return configured
+
     def clone_with_chat_template_kwargs(self, request_kwargs: dict[str, Any]) -> TITOTokenizer:
         """Create a request-scoped copy with negligible overhead."""
         return type(self)(
@@ -130,7 +144,7 @@ class TITOTokenizer:
                 alias_keys=self.chat_template_kwarg_aliases,
             ),
             assistant_start_str=self._assistant_start_str,
-        )
+        ).with_allowed_append_roles(self.allowed_append_roles)
 
     def create_comparator(self) -> TokenSeqComparator:
         """Create a :class:`TokenSeqComparator` configured with this
@@ -912,6 +926,8 @@ def get_tito_tokenizer(
     tokenizer_type: TITOTokenizerType | str = TITOTokenizerType.DEFAULT,
     chat_template_kwargs: dict[str, Any] | None = None,
     assistant_start_str: str | None = None,
+    *,
+    allowed_append_roles: list[str] | frozenset[str] | None = None,
 ) -> TITOTokenizer:
     """Create a ``TITOTokenizer`` instance.
 
@@ -923,6 +939,8 @@ def get_tito_tokenizer(
         assistant_start_str: Decoded text prefix identifying assistant content
             segments (e.g. ``"<|im_start|>assistant"``).  Auto-detected from
             the chat template by default; pass explicitly to override.
+        allowed_append_roles: Optional restriction within the fixed template
+            capabilities, for compatibility with existing session launchers.
     """
     if tokenizer is None:
         raise ValueError("tokenizer must not be None")
@@ -932,7 +950,8 @@ def get_tito_tokenizer(
     kwargs: dict[str, Any] = {"chat_template_kwargs": chat_template_kwargs}
     if assistant_start_str is not None:
         kwargs["assistant_start_str"] = assistant_start_str
-    return cls(tokenizer, **kwargs)
+    result = cls(tokenizer, **kwargs)
+    return result if allowed_append_roles is None else result.with_allowed_append_roles(allowed_append_roles)
 
 
 # ---------------------------------------------------------------------------

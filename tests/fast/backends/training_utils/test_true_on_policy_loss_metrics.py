@@ -193,12 +193,14 @@ def test_kl_loss_does_not_backpropagate_through_reference_scores(monkeypatch):
         lambda logits, *args, **kwargs: {"log_probs": [logits.flatten()[:2].sin()]},
     )
 
-    loss, _ = loss_utils.policy_loss_function(
+    loss, metrics = loss_utils.policy_loss_function(
         args,
         batch,
         logits=current_logits,
         sum_of_sample_mean=lambda tensor: tensor.float().mean(),
     )
+    assert "ref_kl" in metrics
+    assert not metrics["ref_kl"].requires_grad
     loss.backward()
 
     assert current_logits.grad is not None

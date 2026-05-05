@@ -268,4 +268,7 @@ def compute_inference_engine_env_vars(args) -> dict[str, str]:
         }.items()
     }
     env_vars.update(dumper_utils.get_sglang_env(args))
+    # Ray actors must import the same driver-selected Miles/SGLang checkout.
+    if "PYTHONPATH" in os.environ:
+        env_vars["PYTHONPATH"] = os.environ["PYTHONPATH"]
     return env_vars

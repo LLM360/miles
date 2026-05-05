@@ -1032,3 +1032,10 @@ class TestRouterInterpreterFlags:
         argv = shlex.split(spec.launch_command(_make_router_ctx()))
 
         assert argv[:6] == [sys.executable, "-O", "-X", "faulthandler", "-m", module]
+
+
+def test_driver_pythonpath_reaches_inference_workers(monkeypatch):
+    monkeypatch.setenv("PYTHONPATH", "/stable/miles:/stable/sglang")
+    assert compute_inference_engine_env_vars(make_args())["PYTHONPATH"] == "/stable/miles:/stable/sglang"
+    monkeypatch.delenv("PYTHONPATH")
+    assert "PYTHONPATH" not in compute_inference_engine_env_vars(make_args())

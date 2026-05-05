@@ -242,6 +242,13 @@ def extract_completion(result: dict) -> tuple:
     return response, choice, assistant_message, completion_token_ids
 
 
+def _is_prefix_rollback_error(result: dict) -> bool:
+    body = result.get("response_body") or b""
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    return result["status_code"] == 400 and "rollback failed" in body.lower()
+
+
 class SessionCore:
     """HTTP session operations over one ``SessionRegistry``."""
 
@@ -308,9 +315,13 @@ class SessionCore:
         return metadata
 
     async def get_session(self, session_id: str) -> Response:
-        session = self.registry.get_session(session_id)
-        metadata = self._session_metadata(session_id, session)
-        payload = GetSessionResponse(session_id=session_id, records=session.records, metadata=metadata)
+        session = self.registry.sessions.get(session_id)
+        if session is None and self.registry.is_deleted(session_id):
+            raise SessionNotFoundError(f"session not found: session_id={session_id}")
+        metadata = self._session_metadata(session_id, session) if session is not None else {}
+        payload = GetSessionResponse(
+            session_id=session_id, records=session.records if session is not None else [], metadata=metadata
+        )
         return Response(
             content=_render_json(payload.model_dump(mode="json")), status_code=200, media_type=JSON_MEDIA_TYPE
         )
@@ -370,7 +381,7 @@ class SessionCore:
         inference call so DELETE/other ops are not blocked if the agent disconnects.
         """
         request_timestamp = time.time()
-        session = self.registry.get_session(session_id)
+        session = self.registry.get_or_create_session(session_id)
         if session.closing:
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
@@ -407,12 +418,31 @@ class SessionCore:
             ProxyRequest(method=method, query=query), "v1/chat/completions", body=proxy_body, headers=headers
         )
 
-        # Non-200 (e.g. 400 context too long) passes through unrecorded so the
-        # agent can retry or handle the error.
+        # Stable's backend can recover a prefix-cache rollback failure by
+        # rendering the messages again. Keep the retry narrowly scoped.
+        retried_without_prefix = _is_prefix_rollback_error(result)
+        if retried_without_prefix:
+            logger.warning("Retrying session %s without prefix continuation", session_id)
+            retry_body = {k: v for k, v in request_body.items() if k != "input_ids"}
+            result = await self.backend.do_proxy(
+                ProxyRequest(method=method, query=query),
+                "v1/chat/completions",
+                body=_render_json(retry_body),
+                headers=headers,
+            )
+
+        # Other errors, including a failed retry, pass through unrecorded.
         if result["status_code"] != 200:
             return proxy_result_to_response(result)
 
         response, choice, assistant_message, completion_token_ids = extract_completion(result)
+        if retried_without_prefix:
+            # The backend re-rendered the prompt. Use its actual IDs rather
+            # than recording the IDs from the rejected request as training data.
+            prompt_token_ids = choice.get("prompt_token_ids")
+            if not isinstance(prompt_token_ids, list) or not all(type(t) is int for t in prompt_token_ids):
+                raise UpstreamResponseError("prefix retry requires backend prompt_token_ids for token tracking")
+            request_body = {**request_body, "input_ids": prompt_token_ids}
         assistant_message = tito_tokenizer.postprocess_completion(
             choice=choice,
             assistant_message=assistant_message,
@@ -462,6 +492,11 @@ class SessionCore:
     async def proxy(
         self, session_id: str, path: str, *, method: str, query: str, headers: dict, body: bytes
     ) -> Response:
+        if method == "GET" and path == "v1/model_info":
+            return Response(
+                content=_render_json({"id": self.config.sglang_served_model_name or "model", "object": "model"}),
+                media_type=JSON_MEDIA_TYPE,
+            )
         headers = {**headers, "X-SMG-Routing-Key": session_id}
         result = await self.backend.do_proxy(
             ProxyRequest(method=method, query=query), path, body=body, headers=headers

@@ -119,10 +119,10 @@ class TestSessionRoutes:
         assert data["session_id"] == session_id
         assert data["records"] == []
 
-    def test_get_session_not_found(self, router_env):
+    def test_get_unknown_session_returns_empty_records(self, router_env):
         response = requests.get(f"{router_env.url}/sessions/nonexistent", timeout=5.0)
-        assert response.status_code == 404
-        assert response.json()["error"] == "session not found: session_id=nonexistent"
+        assert response.status_code == 200
+        assert response.json() == {"session_id": "nonexistent", "records": [], "metadata": {}}
 
     def test_delete_session(self, router_env):
         session_id = requests.post(f"{router_env.url}/sessions", timeout=5.0).json()["session_id"]

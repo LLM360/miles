@@ -698,8 +698,8 @@ class TestRollback:
         assert session.token_ids == [1, 2, 99]
         assert session.messages == [USER_MSG, ASSISTANT_MSG_FINAL]
 
-    def test_rollback_to_empty_beyond_one_assistant_raises(self, registry: SessionRegistry):
-        """Resetting to empty is still bounded by MAX_ASSISTANT_ROLLBACK_STEPS."""
+    def test_original_prompt_retry_restarts_after_multiple_replies(self, registry: SessionRegistry):
+        """Stable permits a complete restart when the original prompt is replayed."""
         sid = registry.create_session()
         session = registry.get_session(sid)
 
@@ -710,12 +710,20 @@ class TestRollback:
         session.update_pretokenized_state(turn2, ASSISTANT_MSG_2, [1, 2, 10, 20], [30], max_trim_tokens=0)
         assert session.num_assistant == 2
 
-        # Discarding both assistants exceeds the single-step budget.
+        # Changing the original prompt is still outside the one-step budget.
         with pytest.raises(MessageValidationError, match="exceeds max_assistant_rollback_steps"):
-            session.prepare_pretokenized(turn1, tito_tokenizer=registry.tito_tokenizer)
-
+            session.prepare_pretokenized(
+                [{"role": "user", "content": "different task"}], tito_tokenizer=registry.tito_tokenizer
+            )
         assert session.num_assistant == 2
-        assert session.token_ids == [1, 2, 10, 20, 30]
+
+        result = session.prepare_pretokenized(turn1, tito_tokenizer=registry.tito_tokenizer)
+        assert result == _MOCK_FIRST_TURN_TOKENS
+        assert session.num_assistant == 0
+        assert session.token_ids == []
+        assert session.messages == []
+        assert session.records == []
+        assert session.generated_checkpoint_message_ends == []
 
     def test_rollback_records_truncated(self, registry: SessionRegistry):
         """Records are truncated in sync with trajectory_token_ids on rollback."""
