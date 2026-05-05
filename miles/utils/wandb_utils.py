@@ -156,6 +156,13 @@ def init_wandb_secondary(args, router_addr=None):
 def _init_wandb_common():
     wandb.define_metric("train/step")
     wandb.define_metric("train/*", step_metric="train/step")
+    # `train/rollout_id` and `train/step_in_rollout` are alternative x-axes
+    # to `train/step`. They let users view train/* metrics against a
+    # stable rollout-cycle counter or per-rollout-step index rather than
+    # the cumulative optimizer-step count, whose inter-rollout gaps are
+    # not constant under dynamic batching.
+    wandb.define_metric("train/rollout_id", step_metric="train/step")
+    wandb.define_metric("train/step_in_rollout", step_metric="train/step")
     wandb.define_metric("rollout/step")
     wandb.define_metric("rollout/*", step_metric="rollout/step")
     wandb.define_metric("multi_turn/*", step_metric="rollout/step")
@@ -163,3 +170,8 @@ def _init_wandb_common():
     wandb.define_metric("eval/step")
     wandb.define_metric("eval/*", step_metric="eval/step")
     wandb.define_metric("perf/*", step_metric="rollout/step")
+    # train/rollout_id is co-logged on both rollout-side and train-side log() calls
+    # so that any train/* or rollout/* metric can be cross-plotted against the
+    # rollout counter. Declared after the "train/*" wildcard so the specific name
+    # isn't inadvertently treated as step-metric'd against train/step.
+    wandb.define_metric("train/rollout_id")

@@ -638,6 +638,7 @@ def policy_loss_function(
             args.calculate_per_token_loss,
             args.qkv_format,
             max_seq_lens,
+            loss_agg_mode=getattr(args, "loss_agg_mode", None),
         )
 
     # Determine pg_loss reducer: use custom if specified, otherwise default
@@ -682,10 +683,25 @@ def policy_loss_function(
     if log_probs.numel() == 0:
         loss += 0 * logits.sum()
 
+    # Current and old policy log probs for policy_shift panel
+    log_probs_metric = sum_of_sample_mean(log_probs).clone().detach()
+    old_log_probs_metric = sum_of_sample_mean(old_log_probs).clone().detach()
+
+    # Train-inference mismatch: compare inference engine vs FSDP at rollout time
     train_rollout_logprob_abs_diff = None
+    train_rollout_logprob_diff = None
     if "rollout_log_probs" in batch and batch["rollout_log_probs"]:
-        rollout_log_probs = torch.cat(batch["rollout_log_probs"], dim=0)
-        train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs).abs())
+        rollout_log_probs_cat = torch.cat(batch["rollout_log_probs"], dim=0)
+        log_probs_batch_cat = torch.cat(batch["log_probs"], dim=0)
+        train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs_cat).abs()).clone().detach()
+        # signed: log π(inf) − log π(fsdp rollout)
+        train_rollout_logprob_diff = sum_of_sample_mean(rollout_log_probs_cat - log_probs_batch_cat).clone().detach()
+
+    # KL vs reference model — always log when ref present, regardless of use_kl_loss
+    ref_kl_metric = None
+    if "ref_log_probs" in batch and batch["ref_log_probs"]:
+        ref_log_probs_cat = torch.cat(batch["ref_log_probs"], dim=0)
+        ref_kl_metric = sum_of_sample_mean(log_probs - ref_log_probs_cat).clone().detach()
 
     reported_loss = {
         "loss": loss.clone().detach(),
@@ -693,10 +709,16 @@ def policy_loss_function(
         "entropy_loss": entropy_loss.clone().detach(),
         "pg_clipfrac": pg_clipfrac.clone().detach(),
         "ppo_kl": ppo_kl.clone().detach(),
+        "log_probs": log_probs_metric,
+        "old_log_probs": old_log_probs_metric,
     }
 
     if train_rollout_logprob_abs_diff is not None:
-        reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff.clone().detach()
+        reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff
+        reported_loss["train_rollout_logprob_diff"] = train_rollout_logprob_diff
+
+    if ref_kl_metric is not None:
+        reported_loss["ref_kl"] = ref_kl_metric
 
     if args.use_kl_loss:
         reported_loss["kl_loss"] = kl_loss.clone().detach()
@@ -866,6 +888,7 @@ def loss_function(
         args.calculate_per_token_loss,
         args.qkv_format,
         batch.get("max_seq_lens", None),
+        loss_agg_mode=getattr(args, "loss_agg_mode", None),
     )
 
     match args.loss_type:
@@ -901,24 +924,43 @@ def loss_function(
 
     # Here we need to divide by cp_size because to cancel the multiply in Megatron.
     assert args.use_dynamic_global_batch_size == ("dynamic_global_batch_size" in batch)
+
+    # Resolve effective loss mode: --loss-agg-mode takes precedence over --calculate-per-token-loss
+    loss_agg_mode = getattr(args, "loss_agg_mode", None)
+    if loss_agg_mode is None:
+        loss_agg_mode = "token-sum" if args.calculate_per_token_loss else "sample-mean"
+    uses_token_normalization = loss_agg_mode in ("token-mean", "token-sum")
+
+    # Scale loss for distributed training.
+    # - sample-mean: divide by global_batch_size (number of samples)
+    # - token-mean/token-sum: use num_tokens as normalizer
+    #   For Megatron: the external normalizer handles division by num_tokens.
+    #   For FSDP (apply_megatron_loss_scaling=False): token-mean explicitly
+    #   divides by num_tokens here since FSDP ignores the returned normalizer.
     global_batch_size = batch.get("dynamic_global_batch_size", args.global_batch_size)
-    if not args.calculate_per_token_loss:
+    if not uses_token_normalization:
+        # sample-mean path
         if apply_megatron_loss_scaling:
             loss = loss * num_microbatches / global_batch_size * parallel_state.intra_dp_cp.size
         else:
             loss = loss / global_batch_size * parallel_state.intra_dp.size
     else:
         if apply_megatron_loss_scaling:
+            # Megatron normalizes externally via num_tokens normalizer
             loss = loss * parallel_state.cp.size
+        elif loss_agg_mode == "token-mean":
+            # FSDP: normalize by num_tokens explicitly (FSDP ignores the normalizer)
+            loss = loss / torch.clamp_min(num_tokens, 1) * parallel_state.intra_dp.size
+        # token-sum on FSDP: no normalization (raw sum, legacy behavior)
 
     return (
         loss,
-        torch.tensor(num_tokens if args.calculate_per_token_loss else 1, device=logits.device),
+        torch.tensor(num_tokens if uses_token_normalization else 1, device=logits.device),
         {
             "keys": list(log.keys()),
             "values": torch.tensor(
                 [
-                    num_samples if not args.calculate_per_token_loss else num_tokens,
+                    num_samples if not uses_token_normalization else num_tokens,
                 ]
                 + list(log.values()),
                 device=logits.device,

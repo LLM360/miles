@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -77,7 +78,11 @@ class LinearTrajectory:
             return None
 
         # 1. Detect agent retries and roll back (at most one assistant step).
-        self._try_detect_and_rollback_to_assistant_checkpoint(request_messages)
+        #    Returns True iff the session was reseeded (see below); in that case
+        #    there is no stored history to merge against, so fall through to the
+        #    same None-return as an empty session.
+        if self._try_detect_and_rollback_to_assistant_checkpoint(request_messages):
+            return None
         # 2. Confirm the (possibly rolled-back) stored messages are a prefix of request,
         #    and that each appended message role is in tito_tokenizer.allowed_append_roles.
         try:
@@ -143,8 +148,15 @@ class LinearTrajectory:
     def _try_detect_and_rollback_to_assistant_checkpoint(
         self,
         request_messages: list[dict[str, Any]],
-    ) -> None:
+    ) -> bool:
         """Detect if *request_messages* diverges from stored history and roll back.
+
+        Returns ``True`` iff the session was reseeded to empty because the
+        matched prefix contains no assistant and no assistant turn has been
+        persisted yet (see "pre-assistant re-seed" below). Returns ``False``
+        for every other outcome (no rollback, or a normal rollback to a
+        prior assistant checkpoint). Callers should treat a ``True`` return
+        as equivalent to entering a fresh session.
 
         In agentic workflows the agent may retry from an earlier point — for
         example, re-running a tool call with different arguments.  When that
@@ -185,10 +197,21 @@ class LinearTrajectory:
         - The stored history is empty.
         - *request_messages* is a strict extension of stored messages
           (``match_len >= len(stored)``).
+
+        Pre-assistant re-seed: if the matched prefix contains no assistant
+        AND no assistant turn has been persisted yet (``num_assistant == 0``),
+        the stored state is a prompt-only seed (system/user) from a prior
+        request whose first assistant turn never completed, e.g. the LLM hit
+        ``max_tokens`` before emitting a stop token, errored in flight, or
+        timed out before the session record could be written. In that case
+        the session is reseeded to empty and ``True`` is returned so the
+        caller takes the fresh-session branch. This replaces a previous
+        ``MessageValidationError`` that killed trials which would otherwise
+        have recovered on retry.
         """
         stored = self.messages
         if not stored or not self.trajectory_token_ids:
-            return
+            return False
 
         match_len = 0
         for i in range(min(len(request_messages), len(stored))):
@@ -198,7 +221,7 @@ class LinearTrajectory:
                 break
 
         if match_len >= len(stored):
-            return
+            return False
 
         # Find the last assistant message within the matched prefix.
         rollback_msg_end = None
@@ -211,6 +234,33 @@ class LinearTrajectory:
                 assistant_count += 1
 
         if checkpoint_index < 0:
+            # Re-seed cases where the matched prefix has no assistant to
+            # roll back to. Two sub-cases collapse to the same action:
+            #   (a) stored has never persisted an assistant yet
+            #       (num_assistant == 0). Original case.
+            #   (b) stored has assistants, but the retry request is a
+            #       proper prefix of stored that ends BEFORE the first
+            #       stored assistant (match_len == len(request_messages)).
+            #       e.g. stored=[user, assistant], request=[user] from a
+            #       litellm retry that truncated the conversation. Rather
+            #       than fail the trial, drop stored state so the retry
+            #       can replay from scratch.
+            request_is_prefix = match_len == len(request_messages)
+            if self.num_assistant == 0 or request_is_prefix:
+                logger.info(
+                    "Reseeding session: no assistant checkpoint reachable, "
+                    "request diverges at index %d (stored=%d msgs, "
+                    "request=%d msgs, num_assistant=%d)",
+                    match_len,
+                    len(stored),
+                    len(request_messages),
+                    self.num_assistant,
+                )
+                self.messages = []
+                self.trajectory_token_ids = []
+                self.records = []
+                self.num_assistant = 0
+                return True
             raise MessageValidationError(
                 f"rollback failed: no assistant message found in the first "
                 f"{match_len} matched messages (stored has {len(stored)} messages, "
@@ -240,6 +290,7 @@ class LinearTrajectory:
         self.trajectory_token_ids = self.trajectory_token_ids[: checkpoint_index + 1]
         self.records = self.records[: checkpoint_index + 1]
         self.num_assistant = checkpoint_index + 1
+        return False
 
 
 class SessionRegistry:
@@ -252,6 +303,7 @@ class SessionRegistry:
 
     def __init__(self, args, tokenizer: Any, *, tito_tokenizer: TITOTokenizer):
         self.sessions: dict[str, LinearTrajectory] = {}
+        self._session_last_access: dict[str, float] = {}
         self.args = args
         self.tokenizer = tokenizer
         self.tito_tokenizer = tito_tokenizer
@@ -267,6 +319,36 @@ class SessionRegistry:
         if session is None:
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
         return session
+
+    def get_or_create_session(self, session_id: str) -> LinearTrajectory:
+        session = self.sessions.get(session_id)
+        if session is None:
+            self._evict_stale_sessions()
+            logger.warning("Auto-creating session %s (not found, likely router restart)", session_id)
+            session = LinearTrajectory()
+            self.sessions[session_id] = session
+            self._session_last_access[session_id] = time.monotonic()
+        else:
+            self._session_last_access[session_id] = time.monotonic()
+        return session
+
+    _SESSION_TTL_SECS: int = 7200  # 2 hours
+    _MAX_AUTO_CREATED: int = 10000
+
+    def _evict_stale_sessions(self) -> None:
+        """Remove auto-created sessions older than _SESSION_TTL_SECS."""
+        if not self._session_last_access:
+            return
+        now = time.monotonic()
+        stale = [
+            sid for sid, ts in self._session_last_access.items()
+            if now - ts > self._SESSION_TTL_SECS
+        ]
+        for sid in stale:
+            self.sessions.pop(sid, None)
+            self._session_last_access.pop(sid, None)
+        if stale:
+            logger.info("Evicted %d stale auto-created sessions", len(stale))
 
     def remove_session(self, session_id: str) -> None:
         if self.sessions.pop(session_id, None) is None:

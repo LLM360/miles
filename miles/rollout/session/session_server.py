@@ -81,7 +81,16 @@ class SessionServer:
     def build_proxy_response(self, result: dict) -> Response:
         content = result["response_body"]
         status_code = result["status_code"]
-        headers = result["headers"]
+        # Strip framing headers so JSONResponse / Response recompute them
+        # from the actual rendered body. Forwarding upstream's content-length
+        # verbatim breaks uvicorn h11 with "Too much data for declared
+        # Content-Length" whenever our re-serialization differs in even one
+        # byte. Mirrors the strip already done on the request path in do_proxy.
+        headers = {
+            k: v
+            for k, v in result["headers"].items()
+            if k.lower() not in ("content-length", "transfer-encoding")
+        }
         content_type = headers.get("content-type", "")
         try:
             data = json.loads(content)

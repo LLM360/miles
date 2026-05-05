@@ -76,7 +76,9 @@ def setup_session_routes(app, backend, args):
 
     @app.get("/sessions/{session_id}")
     async def get_session(session_id: str):
-        session = registry.get_session(session_id)
+        session = registry.sessions.get(session_id)
+        if session is None:
+            return GetSessionResponse(session_id=session_id, records=[], metadata={})
         metadata = {}
         try:
             mismatch = registry.compute_session_mismatch(session)
@@ -123,7 +125,7 @@ def setup_session_routes(app, backend, args):
         """
         _inflight_chat["count"] += 1
         try:
-            session = registry.get_session(session_id)
+            session = registry.get_or_create_session(session_id)
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
@@ -176,7 +178,28 @@ def setup_session_routes(app, backend, args):
             # pass it through to the agent without recording — the agent can retry
             # or handle the error.
             if result["status_code"] != 200:
-                return backend.build_proxy_response(result)
+                # Rollback failures indicate corrupted prefix-cache state in SGLang.
+                # Retry once without pretokenized input_ids so SGLang processes the
+                # request from scratch instead of attempting prefix continuation.
+                error_body = result.get("response_body") or b""
+                if isinstance(error_body, bytes):
+                    error_body = error_body.decode("utf-8", errors="replace")
+                if (
+                    result["status_code"] == 400
+                    and "rollback failed" in error_body.lower()
+                    and "input_ids" in request_body
+                ):
+                    logger.warning(
+                        "SGLang rollback failed for session %s, retrying without prefix continuation",
+                        session_id,
+                    )
+                    request_body.pop("input_ids", None)
+                    retry_body = json.dumps(request_body).encode()
+                    result = await backend.do_proxy(request, "v1/chat/completions", body=retry_body)
+                    if result["status_code"] != 200:
+                        return backend.build_proxy_response(result)
+                else:
+                    return backend.build_proxy_response(result)
 
             response = json.loads(result["response_body"])
 
@@ -245,6 +268,26 @@ def setup_session_routes(app, backend, args):
             return backend.build_proxy_response(result)
         finally:
             _inflight_chat["count"] -= 1
+
+    @app.get("/sessions/{session_id}/v1/model_info")
+    async def session_v1_model_info(session_id: str):
+        """OpenAI-compatible /v1/model_info stub.
+
+        LiteLLM (and other OpenAI-compat clients) probe /v1/model_info on
+        first connect for tokenizer hash and model-ID discovery. SGLang
+        does not expose /v1/model_info (it exposes /model_info without
+        the /v1/ prefix), so the default wildcard proxy below returns
+        404 and clients emit a warning on every new session.
+
+        Return a minimal stub advertising the served model name. Does
+        not validate the session_id because /v1/model_info is
+        session-independent; the session path segment is retained to
+        keep URL shape consistent with the other session endpoints.
+        """
+        return {
+            "id": getattr(args, "sglang_served_model_name", None) or "model",
+            "object": "model",
+        }
 
     @app.api_route("/sessions/{session_id}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def session_proxy(request: Request, session_id: str, path: str):

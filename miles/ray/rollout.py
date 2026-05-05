@@ -140,6 +140,13 @@ class ServerGroup:
                 }.items()
             }
             env_vars.update(dumper_utils.get_sglang_env(self.args))
+            # Propagate PYTHONPATH so Ray remote actors import the same miles
+            # / sglang modules as the driver. Without this, SGLangEngine
+            # actors inherit only the container's default PYTHONPATH and
+            # `import miles` falls back to a pip-installed /root/miles,
+            # silently bypassing any MILES_OVERRIDE on the driver's PYTHONPATH.
+            if "PYTHONPATH" in os.environ:
+                env_vars["PYTHONPATH"] = os.environ["PYTHONPATH"]
 
             rollout_engine = RolloutRayActor.options(
                 num_cpus=num_cpus,
@@ -170,7 +177,7 @@ class ServerGroup:
                 args=self.args, rollout_engines=rollout_engines
             )
         else:
-            base_port = max(port_cursors.values()) if port_cursors else 15000
+            base_port = max(port_cursors.values()) if port_cursors else 17500
             addr_and_ports, port_cursors = _allocate_rollout_engine_addr_and_ports_normal(
                 args=self.args,
                 rollout_engines=rollout_engines,
@@ -819,7 +826,7 @@ def _allocate_rollout_engine_addr_and_ports_normal(
     worker_type="regular",
     num_gpus_per_engine=None,
     rank_offset=0,
-    base_port=15000,
+    base_port=17500,
 ):
     # get ports
     # there are 4 ports we need to allocate
@@ -847,8 +854,17 @@ def _allocate_rollout_engine_addr_and_ports_normal(
         num_engines_on_this_node = num_engines_per_node - (local_rank % num_engines_per_node)
 
         def get_addr_and_ports(engine, node_idx):
-            # use small ports to prevent ephemeral port between 32768 and 65536.
-            # also, ray uses port 10002-19999, thus we avoid near-10002 to avoid racing condition
+            # Port range constraints (all must hold):
+            #   - < 32768 to stay clear of the ephemeral port range (32768-65535)
+            #   - > 10002 but away from 10002 to avoid races with Ray (10002-19999)
+            #   - > 17000 to stay clear of Mooncake's RPC handshake range
+            #     (rpc_min_port=15000..rpc_max_port=17000 from
+            #     mooncake-transfer-engine/include/config.h). Prior default of
+            #     15000 fully overlapped mooncake and caused intermittent
+            #     EADDRINUSE when mooncake's TransferEngine grabbed a port
+            #     inside the miles-allocated range before sglang's Uvicorn
+            #     could bind it.
+            # 17500+ satisfies all three.
             start_port = node_port_cursor.get(node_idx, base_port)
 
             def port(consecutive=1):
@@ -1171,6 +1187,7 @@ def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any]
 
     step = compute_rollout_step(args, rollout_id)
     log_dict["eval/step"] = step
+    log_dict["train/rollout_id"] = rollout_id
     tracking_utils.log(args, log_dict, step_key="eval/step")
 
     return log_dict
@@ -1191,13 +1208,16 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
     logger.info(f"perf {rollout_id}: {log_dict}")
     step = compute_rollout_step(args, rollout_id)
     log_dict["rollout/step"] = step
+    log_dict["train/rollout_id"] = rollout_id
     tracking_utils.log(args, log_dict, step_key="rollout/step")
 
 
 def compute_metrics_from_samples(args, samples):
     response_lengths = [sample.effective_response_length for sample in samples]
+    n = len(samples)
 
     log_dict = {}
+    # existing keys (unchanged)
     log_dict |= dict_add_prefix(compute_statistics(response_lengths), "response_len/")
     log_dict |= _compute_zero_std_metrics(args, samples)
     log_dict |= _compute_spec_metrics(args, samples)
@@ -1230,6 +1250,35 @@ def compute_metrics_from_samples(args, samples):
                 )
             # assistant_text mismatch is non-critical: assistant tokens are inherited
             # from the pretokenized prefix and may differ from canonical tokenization.
+    # new top-level grouped keys: global
+    log_dict |= _compute_grouped_reward_metrics(args, samples, "reward", n, include_count_frac=False)
+    log_dict |= _compute_grouped_response_metrics(args, samples, "response_stats")
+    log_dict |= _compute_group_outcome_metrics(args, samples, prefix="reward")
+
+    # per-correctness (no count_frac: for binary rewards = mean reward = already in reward/raw_reward)
+    correct = [s for s in samples if s.get_reward_value(args) > 0]
+    incorrect = [s for s in samples if s.get_reward_value(args) <= 0]
+    for label, grp in [("correct", correct), ("incorrect", incorrect)]:
+        if grp:
+            log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{label}", n, include_count_frac=False)
+            log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{label}")
+
+    # per-category and combined (only if category data present)
+    cat_key = _get_problem_category_key(args, samples)
+    if cat_key is not None:
+        for cat, cat_grp in group_by(samples, lambda s: s.metadata.get(cat_key)).items():
+            if cat is None or not cat_grp:
+                continue
+            log_dict |= _compute_grouped_reward_metrics(args, cat_grp, f"reward/{cat}", n)
+            log_dict |= _compute_grouped_response_metrics(args, cat_grp, f"response_stats/{cat}")
+            log_dict |= _compute_group_outcome_metrics(args, cat_grp, prefix=f"reward/{cat}")
+            for label, grp in [
+                ("correct", [s for s in cat_grp if s.get_reward_value(args) > 0]),
+                ("incorrect", [s for s in cat_grp if s.get_reward_value(args) <= 0]),
+            ]:
+                if grp:
+                    log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{cat}/{label}", n)
+                    log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{cat}/{label}")
 
     return log_dict
 
@@ -1313,3 +1362,57 @@ def _compute_reward_cat_metrics(args, all_samples: list[Sample]):
     samples_of_reward_cat = group_by(all_samples, lambda s: s.reward[reward_cat_key])
 
     return {f"error_cat/{reward_cat}": len(s) / len(all_samples) for reward_cat, s in samples_of_reward_cat.items()}
+
+
+# Candidate metadata keys to auto-detect problem category (checked in order)
+_CANDIDATE_CATEGORY_KEYS = ["category", "type", "subject", "domain", "problem_type"]
+
+
+def _get_problem_category_key(args, all_samples: list[Sample]) -> str | None:
+    """Return the metadata key to use for problem category grouping, or None if not available."""
+    explicit = getattr(args, "log_problem_category", None)
+    if explicit:
+        return explicit
+    for sample in all_samples:
+        if sample.metadata:
+            for key in _CANDIDATE_CATEGORY_KEYS:
+                if key in sample.metadata:
+                    return key
+    return None
+
+
+def _compute_grouped_reward_metrics(
+    args, group: list[Sample], prefix: str, n_total: int, include_count_frac: bool = True
+) -> dict:
+    """Reward/outcome metrics for a split — emitted under reward/ sections."""
+    result = {f"{prefix}/raw_reward": np.mean([s.get_reward_value(args) for s in group]).item()}
+    if include_count_frac:
+        result[f"{prefix}/count_frac"] = len(group) / n_total
+    return result
+
+
+def _compute_grouped_response_metrics(args, group: list[Sample], prefix: str) -> dict:
+    """Response shape metrics for a split — emitted under response_stats/ sections."""
+    return {
+        f"{prefix}/response_len": np.mean([s.effective_response_length for s in group]).item(),
+        f"{prefix}/truncated_frac": np.mean([int(s.status == Sample.Status.TRUNCATED) for s in group]).item(),
+        f"{prefix}/repetition_frac": np.mean([int(has_repetition(s.response)) for s in group]).item(),
+    }
+
+
+def _compute_group_outcome_metrics(
+    args, all_samples: list[Sample], prefix: str = "reward"
+) -> dict:
+    """Fraction of prompt groups that are unanimously correct or incorrect. GRPO only."""
+    if args.advantage_estimator == "ppo":
+        return {}
+    groups = list(group_by(all_samples, lambda s: s.group_index).values())
+    n_groups = len(groups)
+    if n_groups == 0:
+        return {}
+    all_correct = sum(1 for g in groups if all(s.get_reward_value(args) > 0 for s in g))
+    all_incorrect = sum(1 for g in groups if all(s.get_reward_value(args) <= 0 for s in g))
+    return {
+        f"{prefix}/all_correct_group_frac": all_correct / n_groups,
+        f"{prefix}/all_incorrect_group_frac": all_incorrect / n_groups,
+    }
