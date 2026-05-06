@@ -86,10 +86,13 @@ class SessionServer:
         # verbatim breaks uvicorn h11 with "Too much data for declared
         # Content-Length" whenever our re-serialization differs in even one
         # byte. Mirrors the strip already done on the request path in do_proxy.
+        # Also strip "server": uvicorn adds its own Server header; passing
+        # the upstream one through produces two Server headers, which strict
+        # HTTP parsers (aiohttp/llhttp via litellm) reject as malformed.
         headers = {
             k: v
             for k, v in result["headers"].items()
-            if k.lower() not in ("content-length", "transfer-encoding")
+            if k.lower() not in ("content-length", "transfer-encoding", "server")
         }
         content_type = headers.get("content-type", "")
         try:
