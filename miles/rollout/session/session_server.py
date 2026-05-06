@@ -87,9 +87,7 @@ class SessionServer:
         # Content-Length" whenever our re-serialization differs in even one
         # byte. Mirrors the strip already done on the request path in do_proxy.
         headers = {
-            k: v
-            for k, v in result["headers"].items()
-            if k.lower() not in ("content-length", "transfer-encoding")
+            k: v for k, v in result["headers"].items() if k.lower() not in ("content-length", "transfer-encoding")
         }
         content_type = headers.get("content-type", "")
         try:
