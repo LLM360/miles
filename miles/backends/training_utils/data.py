@@ -115,10 +115,22 @@ def get_batch(
     parallel_state = get_parallel_state()
 
     assert "tokens" in keys
+    has_domains = "domains" in data_iterator.rollout_data
+    if has_domains and "domains" not in keys:
+        keys = list(keys) + ["domains"]
     batch = data_iterator.get_next(keys)
 
     if "dynamic_global_batch_size" in data_iterator.rollout_data:
         batch["dynamic_global_batch_size"] = data_iterator.rollout_data["dynamic_global_batch_size"]
+
+    # Canonical domain set, cached on the iterator so every microbatch emits the
+    # same list (aggregate_train_losses keys positionally on the first microbatch).
+    if has_domains:
+        if not hasattr(data_iterator, "_all_domains_cache"):
+            data_iterator._all_domains_cache = sorted(
+                {d for d in data_iterator.rollout_data["domains"] if d}
+            )
+        batch["all_domains"] = data_iterator._all_domains_cache
 
     tokens = batch["tokens"]
     # use 0 as the pad token id should be fine?

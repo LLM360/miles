@@ -38,7 +38,13 @@ from miles.utils.http_utils import (
 from miles.utils.iter_utils import group_by
 from miles.utils.logging_utils import configure_logger
 from miles.utils.metric_checker import MetricChecker
-from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_statistics, dict_add_prefix
+from miles.utils.metric_utils import (
+    compute_pass_rate,
+    compute_rollout_step,
+    compute_samples_seen,
+    compute_statistics,
+    dict_add_prefix,
+)
 from miles.utils.misc import load_function
 from miles.utils.ray_utils import Box
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
@@ -752,6 +758,11 @@ class RolloutManager:
         if samples[0].train_metadata is not None:
             train_data["metadata"] = [sample.train_metadata for sample in samples]
 
+        # Presence of metadata["domain"] activates per-domain metric fan-out in policy_loss_function.
+        domains = [s.metadata.get("domain") for s in samples]
+        if any(domains):
+            train_data["domains"] = domains
+
         if any(sample.multimodal_train_inputs is not None for sample in samples):
             train_data["multimodal_train_inputs"] = [sample.multimodal_train_inputs for sample in samples]
 
@@ -869,6 +880,7 @@ class RolloutManager:
                 "prompt",
                 "teacher_log_probs",
                 "weight_versions",
+                "domains",
             ]:
                 if key not in data:
                     continue
@@ -1371,10 +1383,16 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
     log_dict = {**(rollout_extra_metrics or {})}
     log_dict |= dict_add_prefix(compute_metrics_from_samples(args, samples), "rollout/")
     log_dict |= dict_add_prefix(compute_perf_metrics_from_samples(args, samples, rollout_time), "perf/")
+    # Mirror reward/* and response_stats/* as top-level wandb panels.
+    for full_key, val in list(log_dict.items()):
+        if full_key.startswith(("rollout/reward/", "rollout/response_stats/")):
+            log_dict[full_key[len("rollout/"):]] = val
     logger.info(f"perf {rollout_id}: {log_dict}")
     step = compute_rollout_step(args, rollout_id)
     log_dict["rollout/step"] = step
     log_dict["train/rollout_id"] = rollout_id
+    log_dict["samples_seen"] = compute_samples_seen(args, rollout_id)
+    log_dict["rollout_step"] = step
     tracking_utils.log(args, log_dict, step_key="rollout/step")
 
 
@@ -1422,8 +1440,9 @@ def compute_metrics_from_samples(args, samples):
     log_dict |= _compute_group_outcome_metrics(args, samples, prefix="reward")
 
     # per-correctness (no count_frac: for binary rewards = mean reward = already in reward/raw_reward)
-    correct = [s for s in samples if s.get_reward_value(args) > 0]
-    incorrect = [s for s in samples if s.get_reward_value(args) <= 0]
+    correct = [s for s in samples if _correctness(s, args)]
+    incorrect = [s for s in samples if not _correctness(s, args)]
+    log_dict["reward/correctness"] = len(correct) / n
     for label, grp in [("correct", correct), ("incorrect", incorrect)]:
         if grp:
             log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{label}", n, include_count_frac=False)
@@ -1438,10 +1457,10 @@ def compute_metrics_from_samples(args, samples):
             log_dict |= _compute_grouped_reward_metrics(args, cat_grp, f"reward/{cat}", n)
             log_dict |= _compute_grouped_response_metrics(args, cat_grp, f"response_stats/{cat}")
             log_dict |= _compute_group_outcome_metrics(args, cat_grp, prefix=f"reward/{cat}")
-            for label, grp in [
-                ("correct", [s for s in cat_grp if s.get_reward_value(args) > 0]),
-                ("incorrect", [s for s in cat_grp if s.get_reward_value(args) <= 0]),
-            ]:
+            cat_correct = [s for s in cat_grp if _correctness(s, args)]
+            cat_incorrect = [s for s in cat_grp if not _correctness(s, args)]
+            log_dict[f"reward/{cat}/correctness"] = len(cat_correct) / len(cat_grp)
+            for label, grp in [("correct", cat_correct), ("incorrect", cat_incorrect)]:
                 if grp:
                     log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{cat}/{label}", n)
                     log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{cat}/{label}")
@@ -1485,6 +1504,9 @@ def compute_perf_metrics_from_samples(args, samples, rollout_time):
 def _compute_zero_std_metrics(args, all_samples: list[Sample]):
     # only compute in GRPO-like algorithms where one prompt has multiple responses
     if args.advantage_estimator == "ppo":
+        return {}
+    # Skip non-scalar rewards (round() and zero-std comparison are ill-defined on dicts).
+    if all_samples and not isinstance(all_samples[0].get_reward_value(args), (int, float)):
         return {}
 
     def _is_zero_std(samples: list[Sample]):
@@ -1530,8 +1552,11 @@ def _compute_reward_cat_metrics(args, all_samples: list[Sample]):
     return {f"error_cat/{reward_cat}": len(s) / len(all_samples) for reward_cat, s in samples_of_reward_cat.items()}
 
 
-# Candidate metadata keys to auto-detect problem category (checked in order)
-_CANDIDATE_CATEGORY_KEYS = ["category", "type", "subject", "domain", "problem_type"]
+# Candidate metadata keys to auto-detect problem category (checked in order).
+# `domain` is first because it's the routing key in multi-teacher setups; if a sample
+# carries both `domain` and one of the legacy fields like `category`, group by domain
+# so per-cat correctness panels match the per-domain loss panels.
+_CANDIDATE_CATEGORY_KEYS = ["domain", "category", "type", "subject", "problem_type"]
 
 
 def _get_problem_category_key(args, all_samples: list[Sample]) -> str | None:
@@ -1547,11 +1572,22 @@ def _get_problem_category_key(args, all_samples: list[Sample]) -> str | None:
     return None
 
 
+def _correctness(sample: Sample, args) -> bool:
+    """Non-scalar reward fns set metadata["correctness_reward"]; scalars fall back to sign."""
+    if "correctness_reward" in sample.metadata:
+        return sample.metadata["correctness_reward"] > 0
+    val = sample.get_reward_value(args)
+    return isinstance(val, (int, float)) and val > 0
+
+
 def _compute_grouped_reward_metrics(
     args, group: list[Sample], prefix: str, n_total: int, include_count_frac: bool = True
 ) -> dict:
     """Reward/outcome metrics for a split — emitted under reward/ sections."""
-    result = {f"{prefix}/raw_reward": np.mean([s.get_reward_value(args) for s in group]).item()}
+    result = {}
+    # Skip raw_reward when reward is non-scalar (e.g. dict-valued OPD rewards).
+    if group and isinstance(group[0].get_reward_value(args), (int, float)):
+        result[f"{prefix}/raw_reward"] = np.mean([s.get_reward_value(args) for s in group]).item()
     if include_count_frac:
         result[f"{prefix}/count_frac"] = len(group) / n_total
     return result
@@ -1576,8 +1612,8 @@ def _compute_group_outcome_metrics(
     n_groups = len(groups)
     if n_groups == 0:
         return {}
-    all_correct = sum(1 for g in groups if all(s.get_reward_value(args) > 0 for s in g))
-    all_incorrect = sum(1 for g in groups if all(s.get_reward_value(args) <= 0 for s in g))
+    all_correct = sum(1 for g in groups if all(_correctness(s, args) for s in g))
+    all_incorrect = sum(1 for g in groups if all(not _correctness(s, args) for s in g))
     return {
         f"{prefix}/all_correct_group_frac": all_correct / n_groups,
         f"{prefix}/all_incorrect_group_frac": all_incorrect / n_groups,
