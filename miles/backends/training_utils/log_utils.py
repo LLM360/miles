@@ -22,33 +22,33 @@ logger = logging.getLogger(__name__)
 # Maps bare metric names to their W&B top-level section(s).
 # Keys appearing in multiple sections (e.g. pg_loss) are emitted under each.
 _TRAIN_METRIC_GROUPS: dict[str, list[str]] = {
-    "ppo_kl": ["policy_shift"],
-    "ois": ["policy_shift"],
-    "pg_clipfrac": ["policy_shift"],
-    "pg_loss": ["policy_shift", "optimization"],
-    "log_probs": ["policy_shift"],  # current policy (training forward pass)
-    "old_log_probs": ["policy_shift"],  # old policy (rollout or FSDP rollout)
-    "ref_kl": ["policy_shift"],
+    "ppo_kl":                         ["policy_shift"],
+    "ois":                            ["policy_shift"],
+    "pg_clipfrac":                    ["policy_shift"],
+    "pg_loss":                        ["policy_shift", "optimization"],
+    "log_probs":                      ["policy_shift"],   # current policy (training forward pass)
+    "old_log_probs":                  ["policy_shift"],   # old policy (rollout or FSDP rollout)
+    "ref_kl":                         ["policy_shift"],
     "train_rollout_logprob_abs_diff": ["train_inference_mismatch"],
-    "train_rollout_logprob_diff": ["train_inference_mismatch"],
-    "tis": ["train_inference_mismatch"],
-    "tis_abs": ["train_inference_mismatch"],
-    "tis_clipfrac": ["train_inference_mismatch"],
-    "loss": ["optimization"],
-    "entropy_loss": ["optimization"],
-    "kl_loss": ["optimization"],
-    "grad_norm": ["optimization"],
+    "train_rollout_logprob_diff":     ["train_inference_mismatch"],
+    "tis":                            ["train_inference_mismatch"],
+    "tis_abs":                        ["train_inference_mismatch"],
+    "tis_clipfrac":                   ["train_inference_mismatch"],
+    "loss":                           ["optimization"],
+    "entropy_loss":                   ["optimization"],
+    "kl_loss":                        ["optimization"],
+    "grad_norm":                      ["optimization"],
 }
 
 # Maps rollout batch field names to their W&B top-level section.
 _ROLLOUT_DATA_METRIC_GROUPS: dict[str, str] = {
-    "log_probs": "train_inference_mismatch",  # FSDP log probs at rollout time
+    "log_probs":         "train_inference_mismatch",  # FSDP log probs at rollout time
     "rollout_log_probs": "train_inference_mismatch",  # inference engine log probs
-    "ref_log_probs": "policy_shift",  # reference model log probs
-    "rewards": "reward",
-    "raw_reward": "reward",
-    "advantages": "reward",
-    "returns": "reward",
+    "ref_log_probs":     "policy_shift",              # reference model log probs
+    "rewards":           "reward",
+    "raw_reward":        "reward",
+    "advantages":        "reward",
+    "returns":           "reward",
 }
 
 
@@ -533,7 +533,7 @@ def log_train_step(
     for full_key, val in log_dict_out.items():
         if not full_key.startswith(prefix):
             continue
-        bare_key = full_key[len(prefix) :]
+        bare_key = full_key[len(prefix):]
         if bare_key in _TRAIN_METRIC_GROUPS:
             for group in _TRAIN_METRIC_GROUPS[bare_key]:
                 grouped_additions[f"{group}/{bare_key}"] = val

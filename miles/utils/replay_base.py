@@ -123,7 +123,9 @@ class BaseReplayManager:
                 _, sorted_free = masked_scores.sort(dim=1, descending=True)
                 # The k-th -1 slot in each row gets sorted_free[row, k].
                 pad_cumsum = torch.cumsum(padding_mask.long(), dim=1) - 1
-                fill_values = torch.gather(sorted_free, 1, pad_cumsum.clamp(min=0)).to(top_indices.dtype)
+                fill_values = torch.gather(sorted_free, 1, pad_cumsum.clamp(min=0)).to(
+                    top_indices.dtype
+                )
                 top_indices = torch.where(padding_mask, fill_values, top_indices)
 
             if return_probs:
