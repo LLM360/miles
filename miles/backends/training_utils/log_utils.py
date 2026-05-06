@@ -9,7 +9,7 @@ import torch.distributed as dist
 
 from miles.utils import train_metric_utils
 from miles.utils.flops_utils import calculate_fwd_flops
-from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step
+from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_samples_seen
 from miles.utils.types import RolloutBatch
 
 from ...utils import tracking_utils
@@ -170,6 +170,7 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
                 "dynamic_global_batch_size",
                 "weight_versions",
                 "metadata",
+                "domains",
             ]:
                 continue
             # Upload per sample mean for each rollout value
@@ -526,6 +527,9 @@ def log_train_step(
     log_dict_out["train/rollout_id"] = rollout_id
     log_dict_out["train/step_in_rollout"] = step_id
     log_dict_out["rollout/step"] = compute_rollout_step(args, rollout_id)
+    log_dict_out["samples_seen"] = compute_samples_seen(args, rollout_id)
+    log_dict_out["train_step"] = accumulated_step_id
+    log_dict_out["rollout_step"] = log_dict_out["rollout/step"]
 
     # Emit top-level grouped copies for W&B panel organization (existing train/ keys unchanged)
     grouped_additions = {}
@@ -534,9 +538,13 @@ def log_train_step(
         if not full_key.startswith(prefix):
             continue
         bare_key = full_key[len(prefix):]
-        if bare_key in _TRAIN_METRIC_GROUPS:
-            for group in _TRAIN_METRIC_GROUPS[bare_key]:
-                grouped_additions[f"{group}/{bare_key}"] = val
+        # Per-domain keys arrive as "<metric>/<domain>" — route to "<group>/<domain>/<metric>".
+        metric_name, sep, domain = bare_key.rpartition("/")
+        lookup = metric_name if (sep and metric_name in _TRAIN_METRIC_GROUPS) else bare_key
+        if lookup in _TRAIN_METRIC_GROUPS:
+            suffix = f"{domain}/{metric_name}" if lookup == metric_name else bare_key
+            for group in _TRAIN_METRIC_GROUPS[lookup]:
+                grouped_additions[f"{group}/{suffix}"] = val
         elif bare_key.startswith("lr-pg_"):
             grouped_additions[f"optimization/{bare_key}"] = val
     log_dict_out.update(grouped_additions)
