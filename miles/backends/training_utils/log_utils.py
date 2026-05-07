@@ -9,7 +9,7 @@ import torch.distributed as dist
 
 from miles.utils import train_metric_utils
 from miles.utils.flops_utils import calculate_fwd_flops
-from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_samples_seen
+from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step
 from miles.utils.types import RolloutBatch
 
 from ...utils import tracking_utils
@@ -51,6 +51,13 @@ _ROLLOUT_DATA_METRIC_GROUPS: dict[str, str] = {
     "returns":           "reward",
 }
 
+# Cumulative train-step counter across all rollouts. The previous formula
+# `rollout_id * num_steps_per_rollout + step_id` collides (and decreases) when
+# `num_steps_per_rollout` shrinks across rollouts under dynamic batching, since
+# each rollout uses its own current num_steps_per_rollout as a scaling factor.
+# A simple monotone counter is invariant to that jitter.
+_TRAIN_STEP_COUNTER = 0
+
 
 def gather_log_data(
     metric_name: str,
@@ -77,7 +84,15 @@ def gather_log_data(
     # dict to the union of keys with NaN so every rank sends the same shape.
     # Cost is one all_gather_object on a tiny key list.
     all_keys: list = [None] * dp_size
+    logger.info(
+        f"[rank={pg.rank}/{dp_size}] gather_log_data({metric_name}) "
+        f"rollout={rollout_id} entering all_gather_object, keys={len(log_dict)}"
+    )
     dist.all_gather_object(all_keys, sorted(log_dict.keys()), group=pg.gloo_group)
+    logger.info(
+        f"[rank={pg.rank}/{dp_size}] gather_log_data({metric_name}) "
+        f"rollout={rollout_id} all_gather_object returned"
+    )
     union_keys: set = set()
     for ks in all_keys:
         if ks:
@@ -493,7 +508,9 @@ def log_train_step(
     Returns:
         The formatted log_dict (for CI tests or other uses).
     """
-    accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
+    global _TRAIN_STEP_COUNTER
+    accumulated_step_id = _TRAIN_STEP_COUNTER
+    _TRAIN_STEP_COUNTER += 1
     role_tag = "" if role == "actor" else f"{role}-"
 
     log_dict_out = {
@@ -526,10 +543,7 @@ def log_train_step(
     # cross-plotted against rollout-side axes in the wandb UI.
     log_dict_out["train/rollout_id"] = rollout_id
     log_dict_out["train/step_in_rollout"] = step_id
-    log_dict_out["rollout/step"] = compute_rollout_step(args, rollout_id)
-    log_dict_out["samples_seen"] = compute_samples_seen(args, rollout_id)
     log_dict_out["train_step"] = accumulated_step_id
-    log_dict_out["rollout_step"] = log_dict_out["rollout/step"]
 
     # Emit top-level grouped copies for W&B panel organization (existing train/ keys unchanged)
     grouped_additions = {}
