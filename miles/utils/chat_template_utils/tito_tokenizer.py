@@ -1,15 +1,20 @@
 """TITO tokenizer — incremental tokenization for pretokenized prefix reuse.
 
-``TITOTokenizer`` computes incremental token IDs for non-assistant messages
-(tool responses, user follow-ups, system injections) that follow the
-assistant's generated token sequence, then merges them with the pretokenized
-prefix — handling model-specific boundary tokens at the junction.
+``TITOTokenizer`` computes incremental token IDs for messages appended after
+the assistant's generated token sequence (tool responses, user follow-ups,
+system injections, mid-conversation assistant planning turns), then merges
+them with the pretokenized prefix — handling model-specific boundary tokens
+at the junction.
 
-The default implementation incrementally tokenizes appended non-assistant turns
-with role-specific synthetic prefixes:
+The default implementation incrementally tokenizes appended turns with
+role-specific synthetic prefixes:
 
 - contiguous ``tool`` runs use ``[dummy_system, dummy_assistant]``
 - each ``user`` or ``system`` message uses ``[dummy_system]``
+- each ``assistant`` message uses ``[dummy_user]`` (gives the template a
+  natural ``user → assistant`` boundary so the diff captures the assistant
+  opener tokens; used by agents like terminus-2 that inject planning turns
+  between tool calls)
 
 The appended suffix is processed left-to-right, then the generation prompt for
 the next assistant turn is appended once at the end.  Model-specific
@@ -26,6 +31,7 @@ from miles.utils.chat_template_utils.template import apply_chat_template, assert
 from miles.utils.chat_template_utils.token_seq_comparator import TokenSeqComparator
 
 _DUMMY_SYSTEM: dict[str, Any] = {"role": "system", "content": "dummy system"}
+_DUMMY_USER: dict[str, Any] = {"role": "user", "content": "dummy user"}
 
 
 def _build_dummy_assistant(tool_responses: list[dict[str, Any]]) -> dict[str, Any]:
@@ -114,7 +120,7 @@ class TITOTokenizer:
                 segments.append(appended_messages[i:j])
                 i = j
                 continue
-            if role in {"user", "system"}:
+            if role in {"user", "system", "assistant"}:
                 segments.append([appended_messages[i]])
                 i += 1
                 continue
@@ -171,18 +177,39 @@ class TITOTokenizer:
             tools=tools,
         )
 
+    def _tokenize_assistant_segment(
+        self,
+        appended_message: dict[str, Any],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> list[int]:
+        # Assistant messages injected mid-conversation (e.g. terminus-2
+        # planning turns between tool calls). The synthetic prefix
+        # ``[_DUMMY_USER]`` gives the chat template the natural
+        # ``user → assistant`` transition, so the diff captures the
+        # ``<|assistant|>`` opener tokens (GLM-4.7) / ``<|im_start|>assistant``
+        # tokens (Qwen3) plus content. Subclass ``merge_tokens`` overrides
+        # still apply at the prefix junction.
+        return self._tokenize_rendered_suffix(
+            [_DUMMY_USER],
+            [appended_message],
+            tools=tools,
+        )
+
     def tokenize_additional_non_assistant(
         self,
         old_messages: list[dict[str, Any]],
         new_messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> list[int]:
-        """Compute incremental token IDs for non-assistant messages appended
-        after the pretokenized prefix.
+        """Compute incremental token IDs for messages appended after the
+        pretokenized prefix.
 
-        Handles tool responses, user, and system messages —
-        never an assistant message.  Validates that *new_messages* is an
-        append-only extension of *old_messages* via
+        Handles tool responses, user, system, and assistant messages.
+        (Method name preserved for backwards compatibility; despite the
+        ``_non_assistant`` suffix, ``assistant`` is now an allowed appended
+        role for agents that inject mid-conversation planning turns —
+        e.g. terminus-2.) Validates that *new_messages* is an append-only
+        extension of *old_messages* via
         ``assert_messages_append_only_with_allowed_role``.
 
         Args:
@@ -209,6 +236,8 @@ class TITOTokenizer:
                 incremental.extend(self._tokenize_tool_segment(segment, tools))
             elif role == "user" or role == "system":
                 incremental.extend(self._tokenize_user_and_system_segment(segment[0], tools))
+            elif role == "assistant":
+                incremental.extend(self._tokenize_assistant_segment(segment[0], tools))
             else:
                 raise ValueError(f"unsupported appended role for TITO tokenization: {role}")
 
