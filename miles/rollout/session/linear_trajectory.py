@@ -83,7 +83,29 @@ class LinearTrajectory:
         #    same None-return as an empty session.
         if self._try_detect_and_rollback_to_assistant_checkpoint(request_messages):
             return None
-        # 2. Confirm the (possibly rolled-back) stored messages are a prefix of request,
+        # 2. TITO incremental tokenization is defined for non-assistant appended
+        #    turns: tool responses, user follow-ups, system injections. Each
+        #    appended-role surface is paired with a registered, validated
+        #    synthetic context (see TITOTokenizer._tokenize_*_segment) that
+        #    preserves boundary tokens for that role. Agent-layer-inserted
+        #    assistant turns (e.g. terminus-2 self-reflection / planning turns
+        #    between tool calls) have no registered surface, so we fall back to
+        #    from-scratch tokenization for those turns. SGLang re-tokenizes
+        #    canonically and returns prompt_token_ids; the next turn's
+        #    incremental path resumes from those stored tokens via
+        #    update_pretokenized_state. KV-cache reuse is lost only on the
+        #    turn where the assistant insert occurs.
+        appended = request_messages[len(self.messages):]
+        if any(msg.get("role") == "assistant" for msg in appended):
+            logger.debug(
+                "prepare_pretokenized: appended messages include an assistant role "
+                "(%d appended, %d assistant); falling back to from-scratch "
+                "tokenization for this turn.",
+                len(appended),
+                sum(1 for m in appended if m.get("role") == "assistant"),
+            )
+            return None
+        # 3. Confirm the (possibly rolled-back) stored messages are a prefix of request,
         #    and that each appended message role is in tito_tokenizer.allowed_append_roles.
         try:
             assert_messages_append_only_with_allowed_role(
