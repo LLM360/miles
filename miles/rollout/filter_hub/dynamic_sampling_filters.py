@@ -3,7 +3,7 @@ import torch
 from miles.rollout.filter_hub.base_types import DynamicFilterOutput
 from miles.utils.types import Sample
 
-__all__ = ["check_reward_nonzero_std", "check_no_aborted"]
+__all__ = ["check_reward_nonzero_std", "check_no_aborted", "keep_all"]
 
 
 def check_reward_nonzero_std(args, samples: list[Sample], **kwargs):
@@ -34,4 +34,9 @@ def check_no_aborted(args, samples: list[Sample], **kwargs):
     """Reject entire group if any sample was aborted (e.g. env timeout, Docker crash)."""
     if any(s.status == Sample.Status.ABORTED for s in _flatten_samples(samples)):
         return DynamicFilterOutput(keep=False, reason="group_has_aborted")
+    return DynamicFilterOutput(keep=True)
+
+
+def keep_all(args, samples, **kwargs):
+    """Accept every group unconditionally (useful for smoke runs / agentic tasks)."""
     return DynamicFilterOutput(keep=True)
