@@ -15,28 +15,29 @@ Coverage contract — this file protects these invariants:
        both realistic single-turn buffers and multi-turn parser-driven
        session histories.
 
-Test → invariant map:
+The file is split into three banner-marked sections:
 
-  * ``test_buffer_matches_canonical_under_realistic_rollout`` — I1 + I2 + I3.
-        Phase 1 finalizes the buffer and compares to canonical; phase 2
-        forces an env follow-up so the boundary fix path fires even on
-        single-turn shapes (defeats the comparator's ``trim_trailing_ids``
-        shielding).
-  * ``test_append_via_realistic_buffer`` — I3 + I4 (core).
-        8 trajectories × 4 env shapes = 32 ``merge_tokens`` invocations,
-        each against a buffer with the realistic ``<|im_end|>`` tail.
-  * ``test_chat_template_round_trip_through_real_sglang_parsers`` — I4
-        with parser-derived ``parsed_msg`` substituted for raw model emit
-        (structural round-trip only).
-  * ``test_end_to_end_realistic_rollout_with_real_parsers`` — I3 + I4
-        on parser-tainted multi-turn session.messages (integration
-        stress; failure here that doesn't reproduce in the simpler tests
-        above is a parser-interaction regression).
-  * ``test_production_prefix_check_raises_on_intentional_violation`` —
-        runtime defense (``update_pretokenized_state``'s prefix check) is
-        alive; orthogonal to I1-I4.
-  * ``test_k2v3_subclass_is_wired`` — registry returns the K2V3 subclass
-        rather than the base class; orthogonal to I1-I4.
+  SECTION A — CORE INVARIANT TESTS (I1-I4)
+      * ``test_buffer_matches_canonical_under_realistic_rollout``
+            — I1 + I2 + I3
+      * ``test_append_via_realistic_buffer``
+            — I3 + I4 (core; 8 trajectories × 4 env shapes = 32 cases)
+      * ``test_chat_template_round_trip_through_real_sglang_parsers``
+            — I4 with parser-derived ``parsed_msg`` substituted for raw
+            model emit (structural round-trip only)
+
+  SECTION B — INTEGRATION STRESS
+      * ``test_end_to_end_realistic_rollout_with_real_parsers``
+            — I3 + I4 on parser-tainted multi-turn session.messages;
+            failure here that doesn't reproduce in section A is a
+            parser-interaction regression specific to accumulated state
+
+  SECTION C — SANITY (orthogonal to I1-I4)
+      * ``test_production_prefix_check_raises_on_intentional_violation``
+            — runtime defense (``update_pretokenized_state``'s prefix
+            check) is alive
+      * ``test_k2v3_subclass_is_wired``
+            — registry returns the K2V3 subclass, not the base
 
 Why this file exists separately from ``test_tito_tokenizer_model_matrix.py``:
 that file builds ``pretokenized`` via ``apply_chat_template(..., add_generation_prompt=False)``,
@@ -323,9 +324,17 @@ def _drive_session_through_trajectory(
         )
 
 
-# ===========================================================================
-# Tests
-# ===========================================================================
+# ###########################################################################
+# ###########################################################################
+# ##                                                                       ##
+# ##  SECTION A — CORE INVARIANT TESTS                                     ##
+# ##                                                                       ##
+# ##  Each test below leads with the invariant(s) it protects (I1-I4 per   ##
+# ##  module docstring). These are the tests a reviewer should read first  ##
+# ##  to understand the contract this file enforces.                       ##
+# ##                                                                       ##
+# ###########################################################################
+# ###########################################################################
 
 
 @pytest.mark.parametrize(
@@ -419,13 +428,14 @@ def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, 
         )
 
 
-# ===========================================================================
-# Append-case test — mirrors the breadth of test_tito_tokenizer_model_matrix.py
-# but routes through ``update_pretokenized_state`` so the buffer used for
-# ``merge_tokens`` has the realistic ``<|im_end|>``-end shape (defeats the
-# comparator's ``trim_trailing_ids`` shielding that hides missing-fix bugs in
-# the model_matrix variant).
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# (Section A cont.) Append-case test — mirrors the breadth of
+# ``test_tito_tokenizer_model_matrix.py`` but routes through
+# ``update_pretokenized_state`` so the buffer used for ``merge_tokens`` has
+# the realistic ``<|im_end|>``-end shape (defeats the comparator's
+# ``trim_trailing_ids`` shielding that hides missing-fix bugs in the
+# model_matrix variant).
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -571,26 +581,20 @@ def test_append_via_realistic_buffer(traj_name, traj_cls, env_shape, tito_tok):
         cursor = found + len(content)
 
 
-# ===========================================================================
-# Real-SGLang-parser round-trip
+# ---------------------------------------------------------------------------
+# (Section A cont.) Real-SGLang-parser round-trip.
 #
-# Production data flow (server-side parsing):
+# Production server-side parsing flow:
+#   raw model text → ReasoningParser → FunctionCallParser
+#                  → structured assistant_message in session.messages
+#                  → next turn's chat_template re-renders it back to text
 #
-#   model raw text
-#       → ReasoningParser → reasoning_content + remaining text
-#       → FunctionCallParser → content + tool_calls
-#       → structured assistant_message stored in session.messages
-#       → next turn's chat_template re-renders that structured message
-#         back into text — which feeds the canonical compare
-#
-# If parser output drifts from what chat_template would re-emit (whitespace
+# If parser output drifts from what chat_template re-emits (whitespace
 # stripping, reasoning-block boundaries, tool_call argument formatting),
-# the structured message in history no longer round-trips, and either:
-#   (a) the chat_template renders it differently from the original raw
-#       emit → buffer-vs-canonical mismatch on subsequent turns, or
-#   (b) the chat_template raises (e.g. "tool_call.arguments must be a
-#       dict, not a string" — K2V3's chat template enforces this).
-# ===========================================================================
+# the structured message in history fails to round-trip — either causing
+# a buffer-vs-canonical mismatch on subsequent turns, or causing
+# chat_template to raise (e.g. K2V3's "tool_call.arguments must be dict").
+# ---------------------------------------------------------------------------
 
 
 # (Parser config is declared at the top of the file alongside K2V3_MODEL_PATH.)
@@ -813,30 +817,22 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
         )
 
 
-# ===========================================================================
-# End-to-end "boss" smoke tests
-#
-# These chain everything together: real SGLang parsers running on each
-# assistant turn, parser-derived ``parsed_msg`` accumulating in
-# ``session.messages`` across multiple turns, and a complex env follow-up
-# at the end that triggers ``prepare_pretokenized → merge_tokens`` against
-# a session whose history has been touched by the parser.
-#
-# The focused tests above cover each invariant in isolation. These boss
-# tests exist to catch integration regressions that only surface in the
-# full flow — specifically:
-#
-#   - parser-derived ``parsed_msg`` (with whatever whitespace shifts the
-#     parser introduces) being stored in ``session.messages``,
-#   - the next-turn ``prepare_pretokenized`` then walking
-#     ``assert_messages_append_only_with_allowed_role`` against that
-#     parser-derived history,
-#   - and the final env follow-up driving ``merge_tokens`` over a buffer
-#     that has accumulated multi-turn parser-derived content.
-#
-# Each flow uses a different "most complex" combination: multi-turn +
-# thinking + parallel tools + various env follow-up shapes.
-# ===========================================================================
+# ###########################################################################
+# ###########################################################################
+# ##                                                                       ##
+# ##  SECTION B — INTEGRATION STRESS                                       ##
+# ##                                                                       ##
+# ##  Chains real parsers across every assistant turn so parser-derived    ##
+# ##  ``parsed_msg`` accumulates in ``session.messages``, then runs        ##
+# ##  ``prepare_pretokenized → merge_tokens`` against that parser-tainted  ##
+# ##  history with a complex env follow-up.                                ##
+# ##                                                                       ##
+# ##  Section A covers each invariant in isolation. A failure here that    ##
+# ##  does NOT reproduce in section A indicates a parser-interaction       ##
+# ##  regression specific to accumulated multi-turn state.                 ##
+# ##                                                                       ##
+# ###########################################################################
+# ###########################################################################
 
 
 @dataclass(frozen=True)
@@ -1124,6 +1120,19 @@ def test_end_to_end_realistic_rollout_with_real_parsers(flow: _BossFlow, tito_to
             f"incremental_text={incremental_text!r}"
         )
         cursor = found + len(marker)
+
+
+# ###########################################################################
+# ###########################################################################
+# ##                                                                       ##
+# ##  SECTION C — SANITY (orthogonal to I1-I4)                             ##
+# ##                                                                       ##
+# ##  Guards on adjacent runtime defenses and registry wiring — these do   ##
+# ##  not test the boundary-fix invariants themselves but catch nearby     ##
+# ##  regressions that would silently disable the protection above.        ##
+# ##                                                                       ##
+# ###########################################################################
+# ###########################################################################
 
 
 def test_production_prefix_check_raises_on_intentional_violation(tito_tok):
