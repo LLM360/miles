@@ -1,38 +1,49 @@
 """TITO contract tests for the K2V3 family.
 
-Combines two test patterns from elsewhere in this repo:
+Coverage contract — this file protects these invariants:
 
-  * From ``test_tito_tokenizer_model_matrix.py`` —
-        breadth: realistic conversation shapes (single tool, multi-turn,
-        parallel tools, with/without thinking) drawn from
-        ``miles.utils.test_utils.mock_trajectories``.
+  (I1) K2V3 canonical chat template renders ``<|im_end|>\\n`` after every
+       message (the trailing ``\\n`` comes from jinja block whitespace).
+  (I2) Realistic rollout buffers can end at ``<|im_end|>`` WITHOUT the
+       trailing ``\\n`` — the model stops at ``<|im_end|>`` on
+       autoregressive emission.
+  (I3) ``K2V3TITOTokenizer.merge_tokens`` inserts the missing ``\\n``
+       when ``prefix[-1] == <|im_end|>``, so the merged buffer matches
+       canonical render.
+  (I4) Appended env messages (tool / user / system) round-trip through
+       ``merge_tokens`` and still match the canonical render — across
+       both realistic single-turn buffers and multi-turn parser-driven
+       session histories.
 
-  * From the rollout-side principle test (originally drafted for the
-    agentic-rl integration) —
-        depth: the rollout buffer used as ``pretokenized`` is built
-        through ``LinearTrajectory.update_pretokenized_state`` with
-        completion_token_ids that mirror what SGLang's
-        ``output_token_logprobs`` carries on a real autoregressive emit
-        (i.e. token sequence ending at ``<|im_end|>`` WITHOUT the trailing
-        ``\\n`` that the chat template's jinja whitespace adds).
+Test → invariant map:
 
-Why this matters for K2V3 specifically:
+  * ``test_buffer_matches_canonical_under_realistic_rollout`` — I1 + I2 + I3.
+        Phase 1 finalizes the buffer and compares to canonical; phase 2
+        forces an env follow-up so the boundary fix path fires even on
+        single-turn shapes (defeats the comparator's ``trim_trailing_ids``
+        shielding).
+  * ``test_append_via_realistic_buffer`` — I3 + I4 (core).
+        8 trajectories × 4 env shapes = 32 ``merge_tokens`` invocations,
+        each against a buffer with the realistic ``<|im_end|>`` tail.
+  * ``test_chat_template_round_trip_through_real_sglang_parsers`` — I4
+        with parser-derived ``parsed_msg`` substituted for raw model emit
+        (structural round-trip only).
+  * ``test_end_to_end_realistic_rollout_with_real_parsers`` — I3 + I4
+        on parser-tainted multi-turn session.messages (integration
+        stress; failure here that doesn't reproduce in the simpler tests
+        above is a parser-interaction regression).
+  * ``test_production_prefix_check_raises_on_intentional_violation`` —
+        runtime defense (``update_pretokenized_state``'s prefix check) is
+        alive; orthogonal to I1-I4.
+  * ``test_k2v3_subclass_is_wired`` — registry returns the K2V3 subclass
+        rather than the base class; orthogonal to I1-I4.
 
-The K2V3 chat template emits ``<|im_end|>\\n`` after every message
-(verified empirically; the ``\\n`` comes from jinja block whitespace
-between ``{{- '<|im_end|>' }}`` and the next template block). The model
-autoregressively stops at ``<|im_end|>`` without producing the trailing
-``\\n``. ``K2V3TITOTokenizer.merge_tokens`` inserts the missing newline
-to keep the buffer aligned with the canonical chat-template render.
-
-The existing ``test_tito_tokenizer_model_matrix.py`` does NOT exercise
-this fix because its ``pretokenized`` is computed with
-``apply_chat_template(old_messages, add_generation_prompt=False)`` —
-that render already includes the ``\\n``, so ``prefix[-1]`` is ``\\n`` and
-the boundary fix never fires (and the test passes whether the fix exists
-or not). This file closes that gap by routing through
-``update_pretokenized_state``, which produces the realistic
-``prefix[-1] == <|im_end|>`` state that requires the fix.
+Why this file exists separately from ``test_tito_tokenizer_model_matrix.py``:
+that file builds ``pretokenized`` via ``apply_chat_template(..., add_generation_prompt=False)``,
+which already contains the trailing ``\\n``, so the boundary fix path
+never fires and the test passes whether the fix exists or not. This file
+routes through ``update_pretokenized_state`` instead, producing the
+realistic ``prefix[-1] == <|im_end|>`` state that the fix exists for.
 
 Skips at module level if the K2V3 checkpoint is not on this host.
 """
@@ -323,22 +334,18 @@ def _drive_session_through_trajectory(
     ids=lambda x: x if isinstance(x, str) else None,
 )
 def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, tito_tok):
-    """Drive the trajectory through ``update_pretokenized_state`` with
-    ``<|im_end|>``-terminated completion_ids (the realistic autoregressive-stop
-    shape). Then compare ``session.token_ids`` to the chat-template canonical
-    via the per-model comparator.
+    """Invariants I1+I2+I3: rollout buffer ending at ``<|im_end|>`` (no
+    trailing ``\\n``) merges back to canonical chat-template render.
 
-    The boundary fix in ``K2V3TITOTokenizer.merge_tokens`` (inserting ``\\n``
-    when ``prefix[-1] == <|im_end|>``) IS exercised here, because the
-    ``pretokenized`` argument the trajectory builds via
-    ``update_pretokenized_state`` actually ends at ``<|im_end|>`` between
-    turns.
+    Phase 1 compares the finalized session buffer to canonical. Phase 2
+    appends a synthetic tool follow-up so ``merge_tokens`` runs against
+    a buffer whose last token is ``<|im_end|>`` even on single-turn
+    trajectories (defeats ``trim_trailing_ids`` shielding that would
+    otherwise hide a missing boundary fix).
 
-    Allows ``ASSISTANT_TEXT`` mismatches (BPE-merge noise from autoregressive
-    emission, classified non-severe by the comparator itself). Fails on any
-    ``SPECIAL_TOKEN_COUNT`` / ``SPECIAL_TOKEN_TYPE`` / ``NON_ASSISTANT_TEXT``
-    mismatch — those indicate the per-model boundary fix is wrong, not BPE
-    noise.
+    ``ASSISTANT_TEXT`` mismatches are tolerated (BPE-merge noise,
+    non-severe by the comparator); ``SPECIAL_TOKEN_*`` and
+    ``NON_ASSISTANT_TEXT`` mismatches fail the test.
     """
     messages = deepcopy(trajectory_cls.MESSAGES)
     tools = deepcopy(getattr(trajectory_cls, "TOOLS", None))
@@ -488,25 +495,18 @@ _ENV_APPEND_SHAPES: list[_EnvAppendShape] = [
     "env_shape", _ENV_APPEND_SHAPES, ids=lambda s: s.name,
 )
 def test_append_via_realistic_buffer(traj_name, traj_cls, env_shape, tito_tok):
-    """Cross-product: each trajectory shape × each env append shape.
+    """Invariants I3+I4 (core): ``merge_tokens`` against a realistic
+    ``<|im_end|>``-terminated buffer matches canonical render, for the
+    cross-product of trajectory shape × env append shape.
 
-    Drive the trajectory through ``update_pretokenized_state`` so the stored
-    buffer ends at ``<|im_end|>`` (the autoregressive-stop shape). Then
-    call ``prepare_pretokenized`` with the env append messages —
-    triggering ``merge_tokens`` on a realistic buffer.
+    8 trajectories × 4 env shapes = 32 ``merge_tokens`` contexts —
+    coverage spans buffer end-states (single-tool / parallel-tools /
+    thinking) × env shapes (tool / user / system / mixed).
 
-    The cross-product matters because ``merge_tokens``'s correctness depends
-    on BOTH the buffer's end-state shape (single-tool ending vs
-    parallel-tools ending vs thinking ending) AND the env shape
-    (tool / user / system / mixed). 8 trajectories × 4 env shapes = 32
-    distinct ``merge_tokens`` invocation contexts.
-
-    Verifies:
-      1. ``merged input_ids`` match ``apply_chat_template`` canonical
-         (modulo BPE-noise ``ASSISTANT_TEXT`` mismatches).
-      2. Each ``required_content`` marker appears in the incremental
-         tokens IN ORDER — catches "merge_tokens dropped an env message
-         or scrambled order".
+    Checks:
+      1. merged input_ids match canonical (modulo ``ASSISTANT_TEXT``).
+      2. Each ``required_content`` marker appears IN ORDER in the
+         incremental segment (catches dropped/reordered env messages).
     """
     messages = deepcopy(traj_cls.MESSAGES)
     tools = deepcopy(getattr(traj_cls, "TOOLS", None))
@@ -658,35 +658,21 @@ def _try_json_decode_tool_args(tool_calls: list[dict]) -> list[dict]:
     ids=lambda x: x if isinstance(x, str) else None,
 )
 def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cls, tito_tok):
-    """Verify K2V3's chat template round-trips cleanly through the real
-    SGLang ReasoningParser + FunctionCallParser, parametrized over every
-    trajectory shape in ``CONVERSATIONS``.
+    """Invariant I4 with parser substitution: raw assistant emit →
+    ReasoningParser + FunctionCallParser → ``parsed_msg`` → re-render via
+    chat_template still round-trips structurally to canonical.
 
-    Per trajectory: take its first assistant message as the synthetic
-    ``truth_msg``, render via chat_template to get the raw model emit,
-    run real parsers on the raw emit to produce ``parsed_msg``, drive a
-    single-turn session with ``parsed_msg``, then verify
-    ``session.token_ids`` matches the canonical render of
-    ``[<request_messages>, parsed_msg]`` at the structural level.
+    Parametrized over every trajectory in ``CONVERSATIONS``, so each
+    parser shape (plain / + tool_calls / + reasoning / + parallel
+    tool_calls) gets exercised.
 
-    Each trajectory's first assistant exercises a distinct parser shape:
-    plain content / content + tool_calls / + reasoning / + parallel
-    tool_calls / etc. So the parser test naturally cross-covers the
-    same shapes the trajectory test does.
+    ``ASSISTANT_TEXT`` mismatches are tolerated — the ``deepseek-r1``
+    parser does not ``rstrip`` reasoning content, so re-render inserts
+    an extra ``\\n`` before ``</think>``. Production classifies this as
+    ``ASSISTANT_TEXT`` and the strict CI check excludes it; this test
+    matches that contract.
 
-    Why ``ASSISTANT_TEXT`` mismatches are still excluded as non-severe
-    (consistent with the trajectory tests): empirically the
-    ``deepseek-r1`` reasoning parser does not ``rstrip`` the extracted
-    reasoning content, so a re-render via chat_template inserts an extra
-    ``\\n`` before ``</think>`` — purely whitespace inside the assistant
-    content segment. Production tolerates this (rollout buffer keeps the
-    raw emit; trainer trains on the raw emit; ``compute_session_mismatch``
-    classifies it as ``ASSISTANT_TEXT`` and the strict CI check excludes
-    it). The structural special-token / non-assistant-text round-trip is
-    what matters and is what this test enforces.
-
-    Skips if SGLang parser modules or specific parser names are unavailable
-    in this environment.
+    Skips if SGLang parsers are unavailable in this environment.
     """
     FCP, RP = _load_sglang_parsers()
     if FCP is None:
@@ -1032,22 +1018,18 @@ def _drive_one_assistant_turn_through_real_parsers(
 
 @pytest.mark.parametrize("flow", _BOSS_FLOWS, ids=lambda f: f.name)
 def test_end_to_end_realistic_rollout_with_real_parsers(flow: _BossFlow, tito_tok):
-    """Boss-level integration: drive every assistant turn of a multi-turn
-    trajectory through real SGLang parsers (so ``session.messages``
-    accumulates parser-derived ``parsed_msg`` across turns, not the
-    original truth messages), then append a complex env follow-up that
-    triggers ``prepare_pretokenized → merge_tokens`` over the
-    parser-tainted history. Verify final state structural consistency.
+    """Invariants I3+I4 under integration stress: drive every assistant
+    turn of a multi-turn trajectory through real parsers so
+    ``session.messages`` accumulates parser-derived ``parsed_msg`` across
+    turns, then append a complex env chain and verify
+    ``merge_tokens`` over the parser-tainted history still matches
+    canonical.
 
-    The 4 flows pick deliberately complex shapes:
-      - multi_turn_thinking + tool follow-up
-      - multi_tool_multi_turn_thinking + alternating user/tool chain
-      - multi_tool_single_turn_thinking (parallel tools + reasoning) +
-        system injection
-      - multi_tool_multi_turn_thinking + tool/user/system/tool chain
+    Failure here that doesn't reproduce in the simpler per-shape tests
+    above indicates a parser-interaction regression specific to
+    accumulated session state.
 
-    Skips if SGLang parsers are not available (matches the per-shape
-    parser test's skip behavior).
+    Skips if SGLang parsers are unavailable.
     """
     FCP, RP = _load_sglang_parsers()
     if FCP is None:
