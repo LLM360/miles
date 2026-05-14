@@ -1279,7 +1279,6 @@ def compute_metrics_from_samples(args, samples):
     log_dict["reward/correctness"] = len(correct) / n
     for label, grp in [("correct", correct), ("incorrect", incorrect)]:
         if grp:
-            log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{label}", n, include_count_frac=False)
             log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{label}")
 
     # per-category and combined (only if category data present)
@@ -1296,7 +1295,6 @@ def compute_metrics_from_samples(args, samples):
             log_dict[f"reward/{cat}/correctness"] = len(cat_correct) / len(cat_grp)
             for label, grp in [("correct", cat_correct), ("incorrect", cat_incorrect)]:
                 if grp:
-                    log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{cat}/{label}", n)
                     log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{cat}/{label}")
 
     return log_dict
