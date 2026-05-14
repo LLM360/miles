@@ -433,6 +433,12 @@ def train_one_step(
             if batch["multimodal_train_inputs"] is not None:
                 forward_kwargs.update(batch["multimodal_train_inputs"])
 
+            # Keep last-stage logits in model precision. Float16Module defaults
+            # to fp32_output=True, which upcasts the full vocab-sharded logits
+            # tensor before the PPO loss. For 375B runs with 250k vocab and
+            # packed long rollouts this can require several extra GiB and OOM.
+            forward_kwargs["fp32_output"] = not (args.fp16 or args.bf16)
+
             output_tensor = model(**forward_kwargs)
 
         for m, old_stage in zip(all_replay_managers, old_stages, strict=True):
@@ -477,6 +483,11 @@ def train_one_step(
 
     if valid_step:
         # Update parameters.
+        # Long packed RL batches leave large inactive activation/logprob blocks
+        # in the CUDA caching allocator. TransformerEngine's fused Adam lazily
+        # creates optimizer state on first step, so release inactive blocks here
+        # before tiny state allocations fail with reserved-but-free memory.
+        clear_memory()
         update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
 
         # Update learning rate.
@@ -702,6 +713,11 @@ def save(
     if should_disable_forward_pre_hook(args):
         disable_forward_pre_hook(model)
 
+    # Checkpointing optimizer state can transiently allocate fp32 copies inside
+    # TransformerEngine FusedAdam.state_dict(). Release inactive train/logprob
+    # blocks first so final saves do not OOM after otherwise healthy steps.
+    clear_memory()
+
     if is_lora_model(model):
         save_checkpoint_with_lora(iteration, model, optimizer, opt_param_scheduler)
     else:
@@ -715,6 +731,8 @@ def save(
             train_data_iterator=None,
             preprocess_common_state_dict_fn=None,
         )
+
+    clear_memory()
 
     if hashes is not None:
         save_model_hashes(args, model, iteration, hashes)

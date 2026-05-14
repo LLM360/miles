@@ -5,6 +5,7 @@ from .glm4moe_lite import GLM4MoELiteBridge
 from .mimo import MimoBridge
 from .qwen3_5 import Qwen3_5Bridge
 from .qwen3_next import Qwen3NextBridge
+from .xllm import XllmBridge
 
 __all__ = [
     "GLM4Bridge",
@@ -14,4 +15,5 @@ __all__ = [
     "Qwen3_5Bridge",
     "MimoBridge",
     "DeepseekV32Bridge",
+    "XllmBridge",
 ]
