@@ -649,7 +649,11 @@ def calculate_log_probs_and_entropy(
     logits, tokens, tp_group, with_entropy: bool = False, chunk_size: int = -1, true_on_policy: bool = False
 ):
     if true_on_policy:
-        return _calculate_log_probs_and_entropy_true_on_policy(logits, tokens, with_entropy=with_entropy)
+        return _calculate_log_probs_and_entropy_true_on_policy(
+            logits.float() if logits.dtype != torch.float32 else logits,
+            tokens,
+            with_entropy=with_entropy,
+        )
 
     logits = logits.contiguous()
     # TODO: not sure why we need to clone the logits here.
@@ -663,16 +667,22 @@ def calculate_log_probs_and_entropy(
             logits_chunks = logits.chunk(num_chunks, dim=0)
             log_probs = []
             for tokens_chunk, logits_chunk in zip(tokens_chunks, logits_chunks, strict=True):
+                if logits_chunk.dtype != torch.float32:
+                    logits_chunk = logits_chunk.float()
                 log_prob = compute_log_probs(logits_chunk.clone(), tokens_chunk, tp_group)
                 log_probs.append(log_prob)
             log_prob = torch.cat(log_probs, dim=0)
             if with_entropy:
                 entropys = []
                 for _, logits_chunk in zip(tokens_chunks, logits_chunks, strict=True):
+                    if logits_chunk.dtype != torch.float32:
+                        logits_chunk = logits_chunk.float()
                     entropy = compute_entropy_from_logits(logits_chunk.clone(), tp_group)
                     entropys.append(entropy)
                 entropy = torch.cat(entropys, dim=0)
         else:
+            if logits.dtype != torch.float32:
+                logits = logits.float()
             log_prob = compute_log_probs(logits.clone(), tokens, tp_group)
             if with_entropy:
                 entropy = compute_entropy_from_logits(logits.clone(), tp_group)
