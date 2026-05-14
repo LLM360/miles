@@ -117,6 +117,7 @@ def gather_log_data(
         # Calculate step once to avoid duplication
         step = compute_rollout_step(args, rollout_id)
         reduced_log_dict["rollout/step"] = step
+        reduced_log_dict["rollout_step"] = step
         reduced_log_dict["train/rollout_id"] = rollout_id
         tracking_utils.log(args, reduced_log_dict, step_key="rollout/step")
 
@@ -273,6 +274,7 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
             if top_level:
                 step = compute_rollout_step(args, rollout_id)
                 top_level["rollout/step"] = step
+                top_level["rollout_step"] = step
                 tracking_utils.log(args, top_level, step_key="rollout/step")
 
     if args.log_multi_turn:
