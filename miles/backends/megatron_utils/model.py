@@ -26,7 +26,14 @@ from miles.utils.memory_utils import clear_memory
 
 from ..training_utils.ci_utils import check_grad_norm, check_kl
 from ..training_utils.data import DataIterator, get_batch
-from ..training_utils.log_utils import aggregate_forward_results, aggregate_train_losses, log_train_step
+from ..training_utils.log_utils import (
+    aggregate_forward_results,
+    aggregate_train_losses,
+    init_train_step_counter,
+    load_train_step_counter,
+    log_train_step,
+    save_train_step_counter,
+)
 from ..training_utils.loss import loss_function
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint, save_checkpoint, save_checkpoint_with_lora
@@ -709,6 +716,9 @@ def save(
             preprocess_common_state_dict_fn=None,
         )
 
+    if is_megatron_main_rank():
+        save_train_step_counter(args.save, iteration)
+
     if hashes is not None:
         save_model_hashes(args, model, iteration, hashes)
     if should_disable_forward_pre_hook(args):
@@ -809,5 +819,8 @@ def initialize_model_and_optimizer(
     check_model_hashes(args, model, iteration)
 
     opt_param_scheduler.step(increment=iteration * args.global_batch_size)
+
+    if is_megatron_main_rank():
+        init_train_step_counter(load_train_step_counter(args.load, iteration))
 
     return model, optimizer, opt_param_scheduler, iteration

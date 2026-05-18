@@ -1,6 +1,7 @@
 import logging
 from argparse import Namespace
 from math import isclose
+from pathlib import Path
 
 import numpy as np
 import psutil
@@ -55,8 +56,40 @@ _ROLLOUT_DATA_METRIC_GROUPS: dict[str, str] = {
 # `rollout_id * num_steps_per_rollout + step_id` collides (and decreases) when
 # `num_steps_per_rollout` shrinks across rollouts under dynamic batching, since
 # each rollout uses its own current num_steps_per_rollout as a scaling factor.
-# A simple monotone counter is invariant to that jitter.
+# A simple monotone counter is invariant to that jitter. Persisted to a sidecar
+# file next to the checkpoint so it survives process restart (otherwise train/step
+# would dip to 0 in wandb on resume).
 _TRAIN_STEP_COUNTER = 0
+_TRAIN_STEP_COUNTER_FILENAME = "train_step_counter.txt"
+
+
+def _iter_dir(checkpoint_dir: str, iteration: int) -> "Path":
+    return Path(checkpoint_dir) / f"iter_{int(iteration):07d}"
+
+
+def init_train_step_counter(value: int) -> None:
+    global _TRAIN_STEP_COUNTER
+    _TRAIN_STEP_COUNTER = int(value)
+
+
+def load_train_step_counter(checkpoint_dir: str | None, iteration: int | None) -> int:
+    if not checkpoint_dir or iteration is None:
+        return 0
+    try:
+        return int((_iter_dir(checkpoint_dir, iteration) / _TRAIN_STEP_COUNTER_FILENAME).read_text().strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def save_train_step_counter(checkpoint_dir: str | None, iteration: int | None) -> None:
+    if not checkpoint_dir or iteration is None:
+        return
+    try:
+        path = _iter_dir(checkpoint_dir, iteration)
+        path.mkdir(parents=True, exist_ok=True)
+        (path / _TRAIN_STEP_COUNTER_FILENAME).write_text(str(_TRAIN_STEP_COUNTER))
+    except OSError as e:
+        logger.warning(f"Failed to persist train-step counter to {checkpoint_dir}: {e}")
 
 
 def gather_log_data(

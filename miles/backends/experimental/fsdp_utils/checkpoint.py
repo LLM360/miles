@@ -12,6 +12,12 @@ import torch.distributed.checkpoint as dcp
 from torch.distributed.checkpoint.state_dict import get_state_dict, set_state_dict
 from torch.distributed.checkpoint.stateful import Stateful
 
+from miles.backends.training_utils.log_utils import (
+    init_train_step_counter,
+    load_train_step_counter,
+    save_train_step_counter,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -183,6 +189,9 @@ def finalize_load(actor: Any, checkpoint_payload: dict[str, Any] | None) -> None
         if getattr(actor.args, "start_rollout_id", None) is None:
             actor.args.start_rollout_id = iteration
 
+    if dist.get_rank() == 0:
+        init_train_step_counter(load_train_step_counter(actor.args.load, iteration))
+
     torch.cuda.synchronize()
     dist.barrier()
 
@@ -245,6 +254,7 @@ def save(actor: Any, iteration: int) -> None:
 
         tracker_file = base_dir / "latest_checkpointed_iteration.txt"
         tracker_file.write_text(str(step_id))
+        save_train_step_counter(actor.args.save, step_id)
         logger.info(f"[FSDP] Saved checkpoint to {checkpoint_dir}")
 
     dist.barrier()
