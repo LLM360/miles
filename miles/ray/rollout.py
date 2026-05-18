@@ -632,17 +632,32 @@ class RolloutManager:
             logger.info(f"Save debug rollout data to {path}")
             path.parent.mkdir(parents=True, exist_ok=True)
 
-            # TODO may improve the format
             if evaluation:
-                dump_data = dict(
-                    samples=[sample.to_dict() for dataset_name, info in data.items() for sample in info["samples"]]
-                )
+                samples = [sample.to_dict() for dataset_name, info in data.items() for sample in info["samples"]]
             else:
-                dump_data = dict(
-                    samples=[sample.to_dict() for sample in data],
-                )
+                samples = [sample.to_dict() for sample in data]
 
-            torch.save(dict(rollout_id=rollout_id, **dump_data), path)
+            save_format = getattr(self.args, "save_rollout_format", "pt")
+
+            if save_format == "parquet":
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+                path = path.with_suffix(".parquet")
+                table = pa.Table.from_pylist(samples)
+                table = table.replace_schema_metadata({b"rollout_id": str(rollout_id).encode()})
+                pq.write_table(table, path, compression="snappy")
+            else:
+                torch.save(dict(rollout_id=rollout_id, samples=samples), path)
+
+            # Rolling retention: delete the file that aged out of the window (training rollouts only).
+            retain_last_n = getattr(self.args, "save_rollout_retain_last_n", 0)
+            if not evaluation and retain_last_n > 0:
+                old_id = rollout_id - retain_last_n
+                if old_id >= 0:
+                    old_path = Path(path_template.format(rollout_id=str(old_id)))
+                    if save_format == "parquet":
+                        old_path = old_path.with_suffix(".parquet")
+                    old_path.unlink(missing_ok=True)
 
     def _post_process_rewards(self, samples: list[Sample] | list[list[Sample]]):
         if self.custom_reward_post_process_func is not None:
@@ -748,11 +763,72 @@ class RolloutManager:
         self.train_parallel_config = config
 
     def _split_train_data_by_dp(self, data, dp_size):
-        """Split the train data by data parallel size."""
-        rollout_data = {}
+        """Split the train data by data parallel size, with per-DP imbalance diagnostics."""
+        import sys
+        import ray
 
-        if "prompt" in data:
-            rollout_data["prompt"] = data["prompt"]
+        def _safe_len(x):
+            try:
+                return len(x)
+            except Exception:
+                return 0
+
+        def _estimate_payload_bytes(obj):
+            """Cheap recursive estimate. Avoids materializing anything new."""
+            seen = set()
+
+            def walk(o):
+                oid = id(o)
+                if oid in seen:
+                    return 0
+                seen.add(oid)
+
+                if o is None:
+                    return 0
+
+                # Common tensor/array cases.
+                if hasattr(o, "numel") and hasattr(o, "element_size"):
+                    try:
+                        return int(o.numel()) * int(o.element_size())
+                    except Exception:
+                        pass
+
+                if hasattr(o, "nbytes"):
+                    try:
+                        return int(o.nbytes)
+                    except Exception:
+                        pass
+
+                if isinstance(o, (bytes, bytearray)):
+                    return len(o)
+
+                if isinstance(o, str):
+                    return len(o)
+
+                if isinstance(o, dict):
+                    return sum(walk(k) + walk(v) for k, v in o.items())
+
+                if isinstance(o, (list, tuple, range)):
+                    return sum(walk(v) for v in o)
+
+                try:
+                    return sys.getsizeof(o)
+                except Exception:
+                    return 0
+
+            return walk(obj)
+
+        def _stat(xs):
+            if not xs:
+                return {"n": 0, "sum": 0, "min": 0, "max": 0, "avg": 0.0}
+            s = sum(xs)
+            return {
+                "n": len(xs),
+                "sum": s,
+                "min": min(xs),
+                "max": max(xs),
+                "avg": round(s / len(xs), 1),
+            }
 
         total_lengths = [len(t) for t in data["tokens"]]
         data["total_lengths"] = total_lengths
@@ -763,11 +839,13 @@ class RolloutManager:
             partitions = [range(i, len(total_lengths), dp_size) for i in range(dp_size)]
 
         rollout_data_refs = []
+        dp_summaries = []
 
         for i in range(dp_size):
             rollout_data = {}
-            partition = partitions[i]
+            partition = list(partitions[i])
             rollout_data["partition"] = partition
+
             for key in [
                 "tokens",
                 "multimodal_train_inputs",
@@ -785,9 +863,9 @@ class RolloutManager:
             ]:
                 if key not in data:
                     continue
-                val = [data[key][j] for j in partition]
-                rollout_data[key] = val
-            # keys that need to be splited at train side
+                rollout_data[key] = [data[key][j] for j in partition]
+
+            # Keys intentionally copied whole and split later on train side.
             for key in [
                 "raw_reward",
                 "total_lengths",
@@ -796,7 +874,86 @@ class RolloutManager:
                 if key not in data:
                     continue
                 rollout_data[key] = data[key]
-            rollout_data_refs.append(Box(ray.put(rollout_data)))
+
+            token_lens = [total_lengths[j] for j in partition]
+            response_lens = (
+                [data["response_lengths"][j] for j in partition]
+                if "response_lengths" in data
+                else []
+            )
+            loss_mask_lens = (
+                [_safe_len(data["loss_masks"][j]) for j in partition]
+                if "loss_masks" in data
+                else []
+            )
+
+            payload_bytes = _estimate_payload_bytes(rollout_data)
+            ref = ray.put(rollout_data)
+
+            summary = {
+                "dp_rank": i,
+                "num_samples": len(partition),
+                "partition": partition,
+                "tokens": _stat(token_lens),
+                "responses": _stat(response_lens),
+                "loss_masks": _stat(loss_mask_lens),
+                "payload_mb_est": round(payload_bytes / 1024 / 1024, 2),
+                "object_ref": ref.hex(),
+            }
+            dp_summaries.append(summary)
+
+            logger.warning(
+                "ROLLOUT_DP_SHARD "
+                "dp=%s samples=%s token_sum=%s token_min=%s token_max=%s token_avg=%s "
+                "response_sum=%s response_min=%s response_max=%s response_avg=%s "
+                "loss_mask_sum=%s payload_mb_est=%.2f object_ref=%s partition=%s",
+                summary["dp_rank"],
+                summary["num_samples"],
+                summary["tokens"]["sum"],
+                summary["tokens"]["min"],
+                summary["tokens"]["max"],
+                summary["tokens"]["avg"],
+                summary["responses"]["sum"],
+                summary["responses"]["min"],
+                summary["responses"]["max"],
+                summary["responses"]["avg"],
+                summary["loss_masks"]["sum"],
+                summary["payload_mb_est"],
+                summary["object_ref"],
+                summary["partition"],
+            )
+
+            rollout_data_refs.append(Box(ref))
+
+        token_sums = [s["tokens"]["sum"] for s in dp_summaries]
+        sample_counts = [s["num_samples"] for s in dp_summaries]
+        payload_mbs = [s["payload_mb_est"] for s in dp_summaries]
+
+        def _ratio(xs):
+            xs = [x for x in xs if x is not None]
+            if not xs:
+                return 0.0
+            mn = min(xs)
+            mx = max(xs)
+            return round(mx / mn, 3) if mn else float("inf")
+
+        logger.warning(
+            "ROLLOUT_DP_IMBALANCE "
+            "dp_size=%s total_samples=%s total_tokens=%s "
+            "sample_counts=%s sample_ratio=%s "
+            "token_sums=%s token_ratio=%s "
+            "payload_mbs=%s payload_ratio=%s",
+            dp_size,
+            len(total_lengths),
+            sum(total_lengths),
+            sample_counts,
+            _ratio(sample_counts),
+            token_sums,
+            _ratio(token_sums),
+            payload_mbs,
+            _ratio(payload_mbs),
+        )
+
         return rollout_data_refs
 
 

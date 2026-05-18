@@ -1261,6 +1261,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Subsample a portion of the debug rollout data for faster debugging.",
             )
             parser.add_argument(
+                "--save-rollout-format",
+                type=str,
+                choices=["pt", "parquet"],
+                default="pt",
+                help="Serialization format for rollout debug files. 'parquet' replaces the .pt extension and writes a snappy-compressed parquet file readable by polars/pandas.",
+            )
+            parser.add_argument(
+                "--save-rollout-retain-last-n",
+                type=int,
+                default=0,
+                help="Keep only the N most recent rollout files in the save directory, deleting the one that aged out after each step. 0 (default) keeps all files.",
+            )
+            parser.add_argument(
                 "--debug-rollout-only",
                 action="store_true",
                 default=False,
