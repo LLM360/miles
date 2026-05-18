@@ -14,7 +14,6 @@ from torch.distributed.checkpoint.stateful import Stateful
 
 from miles.backends.training_utils.log_utils import (
     init_train_step_counter,
-    load_train_step_counter,
     save_train_step_counter,
 )
 
@@ -190,7 +189,7 @@ def finalize_load(actor: Any, checkpoint_payload: dict[str, Any] | None) -> None
             actor.args.start_rollout_id = iteration
 
     if dist.get_rank() == 0:
-        init_train_step_counter(load_train_step_counter(actor.args.load, iteration))
+        init_train_step_counter(actor.args.load, iteration)
 
     torch.cuda.synchronize()
     dist.barrier()

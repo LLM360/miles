@@ -60,36 +60,28 @@ _ROLLOUT_DATA_METRIC_GROUPS: dict[str, str] = {
 # file next to the checkpoint so it survives process restart (otherwise train/step
 # would dip to 0 in wandb on resume).
 _TRAIN_STEP_COUNTER = 0
-_TRAIN_STEP_COUNTER_FILENAME = "train_step_counter.txt"
 
 
-def _iter_dir(checkpoint_dir: str, iteration: int) -> "Path":
-    return Path(checkpoint_dir) / f"iter_{int(iteration):07d}"
-
-
-def init_train_step_counter(value: int) -> None:
+def init_train_step_counter(checkpoint_dir: str | None, iteration: int | None) -> None:
+    """Restore the counter from a checkpoint sidecar; leaves it at 0 if absent or corrupt."""
     global _TRAIN_STEP_COUNTER
-    _TRAIN_STEP_COUNTER = int(value)
-
-
-def load_train_step_counter(checkpoint_dir: str | None, iteration: int | None) -> int:
-    if not checkpoint_dir or iteration is None:
-        return 0
+    if checkpoint_dir is None or iteration is None:
+        return
+    path = Path(checkpoint_dir) / f"iter_{int(iteration):07d}" / "train_step_counter.txt"
     try:
-        return int((_iter_dir(checkpoint_dir, iteration) / _TRAIN_STEP_COUNTER_FILENAME).read_text().strip())
+        _TRAIN_STEP_COUNTER = int(path.read_text().strip())
     except (OSError, ValueError):
-        return 0
+        pass
 
 
 def save_train_step_counter(checkpoint_dir: str | None, iteration: int | None) -> None:
-    if not checkpoint_dir or iteration is None:
+    if checkpoint_dir is None or iteration is None:
         return
+    path = Path(checkpoint_dir) / f"iter_{int(iteration):07d}" / "train_step_counter.txt"
     try:
-        path = _iter_dir(checkpoint_dir, iteration)
-        path.mkdir(parents=True, exist_ok=True)
-        (path / _TRAIN_STEP_COUNTER_FILENAME).write_text(str(_TRAIN_STEP_COUNTER))
+        path.write_text(str(_TRAIN_STEP_COUNTER))
     except OSError as e:
-        logger.warning(f"Failed to persist train-step counter to {checkpoint_dir}: {e}")
+        logger.warning(f"Failed to persist train-step counter: {e}")
 
 
 def gather_log_data(
@@ -117,15 +109,7 @@ def gather_log_data(
     # dict to the union of keys with NaN so every rank sends the same shape.
     # Cost is one all_gather_object on a tiny key list.
     all_keys: list = [None] * dp_size
-    logger.info(
-        f"[rank={pg.rank}/{dp_size}] gather_log_data({metric_name}) "
-        f"rollout={rollout_id} entering all_gather_object, keys={len(log_dict)}"
-    )
     dist.all_gather_object(all_keys, sorted(log_dict.keys()), group=pg.gloo_group)
-    logger.info(
-        f"[rank={pg.rank}/{dp_size}] gather_log_data({metric_name}) "
-        f"rollout={rollout_id} all_gather_object returned"
-    )
     union_keys: set = set()
     for ks in all_keys:
         if ks:
