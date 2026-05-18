@@ -30,7 +30,6 @@ from ..training_utils.log_utils import (
     aggregate_forward_results,
     aggregate_train_losses,
     init_train_step_counter,
-    load_train_step_counter,
     log_train_step,
     save_train_step_counter,
 )
@@ -838,6 +837,6 @@ def initialize_model_and_optimizer(
     opt_param_scheduler.step(increment=iteration * args.global_batch_size)
 
     if is_megatron_main_rank():
-        init_train_step_counter(load_train_step_counter(args.load, iteration))
+        init_train_step_counter(args.load, iteration)
 
     return model, optimizer, opt_param_scheduler, iteration
