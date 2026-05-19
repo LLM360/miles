@@ -151,10 +151,32 @@ class BaseReplayManager:
                 return result
 
             elif stage == "replay_forward":
-                return _get_replay_result(replay.pop_forward(), scores, topk, *args, **kwargs)
+                replay_idx = replay.pop_forward()
+                if manager.enable_check_replay_result:
+                    # Direct evidence the wrapper's replay_forward branch ran in
+                    # the megatron MoE forward path (vs falling through to
+                    # old_topk_fn). Gated on the correctness-check toggle so
+                    # production training stays quiet. replay_idx_sum is a cheap
+                    # fingerprint of the indices for cross-rank / cross-step
+                    # comparison.
+                    logger.info(
+                        f"R3 wrapper: replay_forward branch taken "
+                        f"(rank {_get_rank()}, n_tokens={replay_idx.shape[0]}, "
+                        f"topk={replay_idx.shape[1]}, "
+                        f"replay_idx_sum={int(replay_idx.sum().item())})"
+                    )
+                return _get_replay_result(replay_idx, scores, topk, *args, **kwargs)
 
             elif stage == "replay_backward":
-                return _get_replay_result(replay.pop_backward(), scores, topk, *args, **kwargs)
+                replay_idx = replay.pop_backward()
+                if manager.enable_check_replay_result:
+                    logger.info(
+                        f"R3 wrapper: replay_backward branch taken "
+                        f"(rank {_get_rank()}, n_tokens={replay_idx.shape[0]}, "
+                        f"topk={replay_idx.shape[1]}, "
+                        f"replay_idx_sum={int(replay_idx.sum().item())})"
+                    )
+                return _get_replay_result(replay_idx, scores, topk, *args, **kwargs)
 
             else:
                 return old_topk_fn(scores, topk, *args, **kwargs)
@@ -196,6 +218,15 @@ class BaseReplayManager:
         is_mismatch = ~has_overlap & ~is_padding
 
         mismatch_count = is_mismatch.sum().item()
+        n_tokens = orig_flat.shape[0]
+        # Unconditional log so we have direct evidence the check actually
+        # ran (its silent return on mismatch_count==0 is otherwise
+        # indistinguishable from never being called).
+        logger.info(
+            f"R3 check (rank {_get_rank()}, stage {self.stage}): "
+            f"n_tokens={n_tokens} mismatch={mismatch_count} "
+            f"({100 * mismatch_count / max(n_tokens, 1):.2f}%)"
+        )
         if mismatch_count == 0:
             return
 
