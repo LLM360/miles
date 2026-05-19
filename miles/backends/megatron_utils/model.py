@@ -621,6 +621,8 @@ def train_one_step(
         dumper_phase_util.finalize(model)
 
     if not disable_optimizer and valid_step:
+        # Release inactive train/logprob allocations before optimizer state is allocated.
+        clear_memory()
         if multi_lora:
             from miles.backends.megatron_utils.multi_lora_utils import step_stepped_adapter_slots
 
@@ -897,6 +899,8 @@ def save(
     if should_disable_forward_pre_hook(args):
         disable_forward_pre_hook(model)
 
+    # Optimizer state serialization can allocate temporary FP32 copies.
+    clear_memory()
     if is_lora_model(model):
         save_checkpoint_with_lora(iteration, model, optimizer, opt_param_scheduler)
     else:
@@ -912,6 +916,7 @@ def save(
             non_persistent_ckpt=non_persistent_ckpt,
         )
 
+    clear_memory()
     if hashes is not None:
         save_model_hashes(args, model, iteration, hashes)
     if should_disable_forward_pre_hook(args):

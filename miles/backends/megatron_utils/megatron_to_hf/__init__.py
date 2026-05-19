@@ -1,3 +1,5 @@
+from miles.backends.megatron_utils.megatron_to_hf.xllm import convert_xllm_to_hf
+
 from .deepseekv3 import convert_deepseekv3_to_hf
 from .deepseekv4 import convert_deepseekv4_to_hf
 from .glm4 import convert_glm4_to_hf
@@ -32,7 +34,9 @@ def convert_to_hf(args, model_name, name, param, quantization_config=None):
 # TODO optimize code details
 def _convert_to_hf_core(args, model_name, name, param):
     model_name = model_name.lower()
-    if (
+    if "xllm" in model_name:
+        converted_named_tensors = convert_xllm_to_hf(args, name, param)
+    elif (
         "glm4moelite" in model_name
         or "deepseekv3" in model_name
         or "glmmoedsa" in model_name
@@ -43,11 +47,7 @@ def _convert_to_hf_core(args, model_name, name, param):
         converted_named_tensors = convert_glm4moe_to_hf(args, name, param)
     elif "glm4" in model_name:
         converted_named_tensors = convert_glm4_to_hf(args, name, param)
-    elif "qwen3moe" in model_name or "xllm" in model_name:
-        # xLLM 375B uses the Qwen3-MoE Megatron/HF tensor naming contract.
-        # The architecture/config class is XllmForCausalLM/XllmConfig, so the
-        # default model-name inference lands here instead of requiring a
-        # launcher-side alias.
+    elif "qwen3moe" in model_name:
         converted_named_tensors = convert_qwen3moe_to_hf(args, name, param)
     elif "qwen3next" in model_name:
         converted_named_tensors = convert_qwen3_next_to_hf(args, name, param)

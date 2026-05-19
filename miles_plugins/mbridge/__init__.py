@@ -1,3 +1,5 @@
+from miles_plugins.mbridge.xllm import XllmBridge
+
 from .deepseek_v4 import DeepseekV4Bridge
 from .deepseek_v32 import DeepseekV32Bridge
 from .glm4 import GLM4Bridge
@@ -20,4 +22,5 @@ __all__ = [
     "DeepseekV4Bridge",
     "JoyAILLMFlashBridge",
     "InklingBridge",
+    "XllmBridge",
 ]

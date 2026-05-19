@@ -251,12 +251,20 @@ def get_model_provider_func(
             else:
                 # Define the decoder layer spec
                 if use_te:
-                    transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
-                        num_experts=args.num_experts,
-                        moe_grouped_gemm=args.moe_grouped_gemm,
-                        qk_layernorm=args.qk_layernorm,
-                        multi_latent_attention=args.multi_latent_attention,
-                    )
+                    te_spec_kwargs = {
+                        "num_experts": args.num_experts,
+                        "moe_grouped_gemm": args.moe_grouped_gemm,
+                        "qk_layernorm": args.qk_layernorm,
+                        "multi_latent_attention": args.multi_latent_attention,
+                    }
+                    te_spec_params = inspect.signature(get_gpt_layer_with_transformer_engine_spec).parameters
+                    # Grouped normalization requires separate layernorm weights.
+                    fuse_layernorm = getattr(args, "layernorm_num_groups", 1) == 1
+                    if "fuse_layernorm_and_linear" in te_spec_params:
+                        te_spec_kwargs["fuse_layernorm_and_linear"] = fuse_layernorm
+                    if "remap_unfused_layernorm_checkpoint_keys" in te_spec_params:
+                        te_spec_kwargs["remap_unfused_layernorm_checkpoint_keys"] = fuse_layernorm
+                    transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(**te_spec_kwargs)
                 else:
                     transformer_layer_spec = get_gpt_layer_local_spec(
                         num_experts=args.num_experts,
