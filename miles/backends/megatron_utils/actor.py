@@ -114,8 +114,7 @@ class MegatronTrainRayActor(TrainRayActor):
                 # include a strict log_probs vs ref_log_probs equality that
                 # trips on routine floating-point precision differences).
                 m.enable_check_replay_result = m.enabled and (
-                    self.args.ci_test
-                    or getattr(self.args, "enable_r3_correctness_check", False)
+                    self.args.ci_test or getattr(self.args, "enable_r3_correctness_check", False)
                 )
 
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
