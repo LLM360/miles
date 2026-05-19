@@ -166,13 +166,21 @@ def get_model_provider_func(
             else:
                 # Define the decoder layer spec
                 if use_te:
-                    transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
-                        num_experts=args.num_experts,
-                        moe_grouped_gemm=args.moe_grouped_gemm,
-                        qk_layernorm=args.qk_layernorm,
-                        multi_latent_attention=args.multi_latent_attention,
-                        moe_use_legacy_grouped_gemm=args.moe_use_legacy_grouped_gemm,
-                    )
+                    te_spec_kwargs = {
+                        "num_experts": args.num_experts,
+                        "moe_grouped_gemm": args.moe_grouped_gemm,
+                        "qk_layernorm": args.qk_layernorm,
+                        "multi_latent_attention": args.multi_latent_attention,
+                        "moe_use_legacy_grouped_gemm": args.moe_use_legacy_grouped_gemm,
+                    }
+                    te_spec_params = inspect.signature(get_gpt_layer_with_transformer_engine_spec).parameters
+                    if "fuse_layernorm_and_linear" in te_spec_params:
+                        te_spec_kwargs["fuse_layernorm_and_linear"] = getattr(args, "layernorm_num_groups", 1) == 1
+                    if "remap_unfused_layernorm_checkpoint_keys" in te_spec_params:
+                        te_spec_kwargs["remap_unfused_layernorm_checkpoint_keys"] = (
+                            getattr(args, "layernorm_num_groups", 1) == 1
+                        )
+                    transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(**te_spec_kwargs)
                 else:
                     transformer_layer_spec = get_gpt_layer_local_spec(
                         num_experts=args.num_experts,
