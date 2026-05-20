@@ -23,6 +23,13 @@ class XllmBridge(Qwen2MoEBridge):
         return (getattr(self.hf_config, "num_experts", 0) or 0) > 0
 
     def _build_config(self):
+        head_dim = getattr(
+            self.hf_config,
+            "head_dim",
+            self.hf_config.hidden_size // self.hf_config.num_attention_heads,
+        )
+        rope_head_dim = getattr(self.hf_config, "rope_head_dim", head_dim)
+
         config_kwargs = dict(
             use_cpu_initialization=False,
             persist_layer_norm=True,
@@ -31,6 +38,8 @@ class XllmBridge(Qwen2MoEBridge):
             qk_layernorm=False,
             add_qkv_bias=False,
             add_bias_linear=False,
+            rotary_percent=rope_head_dim / head_dim,
+            xllm_partial_rope_layout=rope_head_dim * 2 == head_dim,
         )
 
         if self._has_moe():
