@@ -36,7 +36,7 @@ class SessionServer:
         )
 
         # Close the httpx connection pool when uvicorn shuts down to avoid FD leaks.
-        self.app.add_event_handler("shutdown", self.client.aclose)
+        self.app.router.on_shutdown.append(self.client.aclose)
 
         setup_session_routes(self.app, self, args)
 
@@ -81,7 +81,19 @@ class SessionServer:
     def build_proxy_response(self, result: dict) -> Response:
         content = result["response_body"]
         status_code = result["status_code"]
-        headers = result["headers"]
+        # Strip framing headers so JSONResponse / Response recompute them
+        # from the actual rendered body. Forwarding upstream's content-length
+        # verbatim breaks uvicorn h11 with "Too much data for declared
+        # Content-Length" whenever our re-serialization differs in even one
+        # byte. Mirrors the strip already done on the request path in do_proxy.
+        # Also strip "server": uvicorn adds its own Server header; passing
+        # the upstream one through produces two Server headers, which strict
+        # HTTP parsers (aiohttp/llhttp via litellm) reject as malformed.
+        headers = {
+            k: v
+            for k, v in result["headers"].items()
+            if k.lower() not in ("content-length", "transfer-encoding", "server")
+        }
         content_type = headers.get("content-type", "")
         try:
             data = json.loads(content)

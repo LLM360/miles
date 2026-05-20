@@ -386,6 +386,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--max-weight-staleness",
+                type=int,
+                default=None,
+                help=(
+                    "Maximum allowed gap between a group's oldest weight version and the current "
+                    "engine weight version. Groups exceeding this threshold are recycled back to "
+                    "the data buffer instead of being sent to training. Only effective in fully "
+                    "async mode. None (default) disables staleness filtering."
+                ),
+            )
+            parser.add_argument(
                 "--custom-generate-function-path",
                 type=str,
                 default=None,
@@ -440,6 +451,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=1,
                 help="Interval for updating the weights",
+            )
+            parser.add_argument(
+                "--pause-generation-mode",
+                type=str,
+                choices=["abort", "retract", "in_place"],
+                default="retract",
+                help=(
+                    "How SGLang pauses in-flight requests during weight updates. "
+                    "'abort' immediately terminates all requests (previous default). "
+                    "'retract' moves running requests back to the waiting queue and "
+                    "recomputes KV cache after update. "
+                    "'in_place' freezes requests and resumes with existing KV cache."
+                ),
             )
             parser.add_argument(
                 "--keep-old-actor",
@@ -794,6 +818,21 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             reset_arg(parser, "--seed", type=int, default=1234)
             reset_arg(parser, "--clip-grad", type=float, default=1.0)
             reset_arg(parser, "--calculate-per-token-loss", action="store_true")
+            parser.add_argument(
+                "--loss-agg-mode",
+                type=str,
+                default=None,
+                choices=["sample-mean", "token-mean", "token-sum"],
+                help=(
+                    "Loss aggregation mode. Takes precedence over --calculate-per-token-loss. "
+                    "'sample-mean' (default): per-sample token-mean, then sum across samples. "
+                    "'token-mean': masked sum / total tokens — every token contributes equally. "
+                    "On Megatron backend this is equivalent to --calculate-per-token-loss; "
+                    "on FSDP backend this adds explicit normalization that FSDP otherwise skips. "
+                    "'token-sum': raw masked sum with no local normalization (same as --calculate-per-token-loss). "
+                    "If not set, falls back to --calculate-per-token-loss behavior."
+                ),
+            )
             reset_arg(parser, "--lr", type=float, default=1e-6)
 
             parser.add_argument("--num-critic-only-steps", type=int, default=0, help="Number of critic only steps")
@@ -1222,6 +1261,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Subsample a portion of the debug rollout data for faster debugging.",
             )
             parser.add_argument(
+                "--save-rollout-format",
+                type=str,
+                choices=["pt", "parquet"],
+                default="pt",
+                help="Serialization format for rollout debug files. 'parquet' replaces the .pt extension and writes a snappy-compressed parquet file readable by polars/pandas.",
+            )
+            parser.add_argument(
+                "--save-rollout-retain-last-n",
+                type=int,
+                default=0,
+                help="Keep only the N most recent rollout files in the save directory, deleting the one that aged out after each step. 0 (default) keeps all files.",
+            )
+            parser.add_argument(
                 "--debug-rollout-only",
                 action="store_true",
                 default=False,
@@ -1593,9 +1645,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--tito-allowed-append-roles",
                 nargs="+",
                 default=["tool"],
-                choices=["tool", "user", "system"],
+                choices=["tool", "user", "system", "assistant"],
                 help="Message roles allowed to be appended after the pretokenized "
-                "assistant prefix in TITO sessions (default: tool).",
+                "assistant prefix in TITO sessions (default: tool). Include "
+                "'assistant' for multi-turn agents (e.g. terminus-2) that "
+                "append their own planning/self-reflection turns before the "
+                "next tool or user message.",
             )
             return parser
 
@@ -1685,13 +1740,20 @@ def parse_args(add_custom_arguments=None):
         args.world_size = args.actor_num_nodes * args.actor_num_gpus_per_node
         args = set_default_megatron_args(args)
     else:
-        from miles.backends.fsdp_utils.arguments import load_fsdp_args
+        from miles.backends.experimental.fsdp_utils.arguments import load_fsdp_args
 
         args = load_fsdp_args(extra_args_provider=add_miles_arguments)
         args.rank = 0  # Primary process rank for wandb initialization
         args.world_size = args.actor_num_nodes * args.actor_num_gpus_per_node
 
         assert args.context_parallel_size == 1, "Context parallelism is not supported for FSDP backend."
+
+        if not args.ci_test:
+            raise ValueError(
+                "The FSDP backend has known issues with SGLang v0.5.10 and is not actively maintained in the current version. "
+                "It has been moved to miles.backends.experimental. "
+                "Contributions are welcome if you are interested in improving it."
+            )
 
     miles_validate_args(args)
 
@@ -1948,6 +2010,14 @@ def miles_validate_args(args):
             args.offload_train = True
         if args.offload_rollout is None:
             args.offload_rollout = True
+        if args.sglang_enforce_piecewise_cuda_graph:
+            logger.warning("Warning: colocate mode with --sglang-enforce-piecewise-cuda-graph may trigger NVLS OOM.")
+        if not args.sglang_disable_piecewise_cuda_graph:
+            args.sglang_disable_piecewise_cuda_graph = True
+            logger.info(
+                "Colocate mode: defaulting --sglang-disable-piecewise-cuda-graph to avoid NVLS OOM. "
+                "Use --sglang-enforce-piecewise-cuda-graph to override."
+            )
         if args.rollout_num_gpus != args.actor_num_gpus_per_node * args.actor_num_nodes:
             logger.info(
                 f"rollout_num_gpus {args.rollout_num_gpus} != actor_num_gpus_per_node {args.actor_num_gpus_per_node} "
@@ -2101,6 +2171,9 @@ def hf_validate_args(args, hf_config):
         ),
         ("rope_theta", "rotary_base", equal),
     ]:
+        # FIXME: Qwen3.5 transfomers has bug.
+        if getattr(hf_config, "model_type", "") == "qwen3_5_moe_text" and hf_config_name == "intermediate_size":
+            continue
         if hasattr(hf_config, hf_config_name):
             if not compare_fn(getattr(hf_config, hf_config_name), getattr(args, megatron_config_name)):
                 errors.append(

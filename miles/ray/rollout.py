@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import random
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +140,13 @@ class ServerGroup:
                 }.items()
             }
             env_vars.update(dumper_utils.get_sglang_env(self.args))
+            # Propagate PYTHONPATH so Ray remote actors import the same miles
+            # / sglang modules as the driver. Without this, SGLangEngine
+            # actors inherit only the container's default PYTHONPATH and
+            # `import miles` falls back to a pip-installed /root/miles,
+            # silently bypassing any MILES_OVERRIDE on the driver's PYTHONPATH.
+            if "PYTHONPATH" in os.environ:
+                env_vars["PYTHONPATH"] = os.environ["PYTHONPATH"]
 
             rollout_engine = RolloutRayActor.options(
                 num_cpus=num_cpus,
@@ -169,7 +177,7 @@ class ServerGroup:
                 args=self.args, rollout_engines=rollout_engines
             )
         else:
-            base_port = max(port_cursors.values()) if port_cursors else 15000
+            base_port = max(port_cursors.values()) if port_cursors else 17500
             addr_and_ports, port_cursors = _allocate_rollout_engine_addr_and_ports_normal(
                 args=self.args,
                 rollout_engines=rollout_engines,
@@ -543,11 +551,13 @@ class RolloutManager:
 
     def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:
-            data = torch.load(
-                self.args.load_debug_rollout_data.format(rollout_id=rollout_id),
-                weights_only=False,
-            )["samples"]
-            data = [Sample.from_dict(sample) for sample in data]
+            path = Path(self.args.load_debug_rollout_data.format(rollout_id=rollout_id))
+            if path.suffix == ".parquet":
+                import pyarrow.parquet as pq
+                data = [Sample.from_dict(row) for row in pq.read_table(path).to_pylist()]
+            else:
+                data = torch.load(path, weights_only=False)["samples"]
+                data = [Sample.from_dict(sample) for sample in data]
             if (ratio := self.args.load_debug_rollout_data_subsample) is not None:
                 original_num_rows = len(data)
                 rough_subsample_num_rows = int(original_num_rows * ratio)
@@ -624,17 +634,39 @@ class RolloutManager:
             logger.info(f"Save debug rollout data to {path}")
             path.parent.mkdir(parents=True, exist_ok=True)
 
-            # TODO may improve the format
             if evaluation:
-                dump_data = dict(
-                    samples=[sample.to_dict() for dataset_name, info in data.items() for sample in info["samples"]]
-                )
+                samples = [sample.to_dict() for dataset_name, info in data.items() for sample in info["samples"]]
             else:
-                dump_data = dict(
-                    samples=[sample.to_dict() for sample in data],
-                )
+                samples = [sample.to_dict() for sample in data]
 
-            torch.save(dict(rollout_id=rollout_id, **dump_data), path)
+            save_format = getattr(self.args, "save_rollout_format", "pt")
+
+            if save_format == "parquet":
+                import pyarrow as pa
+                import pyarrow.parquet as pq
+                path = path.with_suffix(".parquet")
+                table = pa.Table.from_pylist(samples)
+                table = table.replace_schema_metadata({b"rollout_id": str(rollout_id).encode()})
+                pq.write_table(table, path, compression="snappy")
+            else:
+                torch.save(dict(rollout_id=rollout_id, samples=samples), path)
+
+            # Rolling retention: delete files that aged out of the window (training rollouts only).
+            # Walk backward from the oldest allowed id so that a restart with a smaller N
+            # cleans up all accumulated stale files, not just one.
+            retain_last_n = getattr(self.args, "save_rollout_retain_last_n", 0)
+            if not evaluation and retain_last_n > 0:
+                old_id = rollout_id - retain_last_n
+                while old_id >= 0:
+                    old_path = Path(path_template.format(rollout_id=str(old_id)))
+                    if save_format == "parquet":
+                        old_path = old_path.with_suffix(".parquet")
+                    if old_path.exists():
+                        old_path.unlink()
+                        logger.info(f"Deleted aged-out rollout file {old_path} (retain_last_n={retain_last_n})")
+                        old_id -= 1
+                    else:
+                        break
 
     def _post_process_rewards(self, samples: list[Sample] | list[list[Sample]]):
         if self.custom_reward_post_process_func is not None:
@@ -723,8 +755,16 @@ class RolloutManager:
         if any(sample.multimodal_train_inputs is not None for sample in samples):
             train_data["multimodal_train_inputs"] = [sample.multimodal_train_inputs for sample in samples]
 
+        if any(sample.weight_versions for sample in samples):
+            train_data["weight_versions"] = [sample.weight_versions for sample in samples]
+
         if "teacher_log_probs" in samples[0].__dict__:
             train_data["teacher_log_probs"] = [sample.teacher_log_probs for sample in samples]
+
+        # Pass dynamic global_batch_size to training side
+        assert self.args.use_dynamic_global_batch_size == hasattr(self, "_dynamic_global_batch_size")
+        if hasattr(self, "_dynamic_global_batch_size"):
+            train_data["dynamic_global_batch_size"] = self._dynamic_global_batch_size
 
         return train_data
 
@@ -732,11 +772,72 @@ class RolloutManager:
         self.train_parallel_config = config
 
     def _split_train_data_by_dp(self, data, dp_size):
-        """Split the train data by data parallel size."""
-        rollout_data = {}
+        """Split the train data by data parallel size, with per-DP imbalance diagnostics."""
+        import sys
+        import ray
 
-        if "prompt" in data:
-            rollout_data["prompt"] = data["prompt"]
+        def _safe_len(x):
+            try:
+                return len(x)
+            except Exception:
+                return 0
+
+        def _estimate_payload_bytes(obj):
+            """Cheap recursive estimate. Avoids materializing anything new."""
+            seen = set()
+
+            def walk(o):
+                oid = id(o)
+                if oid in seen:
+                    return 0
+                seen.add(oid)
+
+                if o is None:
+                    return 0
+
+                # Common tensor/array cases.
+                if hasattr(o, "numel") and hasattr(o, "element_size"):
+                    try:
+                        return int(o.numel()) * int(o.element_size())
+                    except Exception:
+                        pass
+
+                if hasattr(o, "nbytes"):
+                    try:
+                        return int(o.nbytes)
+                    except Exception:
+                        pass
+
+                if isinstance(o, (bytes, bytearray)):
+                    return len(o)
+
+                if isinstance(o, str):
+                    return len(o)
+
+                if isinstance(o, dict):
+                    return sum(walk(k) + walk(v) for k, v in o.items())
+
+                if isinstance(o, (list, tuple, range)):
+                    return sum(walk(v) for v in o)
+
+                try:
+                    return sys.getsizeof(o)
+                except Exception:
+                    return 0
+
+            return walk(obj)
+
+        def _stat(xs):
+            if not xs:
+                return {"n": 0, "sum": 0, "min": 0, "max": 0, "avg": 0.0}
+            s = sum(xs)
+            return {
+                "n": len(xs),
+                "sum": s,
+                "min": min(xs),
+                "max": max(xs),
+                "avg": round(s / len(xs), 1),
+            }
 
         total_lengths = [len(t) for t in data["tokens"]]
         data["total_lengths"] = total_lengths
@@ -747,11 +848,13 @@ class RolloutManager:
             partitions = [range(i, len(total_lengths), dp_size) for i in range(dp_size)]
 
         rollout_data_refs = []
+        dp_summaries = []
 
         for i in range(dp_size):
             rollout_data = {}
-            partition = partitions[i]
+            partition = list(partitions[i])
             rollout_data["partition"] = partition
+
             for key in [
                 "tokens",
                 "multimodal_train_inputs",
@@ -765,23 +868,101 @@ class RolloutManager:
                 "rollout_routed_experts",
                 "prompt",
                 "teacher_log_probs",
+                "weight_versions",
             ]:
                 if key not in data:
                     continue
-                val = [data[key][j] for j in partition]
-                rollout_data[key] = val
-            # keys that need to be splited at train side
+                rollout_data[key] = [data[key][j] for j in partition]
+
+            # Keys intentionally copied whole and split later on train side.
             for key in [
                 "raw_reward",
                 "total_lengths",
+                "dynamic_global_batch_size",
             ]:
                 if key not in data:
                     continue
                 rollout_data[key] = data[key]
-            # Pass dynamic global_batch_size to training side
-            if hasattr(self, "_dynamic_global_batch_size"):
-                rollout_data["dynamic_global_batch_size"] = self._dynamic_global_batch_size
-            rollout_data_refs.append(Box(ray.put(rollout_data)))
+
+            token_lens = [total_lengths[j] for j in partition]
+            response_lens = (
+                [data["response_lengths"][j] for j in partition]
+                if "response_lengths" in data
+                else []
+            )
+            loss_mask_lens = (
+                [_safe_len(data["loss_masks"][j]) for j in partition]
+                if "loss_masks" in data
+                else []
+            )
+
+            payload_bytes = _estimate_payload_bytes(rollout_data)
+            ref = ray.put(rollout_data)
+
+            summary = {
+                "dp_rank": i,
+                "num_samples": len(partition),
+                "partition": partition,
+                "tokens": _stat(token_lens),
+                "responses": _stat(response_lens),
+                "loss_masks": _stat(loss_mask_lens),
+                "payload_mb_est": round(payload_bytes / 1024 / 1024, 2),
+                "object_ref": ref.hex(),
+            }
+            dp_summaries.append(summary)
+
+            logger.warning(
+                "ROLLOUT_DP_SHARD "
+                "dp=%s samples=%s token_sum=%s token_min=%s token_max=%s token_avg=%s "
+                "response_sum=%s response_min=%s response_max=%s response_avg=%s "
+                "loss_mask_sum=%s payload_mb_est=%.2f object_ref=%s partition=%s",
+                summary["dp_rank"],
+                summary["num_samples"],
+                summary["tokens"]["sum"],
+                summary["tokens"]["min"],
+                summary["tokens"]["max"],
+                summary["tokens"]["avg"],
+                summary["responses"]["sum"],
+                summary["responses"]["min"],
+                summary["responses"]["max"],
+                summary["responses"]["avg"],
+                summary["loss_masks"]["sum"],
+                summary["payload_mb_est"],
+                summary["object_ref"],
+                summary["partition"],
+            )
+
+            rollout_data_refs.append(Box(ref))
+
+        token_sums = [s["tokens"]["sum"] for s in dp_summaries]
+        sample_counts = [s["num_samples"] for s in dp_summaries]
+        payload_mbs = [s["payload_mb_est"] for s in dp_summaries]
+
+        def _ratio(xs):
+            xs = [x for x in xs if x is not None]
+            if not xs:
+                return 0.0
+            mn = min(xs)
+            mx = max(xs)
+            return round(mx / mn, 3) if mn else float("inf")
+
+        logger.warning(
+            "ROLLOUT_DP_IMBALANCE "
+            "dp_size=%s total_samples=%s total_tokens=%s "
+            "sample_counts=%s sample_ratio=%s "
+            "token_sums=%s token_ratio=%s "
+            "payload_mbs=%s payload_ratio=%s",
+            dp_size,
+            len(total_lengths),
+            sum(total_lengths),
+            sample_counts,
+            _ratio(sample_counts),
+            token_sums,
+            _ratio(token_sums),
+            payload_mbs,
+            _ratio(payload_mbs),
+        )
+
         return rollout_data_refs
 
 
@@ -811,7 +992,7 @@ def _allocate_rollout_engine_addr_and_ports_normal(
     worker_type="regular",
     num_gpus_per_engine=None,
     rank_offset=0,
-    base_port=15000,
+    base_port=17500,
 ):
     # get ports
     # there are 4 ports we need to allocate
@@ -839,8 +1020,17 @@ def _allocate_rollout_engine_addr_and_ports_normal(
         num_engines_on_this_node = num_engines_per_node - (local_rank % num_engines_per_node)
 
         def get_addr_and_ports(engine, node_idx):
-            # use small ports to prevent ephemeral port between 32768 and 65536.
-            # also, ray uses port 10002-19999, thus we avoid near-10002 to avoid racing condition
+            # Port range constraints (all must hold):
+            #   - < 32768 to stay clear of the ephemeral port range (32768-65535)
+            #   - > 10002 but away from 10002 to avoid races with Ray (10002-19999)
+            #   - > 17000 to stay clear of Mooncake's RPC handshake range
+            #     (rpc_min_port=15000..rpc_max_port=17000 from
+            #     mooncake-transfer-engine/include/config.h). Prior default of
+            #     15000 fully overlapped mooncake and caused intermittent
+            #     EADDRINUSE when mooncake's TransferEngine grabbed a port
+            #     inside the miles-allocated range before sglang's Uvicorn
+            #     could bind it.
+            # 17500+ satisfies all three.
             start_port = node_port_cursor.get(node_idx, base_port)
 
             def port(consecutive=1):
@@ -937,6 +1127,9 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
         router_args.prometheus_port = find_available_port(random.randint(4000, 5000))
         router_args.log_level = "warn"
         router_args.request_timeout_secs = args.sglang_router_request_timeout_secs
+
+        if args.sglang_router_policy:
+            router_args.policy = args.sglang_router_policy
 
         if has_pd_disaggregation:
             router_args.pd_disaggregation = True
@@ -1111,6 +1304,8 @@ def _start_session_server(args):
         args.session_server_ip = args.sglang_router_ip
     if getattr(args, "session_server_port", None) is None:
         args.session_server_port = find_available_port(random.randint(5000, 6000))
+    if getattr(args, "session_server_instance_id", None) is None:
+        args.session_server_instance_id = uuid.uuid4().hex
 
     ip, port = args.session_server_ip, args.session_server_port
     if not is_port_available(port):
@@ -1158,6 +1353,7 @@ def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any]
 
     step = compute_rollout_step(args, rollout_id)
     log_dict["eval/step"] = step
+    log_dict["train/rollout_id"] = rollout_id
     tracking_utils.log(args, log_dict, step_key="eval/step")
 
     return log_dict
@@ -1178,13 +1374,16 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
     logger.info(f"perf {rollout_id}: {log_dict}")
     step = compute_rollout_step(args, rollout_id)
     log_dict["rollout/step"] = step
+    log_dict["train/rollout_id"] = rollout_id
     tracking_utils.log(args, log_dict, step_key="rollout/step")
 
 
 def compute_metrics_from_samples(args, samples):
     response_lengths = [sample.effective_response_length for sample in samples]
+    n = len(samples)
 
     log_dict = {}
+    # existing keys (unchanged)
     log_dict |= dict_add_prefix(compute_statistics(response_lengths), "response_len/")
     log_dict |= _compute_zero_std_metrics(args, samples)
     log_dict |= _compute_spec_metrics(args, samples)
@@ -1192,6 +1391,12 @@ def compute_metrics_from_samples(args, samples):
     log_dict |= _compute_reward_cat_metrics(args, samples)
     log_dict["repetition_frac"] = np.mean([int(has_repetition(s.response)) for s in samples]).item()
     log_dict["truncated_ratio"] = np.mean([int(s.status == Sample.Status.TRUNCATED) for s in samples]).item()
+
+    oldest_versions = [s.oldest_weight_version for s in samples if s.oldest_weight_version is not None]
+    if oldest_versions:
+        log_dict |= dict_add_prefix(compute_statistics(oldest_versions), "weight_version/")
+        mixed = sum(1 for s in samples if len(set(s.weight_versions)) > 1)
+        log_dict["weight_version/mixed_version_ratio"] = mixed / len(samples)
 
     tito_vals = [s.metadata.get("tito_session_mismatch") for s in samples]
     tito_vals = [v for v in tito_vals if v is not None]
@@ -1211,6 +1416,35 @@ def compute_metrics_from_samples(args, samples):
                 )
             # assistant_text mismatch is non-critical: assistant tokens are inherited
             # from the pretokenized prefix and may differ from canonical tokenization.
+    # new top-level grouped keys: global
+    log_dict |= _compute_grouped_reward_metrics(args, samples, "reward", n, include_count_frac=False)
+    log_dict |= _compute_grouped_response_metrics(args, samples, "response_stats")
+    log_dict |= _compute_group_outcome_metrics(args, samples, prefix="reward")
+
+    # per-correctness (no count_frac: for binary rewards = mean reward = already in reward/raw_reward)
+    correct = [s for s in samples if s.get_reward_value(args) > 0]
+    incorrect = [s for s in samples if s.get_reward_value(args) <= 0]
+    for label, grp in [("correct", correct), ("incorrect", incorrect)]:
+        if grp:
+            log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{label}", n, include_count_frac=False)
+            log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{label}")
+
+    # per-category and combined (only if category data present)
+    cat_key = _get_problem_category_key(args, samples)
+    if cat_key is not None:
+        for cat, cat_grp in group_by(samples, lambda s: s.metadata.get(cat_key)).items():
+            if cat is None or not cat_grp:
+                continue
+            log_dict |= _compute_grouped_reward_metrics(args, cat_grp, f"reward/{cat}", n)
+            log_dict |= _compute_grouped_response_metrics(args, cat_grp, f"response_stats/{cat}")
+            log_dict |= _compute_group_outcome_metrics(args, cat_grp, prefix=f"reward/{cat}")
+            for label, grp in [
+                ("correct", [s for s in cat_grp if s.get_reward_value(args) > 0]),
+                ("incorrect", [s for s in cat_grp if s.get_reward_value(args) <= 0]),
+            ]:
+                if grp:
+                    log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{cat}/{label}", n)
+                    log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{cat}/{label}")
 
     return log_dict
 
@@ -1294,3 +1528,57 @@ def _compute_reward_cat_metrics(args, all_samples: list[Sample]):
     samples_of_reward_cat = group_by(all_samples, lambda s: s.reward[reward_cat_key])
 
     return {f"error_cat/{reward_cat}": len(s) / len(all_samples) for reward_cat, s in samples_of_reward_cat.items()}
+
+
+# Candidate metadata keys to auto-detect problem category (checked in order)
+_CANDIDATE_CATEGORY_KEYS = ["category", "type", "subject", "domain", "problem_type"]
+
+
+def _get_problem_category_key(args, all_samples: list[Sample]) -> str | None:
+    """Return the metadata key to use for problem category grouping, or None if not available."""
+    explicit = getattr(args, "log_problem_category", None)
+    if explicit:
+        return explicit
+    for sample in all_samples:
+        if sample.metadata:
+            for key in _CANDIDATE_CATEGORY_KEYS:
+                if key in sample.metadata:
+                    return key
+    return None
+
+
+def _compute_grouped_reward_metrics(
+    args, group: list[Sample], prefix: str, n_total: int, include_count_frac: bool = True
+) -> dict:
+    """Reward/outcome metrics for a split — emitted under reward/ sections."""
+    result = {f"{prefix}/raw_reward": np.mean([s.get_reward_value(args) for s in group]).item()}
+    if include_count_frac:
+        result[f"{prefix}/count_frac"] = len(group) / n_total
+    return result
+
+
+def _compute_grouped_response_metrics(args, group: list[Sample], prefix: str) -> dict:
+    """Response shape metrics for a split — emitted under response_stats/ sections."""
+    return {
+        f"{prefix}/response_len": np.mean([s.effective_response_length for s in group]).item(),
+        f"{prefix}/truncated_frac": np.mean([int(s.status == Sample.Status.TRUNCATED) for s in group]).item(),
+        f"{prefix}/repetition_frac": np.mean([int(has_repetition(s.response)) for s in group]).item(),
+    }
+
+
+def _compute_group_outcome_metrics(
+    args, all_samples: list[Sample], prefix: str = "reward"
+) -> dict:
+    """Fraction of prompt groups that are unanimously correct or incorrect. GRPO only."""
+    if args.advantage_estimator == "ppo":
+        return {}
+    groups = list(group_by(all_samples, lambda s: s.group_index).values())
+    n_groups = len(groups)
+    if n_groups == 0:
+        return {}
+    all_correct = sum(1 for g in groups if all(s.get_reward_value(args) > 0 for s in g))
+    all_incorrect = sum(1 for g in groups if all(s.get_reward_value(args) <= 0 for s in g))
+    return {
+        f"{prefix}/all_correct_group_frac": all_correct / n_groups,
+        f"{prefix}/all_incorrect_group_frac": all_incorrect / n_groups,
+    }

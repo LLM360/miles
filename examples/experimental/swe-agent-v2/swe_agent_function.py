@@ -14,7 +14,7 @@ import asyncio
 import logging
 import os
 from typing import Any
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse, urlsplit, urlunparse
 
 from miles.utils.http_utils import post
 
@@ -49,7 +49,7 @@ async def run(
         netloc = f"{external_host}:{port}" if port else external_host
         session_url = urlunparse(parsed._replace(netloc=netloc))
 
-    request = {
+    request: dict[str, Any] = {
         **metadata,
         "base_url": session_url,
         "model": f"openai/{model_name}",
@@ -60,6 +60,17 @@ async def run(
     if max_seq_len is not None:
         request["max_seq_len"] = int(max_seq_len)
 
+    session_server_id = metadata.get("session_server_id")
+    if session_server_id is not None:
+        if external_host:
+            port = urlsplit(f"http://{session_server_id}").port
+            session_server_id = f"{external_host}:{port}"
+        request["session_server_id"] = session_server_id
+
+    session_server_instance_id = metadata.get("session_server_instance_id")
+    if session_server_instance_id is not None:
+        request["session_server_instance_id"] = session_server_instance_id
+
     try:
         response = await asyncio.wait_for(
             post(f"{agent_server_url}/run", request),
@@ -67,6 +78,9 @@ async def run(
         )
     except asyncio.TimeoutError:
         logger.error("Agent server call timed out after 3600s")
+        return None
+    except asyncio.CancelledError:
+        logger.warning("Agent server call cancelled (sibling task failure?)")
         return None
     except Exception as e:
         logger.error(f"Agent server call failed: {e}")

@@ -26,14 +26,13 @@ from .cp_utils import (
     get_logits_and_tokens_offset_with_cp,
     get_sum_of_sample_mean,
 )
-from .parallel import ParallelState
+from .parallel import get_parallel_state
 
 
 def get_responses(
     logits: torch.Tensor,
     *,
     args: Namespace,
-    parallel_state: ParallelState,
     unconcat_tokens: list[torch.Tensor],
     total_lengths: list[int],
     response_lengths: list[int],
@@ -62,6 +61,7 @@ def get_responses(
         `[R, V]` (policy) or `[R, 1]` (value) and `tokens_chunk` is shape `[R]`
         (1D int64), both aligned to response tokens for one sample.
     """
+    parallel_state = get_parallel_state()
     qkv_format = args.qkv_format
 
     assert len(logits.shape) == 3, f"{logits.shape}"
@@ -75,7 +75,7 @@ def get_responses(
 
     logits = logits.div(args.rollout_temperature)
 
-    cp_size = parallel_state.cp_size
+    cp_size = parallel_state.cp.size
     end = 0
     seq_start = 0
     for i, (tokens, total_length, response_length) in enumerate(
@@ -96,7 +96,7 @@ def get_responses(
             # DSA: global concat then contiguous CP split. Each rank owns logits for
             # global positions [chunk_start, chunk_end).
             logits_local_len = logits.size(0)
-            cp_rank = parallel_state.cp_rank
+            cp_rank = parallel_state.cp.rank
             chunk_start = cp_rank * logits_local_len
             chunk_end = chunk_start + logits_local_len
 
@@ -118,7 +118,7 @@ def get_responses(
         else:
             # TODO: this is super ugly... do better abstraction.
             chunk_size, chunks_offset, logits_offset, tokens_offset = get_logits_and_tokens_offset_with_cp(
-                total_length, response_length, parallel_state, qkv_format, max_seq_len
+                total_length, response_length, qkv_format, max_seq_len
             )
 
             logits_0, logits_1 = logits[end : end + chunk_size], logits[end + chunk_size : end + 2 * chunk_size]
@@ -145,7 +145,6 @@ def get_log_probs_and_entropy(
     logits: torch.Tensor,
     *,
     args: Namespace,
-    parallel_state: ParallelState,
     unconcat_tokens: list[torch.Tensor],
     total_lengths: list[int],
     response_lengths: list[int],
@@ -175,13 +174,13 @@ def get_log_probs_and_entropy(
         sample. If `with_entropy` is True, also includes "entropy" key with
         a list of `[R]` tensors.
     """
+    parallel_state = get_parallel_state()
     assert non_loss_data
     log_probs_list = []
     entropy_list = []
     for logits_chunk, tokens_chunk in get_responses(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=unconcat_tokens,
         total_lengths=total_lengths,
         response_lengths=response_lengths,
@@ -190,7 +189,7 @@ def get_log_probs_and_entropy(
         log_prob, entropy = calculate_log_probs_and_entropy(
             logits_chunk,
             tokens_chunk,
-            parallel_state.tp_group,
+            parallel_state.tp.group,
             with_entropy=with_entropy,
             chunk_size=args.log_probs_chunk_size,
             true_on_policy=args.true_on_policy_mode,
@@ -211,7 +210,6 @@ def get_log_probs_and_entropy(
             res,
             logits=logits,
             args=args,
-            parallel_state=parallel_state,
             total_lengths=total_lengths,
             response_lengths=response_lengths,
             max_seq_lens=max_seq_lens,
@@ -224,7 +222,6 @@ def get_values(
     logits: torch.Tensor,
     *,
     args: Namespace,
-    parallel_state: ParallelState,
     unconcat_tokens: list[torch.Tensor],
     total_lengths: list[int],
     response_lengths: list[int],
@@ -255,7 +252,6 @@ def get_values(
     for logits_chunk, _ in get_responses(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=unconcat_tokens,
         total_lengths=total_lengths,
         response_lengths=response_lengths,
@@ -273,7 +269,6 @@ def get_values(
             res,
             logits=logits,
             args=args,
-            parallel_state=parallel_state,
             total_lengths=total_lengths,
             response_lengths=response_lengths,
             max_seq_lens=max_seq_lens,
@@ -282,7 +277,7 @@ def get_values(
     return res
 
 
-def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelState, rollout_data: RolloutBatch) -> None:
+def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) -> None:
     """Compute advantages and returns in-place based on `args.advantage_estimator`.
 
     This function extracts rewards, log-probs, values, and masks from
@@ -303,6 +298,7 @@ def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelStat
             "total_lengths"). Modified in-place to add "advantages" and
             "returns" keys, each mapping to lists of tensors per sample.
     """
+    parallel_state = get_parallel_state()
     log_probs: list[torch.Tensor] = rollout_data.get("rollout_log_probs" if args.use_rollout_logprobs else "log_probs")
     ref_log_probs: list[torch.Tensor] = rollout_data.get("ref_log_probs")
     rewards: list[float] = rollout_data.get("rewards")
@@ -340,14 +336,14 @@ def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelStat
         old_rewards = rewards
         rewards = []
         kl_coef = -args.kl_coef
-        cp_rank = parallel_state.cp_rank
+        cp_rank = parallel_state.cp.rank
         for reward, k in zip(old_rewards, kl, strict=False):
             k *= kl_coef
             if cp_rank == 0:
                 k[-1] += reward
             rewards.append(k)
         advantages, returns = get_advantages_and_returns_batch(
-            total_lengths, response_lengths, values, rewards, args.gamma, args.lambd, parallel_state
+            total_lengths, response_lengths, values, rewards, args.gamma, args.lambd
         )
 
     elif args.advantage_estimator == "reinforce_plus_plus":
@@ -360,7 +356,6 @@ def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelStat
             total_lengths=total_lengths,
             kl_coef=args.kl_coef,
             gamma=args.gamma,
-            parallel_state=parallel_state,
         )
         advantages = [r for r in returns]
 
@@ -396,7 +391,7 @@ def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelStat
     # TODO: OpenRLHF always does advantages normalization but veRL doesn't seem to do it.
     if args.normalize_advantages:
         all_advs = torch.cat(advantages)
-        cp_size = parallel_state.cp_size
+        cp_size = parallel_state.cp.size
         if cp_size == 1:
             all_masks = torch.cat(loss_masks)
         else:
@@ -408,7 +403,7 @@ def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelStat
                 max_seq_len = max_seq_lens[i] if max_seq_lens is not None else None
 
                 _, _, _, token_offsets = get_logits_and_tokens_offset_with_cp(
-                    total_len, response_len, parallel_state, args.qkv_format, max_seq_len
+                    total_len, response_len, args.qkv_format, max_seq_len
                 )
 
                 # Convert global offsets to response-space offsets
@@ -438,7 +433,7 @@ def compute_advantages_and_returns(args: Namespace, parallel_state: ParallelStat
             assert (
                 all_advs.size() == all_masks.size()
             ), f"Shape mismatch before whitening: advantages {all_advs.size()}, masks {all_masks.size()}"
-            dp_group = parallel_state.dp_group
+            dp_group = parallel_state.intra_dp.group
 
             whitened_advs_flat = distributed_masked_whiten(
                 all_advs,
@@ -505,7 +500,6 @@ def icepop_function(
 
 def policy_loss_function(
     args: Namespace,
-    parallel_state: ParallelState,
     batch: RolloutBatch,
     logits: torch.Tensor,
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
@@ -534,6 +528,7 @@ def policy_loss_function(
         "tis", "ois", "tis_clipfrac" are included when the respective features
         are enabled.
     """
+    parallel_state = get_parallel_state()
     advantages = torch.cat(batch["advantages"], dim=0)
     old_log_probs = batch["rollout_log_probs"] if args.use_rollout_logprobs else batch["log_probs"]
 
@@ -544,7 +539,6 @@ def policy_loss_function(
     log_probs_and_entropy = get_log_probs_and_entropy(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=batch["unconcat_tokens"],
         total_lengths=total_lengths,
         response_lengths=response_lengths,
@@ -561,13 +555,13 @@ def policy_loss_function(
     full_old_log_probs = None
     if need_full_log_probs:
         full_log_probs = [
-            all_gather_with_cp(log_prob, total_length, response_length, parallel_state)
+            all_gather_with_cp(log_prob, total_length, response_length)
             for log_prob, total_length, response_length in zip(
                 log_probs, total_lengths, response_lengths, strict=False
             )
         ]
         full_old_log_probs = [
-            all_gather_with_cp(old_log_prob, total_length, response_length, parallel_state)
+            all_gather_with_cp(old_log_prob, total_length, response_length)
             for old_log_prob, total_length, response_length in zip(
                 old_log_probs, total_lengths, response_lengths, strict=False
             )
@@ -642,10 +636,10 @@ def policy_loss_function(
             total_lengths,
             response_lengths,
             modified_response_masks,
-            parallel_state,
             args.calculate_per_token_loss,
             args.qkv_format,
             max_seq_lens,
+            loss_agg_mode=getattr(args, "loss_agg_mode", None),
         )
 
     # Determine pg_loss reducer: use custom if specified, otherwise default
@@ -690,10 +684,25 @@ def policy_loss_function(
     if log_probs.numel() == 0:
         loss += 0 * logits.sum()
 
+    # Current and old policy log probs for policy_shift panel
+    log_probs_metric = sum_of_sample_mean(log_probs).clone().detach()
+    old_log_probs_metric = sum_of_sample_mean(old_log_probs).clone().detach()
+
+    # Train-inference mismatch: compare inference engine vs FSDP at rollout time
     train_rollout_logprob_abs_diff = None
+    train_rollout_logprob_diff = None
     if "rollout_log_probs" in batch and batch["rollout_log_probs"]:
-        rollout_log_probs = torch.cat(batch["rollout_log_probs"], dim=0)
-        train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs).abs())
+        rollout_log_probs_cat = torch.cat(batch["rollout_log_probs"], dim=0)
+        log_probs_batch_cat = torch.cat(batch["log_probs"], dim=0)
+        train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs_cat).abs()).clone().detach()
+        # signed: log π(inf) − log π(fsdp rollout)
+        train_rollout_logprob_diff = sum_of_sample_mean(rollout_log_probs_cat - log_probs_batch_cat).clone().detach()
+
+    # KL vs reference model — always log when ref present, regardless of use_kl_loss
+    ref_kl_metric = None
+    if "ref_log_probs" in batch and batch["ref_log_probs"]:
+        ref_log_probs_cat = torch.cat(batch["ref_log_probs"], dim=0)
+        ref_kl_metric = sum_of_sample_mean(log_probs - ref_log_probs_cat).clone().detach()
 
     reported_loss = {
         "loss": loss.clone().detach(),
@@ -701,10 +710,16 @@ def policy_loss_function(
         "entropy_loss": entropy_loss.clone().detach(),
         "pg_clipfrac": pg_clipfrac.clone().detach(),
         "ppo_kl": ppo_kl.clone().detach(),
+        "log_probs": log_probs_metric,
+        "old_log_probs": old_log_probs_metric,
     }
 
     if train_rollout_logprob_abs_diff is not None:
-        reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff.clone().detach()
+        reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff
+        reported_loss["train_rollout_logprob_diff"] = train_rollout_logprob_diff
+
+    if ref_kl_metric is not None:
+        reported_loss["ref_kl"] = ref_kl_metric
 
     if args.use_kl_loss:
         reported_loss["kl_loss"] = kl_loss.clone().detach()
@@ -726,7 +741,6 @@ def policy_loss_function(
 
 def value_loss_function(
     args: Namespace,
-    parallel_state: ParallelState,
     batch: RolloutBatch,
     logits: torch.Tensor,
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
@@ -753,7 +767,6 @@ def value_loss_function(
     values = get_values(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=batch["unconcat_tokens"],
         total_lengths=batch["total_lengths"],
         response_lengths=batch["response_lengths"],
@@ -786,7 +799,6 @@ def value_loss_function(
 
 def sft_loss_function(
     args: Namespace,
-    parallel_state: ParallelState,
     batch: RolloutBatch,
     logits: torch.Tensor,
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
@@ -813,7 +825,6 @@ def sft_loss_function(
     log_probs_and_entropy = get_log_probs_and_entropy(
         logits,
         args=args,
-        parallel_state=parallel_state,
         unconcat_tokens=batch["unconcat_tokens"],
         total_lengths=total_lengths,
         response_lengths=response_lengths,
@@ -839,7 +850,6 @@ def sft_loss_function(
 
 def loss_function(
     args: Namespace,
-    parallel_state: ParallelState,
     batch: RolloutBatch,
     num_microbatches: int,
     logits: torch.Tensor,
@@ -868,6 +878,7 @@ def loss_function(
         - `logging_dict` has keys "keys" (list of str metric names) and
           "values" (1D tensor: [count, metric1, metric2, ...]).
     """
+    parallel_state = get_parallel_state()
     num_tokens = sum([torch.clamp_min(loss_mask.sum(), 1) for loss_mask in batch["loss_masks"]])
     num_samples = len(batch["response_lengths"])
 
@@ -875,10 +886,10 @@ def loss_function(
         batch["total_lengths"],
         batch["response_lengths"],
         batch["loss_masks"],
-        parallel_state,
         args.calculate_per_token_loss,
         args.qkv_format,
         batch.get("max_seq_lens", None),
+        loss_agg_mode=getattr(args, "loss_agg_mode", None),
     )
 
     match args.loss_type:
@@ -897,41 +908,60 @@ def loss_function(
         loss, log = checkpoint(
             func,
             args,
-            parallel_state,
             batch,
             logits,
             sum_of_sample_mean,
         )
     else:
-        loss, log = func(args, parallel_state, batch, logits, sum_of_sample_mean)
+        loss, log = func(args, batch, logits, sum_of_sample_mean)
 
     # With allgather-CP, some CP ranks may have no loss-contributing tokens (e.g., all
     # padding). Without this, gradient doesn't flow through their attention path, so
     # the CP gather's backward (reduce-scatter) is not called, deadlocking other CP
     # ranks that call it. Adding this zero loss forces autograd to traverse the full
     # graph on every rank without changing gradient values.
-    if parallel_state.cp_size > 1 and args.allgather_cp:
+    if parallel_state.cp.size > 1 and args.allgather_cp:
         loss = loss + 0 * logits.sum()
 
     # Here we need to divide by cp_size because to cancel the multiply in Megatron.
+    assert args.use_dynamic_global_batch_size == ("dynamic_global_batch_size" in batch)
+
+    # Resolve effective loss mode: --loss-agg-mode takes precedence over --calculate-per-token-loss
+    loss_agg_mode = getattr(args, "loss_agg_mode", None)
+    if loss_agg_mode is None:
+        loss_agg_mode = "token-sum" if args.calculate_per_token_loss else "sample-mean"
+    uses_token_normalization = loss_agg_mode in ("token-mean", "token-sum")
+
+    # Scale loss for distributed training.
+    # - sample-mean: divide by global_batch_size (number of samples)
+    # - token-mean/token-sum: use num_tokens as normalizer
+    #   For Megatron: the external normalizer handles division by num_tokens.
+    #   For FSDP (apply_megatron_loss_scaling=False): token-mean explicitly
+    #   divides by num_tokens here since FSDP ignores the returned normalizer.
     global_batch_size = batch.get("dynamic_global_batch_size", args.global_batch_size)
-    if not args.calculate_per_token_loss:
+    if not uses_token_normalization:
+        # sample-mean path
         if apply_megatron_loss_scaling:
-            loss = loss * num_microbatches / global_batch_size * parallel_state.dp_cp_size
+            loss = loss * num_microbatches / global_batch_size * parallel_state.intra_dp_cp.size
         else:
-            loss = loss / global_batch_size * parallel_state.dp_size
+            loss = loss / global_batch_size * parallel_state.intra_dp.size
     else:
         if apply_megatron_loss_scaling:
-            loss = loss * parallel_state.cp_size
+            # Megatron normalizes externally via num_tokens normalizer
+            loss = loss * parallel_state.cp.size
+        elif loss_agg_mode == "token-mean":
+            # FSDP: normalize by num_tokens explicitly (FSDP ignores the normalizer)
+            loss = loss / torch.clamp_min(num_tokens, 1) * parallel_state.intra_dp.size
+        # token-sum on FSDP: no normalization (raw sum, legacy behavior)
 
     return (
         loss,
-        torch.tensor(num_tokens if args.calculate_per_token_loss else 1, device=logits.device),
+        torch.tensor(num_tokens if uses_token_normalization else 1, device=logits.device),
         {
             "keys": list(log.keys()),
             "values": torch.tensor(
                 [
-                    num_samples if not args.calculate_per_token_loss else num_tokens,
+                    num_samples if not uses_token_normalization else num_tokens,
                 ]
                 + list(log.values()),
                 device=logits.device,
