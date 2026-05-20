@@ -551,11 +551,13 @@ class RolloutManager:
 
     def _get_rollout_data(self, rollout_id):
         if self.args.load_debug_rollout_data:
-            data = torch.load(
-                self.args.load_debug_rollout_data.format(rollout_id=rollout_id),
-                weights_only=False,
-            )["samples"]
-            data = [Sample.from_dict(sample) for sample in data]
+            path = Path(self.args.load_debug_rollout_data.format(rollout_id=rollout_id))
+            if path.suffix == ".parquet":
+                import pyarrow.parquet as pq
+                data = [Sample.from_dict(row) for row in pq.read_table(path).to_pylist()]
+            else:
+                data = torch.load(path, weights_only=False)["samples"]
+                data = [Sample.from_dict(sample) for sample in data]
             if (ratio := self.args.load_debug_rollout_data_subsample) is not None:
                 original_num_rows = len(data)
                 rough_subsample_num_rows = int(original_num_rows * ratio)
@@ -649,15 +651,22 @@ class RolloutManager:
             else:
                 torch.save(dict(rollout_id=rollout_id, samples=samples), path)
 
-            # Rolling retention: delete the file that aged out of the window (training rollouts only).
+            # Rolling retention: delete files that aged out of the window (training rollouts only).
+            # Walk backward from the oldest allowed id so that a restart with a smaller N
+            # cleans up all accumulated stale files, not just one.
             retain_last_n = getattr(self.args, "save_rollout_retain_last_n", 0)
             if not evaluation and retain_last_n > 0:
                 old_id = rollout_id - retain_last_n
-                if old_id >= 0:
+                while old_id >= 0:
                     old_path = Path(path_template.format(rollout_id=str(old_id)))
                     if save_format == "parquet":
                         old_path = old_path.with_suffix(".parquet")
-                    old_path.unlink(missing_ok=True)
+                    if old_path.exists():
+                        old_path.unlink()
+                        logger.info(f"Deleted aged-out rollout file {old_path} (retain_last_n={retain_last_n})")
+                        old_id -= 1
+                    else:
+                        break
 
     def _post_process_rewards(self, samples: list[Sample] | list[list[Sample]]):
         if self.custom_reward_post_process_func is not None:
