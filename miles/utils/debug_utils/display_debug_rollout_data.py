@@ -3,10 +3,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Annotated
 
-import torch
 import typer
 
-from miles.ray.rollout import compute_perf_metrics_from_samples
+from miles.ray.rollout.metrics import _compute_perf_metrics_from_samples
+from miles.utils.rollout_dump import find_rollout_dump, load_rollout_dump
 from miles.utils.types import Sample
 
 _WHITELIST_KEYS = [
@@ -28,7 +28,17 @@ def main(
     show_metrics: bool = True,
     show_samples: bool = True,
     category: list[str] = None,
+    rollout_time: Annotated[
+        float | None, typer.Option(help="Measured rollout duration in seconds, required for speed metrics.")
+    ] = None,
+    rollout_num_gpus: Annotated[
+        int | None, typer.Option(help="Rollout GPU count, required for per-GPU speed metrics.")
+    ] = None,
 ):
+    if rollout_time is not None and rollout_time <= 0:
+        raise typer.BadParameter("--rollout-time must be positive")
+    if rollout_num_gpus is not None and rollout_num_gpus <= 0:
+        raise typer.BadParameter("--rollout-num-gpus must be positive")
     if category is None:
         category = ["train", "eval"]
     for rollout_id, path in _get_rollout_dump_paths(load_debug_rollout_data, category):
@@ -36,19 +46,19 @@ def main(
         print(f"{rollout_id=} {path=}")
         print("-" * 80)
 
-        pack = torch.load(path)
+        pack = load_rollout_dump(path)
         sample_dicts = pack["samples"]
 
         if show_metrics:
-            # TODO read these configs from dumps
-            args = SimpleNamespace(
-                advantage_estimator="grpo",
-                reward_key=None,
-                log_reward_category=None,
-            )
-            sample_objects = [Sample.from_dict(s) for s in sample_dicts]
-            metrics = compute_perf_metrics_from_samples(args, sample_objects)
-            print("metrics", metrics)
+            if rollout_time is None:
+                print("Speed metrics unavailable: supply --rollout-time with the measured duration in seconds.")
+            elif not sample_dicts:
+                print("Speed metrics unavailable: the dump contains no samples.")
+            else:
+                args = SimpleNamespace(rollout_num_gpus=rollout_num_gpus)
+                sample_objects = [Sample.from_dict(s) for s in sample_dicts]
+                metrics = _compute_perf_metrics_from_samples(args, sample_objects, rollout_time)
+                print("metrics", metrics)
 
         if show_samples:
             for sample in sample_dicts:
@@ -63,7 +73,7 @@ def _get_rollout_dump_paths(load_debug_rollout_data: str, categories: list[str])
                 "train": "",
                 "eval": "eval_",
             }[category]
-            path = Path(load_debug_rollout_data.format(rollout_id=f"{prefix}{rollout_id}"))
+            path = find_rollout_dump(Path(load_debug_rollout_data.format(rollout_id=f"{prefix}{rollout_id}")))
             if path.exists():
                 yield rollout_id, path
 

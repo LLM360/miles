@@ -3,8 +3,8 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 
-import torch
-
+from miles.ray.rollout.debug_retention import prune_rollout_dumps
+from miles.utils.rollout_dump import find_rollout_dump, load_rollout_dump, save_rollout_dump
 from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
@@ -114,6 +114,8 @@ def save_debug_rollout_data(args, data, rollout_id, evaluation: bool, metadata: 
     # TODO to be refactored (originally Buffer._set_data)
     if (path_template := args.save_debug_rollout_data) is not None:
         path = Path(path_template.format(rollout_id=("eval_" if evaluation else "") + str(rollout_id)))
+        if getattr(args, "save_rollout_format", "pt") == "parquet":
+            path = path.with_suffix(".parquet")
         logger.info(f"Save debug rollout data to {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -124,7 +126,14 @@ def save_debug_rollout_data(args, data, rollout_id, evaluation: bool, metadata: 
 
         # TODO may improve the format
         dump_data = dict(samples=[sample.to_dict() for sample in samples])
-        torch.save(dict(rollout_id=rollout_id, metadata=metadata or {}, **dump_data), path)
+        save_rollout_dump(path, dict(rollout_id=rollout_id, metadata=metadata or {}, **dump_data))
+        if not evaluation:
+            prune_rollout_dumps(
+                path_template,
+                trajectory_template=args.save_debug_trajectory_data,
+                rollout_id=rollout_id,
+                retain=getattr(args, "save_rollout_retain_last_n", 0),
+            )
 
 
 class RolloutDataInjectionUtil:
@@ -136,7 +145,7 @@ class RolloutDataInjectionUtil:
 
     @classmethod
     def load(cls, args, rollout_id: int) -> tuple[list[Sample], dict]:
-        path = Path(args.ci_inject_rollout_data_path.format(rollout_id=rollout_id))
+        path = find_rollout_dump(Path(args.ci_inject_rollout_data_path.format(rollout_id=rollout_id)))
         assert path.is_file(), f"Recorded rollout data to inject is missing: {path}"
         logger.info(f"CI rollout-data injection: replacing generated data of rollout {rollout_id} with {path}")
         return _load_rollout_data_file(path)
@@ -190,7 +199,7 @@ class RolloutDataInjectionUtil:
 
 
 def _load_rollout_data_file(path: Path) -> tuple[list[Sample], dict]:
-    payload = torch.load(path, weights_only=False)
+    payload = load_rollout_dump(find_rollout_dump(path))
     data = [Sample.from_dict(sample) for sample in payload["samples"]]
     metadata = payload.get("metadata") or {}
     return data, metadata

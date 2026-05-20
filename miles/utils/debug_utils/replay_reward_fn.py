@@ -1,11 +1,12 @@
 import asyncio
+from pathlib import Path
 from typing import Annotated
 
 import ray
-import torch
 import typer
 
 from miles.utils.function_registry import load_function
+from miles.utils.rollout_dump import find_rollout_dump, load_rollout_dump
 from miles.utils.types import Sample
 
 
@@ -26,7 +27,7 @@ def main(
     if not ray.is_initialized():
         ray.init()
 
-    pack = torch.load(rollout_data_path)
+    pack = load_rollout_dump(find_rollout_dump(Path(rollout_data_path)))
     samples = [Sample.from_dict(s) for s in pack["samples"]]
     asyncio.run(_main_async(samples=samples, custom_rm_path=custom_rm_path))
 

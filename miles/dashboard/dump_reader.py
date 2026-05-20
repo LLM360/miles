@@ -28,6 +28,7 @@ import polars as pl
 import torch
 
 from miles.backends.training_utils.cp_utils import assemble_log_prob_from_cp, get_logits_and_tokens_offset_with_cp
+from miles.utils.rollout_dump import find_rollout_dump, load_rollout_dump
 from miles.utils.types import LEGACY_WEIGHT_VERSIONS_KEY, Sample, WeightVersionsPerCall
 
 
@@ -419,7 +420,11 @@ class DumpReader:
         if not self.rollout_dir.is_dir():
             return ids
         now = time.time()
-        for path in self.rollout_dir.glob("*.pt"):
+        for path in self.rollout_dir.iterdir():
+            if path.suffix not in {".pt", ".parquet"} or not path.stem.removeprefix("eval_").isdigit():
+                continue
+            if path != find_rollout_dump(path):
+                continue
             evaluation = path.stem.startswith("eval_")
             rollout_id = int(path.stem.removeprefix("eval_"))
             if self._visible(path, rollout_id, evaluation=evaluation, now=now):
@@ -430,7 +435,7 @@ class DumpReader:
 
     def load_joined(self, rollout_id: int, *, evaluation: bool = False) -> JoinedRollout:
         name = f"eval_{rollout_id}.pt" if evaluation else f"{rollout_id}.pt"
-        pack = self._torch_load(self.rollout_dir / name)
+        pack = self._torch_load(find_rollout_dump(self.rollout_dir / name))
         assert pack["rollout_id"] == rollout_id, f"{pack['rollout_id']=} != {rollout_id=} in {name}"
         samples = [Sample.from_dict(data) for data in pack["samples"]]
         sample_keys = _sample_keys(samples)
@@ -666,7 +671,7 @@ class DumpReader:
             from miles.ray.rollout.debug_data import save_dashboard_columns
 
             name = f"eval_{rollout_id}.pt" if evaluation else f"{rollout_id}.pt"
-            pack = self._torch_load(self.rollout_dir / name)
+            pack = self._torch_load(find_rollout_dump(self.rollout_dir / name))
             save_dashboard_columns([Sample.from_dict(data) for data in pack["samples"]], path)
         frame = pl.scan_parquet(path).filter(pl.col("sample_index") == sample_index).collect()
         if not 0 <= sample_occurrence < len(frame):
@@ -794,7 +799,7 @@ class DumpReader:
 
     def _source_stamps(self, rollout_id: int, *, evaluation: bool) -> dict:
         rollout_path = self.rollout_dir / (f"eval_{rollout_id}.pt" if evaluation else f"{rollout_id}.pt")
-        paths = [rollout_path] + ([] if evaluation else self._train_paths(rollout_id))
+        paths = [find_rollout_dump(rollout_path)] + ([] if evaluation else self._train_paths(rollout_id))
         return {"_summary_version": self.SUMMARY_VERSION, **{p.name: p.stat().st_mtime for p in paths}}
 
     def _summary_row(self, sample: Sample, row: TrainRow | None, *, rollout_id: int, sample_occurrence: int) -> dict:
@@ -877,7 +882,7 @@ class DumpReader:
 
     def _torch_load(self, path: Path, *, mmap: bool = False):
         try:
-            return torch.load(path, weights_only=False, map_location="cpu", mmap=mmap)
+            return load_rollout_dump(path, map_location="cpu", mmap=mmap)
         except FileNotFoundError:
             raise
         except Exception as e:

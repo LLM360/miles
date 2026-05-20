@@ -3,6 +3,7 @@ from typing import Any
 
 import torch
 
+from miles.ray.rollout.diagnostics import log_rollout_dp_shards
 from miles.utils import object_store
 from miles.utils.dp_schedule import build_dp_schedule, has_full_schedule_config
 from miles.utils.multi_lora import is_multi_lora_enabled
@@ -303,7 +304,9 @@ def split_train_data_by_dp(args, data: dict[str, Any], train_parallel_config: di
     else:
         shards = split_train_data_by_dp_raw(args, data, dp_size=train_parallel_config["dp_size"])
     store = object_store.get_instance()
-    return [store.put(value=shard, value_spec=ROLLOUT_DATA_VALUE_SPEC) for shard in shards]
+    refs = [store.put(value=shard, value_spec=ROLLOUT_DATA_VALUE_SPEC) for shard in shards]
+    log_rollout_dp_shards(shards, refs)
+    return refs
 
 
 def can_schedule_on_rollout_side(args, data: dict[str, Any], train_parallel_config: dict | None) -> bool:
