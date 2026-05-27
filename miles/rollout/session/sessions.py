@@ -265,6 +265,14 @@ def setup_session_routes(app, backend, args):
                 session.append_record(record)
             # --- lock released here ---
 
+            # Signal abort to the agent via a header so it can stop immediately,
+            # independent of how the caller's LLM client normalizes finish_reason.
+            # (litellm remaps "abort" → "stop" or "tool_calls" in some versions,
+            # masking the signal; reading raw response headers is the only
+            # reliable cross-version detection path.)
+            if choice.get("finish_reason") == "abort":
+                result["headers"]["x-sglang-aborted"] = "1"
+
             return backend.build_proxy_response(result)
         finally:
             _inflight_chat["count"] -= 1
