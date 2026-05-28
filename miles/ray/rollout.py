@@ -1566,9 +1566,7 @@ def _compute_grouped_response_metrics(args, group: list[Sample], prefix: str) ->
     }
 
 
-def _compute_group_outcome_metrics(
-    args, all_samples: list[Sample], prefix: str = "reward"
-) -> dict:
+def _compute_group_outcome_metrics(args, all_samples: list[Sample], prefix: str = "reward") -> dict:
     """Fraction of prompt groups that are unanimously correct or incorrect. GRPO only."""
     if args.advantage_estimator == "ppo":
         return {}

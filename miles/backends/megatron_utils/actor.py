@@ -586,7 +586,13 @@ class MegatronTrainRayActor(TrainRayActor):
         else:
             for m in all_replay_managers:
                 m.enabled = getattr(self.args, f"use_{m.name}_replay")
-                m.enable_check_replay_result = m.enabled and self.args.ci_test
+                # Let --enable-r3-correctness-check turn on the replay-check
+                # without dragging in the other --ci-test invariants (which
+                # include a strict log_probs vs ref_log_probs equality that
+                # trips on routine floating-point precision differences).
+                m.enable_check_replay_result = m.enabled and (
+                    self.args.ci_test or getattr(self.args, "enable_r3_correctness_check", False)
+                )
 
         (self.model, self.optimizer, self.opt_param_scheduler, loaded_rollout_id) = initialize_model_and_optimizer(
             args, role

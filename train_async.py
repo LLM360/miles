@@ -75,4 +75,8 @@ async def train(args):
 
 if __name__ == "__main__":
     args = parse_args()
+    if getattr(args, "enable_r3_correctness_check", False):
+        from miles.utils.replay_base import RoutingReplayManager
+
+        RoutingReplayManager.enable_check_replay_result = True
     asyncio.run(train(args))

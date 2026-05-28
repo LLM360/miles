@@ -694,7 +694,9 @@ def policy_loss_function(
     if "rollout_log_probs" in batch and batch["rollout_log_probs"]:
         rollout_log_probs_cat = torch.cat(batch["rollout_log_probs"], dim=0)
         log_probs_batch_cat = torch.cat(batch["log_probs"], dim=0)
-        train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs_cat).abs()).clone().detach()
+        train_rollout_logprob_abs_diff = (
+            sum_of_sample_mean((old_log_probs - rollout_log_probs_cat).abs()).clone().detach()
+        )
         # signed: log π(inf) − log π(fsdp rollout)
         train_rollout_logprob_diff = sum_of_sample_mean(rollout_log_probs_cat - log_probs_batch_cat).clone().detach()
 

@@ -1025,6 +1025,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="The rollout routing replay technique from https://arxiv.org/abs/2510.11370",
             )
             parser.add_argument(
+                "--enable-r3-correctness-check",
+                action="store_true",
+                default=False,
+                help=(
+                    "Run RoutingReplayManager's per-step overlap check that "
+                    "recomputes the training-side topk on the same scores and "
+                    "asserts overlap with the rollout indices. Roughly 2x routing "
+                    "cost; off by default. Intended for the R3 regression E2E "
+                    "(LLM360/RL360 scripts/r3-e2e/). No effect unless "
+                    "--use-rollout-routing-replay is also set."
+                ),
+            )
+            parser.add_argument(
                 "--use-opsm",
                 action="store_true",
                 default=False,
