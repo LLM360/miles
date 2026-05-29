@@ -558,6 +558,8 @@ class FSDPTrainRayActor(TrainRayActor):
                 for param_group_id, param_group in enumerate(self.optimizer.param_groups):
                     extra_metrics[f"lr-pg_{param_group_id}"] = param_group["lr"]
 
+                train_step = self.global_step
+                self.global_step += 1
                 log_train_step(
                     args=self.args,
                     loss_dict=loss_dict,
@@ -567,6 +569,7 @@ class FSDPTrainRayActor(TrainRayActor):
                     num_steps_per_rollout=num_steps_per_rollout,
                     role="actor",
                     extra_metrics=extra_metrics,
+                    train_step=train_step,
                 )
 
         routing_replay.reset()

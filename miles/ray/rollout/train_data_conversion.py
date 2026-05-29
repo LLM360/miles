@@ -40,6 +40,8 @@ ROLLOUT_DATA_VALUE_SPEC: dict[str, ValueSpec] = {
     "multimodal_train_inputs": ValueSpec(codec="ragged_tensor_dict"),
     "prompt": ValueSpec(codec="msgpack_ragged"),
     "metadata": ValueSpec(codec="msgpack_ragged"),
+    "domains": ValueSpec(codec="msgpack_ragged"),
+    "all_domains": ValueSpec(codec="auto"),
     "weight_versions": ValueSpec(codec="msgpack_ragged"),
     "raw_reward": ValueSpec(codec="auto"),
     "total_lengths": ValueSpec(codec="auto"),
@@ -142,6 +144,12 @@ def convert_samples_to_train_data(
 
     if samples[0].train_metadata is not None:
         train_data["metadata"] = [sample.train_metadata for sample in samples]
+
+    domains = [str(domain) if (domain := sample.metadata.get("domain")) else None for sample in samples]
+    if any(domains):
+        train_data["domains"] = domains
+        # Shared by every shard, including workers with no samples of a domain.
+        train_data["all_domains"] = sorted({domain for domain in domains if domain is not None})
 
     if any(sample.multimodal_train_inputs is not None for sample in samples):
         train_data["multimodal_train_inputs"] = [sample.multimodal_train_inputs for sample in samples]
@@ -400,6 +408,7 @@ def _package_shards(args, data: dict[str, Any], partitions) -> list[dict[str, An
             "seq_witness_ids",
             "weight_versions",
             "adapter_slots",
+            "domains",
         ]:
             if key not in data:
                 continue
@@ -414,6 +423,7 @@ def _package_shards(args, data: dict[str, Any], partitions) -> list[dict[str, An
             "step_adapter_names",
             "step_adapter_batch_sizes",
             "prompt_group_sizes",
+            "all_domains",
         ]:
             if key not in data:
                 continue

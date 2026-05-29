@@ -7,6 +7,7 @@ import psutil
 import torch
 import torch.distributed as dist
 
+from miles.backends.training_utils.metric_schema import sum_aligned_metrics, synchronize_metric_keys
 from miles.utils import train_metric_utils
 from miles.utils.flops_utils import fwd_tflops_per_gpu
 from miles.utils.ft_utils.process_group_utils import MultiPGUtil
@@ -28,6 +29,7 @@ _TRAIN_METRIC_GROUPS: dict[str, list[str]] = {
     "ois": ["policy_shift"],
     "pg_clipfrac": ["policy_shift"],
     "pg_loss": ["policy_shift", "optimization"],
+    "standard_pg_loss": ["optimization"],
     "log_probs": ["policy_shift"],  # current policy (training forward pass)
     "old_log_probs": ["policy_shift"],  # old policy (rollout or FSDP rollout)
     "ref_kl": ["policy_shift"],
@@ -245,6 +247,8 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
                 "step_adapter_names",
                 "step_adapter_batch_sizes",
                 "prompt_group_sizes",
+                "domains",
+                "all_domains",
             ]:
                 continue
             if isinstance(val, (list, tuple)):
@@ -506,19 +510,14 @@ def aggregate_train_losses(
         Dictionary mapping metric names to averaged values.
     """
     parallel_state = get_parallel_state()
-    if not losses_reduced:
+    keys = synchronize_metric_keys(
+        [key for row in losses_reduced for key in row["keys"]],
+        parallel_state.effective_dp_cp.gloo_groups_inner_to_outer if parallel_state.effective_dp_cp.size > 1 else [],
+    )
+    if not keys:
         return {}
-
-    keys = losses_reduced[0]["keys"]
-
-    values = None
-    for log_dict in losses_reduced:
-        if values is None:
-            values = log_dict["values"].clone()
-        else:
-            values += log_dict["values"]
-
-    assert len(keys) + 1 == values.numel(), f"Expected {len(keys) + 1} values, got {values.numel()}"
+    device = torch.device("cuda", torch.cuda.current_device()) if torch.cuda.is_available() else torch.device("cpu")
+    values = sum_aligned_metrics(losses_reduced, keys, device=device)
 
     for group in parallel_state.effective_dp_cp.groups_inner_to_outer:
         MultiPGUtil.all_reduce(values, [group], op=dist.ReduceOp.SUM)
@@ -548,6 +547,7 @@ def log_train_step(
     role: str = "actor",
     extra_metrics: dict[str, float] | None = None,
     should_log: bool | None = None,
+    train_step: int | None = None,
 ) -> dict[str, float]:
     """Log training metrics for one step.
 
@@ -563,11 +563,12 @@ def log_train_step(
         role: Role name (e.g., "actor", "critic").
         extra_metrics: Optional extra metrics to log (e.g., learning rates, MTP loss).
         should_log: Optional override for logging condition. If None, uses rank == 0.
+        train_step: Trainer-owned cumulative ID. None preserves the legacy caller API.
 
     Returns:
         The formatted log_dict (for CI tests or other uses).
     """
-    accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
+    accumulated_step_id = train_step if train_step is not None else rollout_id * num_steps_per_rollout + step_id
     role_tag = "" if role == "actor" else f"{role}-"
 
     log_dict_out = {
@@ -581,11 +582,10 @@ def log_train_step(
             log_dict_out[f"train/{role_tag}{key}"] = val
 
     log_dict_out["train/step"] = accumulated_step_id
-    # Co-log the rollout counter in both forms so train/* metrics can be
-    # cross-plotted against rollout-side axes in the wandb UI.
+    # Keep rollout identity alongside the trainer-owned cumulative step.
     log_dict_out["train/rollout_id"] = rollout_id
     log_dict_out["train/step_in_rollout"] = step_id
-    log_dict_out["rollout/step"] = compute_rollout_step(args, rollout_id)
+    log_dict_out["train_step"] = accumulated_step_id
 
     # Emit top-level grouped copies for W&B panel organization (existing train/ keys unchanged)
     grouped_additions = {}
@@ -594,9 +594,12 @@ def log_train_step(
         if not full_key.startswith(prefix):
             continue
         bare_key = full_key[len(prefix) :]
-        if bare_key in _TRAIN_METRIC_GROUPS:
-            for group in _TRAIN_METRIC_GROUPS[bare_key]:
-                grouped_additions[f"{group}/{bare_key}"] = val
+        metric_name, sep, domain = bare_key.partition("/")
+        lookup = metric_name if sep and metric_name in _TRAIN_METRIC_GROUPS else bare_key
+        if lookup in _TRAIN_METRIC_GROUPS:
+            suffix = f"{domain}/{metric_name}" if lookup != bare_key else bare_key
+            for group in _TRAIN_METRIC_GROUPS[lookup]:
+                grouped_additions[f"{group}/{suffix}"] = val
         elif bare_key.startswith("lr-pg_"):
             grouped_additions[f"optimization/{bare_key}"] = val
     log_dict_out.update(grouped_additions)

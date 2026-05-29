@@ -12,6 +12,8 @@ import torch.distributed.checkpoint as dcp
 from torch.distributed.checkpoint.state_dict import get_state_dict, set_state_dict
 from torch.distributed.checkpoint.stateful import Stateful
 
+from miles.backends.training_utils.train_step_counter import restored_train_step
+
 logger = logging.getLogger(__name__)
 
 
@@ -161,6 +163,7 @@ def load(actor: Any) -> dict[str, Any] | None:
 
 def finalize_load(actor: Any, checkpoint_payload: dict[str, Any] | None) -> None:
     if checkpoint_payload is None:
+        actor.global_step = 0
         dist.barrier()
         return
 
@@ -174,7 +177,6 @@ def finalize_load(actor: Any, checkpoint_payload: dict[str, Any] | None) -> None
     metadata = checkpoint_payload.get("metadata") or {}
     iteration = checkpoint_payload.get("iteration")
     if metadata:
-        actor.global_step = int(metadata.get("global_step", actor.global_step))
         actor.micro_step = int(metadata.get("micro_step", actor.micro_step))
         next_rollout = metadata.get("next_rollout_id")
         if next_rollout is not None:
@@ -182,6 +184,15 @@ def finalize_load(actor: Any, checkpoint_payload: dict[str, Any] | None) -> None
     elif iteration is not None:
         if getattr(actor.args, "start_rollout_id", None) is None:
             actor.args.start_rollout_id = iteration
+
+    checkpoint_dir = (
+        Path(actor.args.load) / f"iter_{int(iteration):07d}" if actor.args.load and iteration is not None else None
+    )
+    actor.global_step = restored_train_step(
+        metadata.get("global_step") if metadata.get("train_step_counter_version") == 1 else None,
+        legacy_paths=[checkpoint_dir / "train_step_counter.txt"] if checkpoint_dir is not None else [],
+        checkpoint_description=checkpoint_dir,
+    )
 
     torch.cuda.synchronize()
     dist.barrier()
@@ -237,6 +248,7 @@ def save(actor: Any, iteration: int) -> None:
             "rollout_id": iteration,
             "next_rollout_id": iteration + 1,
             "global_step": actor.global_step,
+            "train_step_counter_version": 1,
             "micro_step": actor.micro_step,
             "world_size": dist.get_world_size(),
             "timestamp": time.time(),

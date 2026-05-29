@@ -29,6 +29,8 @@ from miles.backends.megatron_utils.ft.indep_dp import allreduce_grads_and_losses
 from miles.backends.megatron_utils.ft.types import TrainStepOutcome
 from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
 from miles.backends.megatron_utils.optimizer_state_reset import reset_optimizer_states
+from miles.backends.megatron_utils.train_step_checkpoint import checkpoint_train_step
+from miles.backends.training_utils.train_step_counter import TrainStepCounter, counter_for
 from miles.utils.audit_utils.witness.allocator import WitnessInfo
 from miles.utils.audit_utils.witness.module import witness_dump_and_clear_stale
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
@@ -775,6 +777,7 @@ def train(
     if parallel_state.indep_dp.size > 1:
         assert num_steps_per_rollout == 1, "indep_dp is incompatible with num_steps_per_rollout>1 currently"
 
+    train_step_counter = counter_for(model[0])
     # Run training iterations till done.
     for step_id in range(num_steps_per_rollout):
 
@@ -825,9 +828,11 @@ def train(
 
                     check_mtp_loss(mtp_losses)
 
+        # Count the existing accepted/logged boundary, including normal steps
+        # whose optimizer update was skipped. Discarded recovery work does not count.
+        accumulated_step_id = train_step_counter.take() if train_step_outcome == TrainStepOutcome.NORMAL else None
         # per train step log.
         if (train_step_outcome == TrainStepOutcome.NORMAL) and is_first_replica_megatron_main_rank():
-            accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
             role = getattr(model[0], "role", "actor")
             role_tag = "" if role == "actor" else f"{role}-"
 
@@ -849,6 +854,7 @@ def train(
                 role=role,
                 extra_metrics=extra_metrics,
                 should_log=True,
+                train_step=accumulated_step_id,
             )
 
             if args.ci_test and not args.ci_disable_kl_checker:
@@ -904,17 +910,18 @@ def save(
     if is_lora_model(model):
         save_checkpoint_with_lora(iteration, model, optimizer, opt_param_scheduler)
     else:
-        save_checkpoint(
-            iteration,
-            model,
-            optimizer,
-            opt_param_scheduler,
-            num_floating_point_operations_so_far=0,
-            train_data_iterator=None,
-            preprocess_common_state_dict_fn=None,
-            checkpointing_context=checkpointing_context,
-            non_persistent_ckpt=non_persistent_ckpt,
-        )
+        with checkpoint_train_step(counter_for(model[0]).next_step):
+            save_checkpoint(
+                iteration,
+                model,
+                optimizer,
+                opt_param_scheduler,
+                num_floating_point_operations_so_far=0,
+                train_data_iterator=None,
+                preprocess_common_state_dict_fn=None,
+                checkpointing_context=checkpointing_context,
+                non_persistent_ckpt=non_persistent_ckpt,
+            )
 
     clear_memory()
     if hashes is not None:
@@ -941,6 +948,7 @@ def initialize_model_and_optimizer(
     """
     model, optimizer, opt_param_scheduler = setup_model_and_optimizer(args, role)
     model[0].role = role
+    model[0].train_step_counter = TrainStepCounter()
     clear_memory()
 
     if is_multi_lora_enabled(args):
@@ -962,6 +970,7 @@ def initialize_model_and_optimizer(
                 opt_param_scheduler,
                 checkpointing_context=checkpointing_context,
                 skip_load_to_model_and_opt=False,
+                restore_train_step=True,
             )
     else:
         if is_first_replica_megatron_main_rank():

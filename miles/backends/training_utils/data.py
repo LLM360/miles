@@ -157,7 +157,18 @@ def get_batch(
     # fetch it here so callers don't have to know. None for non-multi-LoRA runs.
     if "adapter_slots" not in keys:
         keys = [*keys, "adapter_slots"]
+    if "domains" in data_iterator.rollout_data and "domains" not in keys:
+        keys = [*keys, "domains"]
     batch = data_iterator.get_next(keys)
+    if "domains" in data_iterator.rollout_data:
+        # Old/custom shards may lack the batch-wide schema. The final metric
+        # reduction also reconciles names across workers before summing values.
+        schema = data_iterator.rollout_data.get("all_domains")
+        batch["all_domains"] = (
+            list(schema)
+            if schema is not None
+            else sorted({domain for domain in data_iterator.rollout_data["domains"] if domain})
+        )
 
     if "dynamic_global_batch_size" in data_iterator.rollout_data:
         batch["dynamic_global_batch_size"] = data_iterator.rollout_data["dynamic_global_batch_size"]

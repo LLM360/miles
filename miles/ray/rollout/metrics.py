@@ -1,5 +1,5 @@
 import logging
-from numbers import Number
+from numbers import Number, Real
 from typing import Any
 
 import numpy as np
@@ -9,6 +9,7 @@ from miles.utils.iter_utils import group_by
 from miles.utils.metric_utils import (
     compute_pass_rate,
     compute_rollout_step,
+    compute_samples_seen,
     compute_statistics,
     dict_add_prefix,
     has_repetition,
@@ -87,9 +88,14 @@ def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_t
             _compute_passrate_from_samples(args, samples),
             "passrate/",
         )
+    for key, value in list(log_dict.items()):
+        if key.startswith(("rollout/reward/", "rollout/response_stats/")):
+            log_dict[key.removeprefix("rollout/")] = value
     logger.info(f"perf {rollout_id}: {log_dict}")
     step = compute_rollout_step(args, rollout_id)
     log_dict["rollout/step"] = step
+    log_dict["rollout_step"] = step
+    log_dict["samples_seen"] = compute_samples_seen(args, rollout_id)
     log_dict["train/rollout_id"] = rollout_id
     tracking.log(args, log_dict, step_key="rollout/step")
 
@@ -141,11 +147,11 @@ def _compute_metrics_from_samples(args, samples):
     log_dict |= _compute_group_outcome_metrics(args, samples, prefix="reward")
 
     # per-correctness (no count_frac: for binary rewards = mean reward = already in reward/raw_reward)
-    correct = [s for s in samples if s.get_reward_value(args) > 0]
-    incorrect = [s for s in samples if s.get_reward_value(args) <= 0]
+    correct = [s for s in samples if _correctness(s, args)]
+    incorrect = [s for s in samples if not _correctness(s, args)]
+    log_dict["reward/correctness"] = len(correct) / n
     for label, grp in [("correct", correct), ("incorrect", incorrect)]:
         if grp:
-            log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{label}", n, include_count_frac=False)
             log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{label}")
 
     # per-category and combined (only if category data present)
@@ -157,12 +163,12 @@ def _compute_metrics_from_samples(args, samples):
             log_dict |= _compute_grouped_reward_metrics(args, cat_grp, f"reward/{cat}", n)
             log_dict |= _compute_grouped_response_metrics(args, cat_grp, f"response_stats/{cat}")
             log_dict |= _compute_group_outcome_metrics(args, cat_grp, prefix=f"reward/{cat}")
+            log_dict[f"reward/{cat}/correctness"] = sum(_correctness(s, args) for s in cat_grp) / len(cat_grp)
             for label, grp in [
-                ("correct", [s for s in cat_grp if s.get_reward_value(args) > 0]),
-                ("incorrect", [s for s in cat_grp if s.get_reward_value(args) <= 0]),
+                ("correct", [s for s in cat_grp if _correctness(s, args)]),
+                ("incorrect", [s for s in cat_grp if not _correctness(s, args)]),
             ]:
                 if grp:
-                    log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{cat}/{label}", n)
                     log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{cat}/{label}")
 
     return log_dict
@@ -272,6 +278,9 @@ def _compute_zero_std_metrics(args, all_samples: list[Sample]):
     if args.advantage_estimator == "ppo":
         return {}
 
+    if not all(isinstance(sample.get_reward_value(args), Real) for sample in all_samples):
+        return {}
+
     def _is_zero_std(samples: list[Sample]):
         rewards = [sample.get_reward_value(args) for sample in samples]
         return len(rewards) == 0 or all(rewards[0] == r for r in rewards)
@@ -354,6 +363,8 @@ def _compute_passrate_from_samples(args, all_samples: list[Sample]) -> dict[str,
 
     flat_rewards = [sample.get_reward_value(args) for group in completed_groups for sample in group]
 
+    if not all(isinstance(reward, Real) for reward in flat_rewards):
+        return {}
     return compute_pass_rate(
         flat_rewards=flat_rewards,
         group_size=group_size,
@@ -361,7 +372,7 @@ def _compute_passrate_from_samples(args, all_samples: list[Sample]) -> dict[str,
 
 
 # Candidate metadata keys to auto-detect problem category (checked in order)
-_CANDIDATE_CATEGORY_KEYS = ["category", "type", "subject", "domain", "problem_type"]
+_CANDIDATE_CATEGORY_KEYS = ["domain", "category", "type", "subject", "problem_type"]
 
 
 def _get_problem_category_key(args, all_samples: list[Sample]) -> str | None:
@@ -377,11 +388,24 @@ def _get_problem_category_key(args, all_samples: list[Sample]) -> str | None:
     return None
 
 
+def _correctness(sample: Sample, args) -> bool:
+    """Use explicit correctness for structured rewards; otherwise scalar sign."""
+    value = (
+        sample.metadata["correctness_reward"]
+        if "correctness_reward" in sample.metadata
+        else sample.get_reward_value(args)
+    )
+    return isinstance(value, Real) and value > 0
+
+
 def _compute_grouped_reward_metrics(
     args, group: list[Sample], prefix: str, n_total: int, include_count_frac: bool = True
 ) -> dict:
     """Reward/outcome metrics for a split — emitted under reward/ sections."""
-    result = {f"{prefix}/raw_reward": np.mean([s.get_reward_value(args) for s in group]).item()}
+    rewards = [s.get_reward_value(args) for s in group]
+    result = {}
+    if rewards and all(isinstance(reward, Real) for reward in rewards):
+        result[f"{prefix}/raw_reward"] = np.mean(rewards).item()
     if include_count_frac:
         result[f"{prefix}/count_frac"] = len(group) / n_total
     return result
@@ -404,8 +428,8 @@ def _compute_group_outcome_metrics(args, all_samples: list[Sample], prefix: str 
     n_groups = len(groups)
     if n_groups == 0:
         return {}
-    all_correct = sum(1 for g in groups if all(s.get_reward_value(args) > 0 for s in g))
-    all_incorrect = sum(1 for g in groups if all(s.get_reward_value(args) <= 0 for s in g))
+    all_correct = sum(1 for g in groups if all(_correctness(s, args) for s in g))
+    all_incorrect = sum(1 for g in groups if all(not _correctness(s, args) for s in g))
     return {
         f"{prefix}/all_correct_group_frac": all_correct / n_groups,
         f"{prefix}/all_incorrect_group_frac": all_incorrect / n_groups,

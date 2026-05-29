@@ -10,6 +10,7 @@ from miles.backends.training_utils.cp_utils import (
     get_sum_of_sample_mean,
     resolve_loss_agg_mode,
 )
+from miles.backends.training_utils.domain_metrics import compute_domain_metrics
 from miles.backends.training_utils.loss_hub.corrections import vanilla_tis_function
 from miles.backends.training_utils.loss_hub.logit_processors import get_log_probs_and_entropy, get_values
 from miles.backends.training_utils.loss_hub.math_utils import (
@@ -300,6 +301,7 @@ def policy_loss_function(
         calculate_per_token_loss=uses_token_normalization,
     )
 
+    pg_loss_tokens, pg_clipfrac_tokens, ppo_kl_tokens = pg_loss, pg_clipfrac, ppo_kl
     pg_loss = pg_loss_reducer(pg_loss)
     pg_clipfrac = sum_of_sample_mean(pg_clipfrac)
     ppo_kl = sum_of_sample_mean(ppo_kl)
@@ -406,6 +408,38 @@ def policy_loss_function(
     if batch.get("opd_reverse_kl") is not None:
         opd_reverse_kl = torch.cat(batch["opd_reverse_kl"], dim=0)
         reported_loss["opd_reverse_kl"] = sum_of_sample_mean(opd_reverse_kl).clone().detach()
+
+    if batch.get("all_domains") is not None and len(batch["all_domains"]) > 0:
+        per_token = {
+            "log_probs": log_probs,
+            "old_log_probs": old_log_probs,
+            "pg_loss": pg_loss_tokens,
+            "pg_clipfrac": pg_clipfrac_tokens,
+            "ppo_kl": ppo_kl_tokens,
+            "entropy_loss": entropy if calculate_entropy else torch.zeros_like(log_probs),
+        }
+        if args.use_kl_loss:
+            per_token["kl_loss"] = kl
+        if reference_log_probs:
+            per_token["ref_kl"] = ref_diff
+        if train_rollout_logprob_abs_diff is not None:
+            per_token["train_rollout_logprob_abs_diff"] = abs_diff
+        if rollout_old_log_probs and trainer_scored_log_probs is not None:
+            per_token["train_rollout_logprob_diff"] = signed_diff
+        if train_rollout_kl is not None:
+            per_token["train_rollout_kl"] = rollout_train_kl
+        if batch.get("opd_reverse_kl") is not None:
+            per_token["opd_reverse_kl"] = opd_reverse_kl
+        has_mismatch = args.get_mismatch_metrics or args.use_tis
+        reported_loss.update(
+            compute_domain_metrics(
+                args,
+                batch,
+                per_token,
+                loss_masks=modified_response_masks if has_mismatch else batch["loss_masks"],
+                mismatch_metrics={"ois": ois, **tis_metrics} if has_mismatch else None,
+            )
+        )
 
     return loss, reported_loss
 
