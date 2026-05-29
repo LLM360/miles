@@ -653,6 +653,11 @@ def policy_loss_function(
     else:
         pg_loss_reducer = sum_of_sample_mean
 
+    # Saved for per-domain fan-out (reducers below overwrite these names with scalars).
+    _pg_loss_per_token = pg_loss
+    _pg_clipfrac_per_token = pg_clipfrac
+    _ppo_kl_per_token = ppo_kl
+
     pg_loss = pg_loss_reducer(pg_loss)
     pg_clipfrac = sum_of_sample_mean(pg_clipfrac)
     ppo_kl = sum_of_sample_mean(ppo_kl)
@@ -691,18 +696,24 @@ def policy_loss_function(
     # Train-inference mismatch: compare inference engine vs FSDP at rollout time
     train_rollout_logprob_abs_diff = None
     train_rollout_logprob_diff = None
+    _train_rollout_logprob_abs_per_token = None
+    _train_rollout_logprob_signed_per_token = None
     if "rollout_log_probs" in batch and batch["rollout_log_probs"]:
         rollout_log_probs_cat = torch.cat(batch["rollout_log_probs"], dim=0)
         log_probs_batch_cat = torch.cat(batch["log_probs"], dim=0)
-        train_rollout_logprob_abs_diff = sum_of_sample_mean((old_log_probs - rollout_log_probs_cat).abs()).clone().detach()
+        _train_rollout_logprob_abs_per_token = (old_log_probs - rollout_log_probs_cat).abs()
         # signed: log π(inf) − log π(fsdp rollout)
-        train_rollout_logprob_diff = sum_of_sample_mean(rollout_log_probs_cat - log_probs_batch_cat).clone().detach()
+        _train_rollout_logprob_signed_per_token = rollout_log_probs_cat - log_probs_batch_cat
+        train_rollout_logprob_abs_diff = sum_of_sample_mean(_train_rollout_logprob_abs_per_token).clone().detach()
+        train_rollout_logprob_diff = sum_of_sample_mean(_train_rollout_logprob_signed_per_token).clone().detach()
 
     # KL vs reference model — always log when ref present, regardless of use_kl_loss
     ref_kl_metric = None
+    _ref_kl_per_token = None
     if "ref_log_probs" in batch and batch["ref_log_probs"]:
         ref_log_probs_cat = torch.cat(batch["ref_log_probs"], dim=0)
-        ref_kl_metric = sum_of_sample_mean(log_probs - ref_log_probs_cat).clone().detach()
+        _ref_kl_per_token = log_probs - ref_log_probs_cat
+        ref_kl_metric = sum_of_sample_mean(_ref_kl_per_token).clone().detach()
 
     reported_loss = {
         "loss": loss.clone().detach(),
@@ -735,6 +746,44 @@ def policy_loss_function(
 
     if args.use_opsm:
         reported_loss["opsm_clipfrac"] = opsm_clipfrac
+
+    # Per-domain fan-out: activated by batch["domains"] (set when samples carry
+    # metadata["domain"]). batch["all_domains"] is cached on DataIterator so every
+    # microbatch emits the same key set (aggregate_train_losses keys positionally).
+    # grad_norm isn't split: backward() has already mixed gradients.
+    if batch.get("domains") and batch.get("all_domains"):
+        per_token = {
+            "log_probs": log_probs,
+            "old_log_probs": old_log_probs,
+            "pg_loss": _pg_loss_per_token,
+            "pg_clipfrac": _pg_clipfrac_per_token,
+            "ppo_kl": _ppo_kl_per_token,
+            "entropy_loss": entropy,
+        }
+        if _ref_kl_per_token is not None:
+            per_token["ref_kl"] = _ref_kl_per_token
+        if _train_rollout_logprob_signed_per_token is not None:
+            per_token["train_rollout_logprob_diff"] = _train_rollout_logprob_signed_per_token
+            per_token["train_rollout_logprob_abs_diff"] = _train_rollout_logprob_abs_per_token
+        if args.get_mismatch_metrics or args.use_tis:
+            per_token["ois"] = ois
+            per_token.update(tis_metrics)
+
+        for d in batch["all_domains"]:
+            masked = [
+                lm if dd == d else torch.zeros_like(lm)
+                for dd, lm in zip(batch["domains"], batch["loss_masks"], strict=False)
+            ]
+            reducer = get_sum_of_sample_mean(
+                total_lengths, response_lengths, masked,
+                args.calculate_per_token_loss, args.qkv_format, max_seq_lens,
+                loss_agg_mode=getattr(args, "loss_agg_mode", None),
+            )
+            for name, t in per_token.items():
+                reported_loss[f"{name}/{d}"] = reducer(t).clone().detach()
+            reported_loss[f"loss/{d}"] = (
+                reported_loss[f"pg_loss/{d}"] - args.entropy_coef * reported_loss[f"entropy_loss/{d}"]
+            )
 
     return loss, reported_loss
 
