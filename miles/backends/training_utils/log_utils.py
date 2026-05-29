@@ -1,6 +1,7 @@
 import logging
 from argparse import Namespace
 from math import isclose
+from pathlib import Path
 
 import numpy as np
 import psutil
@@ -50,6 +51,37 @@ _ROLLOUT_DATA_METRIC_GROUPS: dict[str, str] = {
     "advantages":        "reward",
     "returns":           "reward",
 }
+
+# Cumulative train-step counter across all rollouts. The previous formula
+# `rollout_id * num_steps_per_rollout + step_id` collides (and decreases) when
+# `num_steps_per_rollout` shrinks across rollouts under dynamic batching, since
+# each rollout uses its own current num_steps_per_rollout as a scaling factor.
+# A simple monotone counter is invariant to that jitter. Persisted to a sidecar
+# file next to the checkpoint so it survives process restart (otherwise train/step
+# would dip to 0 in wandb on resume).
+_TRAIN_STEP_COUNTER = 0
+
+
+def init_train_step_counter(checkpoint_dir: str | None, iteration: int | None) -> None:
+    """Restore the counter from a checkpoint sidecar; leaves it at 0 if absent or corrupt."""
+    global _TRAIN_STEP_COUNTER
+    if checkpoint_dir is None or iteration is None:
+        return
+    path = Path(checkpoint_dir) / f"iter_{int(iteration):07d}" / "train_step_counter.txt"
+    try:
+        _TRAIN_STEP_COUNTER = int(path.read_text().strip())
+    except (OSError, ValueError):
+        pass
+
+
+def save_train_step_counter(checkpoint_dir: str | None, iteration: int | None) -> None:
+    if checkpoint_dir is None or iteration is None:
+        return
+    path = Path(checkpoint_dir) / f"iter_{int(iteration):07d}" / "train_step_counter.txt"
+    try:
+        path.write_text(str(_TRAIN_STEP_COUNTER))
+    except OSError as e:
+        logger.warning(f"Failed to persist train-step counter: {e}")
 
 
 def gather_log_data(
@@ -102,6 +134,8 @@ def gather_log_data(
         # Calculate step once to avoid duplication
         step = compute_rollout_step(args, rollout_id)
         reduced_log_dict["rollout/step"] = step
+        if metric_name == "rollout":
+            reduced_log_dict["rollout_step"] = step
         reduced_log_dict["train/rollout_id"] = rollout_id
         tracking_utils.log(args, reduced_log_dict, step_key="rollout/step")
 
@@ -170,6 +204,7 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
                 "dynamic_global_batch_size",
                 "weight_versions",
                 "metadata",
+                "domains",
             ]:
                 continue
             # Upload per sample mean for each rollout value
@@ -492,7 +527,9 @@ def log_train_step(
     Returns:
         The formatted log_dict (for CI tests or other uses).
     """
-    accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
+    global _TRAIN_STEP_COUNTER
+    accumulated_step_id = _TRAIN_STEP_COUNTER
+    _TRAIN_STEP_COUNTER += 1
     role_tag = "" if role == "actor" else f"{role}-"
 
     log_dict_out = {
@@ -525,7 +562,7 @@ def log_train_step(
     # cross-plotted against rollout-side axes in the wandb UI.
     log_dict_out["train/rollout_id"] = rollout_id
     log_dict_out["train/step_in_rollout"] = step_id
-    log_dict_out["rollout/step"] = compute_rollout_step(args, rollout_id)
+    log_dict_out["train_step"] = accumulated_step_id
 
     # Emit top-level grouped copies for W&B panel organization (existing train/ keys unchanged)
     grouped_additions = {}
@@ -534,9 +571,13 @@ def log_train_step(
         if not full_key.startswith(prefix):
             continue
         bare_key = full_key[len(prefix):]
-        if bare_key in _TRAIN_METRIC_GROUPS:
-            for group in _TRAIN_METRIC_GROUPS[bare_key]:
-                grouped_additions[f"{group}/{bare_key}"] = val
+        # Per-domain keys arrive as "<metric>/<domain>" — route to "<group>/<domain>/<metric>".
+        metric_name, sep, domain = bare_key.rpartition("/")
+        lookup = metric_name if (sep and metric_name in _TRAIN_METRIC_GROUPS) else bare_key
+        if lookup in _TRAIN_METRIC_GROUPS:
+            suffix = f"{domain}/{metric_name}" if lookup == metric_name else bare_key
+            for group in _TRAIN_METRIC_GROUPS[lookup]:
+                grouped_additions[f"{group}/{suffix}"] = val
         elif bare_key.startswith("lr-pg_"):
             grouped_additions[f"optimization/{bare_key}"] = val
     log_dict_out.update(grouped_additions)

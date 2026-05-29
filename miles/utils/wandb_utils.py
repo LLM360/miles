@@ -175,3 +175,12 @@ def _init_wandb_common():
     # rollout counter. Declared after the "train/*" wildcard so the specific name
     # isn't inadvertently treated as step-metric'd against train/step.
     wandb.define_metric("train/rollout_id")
+    # Bare step counters — co-logged so one panel can plot all three as time series
+    # (useful for spotting non-monotone train/step jumps under dynamic batching).
+    wandb.define_metric("samples_seen", step_metric="rollout/step")
+    wandb.define_metric("train_step", step_metric="train/step")
+    wandb.define_metric("rollout_step", step_metric="rollout/step")
+    # Bare reward/response_stats mirrors — stripped of the rollout/ prefix by
+    # _log_rollout_data so the panels appear at the top level in W&B.
+    wandb.define_metric("reward/*", step_metric="rollout/step")
+    wandb.define_metric("response_stats/*", step_metric="rollout/step")
