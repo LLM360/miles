@@ -1353,15 +1353,24 @@ def _start_session_server(args):
     tracked_processes: list[multiprocessing.Process] = []
     backend_processes: list[multiprocessing.Process] = []
     backend_urls: list[str] = []
+    # Track ports we've already handed out so worker i+1 doesn't race
+    # worker i: the child process hasn't bound yet when the next
+    # iteration calls is_port_available(), so without this set both
+    # children may target the same port and one crashes on bind. See
+    # PR #31 H2.
+    chosen_ports: set[int] = set()
     _register_session_server_reaper(tracked_processes)
     try:
         for i in range(worker_count):
             backend_port = port + 1 + i
             # Find a free port at-or-above the desired one. We start one
             # above args.session_server_port so the front-end has port
-            # itself reserved.
-            while not is_port_available(backend_port):
+            # itself reserved. Skip ports already chosen for previous
+            # workers — they may not be bound yet but the spawn is
+            # already in flight.
+            while not is_port_available(backend_port) or backend_port in chosen_ports:
                 backend_port += 1
+            chosen_ports.add(backend_port)
             worker_args = _per_worker_args_copy(args)
             worker_args.session_server_port = backend_port
             worker_args.session_server_worker_index = i
@@ -1379,7 +1388,7 @@ def _start_session_server(args):
 
         # Wait for every backend to come up before starting the front-end
         # so the router never sees connection-refused races on first call.
-        for p, url in zip(backend_processes, backend_urls):
+        for p, url in zip(backend_processes, backend_urls, strict=True):
             backend_port = int(url.rsplit(":", 1)[1])
             wait_for_server_ready(ip, backend_port, p, timeout=60)
 
@@ -1431,18 +1440,33 @@ def _per_worker_args_copy(args):
 def _register_session_server_reaper(processes):
     """Make sure session-server child processes die with the parent.
 
-    Relies on ``atexit`` plus the children being ``daemon=True``. The
-    daemon flag makes Python terminate the children automatically when
-    the parent process exits, and atexit covers the clean-exit case
-    (e.g. a normal Ray actor shutdown that runs Python exit handlers).
+    Three layers:
 
-    We deliberately do NOT install a SIGTERM handler here: it races
-    with Ray's own SIGTERM handler in a fragile, init-order-dependent
-    way, and chaining via signal.getsignal can corrupt the captured
-    ``prev`` if _start_session_server is called twice in one process.
-    See audit H3.
+      * ``daemon=True`` on each child — Python's stdlib terminates
+        daemonic children automatically when the parent exits.
+      * ``atexit`` — runs on a normal Python exit (e.g. clean Ray
+        actor shutdown).
+      * ``SIGTERM`` handler — covers the case Ray actor preemption
+        sends SIGTERM and the parent stays alive briefly (the audit's
+        previous H3 fix removed this entirely, but PR #31's deep
+        review showed the resulting atexit-only reaper leaks zombies
+        that hold the session-server port — next rollout then trips
+        the "stale session server" RuntimeError).
+
+    The SIGTERM handler is intentionally simple: it does NOT chain to
+    any previous handler (chaining via ``signal.getsignal`` is racy
+    with Ray and corrupts the captured ``prev`` if this function is
+    called twice in one process). It just reaps and lets the default
+    SIGTERM action run via ``signal.SIG_DFL``.
+
+    After ``terminate()`` we ``join(timeout=10)`` so the child is
+    actually reaped — without this the child becomes a zombie until
+    the parent itself exits, which is exactly the leak we're trying
+    to prevent. If it's still alive after the join, escalate to
+    ``kill()`` so the port is definitely released.
     """
     import atexit
+    import signal
 
     def _reap(*_):
         for p in processes:
@@ -1451,8 +1475,31 @@ def _register_session_server_reaper(processes):
                     p.terminate()
             except Exception:
                 pass
+        for p in processes:
+            try:
+                p.join(timeout=10)
+                if p.is_alive():
+                    p.kill()
+                    p.join(timeout=2)
+            except Exception:
+                pass
 
     atexit.register(_reap)
+
+    def _sigterm_handler(signum, frame):
+        # Simple delegation: reap, then re-raise the default SIGTERM
+        # behavior so the parent dies promptly. No chain semantics.
+        _reap()
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    try:
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+    except (ValueError, OSError):
+        # Not in main thread (e.g. running inside a Ray worker thread):
+        # signal handlers can only be installed from the main thread.
+        # The atexit + daemon=True fallbacks still cover us in that case.
+        pass
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):
