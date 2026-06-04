@@ -1304,6 +1304,11 @@ def _start_session_server(args):
     The session server runs as a separate process with its own port and proxies
     inference requests directly to SGLang worker engines.  It is always started
     as a standalone process regardless of whether ``--use-miles-router`` is active.
+
+    When ``--session-server-workers N`` is > 1, this function spawns N backend
+    SessionServer processes on consecutive ports and an ASGI front-end on
+    ``args.session_server_port`` that consistent-hash-routes by ``session_id``.
+    See ``miles/rollout/session/session_router.py``.
     """
     if not getattr(args, "use_session_server", False):
         return
@@ -1327,14 +1332,120 @@ def _start_session_server(args):
         )
 
     router_url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}"
+    worker_count = max(1, int(getattr(args, "session_server_workers", 1) or 1))
 
     from miles.rollout.session.session_server import run_session_server
 
-    process = multiprocessing.Process(target=run_session_server, args=(args, router_url))
-    process.daemon = True
-    process.start()
-    wait_for_server_ready(ip, port, process, timeout=30)
-    logger.info(f"Session server launched at {ip}:{port}")
+    if worker_count == 1:
+        # Preserve exact pre-existing behavior when the flag is default.
+        process = multiprocessing.Process(target=run_session_server, args=(args, router_url))
+        process.daemon = True
+        process.start()
+        wait_for_server_ready(ip, port, process, timeout=30)
+        logger.info(f"Session server launched at {ip}:{port}")
+        return
+
+    # Multi-process layout: N backends on consecutive ports starting at
+    # port + 1; ASGI front-end on `port` (the user-facing one).
+    from miles.rollout.session.session_router import run_session_router
+
+    backend_processes: list[multiprocessing.Process] = []
+    backend_urls: list[str] = []
+    try:
+        for i in range(worker_count):
+            backend_port = port + 1 + i
+            # Find a free port at-or-above the desired one. We start one
+            # above args.session_server_port so the front-end has port
+            # itself reserved.
+            while not is_port_available(backend_port):
+                backend_port += 1
+            worker_args = dataclasses.replace(args) if dataclasses.is_dataclass(args) else _shallow_copy_args(args)
+            worker_args.session_server_port = backend_port
+            worker_args.session_server_worker_index = i
+            worker_args.session_server_worker_count = worker_count
+            # Give each worker a stable, distinguishable instance id for
+            # log correlation while keeping the shared `args.session_server_instance_id`
+            # as the cluster-facing one.
+            worker_args.session_server_instance_id = f"{args.session_server_instance_id}-w{i}"
+            p = multiprocessing.Process(target=run_session_server, args=(worker_args, router_url))
+            p.daemon = True
+            p.start()
+            backend_processes.append(p)
+            backend_urls.append(f"http://{ip}:{backend_port}")
+
+        # Wait for every backend to come up before starting the front-end
+        # so the router never sees connection-refused races on first call.
+        for p, url in zip(backend_processes, backend_urls):
+            backend_port = int(url.rsplit(":", 1)[1])
+            wait_for_server_ready(ip, backend_port, p, timeout=60)
+
+        router_process = multiprocessing.Process(
+            target=run_session_router, args=(args, backend_urls)
+        )
+        router_process.daemon = True
+        router_process.start()
+        wait_for_server_ready(ip, port, router_process, timeout=30)
+    except Exception:
+        # Make sure we don't leak orphan backend workers if anything
+        # above raises (e.g. a backend never becomes ready). The parent
+        # is daemonized so children would otherwise outlive a failed
+        # start.
+        for p in backend_processes:
+            if p.is_alive():
+                p.terminate()
+        raise
+
+    # Register a SIGTERM/atexit reaper so children die with the parent.
+    _register_session_server_reaper(backend_processes + [router_process])
+
+    logger.info(
+        "Session server launched at %s:%s with %d workers on ports %s-%s",
+        ip,
+        port,
+        worker_count,
+        port + 1,
+        port + worker_count,
+    )
+
+
+def _shallow_copy_args(args):
+    """Shallow-copy argparse.Namespace-like objects for per-worker mutation."""
+    import copy
+    return copy.copy(args)
+
+
+def _register_session_server_reaper(processes):
+    """Make sure session-server child processes die with the parent.
+
+    The processes are daemonized, which handles the clean-exit case.
+    This handler additionally covers SIGTERM (e.g. Ray actor shutdown)
+    so workers do not linger holding their ports.
+    """
+    import atexit
+    import signal
+
+    def _reap(*_):
+        for p in processes:
+            try:
+                if p.is_alive():
+                    p.terminate()
+            except Exception:
+                pass
+
+    atexit.register(_reap)
+    # Chain — do not clobber — any pre-existing SIGTERM handler.
+    prev = signal.getsignal(signal.SIGTERM)
+
+    def _handler(signum, frame):
+        _reap()
+        if callable(prev) and prev not in (signal.SIG_DFL, signal.SIG_IGN):
+            prev(signum, frame)
+
+    try:
+        signal.signal(signal.SIGTERM, _handler)
+    except ValueError:
+        # signal.signal only works on the main thread; skip otherwise.
+        pass
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):

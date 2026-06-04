@@ -1633,6 +1633,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Port of the standalone session server. Auto-allocated if not set.",
             )
             parser.add_argument(
+                "--session-server-workers",
+                type=int,
+                default=1,
+                help="Number of session-server worker processes. When >1, a "
+                "lightweight ASGI front-end binds to --session-server-port and "
+                "consistent-hash-routes requests by session_id across N backend "
+                "workers, each on its own port. Each worker loads its own "
+                "tokenizer (N x memory). Default 1 preserves current single-"
+                "process behavior.",
+            )
+            parser.add_argument(
                 "--tito-model",
                 type=str,
                 default="default",
