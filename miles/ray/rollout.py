@@ -1349,8 +1349,16 @@ def _start_session_server(args):
     # port + 1; ASGI front-end on `port` (the user-facing one).
     from miles.rollout.session.session_router import run_session_router
 
+    # Mutable list so the reaper sees children as they're spawned. We
+    # MUST register the reaper BEFORE the first .start() call: the
+    # backend ready-window is ~60s per worker, and if the parent gets
+    # SIGTERM (Ray actor shutdown) mid-startup, otherwise all N children
+    # leak holding their ports — the next rollout then trips the
+    # "stale session server" RuntimeError. See audit H2.
+    tracked_processes: list[multiprocessing.Process] = []
     backend_processes: list[multiprocessing.Process] = []
     backend_urls: list[str] = []
+    _register_session_server_reaper(tracked_processes)
     try:
         for i in range(worker_count):
             backend_port = port + 1 + i
@@ -1370,6 +1378,7 @@ def _start_session_server(args):
             p = multiprocessing.Process(target=run_session_server, args=(worker_args, router_url))
             p.daemon = True
             p.start()
+            tracked_processes.append(p)
             backend_processes.append(p)
             backend_urls.append(f"http://{ip}:{backend_port}")
 
@@ -1384,19 +1393,17 @@ def _start_session_server(args):
         )
         router_process.daemon = True
         router_process.start()
+        tracked_processes.append(router_process)
         wait_for_server_ready(ip, port, router_process, timeout=30)
     except Exception:
         # Make sure we don't leak orphan backend workers if anything
         # above raises (e.g. a backend never becomes ready). The parent
         # is daemonized so children would otherwise outlive a failed
         # start.
-        for p in backend_processes:
+        for p in tracked_processes:
             if p.is_alive():
                 p.terminate()
         raise
-
-    # Register a SIGTERM/atexit reaper so children die with the parent.
-    _register_session_server_reaper(backend_processes + [router_process])
 
     logger.info(
         "Session server launched at %s:%s with %d workers on ports %s-%s",
