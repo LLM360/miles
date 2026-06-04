@@ -1424,12 +1424,18 @@ def _shallow_copy_args(args):
 def _register_session_server_reaper(processes):
     """Make sure session-server child processes die with the parent.
 
-    The processes are daemonized, which handles the clean-exit case.
-    This handler additionally covers SIGTERM (e.g. Ray actor shutdown)
-    so workers do not linger holding their ports.
+    Relies on ``atexit`` plus the children being ``daemon=True``. The
+    daemon flag makes Python terminate the children automatically when
+    the parent process exits, and atexit covers the clean-exit case
+    (e.g. a normal Ray actor shutdown that runs Python exit handlers).
+
+    We deliberately do NOT install a SIGTERM handler here: it races
+    with Ray's own SIGTERM handler in a fragile, init-order-dependent
+    way, and chaining via signal.getsignal can corrupt the captured
+    ``prev`` if _start_session_server is called twice in one process.
+    See audit H3.
     """
     import atexit
-    import signal
 
     def _reap(*_):
         for p in processes:
@@ -1440,19 +1446,6 @@ def _register_session_server_reaper(processes):
                 pass
 
     atexit.register(_reap)
-    # Chain — do not clobber — any pre-existing SIGTERM handler.
-    prev = signal.getsignal(signal.SIGTERM)
-
-    def _handler(signum, frame):
-        _reap()
-        if callable(prev) and prev not in (signal.SIG_DFL, signal.SIG_IGN):
-            prev(signum, frame)
-
-    try:
-        signal.signal(signal.SIGTERM, _handler)
-    except ValueError:
-        # signal.signal only works on the main thread; skip otherwise.
-        pass
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):
