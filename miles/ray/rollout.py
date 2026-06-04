@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import itertools
 import logging
@@ -1367,7 +1368,7 @@ def _start_session_server(args):
             # itself reserved.
             while not is_port_available(backend_port):
                 backend_port += 1
-            worker_args = dataclasses.replace(args) if dataclasses.is_dataclass(args) else _shallow_copy_args(args)
+            worker_args = _per_worker_args_copy(args)
             worker_args.session_server_port = backend_port
             worker_args.session_server_worker_index = i
             worker_args.session_server_worker_count = worker_count
@@ -1415,10 +1416,24 @@ def _start_session_server(args):
     )
 
 
-def _shallow_copy_args(args):
-    """Shallow-copy argparse.Namespace-like objects for per-worker mutation."""
-    import copy
-    return copy.copy(args)
+def _per_worker_args_copy(args):
+    """Return a deep-isolated copy of ``args`` safe for per-worker mutation.
+
+    We mutate a handful of ``session_server_*`` attributes on the copy
+    before handing it to ``multiprocessing.Process``. The previous
+    implementation was ``copy.copy(args)`` (a shallow copy), which is
+    fine for scalar fields but shares references for any nested mutable
+    (list / dict / Namespace). Any future field that happens to be a
+    list/dict would have all N worker copies aliasing the same object —
+    mutating it in one worker (or in this very function, in a loop)
+    would silently corrupt the others.
+
+    ``copy.deepcopy`` is the safe default here. The args object is
+    parsed once at startup and is small (< 1 KB worth of strings and
+    primitives in practice), so the deepcopy cost is negligible
+    compared to the multiprocessing fork overhead.
+    """
+    return copy.deepcopy(args)
 
 
 def _register_session_server_reaper(processes):
