@@ -127,9 +127,7 @@ def get_batch(
     # same list (aggregate_train_losses keys positionally on the first microbatch).
     if has_domains:
         if not hasattr(data_iterator, "_all_domains_cache"):
-            data_iterator._all_domains_cache = sorted(
-                {d for d in data_iterator.rollout_data["domains"] if d}
-            )
+            data_iterator._all_domains_cache = sorted({d for d in data_iterator.rollout_data["domains"] if d})
         batch["all_domains"] = data_iterator._all_domains_cache
 
     tokens = batch["tokens"]

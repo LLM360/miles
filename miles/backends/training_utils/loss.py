@@ -775,8 +775,12 @@ def policy_loss_function(
                 for dd, lm in zip(batch["domains"], batch["loss_masks"], strict=False)
             ]
             reducer = get_sum_of_sample_mean(
-                total_lengths, response_lengths, masked,
-                args.calculate_per_token_loss, args.qkv_format, max_seq_lens,
+                total_lengths,
+                response_lengths,
+                masked,
+                args.calculate_per_token_loss,
+                args.qkv_format,
+                max_seq_lens,
                 loss_agg_mode=getattr(args, "loss_agg_mode", None),
             )
             for name, t in per_token.items():

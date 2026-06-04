@@ -60,15 +60,8 @@ from transformers import AutoTokenizer
 
 from miles.rollout.session.linear_trajectory import LinearTrajectory
 from miles.rollout.session.session_errors import TokenizationError
-from miles.utils.chat_template_utils import (
-    MismatchType,
-    apply_chat_template,
-    try_get_fixed_chat_template,
-)
-from miles.utils.chat_template_utils.tito_tokenizer import (
-    TITOTokenizerType,
-    get_tito_tokenizer,
-)
+from miles.utils.chat_template_utils import MismatchType, apply_chat_template, try_get_fixed_chat_template
+from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizerType, get_tito_tokenizer
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.test_utils.mock_trajectories import (
     LongChainThinkingTrajectory,
@@ -79,7 +72,6 @@ from miles.utils.test_utils.mock_trajectories import (
     SingleToolThinkingTrajectory,
     SingleToolTrajectory,
 )
-
 
 # ---------------------------------------------------------------------------
 # Path + fixtures
@@ -140,6 +132,7 @@ def tito_tok(tokenizer):
 # Trajectories — realistic conversation shapes from mock_trajectories
 # ---------------------------------------------------------------------------
 
+
 def _with_synthetic_thinking(
     trajectory_cls: type,
     reasoning: str = "Let me work through this step by step.",
@@ -171,19 +164,18 @@ def _with_synthetic_thinking(
 # ... </think>\ncontent<|im_end|>).
 CONVERSATIONS: list[tuple[str, type]] = [
     # Single assistant turn — single tool call.
-    ("single_tool",                  SingleToolTrajectory),
-    ("single_tool_thinking",         SingleToolThinkingTrajectory),
+    ("single_tool", SingleToolTrajectory),
+    ("single_tool_thinking", SingleToolThinkingTrajectory),
     # Multiple assistant turns — single tool call per turn.
-    ("multi_turn",                   MultiTurnTrajectory),
-    ("multi_turn_thinking",          MultiTurnThinkingTrajectory),
+    ("multi_turn", MultiTurnTrajectory),
+    ("multi_turn_thinking", MultiTurnThinkingTrajectory),
     # Single assistant turn — multiple parallel tool calls.
-    ("multi_tool_single_turn",       MultiToolSingleTurnTrajectory),
+    ("multi_tool_single_turn", MultiToolSingleTurnTrajectory),
     # No native thinking variant exists for parallel-tools-single-turn;
     # synthesize by injecting reasoning_content into the assistant turn.
-    ("multi_tool_single_turn_thinking",
-     _with_synthetic_thinking(MultiToolSingleTurnTrajectory)),
+    ("multi_tool_single_turn_thinking", _with_synthetic_thinking(MultiToolSingleTurnTrajectory)),
     # Multiple assistant turns AND tool calls (chain shape).
-    ("multi_tool_multi_turn",        LongChainTrajectory),
+    ("multi_tool_multi_turn", LongChainTrajectory),
     ("multi_tool_multi_turn_thinking", LongChainThinkingTrajectory),
 ]
 
@@ -262,25 +254,28 @@ def _realistic_emit_ids(
         emit_ids = tokenizer.encode(emit_text)
     """
     full_text = _render_text(
-        request_messages + [assistant_message], tokenizer, tools,
+        request_messages + [assistant_message],
+        tokenizer,
+        tools,
         add_generation_prompt=False,
     )
     prompt_text = _render_text(
-        request_messages, tokenizer, tools,
+        request_messages,
+        tokenizer,
+        tools,
         add_generation_prompt=True,
     )
     assert full_text.startswith(prompt_text), (
         "chat template not append-only: prompt-only render is not a prefix "
         "of full render. TITO's premise breaks here."
     )
-    emit_text = full_text[len(prompt_text):]
+    emit_text = full_text[len(prompt_text) :]
     # Strip the trailing newline(s) the jinja whitespace adds after
     # `<|im_end|>`. The model autoregressively stops at the stop token
     # without producing them.
     emit_text_stop = emit_text.rstrip("\n")
     assert emit_text_stop.endswith("<|im_end|>"), (
-        f"unexpected emit_text shape (does not end with <|im_end|>): "
-        f"{emit_text_stop!r}"
+        f"unexpected emit_text shape (does not end with <|im_end|>): " f"{emit_text_stop!r}"
     )
     return list(tokenizer.encode(emit_text_stop, add_special_tokens=False))
 
@@ -305,15 +300,15 @@ def _drive_session_through_trajectory(
         pre = session.prepare_pretokenized(request_messages, tools, tito_tokenizer=tito_tok)
         if pre is None:
             prompt_ids = _render_ids(
-                request_messages, tito_tok.tokenizer, tools,
+                request_messages,
+                tito_tok.tokenizer,
+                tools,
                 add_generation_prompt=True,
             )
         else:
             prompt_ids = list(pre["input_ids"])
 
-        emit_ids = _realistic_emit_ids(
-            request_messages, assistant_message, tools, tito_tok.tokenizer
-        )
+        emit_ids = _realistic_emit_ids(request_messages, assistant_message, tools, tito_tok.tokenizer)
 
         session.update_pretokenized_state(
             request_messages=request_messages,
@@ -369,19 +364,19 @@ def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, 
     # end-of-sequence ``<|im_end|>`` vs ``<|im_end|>\\n`` differences if the
     # trajectory has only ONE assistant turn).
     expected_final = _render_ids(
-        session.messages, tito_tok.tokenizer, tools,
+        session.messages,
+        tito_tok.tokenizer,
+        tools,
         add_generation_prompt=False,
     )
     actual_final = list(session.token_ids)
     severe_final = [
-        m for m in comparator.compare_sequences(expected_final, actual_final)
-        if m.type != MismatchType.ASSISTANT_TEXT
+        m for m in comparator.compare_sequences(expected_final, actual_final) if m.type != MismatchType.ASSISTANT_TEXT
     ]
     if severe_final:
         details = "\n".join(
             f"  {m.type.value} at segment {m.segment_index}: "
-            f"expected={m.expected_text!r} actual={m.actual_text!r}"
-            + (f" — {m.detail}" if m.detail else "")
+            f"expected={m.expected_text!r} actual={m.actual_text!r}" + (f" — {m.detail}" if m.detail else "")
             for m in severe_final[:5]
         )
         pytest.fail(
@@ -407,18 +402,18 @@ def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, 
     )
     merged = list(pre["input_ids"])
     expected_next = _render_ids(
-        extended_messages, tito_tok.tokenizer, tools,
+        extended_messages,
+        tito_tok.tokenizer,
+        tools,
         add_generation_prompt=True,
     )
     severe_next = [
-        m for m in comparator.compare_sequences(expected_next, merged)
-        if m.type != MismatchType.ASSISTANT_TEXT
+        m for m in comparator.compare_sequences(expected_next, merged) if m.type != MismatchType.ASSISTANT_TEXT
     ]
     if severe_next:
         details = "\n".join(
             f"  {m.type.value} at segment {m.segment_index}: "
-            f"expected={m.expected_text!r} actual={m.actual_text!r}"
-            + (f" — {m.detail}" if m.detail else "")
+            f"expected={m.expected_text!r} actual={m.actual_text!r}" + (f" — {m.detail}" if m.detail else "")
             for m in severe_next[:5]
         )
         pytest.fail(
@@ -442,6 +437,7 @@ def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, 
 class _EnvAppendShape:
     """Generic env append shape — the messages to be appended after the
     session has been driven through some trajectory."""
+
     name: str
     appended_messages: list[dict]
     required_contents: tuple[str, ...]
@@ -458,8 +454,7 @@ _ENV_APPEND_SHAPES: list[_EnvAppendShape] = [
     _EnvAppendShape(
         name="env_tool",
         appended_messages=[
-            {"role": "tool", "tool_call_id": "call_test_xyz",
-             "content": "_marker_tool_xyz_42_"},
+            {"role": "tool", "tool_call_id": "call_test_xyz", "content": "_marker_tool_xyz_42_"},
         ],
         required_contents=("_marker_tool_xyz_42_",),
     ),
@@ -480,11 +475,9 @@ _ENV_APPEND_SHAPES: list[_EnvAppendShape] = [
     _EnvAppendShape(
         name="env_alternating_user_tool",
         appended_messages=[
-            {"role": "tool", "tool_call_id": "call_alt_1",
-             "content": "_marker_alt_tool1_aaa_"},
+            {"role": "tool", "tool_call_id": "call_alt_1", "content": "_marker_alt_tool1_aaa_"},
             {"role": "user", "content": "_marker_alt_user1_bbb_"},
-            {"role": "tool", "tool_call_id": "call_alt_2",
-             "content": "_marker_alt_tool2_ccc_"},
+            {"role": "tool", "tool_call_id": "call_alt_2", "content": "_marker_alt_tool2_ccc_"},
             {"role": "user", "content": "_marker_alt_user2_ddd_"},
         ],
         required_contents=(
@@ -498,11 +491,14 @@ _ENV_APPEND_SHAPES: list[_EnvAppendShape] = [
 
 
 @pytest.mark.parametrize(
-    "traj_name, traj_cls", CONVERSATIONS,
+    "traj_name, traj_cls",
+    CONVERSATIONS,
     ids=lambda x: x if isinstance(x, str) else None,
 )
 @pytest.mark.parametrize(
-    "env_shape", _ENV_APPEND_SHAPES, ids=lambda s: s.name,
+    "env_shape",
+    _ENV_APPEND_SHAPES,
+    ids=lambda s: s.name,
 )
 def test_append_via_realistic_buffer(traj_name, traj_cls, env_shape, tito_tok):
     """Invariants I3+I4 (core): ``merge_tokens`` against a realistic
@@ -525,10 +521,7 @@ def test_append_via_realistic_buffer(traj_name, traj_cls, env_shape, tito_tok):
     _drive_session_through_trajectory(session, tito_tok, messages, tools)
 
     pretokenized_buffer = list(session.token_ids)
-    assert (
-        pretokenized_buffer
-        and pretokenized_buffer[-1] == tito_tok._im_end_id
-    ), (
+    assert pretokenized_buffer and pretokenized_buffer[-1] == tito_tok._im_end_id, (
         f"K2V3 [{traj_name} + {env_shape.name}] setup error: pretokenized "
         f"buffer should end at <|im_end|> after drive, got last token "
         f"{pretokenized_buffer[-1] if pretokenized_buffer else 'EMPTY'}"
@@ -544,20 +537,18 @@ def test_append_via_realistic_buffer(traj_name, traj_cls, env_shape, tito_tok):
     merged = list(pre["input_ids"])
 
     expected = _render_ids(
-        extended, tito_tok.tokenizer, tools,
+        extended,
+        tito_tok.tokenizer,
+        tools,
         add_generation_prompt=True,
     )
 
     comparator = tito_tok.create_comparator()
-    severe = [
-        m for m in comparator.compare_sequences(expected, merged)
-        if m.type != MismatchType.ASSISTANT_TEXT
-    ]
+    severe = [m for m in comparator.compare_sequences(expected, merged) if m.type != MismatchType.ASSISTANT_TEXT]
     if severe:
         details = "\n".join(
             f"  {m.type.value} at segment {m.segment_index}: "
-            f"expected={m.expected_text!r} actual={m.actual_text!r}"
-            + (f" — {m.detail}" if m.detail else "")
+            f"expected={m.expected_text!r} actual={m.actual_text!r}" + (f" — {m.detail}" if m.detail else "")
             for m in severe[:5]
         )
         pytest.fail(
@@ -567,9 +558,7 @@ def test_append_via_realistic_buffer(traj_name, traj_cls, env_shape, tito_tok):
         )
 
     # required-contents-in-order check on the incremental segment.
-    incremental_text = tito_tok.tokenizer.decode(
-        merged[len(pretokenized_buffer):], skip_special_tokens=False
-    )
+    incremental_text = tito_tok.tokenizer.decode(merged[len(pretokenized_buffer) :], skip_special_tokens=False)
     cursor = 0
     for content in env_shape.required_contents:
         found = incremental_text.find(content, cursor)
@@ -623,16 +612,19 @@ def _load_sglang_parsers():
     fcp_cls = None
     try:
         from sglang.srt.function_call.function_call_parser import FunctionCallParser
+
         fcp_cls = FunctionCallParser
     except ImportError:
         pass
     rp_cls = None
     try:
         from sglang.srt.parser.reasoning_parser import ReasoningParser
+
         rp_cls = ReasoningParser
     except ImportError:
         try:
             from sglang.srt.reasoning_parser import ReasoningParser  # older SGLang layout
+
             rp_cls = ReasoningParser
         except ImportError:
             pass
@@ -644,6 +636,7 @@ def _try_json_decode_tool_args(tool_calls: list[dict]) -> list[dict]:
     Hermes parser returns it as a JSON string. Decode for template
     compatibility — this mirrors what production agent loops do."""
     import json
+
     out = []
     for tc in tool_calls:
         fn = tc.get("function", {})
@@ -658,7 +651,8 @@ def _try_json_decode_tool_args(tool_calls: list[dict]) -> list[dict]:
 
 
 @pytest.mark.parametrize(
-    "traj_name, traj_cls", CONVERSATIONS,
+    "traj_name, traj_cls",
+    CONVERSATIONS,
     ids=lambda x: x if isinstance(x, str) else None,
 )
 def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cls, tito_tok):
@@ -696,21 +690,23 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
 
     # 1) Render truth_msg via chat_template — that is the raw emit shape.
     full_text = _render_text(
-        request_messages + [truth_msg], tokenizer, tools,
+        request_messages + [truth_msg],
+        tokenizer,
+        tools,
         add_generation_prompt=False,
     )
     prompt_text = _render_text(
-        request_messages, tokenizer, tools,
+        request_messages,
+        tokenizer,
+        tools,
         add_generation_prompt=True,
     )
     assert full_text.startswith(prompt_text), (
-        f"K2V3 [{traj_name}] chat template not append-only: prompt-only "
-        f"render is not a prefix of full render."
+        f"K2V3 [{traj_name}] chat template not append-only: prompt-only " f"render is not a prefix of full render."
     )
-    raw_assistant_emit = full_text[len(prompt_text):].rstrip("\n")
+    raw_assistant_emit = full_text[len(prompt_text) :].rstrip("\n")
     assert raw_assistant_emit.endswith("<|im_end|>"), (
-        f"K2V3 [{traj_name}] unexpected raw_assistant_emit shape: "
-        f"{raw_assistant_emit!r}"
+        f"K2V3 [{traj_name}] unexpected raw_assistant_emit shape: " f"{raw_assistant_emit!r}"
     )
 
     # 2) Run real ReasoningParser on the raw emit (only if the trajectory's
@@ -724,10 +720,7 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
         try:
             rp = RP(model_type=_K2V3_REASONING_PARSER)
         except Exception as e:
-            pytest.skip(
-                f"reasoning parser {_K2V3_REASONING_PARSER!r} unsupported "
-                f"by this SGLang build: {e}"
-            )
+            pytest.skip(f"reasoning parser {_K2V3_REASONING_PARSER!r} unsupported " f"by this SGLang build: {e}")
         r_out, n_out = rp.parse_non_stream(raw_assistant_emit)
         parsed_reasoning = r_out or ""
         text_after_reasoning = n_out if n_out is not None else ""
@@ -741,10 +734,7 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
     try:
         fcp = FCP(tools=sglang_tools, tool_call_parser=_K2V3_TOOL_PARSER)
     except Exception as e:
-        pytest.skip(
-            f"tool parser {_K2V3_TOOL_PARSER!r} unsupported by this SGLang "
-            f"build: {e}"
-        )
+        pytest.skip(f"tool parser {_K2V3_TOOL_PARSER!r} unsupported by this SGLang " f"build: {e}")
     normal_text, tool_call_items = fcp.parse_non_stream(text_after_reasoning)
     parsed_content = normal_text if normal_text is not None else ""
     parsed_tool_calls = [
@@ -776,7 +766,10 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
     # and would create a spurious extra special-token mismatch.
     emit_ids = list(tokenizer.encode(raw_assistant_emit, add_special_tokens=False))
     prompt_ids = _render_ids(
-        request_messages, tokenizer, tools, add_generation_prompt=True,
+        request_messages,
+        tokenizer,
+        tools,
+        add_generation_prompt=True,
     )
     session = LinearTrajectory()
     session.update_pretokenized_state(
@@ -791,7 +784,10 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
     #    against ``apply_chat_template(session.messages)`` canonical (which
     #    re-renders parsed_msg back to text). Severe types only.
     expected = _render_ids(
-        session.messages, tokenizer, tools, add_generation_prompt=False,
+        session.messages,
+        tokenizer,
+        tools,
+        add_generation_prompt=False,
     )
     actual = list(session.token_ids)
     comparator = tito_tok.create_comparator()
@@ -800,8 +796,7 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
     if severe:
         details = "\n".join(
             f"  {m.type.value} at segment {m.segment_index}: "
-            f"expected={m.expected_text!r} actual={m.actual_text!r}"
-            + (f" — {m.detail}" if m.detail else "")
+            f"expected={m.expected_text!r} actual={m.actual_text!r}" + (f" — {m.detail}" if m.detail else "")
             for m in severe[:8]
         )
         pytest.fail(
@@ -852,19 +847,16 @@ _BOSS_FLOWS: list[_BossFlow] = [
         name="multi_turn_thinking + tool_followup",
         trajectory_cls=MultiTurnThinkingTrajectory,
         final_env=[
-            {"role": "tool", "tool_call_id": "boss_call_1",
-             "content": "_boss_tool_followup_xyz_42_"},
+            {"role": "tool", "tool_call_id": "boss_call_1", "content": "_boss_tool_followup_xyz_42_"},
         ],
     ),
     _BossFlow(
         name="multi_tool_multi_turn_thinking + alternating_user_tool_followup",
         trajectory_cls=LongChainThinkingTrajectory,
         final_env=[
-            {"role": "tool", "tool_call_id": "boss_call_2a",
-             "content": "_boss_alt_tool1_aaa_"},
+            {"role": "tool", "tool_call_id": "boss_call_2a", "content": "_boss_alt_tool1_aaa_"},
             {"role": "user", "content": "_boss_alt_user1_bbb_"},
-            {"role": "tool", "tool_call_id": "boss_call_2b",
-             "content": "_boss_alt_tool2_ccc_"},
+            {"role": "tool", "tool_call_id": "boss_call_2b", "content": "_boss_alt_tool2_ccc_"},
             {"role": "user", "content": "_boss_alt_user2_ddd_"},
         ],
     ),
@@ -872,22 +864,18 @@ _BOSS_FLOWS: list[_BossFlow] = [
         name="multi_tool_single_turn_thinking + system_inject",
         trajectory_cls=_MultiToolSingleTurnThinking,
         final_env=[
-            {"role": "system",
-             "content": "_boss_system_inject_def_77_"},
+            {"role": "system", "content": "_boss_system_inject_def_77_"},
         ],
     ),
     _BossFlow(
         name="multi_tool_multi_turn_thinking + complex_env_chain",
         trajectory_cls=LongChainThinkingTrajectory,
         final_env=[
-            {"role": "tool", "tool_call_id": "boss_call_4a",
-             "content": "_boss_chain_tool1_AAA_"},
+            {"role": "tool", "tool_call_id": "boss_call_4a", "content": "_boss_chain_tool1_AAA_"},
             {"role": "user", "content": "_boss_chain_user1_BBB_"},
-            {"role": "tool", "tool_call_id": "boss_call_4b",
-             "content": "_boss_chain_tool2_CCC_"},
+            {"role": "tool", "tool_call_id": "boss_call_4b", "content": "_boss_chain_tool2_CCC_"},
             {"role": "system", "content": "_boss_chain_system_DDD_"},
-            {"role": "tool", "tool_call_id": "boss_call_4c",
-             "content": "_boss_chain_tool3_EEE_"},
+            {"role": "tool", "tool_call_id": "boss_call_4c", "content": "_boss_chain_tool3_EEE_"},
         ],
     ),
 ]
@@ -911,10 +899,7 @@ def _run_parsers_on_emit(
         try:
             rp = rp_cls(model_type=_K2V3_REASONING_PARSER)
         except Exception as e:
-            pytest.skip(
-                f"reasoning parser {_K2V3_REASONING_PARSER!r} unsupported "
-                f"by this SGLang build: {e}"
-            )
+            pytest.skip(f"reasoning parser {_K2V3_REASONING_PARSER!r} unsupported " f"by this SGLang build: {e}")
         r_out, n_out = rp.parse_non_stream(raw_emit)
         parsed_reasoning = r_out or ""
         text_after_reasoning = n_out if n_out is not None else ""
@@ -927,10 +912,7 @@ def _run_parsers_on_emit(
     try:
         fcp = fcp_cls(tools=sglang_tools, tool_call_parser=_K2V3_TOOL_PARSER)
     except Exception as e:
-        pytest.skip(
-            f"tool parser {_K2V3_TOOL_PARSER!r} unsupported by this SGLang "
-            f"build: {e}"
-        )
+        pytest.skip(f"tool parser {_K2V3_TOOL_PARSER!r} unsupported by this SGLang " f"build: {e}")
     normal_text, tool_call_items = fcp.parse_non_stream(text_after_reasoning)
     parsed_content = normal_text if normal_text is not None else ""
     parsed_tool_calls = [
@@ -963,25 +945,30 @@ def _drive_one_assistant_turn_through_real_parsers(
     tokenizer = tito_tok.tokenizer
 
     full_text = _render_text(
-        request_messages + [truth_assistant_msg], tokenizer, tools,
+        request_messages + [truth_assistant_msg],
+        tokenizer,
+        tools,
         add_generation_prompt=False,
     )
     prompt_text = _render_text(
-        request_messages, tokenizer, tools,
+        request_messages,
+        tokenizer,
+        tools,
         add_generation_prompt=True,
     )
     assert full_text.startswith(prompt_text), (
-        f"chat template not append-only between "
-        f"render(request_messages) and render(request_messages + [truth_msg])"
+        "chat template not append-only between " "render(request_messages) and render(request_messages + [truth_msg])"
     )
-    raw_emit = full_text[len(prompt_text):].rstrip("\n")
-    assert raw_emit.endswith("<|im_end|>"), (
-        f"unexpected raw_emit shape: {raw_emit!r}"
-    )
+    raw_emit = full_text[len(prompt_text) :].rstrip("\n")
+    assert raw_emit.endswith("<|im_end|>"), f"unexpected raw_emit shape: {raw_emit!r}"
 
     has_reasoning = bool(truth_assistant_msg.get("reasoning_content"))
     parsed_content, parsed_tool_calls, parsed_reasoning = _run_parsers_on_emit(
-        raw_emit, tools, fcp_cls=fcp_cls, rp_cls=rp_cls, has_reasoning=has_reasoning,
+        raw_emit,
+        tools,
+        fcp_cls=fcp_cls,
+        rp_cls=rp_cls,
+        has_reasoning=has_reasoning,
     )
 
     parsed_msg: dict = {
@@ -995,7 +982,10 @@ def _drive_one_assistant_turn_through_real_parsers(
     pre = session.prepare_pretokenized(request_messages, tools, tito_tokenizer=tito_tok)
     if pre is None:
         prompt_ids = _render_ids(
-            request_messages, tokenizer, tools, add_generation_prompt=True,
+            request_messages,
+            tokenizer,
+            tools,
+            add_generation_prompt=True,
         )
     else:
         prompt_ids = list(pre["input_ids"])
@@ -1056,8 +1046,10 @@ def test_end_to_end_realistic_rollout_with_real_parsers(flow: _BossFlow, tito_to
 
         truth_msg = messages[asst_idx]
         parsed_msg = _drive_one_assistant_turn_through_real_parsers(
-            session, tito_tok,
-            fcp_cls=FCP, rp_cls=RP,
+            session,
+            tito_tok,
+            fcp_cls=FCP,
+            rp_cls=RP,
             request_messages=request_messages,
             truth_assistant_msg=truth_msg,
             tools=tools,
@@ -1077,19 +1069,18 @@ def test_end_to_end_realistic_rollout_with_real_parsers(flow: _BossFlow, tito_to
     merged = list(pre["input_ids"])
 
     expected = _render_ids(
-        extended, tito_tok.tokenizer, tools, add_generation_prompt=True,
+        extended,
+        tito_tok.tokenizer,
+        tools,
+        add_generation_prompt=True,
     )
 
     comparator = tito_tok.create_comparator()
-    severe = [
-        m for m in comparator.compare_sequences(expected, merged)
-        if m.type != MismatchType.ASSISTANT_TEXT
-    ]
+    severe = [m for m in comparator.compare_sequences(expected, merged) if m.type != MismatchType.ASSISTANT_TEXT]
     if severe:
         details = "\n".join(
             f"  {m.type.value} at segment {m.segment_index}: "
-            f"expected={m.expected_text!r} actual={m.actual_text!r}"
-            + (f" — {m.detail}" if m.detail else "")
+            f"expected={m.expected_text!r} actual={m.actual_text!r}" + (f" — {m.detail}" if m.detail else "")
             for m in severe[:8]
         )
         pytest.fail(
@@ -1105,9 +1096,7 @@ def test_end_to_end_realistic_rollout_with_real_parsers(flow: _BossFlow, tito_to
     # the final env chain's content (which includes user/tool/system
     # markers) actually flows into the incremental tokens in order.
     pretokenized_buffer = list(session.token_ids)
-    incremental_text = tito_tok.tokenizer.decode(
-        merged[len(pretokenized_buffer):], skip_special_tokens=False
-    )
+    incremental_text = tito_tok.tokenizer.decode(merged[len(pretokenized_buffer) :], skip_special_tokens=False)
     cursor = 0
     for env_msg in flow.final_env:
         marker = env_msg.get("content", "")
@@ -1148,7 +1137,10 @@ def test_production_prefix_check_raises_on_intentional_violation(tito_tok):
 
     # Seed: drive a single normal turn so the session has stored token_ids.
     prompt_ids = _render_ids(
-        [user_q], tito_tok.tokenizer, tools=None, add_generation_prompt=True,
+        [user_q],
+        tito_tok.tokenizer,
+        tools=None,
+        add_generation_prompt=True,
     )
     eos = getattr(tito_tok.tokenizer, "eos_token_id", None)
     completion_ids = list(tito_tok.tokenizer.encode("ok", add_special_tokens=False))
