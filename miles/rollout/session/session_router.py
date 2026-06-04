@@ -51,14 +51,11 @@ def parse_worker_index(session_id: str, worker_count: int) -> int:
     """
     m = _WORKER_PREFIX_RE.match(session_id)
     if m is None:
-        raise ValueError(
-            f"session_id {session_id!r} does not have the expected 'w<idx>-' prefix"
-        )
+        raise ValueError(f"session_id {session_id!r} does not have the expected 'w<idx>-' prefix")
     idx = int(m.group(1))
     if not 0 <= idx < worker_count:
         raise ValueError(
-            f"session_id {session_id!r} parses to worker index {idx}, "
-            f"out of range for worker_count={worker_count}"
+            f"session_id {session_id!r} parses to worker index {idx}, " f"out of range for worker_count={worker_count}"
         )
     return idx
 
@@ -165,7 +162,10 @@ class SessionRouter:
         except httpx.TransportError as exc:
             logger.warning(
                 "[session-router] backend transport error: %s %s -> %s: %s",
-                request.method, path, backend, exc,
+                request.method,
+                path,
+                backend,
+                exc,
             )
             return JSONResponse(
                 status_code=502,

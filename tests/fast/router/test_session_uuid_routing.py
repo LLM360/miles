@@ -155,8 +155,7 @@ class TestRouterAgreement:
                 # match the URL of the worker that created the session.
                 picked = router.pick_backend(f"/sessions/{sid}/v1/chat/completions")
                 assert picked == backends[worker_index], (
-                    f"session_id={sid} created by worker {worker_index} "
-                    f"but router routed to {picked}"
+                    f"session_id={sid} created by worker {worker_index} " f"but router routed to {picked}"
                 )
 
     def test_router_rejects_unknown_session_id(self):

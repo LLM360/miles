@@ -561,6 +561,7 @@ class RolloutManager:
             path = Path(self.args.load_debug_rollout_data.format(rollout_id=rollout_id))
             if path.suffix == ".parquet":
                 import pyarrow.parquet as pq
+
                 data = [Sample.from_dict(row) for row in pq.read_table(path).to_pylist()]
             else:
                 data = torch.load(path, weights_only=False)["samples"]
@@ -651,6 +652,7 @@ class RolloutManager:
             if save_format == "parquet":
                 import pyarrow as pa
                 import pyarrow.parquet as pq
+
                 path = path.with_suffix(".parquet")
                 table = pa.Table.from_pylist(samples)
                 table = table.replace_schema_metadata({b"rollout_id": str(rollout_id).encode()})
@@ -898,16 +900,8 @@ class RolloutManager:
                 rollout_data[key] = data[key]
 
             token_lens = [total_lengths[j] for j in partition]
-            response_lens = (
-                [data["response_lengths"][j] for j in partition]
-                if "response_lengths" in data
-                else []
-            )
-            loss_mask_lens = (
-                [_safe_len(data["loss_masks"][j]) for j in partition]
-                if "loss_masks" in data
-                else []
-            )
+            response_lens = [data["response_lengths"][j] for j in partition] if "response_lengths" in data else []
+            loss_mask_lens = [_safe_len(data["loss_masks"][j]) for j in partition] if "loss_masks" in data else []
 
             payload_bytes = _estimate_payload_bytes(rollout_data)
             ref = ray.put(rollout_data)
@@ -1389,9 +1383,7 @@ def _start_session_server(args):
             backend_port = int(url.rsplit(":", 1)[1])
             wait_for_server_ready(ip, backend_port, p, timeout=60)
 
-        router_process = multiprocessing.Process(
-            target=run_session_router, args=(args, backend_urls)
-        )
+        router_process = multiprocessing.Process(target=run_session_router, args=(args, backend_urls))
         router_process.daemon = True
         router_process.start()
         tracked_processes.append(router_process)
@@ -1512,7 +1504,7 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
     # Mirror reward/* and response_stats/* as top-level wandb panels.
     for full_key, val in list(log_dict.items()):
         if full_key.startswith(("rollout/reward/", "rollout/response_stats/")):
-            log_dict[full_key[len("rollout/"):]] = val
+            log_dict[full_key[len("rollout/") :]] = val
     logger.info(f"perf {rollout_id}: {log_dict}")
     step = compute_rollout_step(args, rollout_id)
     log_dict["rollout/step"] = step
@@ -1726,9 +1718,7 @@ def _compute_grouped_response_metrics(args, group: list[Sample], prefix: str) ->
     }
 
 
-def _compute_group_outcome_metrics(
-    args, all_samples: list[Sample], prefix: str = "reward"
-) -> dict:
+def _compute_group_outcome_metrics(args, all_samples: list[Sample], prefix: str = "reward") -> dict:
     """Fraction of prompt groups that are unanimously correct or incorrect. GRPO only."""
     if args.advantage_estimator == "ppo":
         return {}

@@ -113,9 +113,9 @@ def test_session_router_routes_by_session_id(fake_backends):
                     timeout=5,
                 )
                 assert resp.status_code == 200, resp.text
-                assert resp.json()["port"] == expected_port, (
-                    f"sid={sid} expected port {expected_port}, got {resp.json()}"
-                )
+                assert (
+                    resp.json()["port"] == expected_port
+                ), f"sid={sid} expected port {expected_port}, got {resp.json()}"
     finally:
         server.stop()
 

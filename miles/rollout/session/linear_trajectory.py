@@ -319,9 +319,7 @@ class SessionRegistry:
         if worker_count < 1:
             raise ValueError(f"worker_count must be >= 1, got {worker_count}")
         if not 0 <= worker_index < worker_count:
-            raise ValueError(
-                f"worker_index must be in [0, {worker_count}), got {worker_index}"
-            )
+            raise ValueError(f"worker_index must be in [0, {worker_count}), got {worker_index}")
         self.worker_index = worker_index
         self.worker_count = worker_count
 
@@ -370,10 +368,7 @@ class SessionRegistry:
         if not self._session_last_access:
             return
         now = time.monotonic()
-        stale = [
-            sid for sid, ts in self._session_last_access.items()
-            if now - ts > self._SESSION_TTL_SECS
-        ]
+        stale = [sid for sid, ts in self._session_last_access.items() if now - ts > self._SESSION_TTL_SECS]
         for sid in stale:
             self.sessions.pop(sid, None)
             self._session_last_access.pop(sid, None)
