@@ -71,11 +71,16 @@ class SessionRouter:
         self.app = FastAPI()
 
         timeout = getattr(args, "miles_router_timeout", 600.0)
-        # max_keepalive_connections=0 mirrors init_http_client: prevents
-        # all router->backend traffic from pinning to one TCP connection
-        # against one backend worker.
+        # Connection pool sized for ~N backends * ~hundreds of in-flight
+        # requests each. Keepalive MUST be enabled here: every request is
+        # already explicitly routed by ``session_id``, so there's no
+        # "pinning to one backend" risk (the analogy to
+        # ``init_http_client``'s keepalive=0 setting does not apply).
+        # With keepalive=0 every request did a full TCP handshake and
+        # then sat in TIME_WAIT, leading to ephemeral port exhaustion
+        # under sustained load (see PR #31 deep review B1).
         self.client = httpx.AsyncClient(
-            limits=httpx.Limits(max_connections=1024, max_keepalive_connections=0),
+            limits=httpx.Limits(max_connections=4096, max_keepalive_connections=1024),
             timeout=httpx.Timeout(timeout),
         )
         self.app.router.on_shutdown.append(self.client.aclose)
