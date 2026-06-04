@@ -158,19 +158,26 @@ class TestRouterAgreement:
                     f"session_id={sid} created by worker {worker_index} " f"but router routed to {picked}"
                 )
 
-    def test_router_rejects_unknown_session_id(self):
-        """A session_id without the w<idx>- prefix should 404 at the router."""
+    def test_router_unknown_session_id_falls_back_to_round_robin(self):
+        """Malformed/out-of-range session_ids round-robin to a backend.
+
+        Rolling-deploy safety net: rather than 404, the router falls
+        back to round-robin so the backend's ``get_or_create_session``
+        can reseed. See PR #31 finding M.
+        """
         from miles.rollout.session.session_router import SessionRouter
 
         args = SimpleNamespace(miles_router_timeout=1.0)
         backends = [f"http://127.0.0.1:{6000 + i}" for i in range(4)]
         router = SessionRouter(args, backends)
 
-        with pytest.raises(ValueError):
-            router.pick_backend("/sessions/badid_no_prefix/v1/chat/completions")
-        with pytest.raises(ValueError):
-            # Out-of-range worker index (e.g. id minted under wider fleet).
-            router.pick_backend("/sessions/w9-deadbeef/v1/chat/completions")
+        # No w<idx>- prefix -> round-robin, never raises.
+        picks_no_prefix = [router.pick_backend("/sessions/badid_no_prefix/v1/chat/completions") for _ in range(40)]
+        assert set(picks_no_prefix) == set(backends)
+
+        # Out-of-range worker index (id minted under wider fleet) -> round-robin.
+        picks_oor = [router.pick_backend("/sessions/w9-deadbeef/v1/chat/completions") for _ in range(40)]
+        assert set(picks_oor) == set(backends)
 
     def test_router_stateless_paths_round_robin(self):
         """POST /sessions (no id) and other unmatched paths should not pin to one backend."""

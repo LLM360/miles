@@ -145,6 +145,44 @@ def test_session_router_health_no_proxy(fake_backends):
         server.stop()
 
 
+def test_session_router_malformed_id_routes_via_round_robin(fake_backends):
+    """Malformed session_ids reach a backend rather than 404 (PR #31 M).
+
+    Rolling-deploy shrink: an in-flight trial may hold a ``w<idx>-uuid``
+    minted under a wider fleet. Instead of dying with 404, the router
+    routes it to a backend; the backend's ``get_or_create_session``
+    reseeds the session cleanly under a fresh prefix.
+    """
+    from miles.rollout.session.session_router import SessionRouter
+    from miles.utils.test_utils.uvicorn_thread_server import UvicornThreadServer
+
+    backend_urls = [f"http://127.0.0.1:{p}" for p in fake_backends]
+    args = SimpleNamespace(miles_router_timeout=10.0)
+    router = SessionRouter(args, backend_urls)
+
+    router_port = find_available_port(44000)
+    server = UvicornThreadServer(router.app, host="127.0.0.1", port=router_port)
+    server.start()
+    try:
+        _wait_port(router_port)
+        # No prefix at all.
+        resp = requests.get(
+            f"http://127.0.0.1:{router_port}/sessions/legacy-bare-uuid/v1/chat/completions",
+            timeout=5,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["port"] in fake_backends
+        # Out-of-range index (id minted under wider fleet).
+        resp = requests.get(
+            f"http://127.0.0.1:{router_port}/sessions/w99-{uuid.uuid4().hex}/v1/chat/completions",
+            timeout=5,
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["port"] in fake_backends
+    finally:
+        server.stop()
+
+
 def test_session_router_health_exposes_instance_id(fake_backends):
     """``/health`` includes session_server_instance_id (PR #31 H1).
 

@@ -100,19 +100,33 @@ class SessionRouter:
         """Pick a backend URL for ``path``.
 
         Stateful paths (``/sessions/{id}/...``) parse the ``w<idx>-``
-        prefix stamped onto the id by ``SessionRegistry.create_session``.
-        Stateless paths round-robin so we don't hot-spot worker 0.
+        prefix stamped onto the id by ``SessionRegistry.create_session``
+        and route to the owning backend. Stateless paths round-robin so
+        we don't hot-spot worker 0.
 
-        Raises ``ValueError`` (mapped to 404 in the route handler) if a
-        stateful path carries a session_id that doesn't carry the prefix
-        or names a worker outside ``[0, worker_count)`` — that means the
-        client crafted an id the backend never minted, so there's no
-        sensible backend to route it to.
+        Rolling-deploy shrink safety net: if a session_id doesn't carry
+        the ``w<idx>-`` prefix or names a worker outside
+        ``[0, worker_count)`` (e.g. a trial in-flight from a previous
+        deploy with a larger worker_count, or a legacy bare-uuid id from
+        an N=1 run), we fall back to round-robin instead of 404.
+        The chosen backend's ``get_or_create_session`` will reseed the
+        session under a freshly-minted prefix; the trial loses state but
+        recovers in-place rather than dying mid-rollout. See PR #31 M.
         """
         m = _SESSION_PATH_RE.match(path)
         if m is not None:
             session_id = m.group(1)
-            idx = parse_worker_index(session_id, self.worker_count)
+            try:
+                idx = parse_worker_index(session_id, self.worker_count)
+            except ValueError as exc:
+                logger.info(
+                    "[session-router] session_id %r doesn't route cleanly (%s); "
+                    "falling back to round-robin for get_or_create reseed",
+                    session_id,
+                    exc,
+                )
+                # next() on itertools.count() is atomic under the CPython GIL.
+                idx = next(self._rr_counter) % self.worker_count
         else:
             idx = next(self._rr_counter) % self.worker_count
         return self.backend_urls[idx]
@@ -136,14 +150,10 @@ class SessionRouter:
 
     async def proxy(self, request: Request) -> Response:
         path = request.url.path
-        try:
-            backend = self.pick_backend(path)
-        except ValueError as exc:
-            logger.warning("[session-router] invalid session_id in %s: %s", path, exc)
-            return JSONResponse(
-                status_code=404,
-                content={"error": f"session-router: {exc}"},
-            )
+        # pick_backend no longer raises for malformed session_ids — it
+        # falls back to round-robin so the backend's get_or_create_session
+        # can reseed. See PR #31 M.
+        backend = self.pick_backend(path)
         url = f"{backend}{path}"
         if request.url.query:
             url = f"{url}?{request.url.query}"
