@@ -1370,6 +1370,13 @@ def _start_session_server(args):
             # already in flight.
             while not is_port_available(backend_port) or backend_port in chosen_ports:
                 backend_port += 1
+                if backend_port > 65535:
+                    raise RuntimeError(
+                        f"all ports exhausted while allocating port for "
+                        f"session-server worker {i}/{worker_count}; "
+                        f"started at {port + 1 + i}, walked past 65535. "
+                        f"chosen so far: {sorted(chosen_ports)}"
+                    )
             chosen_ports.add(backend_port)
             worker_args = _per_worker_args_copy(args)
             worker_args.session_server_port = backend_port
