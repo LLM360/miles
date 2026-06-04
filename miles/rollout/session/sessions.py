@@ -171,8 +171,16 @@ def setup_session_routes(app, backend, args):
                 expected_num_assistant = session.num_assistant
             # --- lock released here ---
 
+            # Tag every turn of this session with a routing key so a routing-key
+            # gateway policy (manual / consistent_hashing) pins the session to one
+            # worker, reusing the worker that holds its KV cache. Emitted
+            # unconditionally: the gateway is launched externally (miles does not
+            # know its policy), and policies that don't route on the key
+            # (e.g. cache_aware) ignore the header.
+            proxy_headers = {**dict(request.headers), "X-SMG-Routing-Key": session_id}
+
             # --- Phase 2: proxy to SGLang (NO lock held) ---
-            result = await backend.do_proxy(request, "v1/chat/completions", body=body)
+            result = await backend.do_proxy(request, "v1/chat/completions", body=body, headers=proxy_headers)
 
             # If SGLang returned a non-200 error (e.g. 400 for context too long),
             # pass it through to the agent without recording — the agent can retry
@@ -195,7 +203,9 @@ def setup_session_routes(app, backend, args):
                     )
                     request_body.pop("input_ids", None)
                     retry_body = json.dumps(request_body).encode()
-                    result = await backend.do_proxy(request, "v1/chat/completions", body=retry_body)
+                    result = await backend.do_proxy(
+                        request, "v1/chat/completions", body=retry_body, headers=proxy_headers
+                    )
                     if result["status_code"] != 200:
                         return backend.build_proxy_response(result)
                 else:
