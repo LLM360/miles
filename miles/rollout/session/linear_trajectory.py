@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import time
 import uuid
@@ -6,6 +7,24 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from miles.rollout.session.session_errors import MessageValidationError, SessionNotFoundError, TokenizationError
+
+
+def session_id_bucket(session_id: str, worker_count: int) -> int:
+    """Map a session_id to a worker bucket in [0, worker_count).
+
+    Must match the routing decision made by the multi-process front-end
+    (``miles/rollout/session/session_router.py``). Uses md5 of the UTF-8
+    bytes truncated to 4 bytes (big-endian), modulo worker_count.
+
+    The exact hash function is load-bearing: the front-end and
+    ``SessionRegistry.create_session`` MUST agree on it, otherwise a
+    freshly-created session will be routed to a worker that does not own
+    it on the next request.
+    """
+    if worker_count <= 1:
+        return 0
+    h = hashlib.md5(session_id.encode("utf-8")).digest()
+    return int.from_bytes(h[:4], "big") % worker_count
 from miles.rollout.session.session_types import SessionRecord
 from miles.utils.chat_template_utils import (
     apply_chat_template,
@@ -301,16 +320,59 @@ class SessionRegistry:
     LinearTrajectory; called by the route handler under session.lock.
     """
 
-    def __init__(self, args, tokenizer: Any, *, tito_tokenizer: TITOTokenizer):
+    # Safety cap on the uuid regen loop in create_session. With
+    # worker_count=N the expected number of tries is N; this cap guards
+    # against a pathological hash collision storm.
+    _MAX_UUID_REGEN_TRIES: int = 100
+
+    def __init__(
+        self,
+        args,
+        tokenizer: Any,
+        *,
+        tito_tokenizer: TITOTokenizer,
+        worker_index: int = 0,
+        worker_count: int = 1,
+    ):
         self.sessions: dict[str, LinearTrajectory] = {}
         self._session_last_access: dict[str, float] = {}
         self.args = args
         self.tokenizer = tokenizer
         self.tito_tokenizer = tito_tokenizer
         self.comparator = tito_tokenizer.create_comparator()
+        if worker_count < 1:
+            raise ValueError(f"worker_count must be >= 1, got {worker_count}")
+        if not 0 <= worker_index < worker_count:
+            raise ValueError(
+                f"worker_index must be in [0, {worker_count}), got {worker_index}"
+            )
+        self.worker_index = worker_index
+        self.worker_count = worker_count
 
     def create_session(self) -> str:
-        session_id = uuid.uuid4().hex
+        """Generate a session_id that routes to this worker.
+
+        When ``worker_count > 1``, the front-end routes by
+        ``session_id_bucket(session_id, worker_count)``. We regenerate
+        uuids until we get one that hashes to our own bucket so that
+        every subsequent ``/sessions/{id}/...`` call lands here.
+        Average tries = ``worker_count``; bounded by
+        ``_MAX_UUID_REGEN_TRIES`` to defend against pathological cases.
+        """
+        if self.worker_count == 1:
+            session_id = uuid.uuid4().hex
+        else:
+            for _ in range(self._MAX_UUID_REGEN_TRIES):
+                candidate = uuid.uuid4().hex
+                if session_id_bucket(candidate, self.worker_count) == self.worker_index:
+                    session_id = candidate
+                    break
+            else:
+                raise RuntimeError(
+                    f"create_session: failed to find a uuid that hashes to "
+                    f"worker_index={self.worker_index} after "
+                    f"{self._MAX_UUID_REGEN_TRIES} tries (worker_count={self.worker_count})"
+                )
         self.sessions[session_id] = LinearTrajectory()
         return session_id
 

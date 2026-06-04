@@ -27,6 +27,8 @@ def setup_session_routes(app, backend, args):
         return
 
     session_server_instance_id = getattr(args, "session_server_instance_id", None)
+    worker_index = getattr(args, "session_server_worker_index", 0)
+    worker_count = getattr(args, "session_server_worker_count", 1)
 
     tokenizer = load_tokenizer(
         hf_checkpoint, chat_template_path=getattr(args, "chat_template_path", None), trust_remote_code=True
@@ -38,13 +40,24 @@ def setup_session_routes(app, backend, args):
         allowed_append_roles=getattr(args, "tito_allowed_append_roles", None),
     )
 
-    registry = SessionRegistry(args, tokenizer, tito_tokenizer=tito_tokenizer)
+    registry = SessionRegistry(
+        args,
+        tokenizer,
+        tito_tokenizer=tito_tokenizer,
+        worker_index=worker_index,
+        worker_count=worker_count,
+    )
 
     @app.get("/health")
     async def health():
         body = {"status": "ok"}
         if session_server_instance_id is not None:
             body["session_server_instance_id"] = session_server_instance_id
+        # Surface worker identity so operators can correlate logs across
+        # multi-process deployments. Always present (defaults 0/1) so
+        # parsers can rely on the schema.
+        body["worker_index"] = worker_index
+        body["worker_count"] = worker_count
         return body
 
     # --- DEBUG: track in-flight chat_completions ---
