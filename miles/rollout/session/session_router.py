@@ -187,9 +187,11 @@ class SessionRouter:
                 backend,
                 exc,
             )
+            # Log the full exception above; return a sanitized message to
+            # the caller so internal backend hostnames / paths can't leak.
             return JSONResponse(
                 status_code=502,
-                content={"error": f"session-router backend transport error: {type(exc).__name__}: {exc}"},
+                content={"error": "session-router backend transport error"},
             )
 
         # Filter hop-by-hop response headers per RFC 7230 §6.1. Also
