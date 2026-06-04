@@ -68,6 +68,12 @@ class SessionRouter:
             raise ValueError("SessionRouter requires at least one backend URL")
         self.backend_urls = backend_urls
         self.worker_count = len(backend_urls)
+        # Cluster-facing instance id. ``OpenAIEndpointTracer.create``
+        # (miles/rollout/generate_utils/openai_endpoint_utils.py) reads
+        # this from ``/health`` and stamps it on trial metadata; if it
+        # falls through to None, downstream assertions in the test suite
+        # (test_sessions.py, test_multi_turn.py) regress. See PR #31 H1.
+        self.session_server_instance_id = getattr(args, "session_server_instance_id", None)
         self.app = FastAPI()
 
         timeout = getattr(args, "miles_router_timeout", 600.0)
@@ -212,6 +218,11 @@ class SessionRouter:
                 "role": "session-router",
                 "worker_count": self.worker_count,
                 "backends": self.backend_urls,
+                # H1: must be present so OpenAIEndpointTracer.create can
+                # stamp ``session_server_instance_id`` on trial metadata
+                # in multi-worker mode (the router is the user-facing
+                # ``session_url`` then).
+                "session_server_instance_id": self.session_server_instance_id,
             }
 
         @self.app.api_route(

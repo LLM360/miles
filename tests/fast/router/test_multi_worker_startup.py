@@ -143,3 +143,31 @@ def test_session_router_health_no_proxy(fake_backends):
         assert body["backends"] == backend_urls
     finally:
         server.stop()
+
+
+def test_session_router_health_exposes_instance_id(fake_backends):
+    """``/health`` includes session_server_instance_id (PR #31 H1).
+
+    OpenAIEndpointTracer.create reads this field from /health and
+    stamps it on trial metadata; in multi-worker mode the router is
+    the user-facing session_url, so the field MUST be present here.
+    """
+    from miles.rollout.session.session_router import SessionRouter
+    from miles.utils.test_utils.uvicorn_thread_server import UvicornThreadServer
+
+    backend_urls = [f"http://127.0.0.1:{p}" for p in fake_backends]
+    instance_id = "test-instance-" + uuid.uuid4().hex[:8]
+    args = SimpleNamespace(miles_router_timeout=10.0, session_server_instance_id=instance_id)
+    router = SessionRouter(args, backend_urls)
+
+    router_port = find_available_port(43000)
+    server = UvicornThreadServer(router.app, host="127.0.0.1", port=router_port)
+    server.start()
+    try:
+        _wait_port(router_port)
+        resp = requests.get(f"http://127.0.0.1:{router_port}/health", timeout=5)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["session_server_instance_id"] == instance_id
+    finally:
+        server.stop()
