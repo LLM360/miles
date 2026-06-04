@@ -23,7 +23,6 @@ its own process.
 """
 
 import itertools
-import json
 import logging
 import re
 
@@ -31,7 +30,7 @@ import httpx
 import setproctitle
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +109,23 @@ class SessionRouter:
             idx = next(self._rr_counter) % self.worker_count
         return self.backend_urls[idx]
 
+    # Hop-by-hop headers per RFC 7230 §6.1 — these must NOT be forwarded
+    # because they describe the single hop, not the end-to-end message.
+    # httpx will recompute content-length / transfer-encoding itself.
+    _HOP_BY_HOP_HEADERS = frozenset(
+        {
+            "connection",
+            "keep-alive",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+            "upgrade",
+            "content-length",
+        }
+    )
+
     async def proxy(self, request: Request) -> Response:
         path = request.url.path
         try:
@@ -124,18 +140,28 @@ class SessionRouter:
         if request.url.query:
             url = f"{url}?{request.url.query}"
 
-        body = await request.body()
-        # Strip framing / host headers — httpx will recompute them and
-        # we already mirror what session_server.py does on its own proxy
-        # path.
-        headers = {
+        # Strip framing / host headers — httpx will recompute them.
+        # Stream the request body straight through (no buffering in
+        # router RAM) so multi-MB SGLang request payloads don't OOM
+        # the router at high concurrency.
+        req_headers = {
             k: v
             for k, v in request.headers.items()
-            if k.lower() not in ("content-length", "transfer-encoding", "host")
+            if k.lower() not in self._HOP_BY_HOP_HEADERS and k.lower() != "host"
         }
 
+        # Use the streaming client.send path so both request and
+        # response bodies are streamed end-to-end. We must close the
+        # upstream response when the client disconnects; StreamingResponse
+        # does that by raising inside the generator.
+        upstream_req = self.client.build_request(
+            request.method,
+            url,
+            content=request.stream(),
+            headers=req_headers,
+        )
         try:
-            response = await self.client.request(request.method, url, content=body, headers=headers)
+            upstream_resp = await self.client.send(upstream_req, stream=True)
         except httpx.TransportError as exc:
             logger.warning(
                 "[session-router] backend transport error: %s %s -> %s: %s",
@@ -146,26 +172,28 @@ class SessionRouter:
                 content={"error": f"session-router backend transport error: {type(exc).__name__}: {exc}"},
             )
 
-        content = await response.aread()
+        # Filter hop-by-hop response headers per RFC 7230 §6.1. Also
+        # drop "server" (cosmetic — was stripped in the old buffered
+        # path). Keep content-type as-is so charset hints survive.
         resp_headers = {
             k: v
-            for k, v in response.headers.items()
-            if k.lower() not in ("content-length", "transfer-encoding", "server")
+            for k, v in upstream_resp.headers.items()
+            if k.lower() not in self._HOP_BY_HOP_HEADERS and k.lower() != "server"
         }
-        # Try to mirror the backend's content shape. JSONResponse re-encodes
-        # which guarantees a correct content-length even if our header
-        # stripping changed the wire shape; fall back to raw bytes when the
-        # body is not JSON.
-        try:
-            data = json.loads(content)
-            return JSONResponse(content=data, status_code=response.status_code, headers=resp_headers)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return Response(
-                content=content,
-                status_code=response.status_code,
-                headers=resp_headers,
-                media_type=resp_headers.get("content-type", ""),
-            )
+
+        async def _body_stream():
+            try:
+                async for chunk in upstream_resp.aiter_raw():
+                    yield chunk
+            finally:
+                await upstream_resp.aclose()
+
+        return StreamingResponse(
+            _body_stream(),
+            status_code=upstream_resp.status_code,
+            headers=resp_headers,
+            media_type=upstream_resp.headers.get("content-type"),
+        )
 
     def _setup_routes(self) -> None:
         @self.app.get("/health")
