@@ -23,7 +23,6 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from miles.rollout.session.linear_trajectory import session_id_bucket
 from miles.utils.http_utils import find_available_port
 
 
@@ -102,21 +101,21 @@ def test_session_router_routes_by_session_id(fake_backends):
         _wait_port(router_port)
         worker_count = len(fake_backends)
 
-        # Hit the router with N distinct session_ids; verify each one
-        # reached the backend whose port matches its hash bucket.
+        # Hit the router with N distinct session_ids carrying the
+        # ``w<idx>-`` prefix; verify each one reached the backend whose
+        # port matches its parsed worker index.
         for _ in range(20):
-            sid = uuid.uuid4().hex
-            expected_bucket = session_id_bucket(sid, worker_count)
-            expected_port = fake_backends[expected_bucket]
-            resp = requests.get(
-                f"http://127.0.0.1:{router_port}/sessions/{sid}/v1/chat/completions",
-                timeout=5,
-            )
-            assert resp.status_code == 200, resp.text
-            assert resp.json()["port"] == expected_port, (
-                f"sid={sid} bucket={expected_bucket} expected port {expected_port}, "
-                f"got {resp.json()}"
-            )
+            for worker_index in range(worker_count):
+                sid = f"w{worker_index}-{uuid.uuid4().hex}"
+                expected_port = fake_backends[worker_index]
+                resp = requests.get(
+                    f"http://127.0.0.1:{router_port}/sessions/{sid}/v1/chat/completions",
+                    timeout=5,
+                )
+                assert resp.status_code == 200, resp.text
+                assert resp.json()["port"] == expected_port, (
+                    f"sid={sid} expected port {expected_port}, got {resp.json()}"
+                )
     finally:
         server.stop()
 

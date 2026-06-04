@@ -5,15 +5,18 @@ spawns N backend SessionServer processes on consecutive ports and runs this
 front-end on ``args.session_server_port``. The front-end:
 
   * Parses ``session_id`` from the URL path (``/sessions/{id}/...``).
-  * Picks a backend via ``session_id_bucket(session_id, N)`` — the same
-    hash used by ``SessionRegistry.create_session`` so a session always
-    routes back to the worker that created it.
+  * Routes by parsing the ``w<idx>-`` prefix stamped onto the id by
+    ``SessionRegistry.create_session``. Prefix-encoded ids (Stripe-style)
+    eliminate the hash-agreement risk between router and backend — there
+    is no shared algorithm to drift on. See
+    ``docs/sticky-session-routing-research.md``.
   * For the stateless ``POST /sessions`` and ``GET /health`` paths,
-    routes by a round-robin counter (any worker will do; ``create_session``
-    on the chosen worker guarantees the returned id hashes to itself).
-  * Streams the response body through verbatim (no JSON re-encoding).
+    routes by a round-robin counter (any worker will do; the chosen
+    worker stamps its own index on the returned id).
+  * Streams the response body through verbatim (no JSON re-encoding,
+    no full-body buffering).
 
-The router does almost no per-request CPU work (path-parse + hash +
+The router does almost no per-request CPU work (path-parse + str.split +
 httpx passthrough), so its GIL does not become the new bottleneck —
 all the tokenizer / TITO work happens in the backend workers, each in
 its own process.
@@ -30,13 +33,35 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-from miles.rollout.session.linear_trajectory import session_id_bucket
-
 logger = logging.getLogger(__name__)
 
 # Matches /sessions/{id}/... and captures {id}. Bare POST /sessions
 # (creating a new session, no id yet) is intentionally excluded.
 _SESSION_PATH_RE = re.compile(r"^/sessions/([^/]+)(?:/|$)")
+
+# Matches the ``w<idx>-`` prefix that ``SessionRegistry.create_session``
+# stamps onto every multi-worker session id.
+_WORKER_PREFIX_RE = re.compile(r"^w(\d+)-")
+
+
+def parse_worker_index(session_id: str, worker_count: int) -> int:
+    """Parse the ``w<idx>-`` prefix and return the worker index.
+
+    Raises ``ValueError`` if the prefix is missing or the parsed index
+    is out of range for the current worker_count.
+    """
+    m = _WORKER_PREFIX_RE.match(session_id)
+    if m is None:
+        raise ValueError(
+            f"session_id {session_id!r} does not have the expected 'w<idx>-' prefix"
+        )
+    idx = int(m.group(1))
+    if not 0 <= idx < worker_count:
+        raise ValueError(
+            f"session_id {session_id!r} parses to worker index {idx}, "
+            f"out of range for worker_count={worker_count}"
+        )
+    return idx
 
 
 class SessionRouter:
@@ -67,20 +92,34 @@ class SessionRouter:
     def pick_backend(self, path: str) -> str:
         """Pick a backend URL for ``path``.
 
-        Stateful paths (``/sessions/{id}/...``) hash by session_id.
+        Stateful paths (``/sessions/{id}/...``) parse the ``w<idx>-``
+        prefix stamped onto the id by ``SessionRegistry.create_session``.
         Stateless paths round-robin so we don't hot-spot worker 0.
+
+        Raises ``ValueError`` (mapped to 404 in the route handler) if a
+        stateful path carries a session_id that doesn't carry the prefix
+        or names a worker outside ``[0, worker_count)`` — that means the
+        client crafted an id the backend never minted, so there's no
+        sensible backend to route it to.
         """
         m = _SESSION_PATH_RE.match(path)
         if m is not None:
             session_id = m.group(1)
-            idx = session_id_bucket(session_id, self.worker_count)
+            idx = parse_worker_index(session_id, self.worker_count)
         else:
             idx = next(self._rr_counter) % self.worker_count
         return self.backend_urls[idx]
 
     async def proxy(self, request: Request) -> Response:
         path = request.url.path
-        backend = self.pick_backend(path)
+        try:
+            backend = self.pick_backend(path)
+        except ValueError as exc:
+            logger.warning("[session-router] invalid session_id in %s: %s", path, exc)
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"session-router: {exc}"},
+            )
         url = f"{backend}{path}"
         if request.url.query:
             url = f"{url}?{request.url.query}"

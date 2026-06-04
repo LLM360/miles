@@ -2,10 +2,13 @@
 
 These verify the load-bearing invariant of the multi-process session-server
 design: every session_id that ``SessionRegistry.create_session`` returns
-hashes — via the same function the front-end router uses — to the worker
-that created it. If this ever breaks, sticky routing breaks, and the
+parses — via the prefix-encoding contract — back to the worker that
+created it. If this ever breaks, sticky routing breaks, and the
 session-server falls back to the auto-reseed path on every turn (silently
 losing state).
+
+See ``docs/sticky-session-routing-research.md`` for the design rationale
+(Stripe-style prefix encoding vs hash + rejection sampling).
 """
 
 from types import SimpleNamespace
@@ -13,7 +16,8 @@ from typing import Any
 
 import pytest
 
-from miles.rollout.session.linear_trajectory import SessionRegistry, session_id_bucket
+from miles.rollout.session.linear_trajectory import SessionRegistry
+from miles.rollout.session.session_router import parse_worker_index
 from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizer
 
 
@@ -57,45 +61,64 @@ def _make_registry(worker_index: int, worker_count: int) -> SessionRegistry:
     )
 
 
-class TestSessionIdBucket:
-    def test_single_worker_always_bucket_zero(self):
-        for sid in ("a" * 32, "deadbeef" * 4, "0" * 32):
-            assert session_id_bucket(sid, 1) == 0
+class TestParseWorkerIndex:
+    def test_parses_well_formed_prefix(self):
+        assert parse_worker_index("w0-abcdef", 4) == 0
+        assert parse_worker_index("w3-abcdef", 4) == 3
+        assert parse_worker_index("w7-deadbeef", 8) == 7
 
-    def test_deterministic(self):
-        sid = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-        assert session_id_bucket(sid, 4) == session_id_bucket(sid, 4)
-        assert session_id_bucket(sid, 8) == session_id_bucket(sid, 8)
+    def test_rejects_missing_prefix(self):
+        # Bare uuid hex (the single-worker shape) has no w<idx>- prefix.
+        with pytest.raises(ValueError):
+            parse_worker_index("a" * 32, 4)
 
-    def test_distribution_is_reasonable(self):
-        """With many uuids, buckets should be roughly balanced (sanity, not strict)."""
-        import uuid
+    def test_rejects_non_numeric_prefix(self):
+        with pytest.raises(ValueError):
+            parse_worker_index("wx-abcdef", 4)
 
-        counts = [0] * 8
-        for _ in range(8000):
-            counts[session_id_bucket(uuid.uuid4().hex, 8)] += 1
-        # Expect ~1000 per bucket; allow wide margin to avoid flakes.
-        assert all(500 <= c <= 1500 for c in counts), counts
+    def test_rejects_out_of_range_index(self):
+        # Worker minted with worker_count=8 but router is now running
+        # with worker_count=4 — the parsed index is out of range.
+        with pytest.raises(ValueError):
+            parse_worker_index("w5-abcdef", 4)
+
+    def test_rejects_negative_index_via_no_match(self):
+        # Regex `^w(\d+)-` doesn't accept a minus sign, so this is a
+        # missing-prefix failure rather than an out-of-range failure.
+        with pytest.raises(ValueError):
+            parse_worker_index("w-1-abcdef", 4)
 
 
 class TestSessionRegistryRouting:
     @pytest.mark.parametrize("worker_count", [1, 2, 4, 8, 16])
-    def test_create_session_id_hashes_to_self(self, worker_count: int):
-        """Every session_id created by worker i must hash back to bucket i."""
+    def test_create_session_id_parses_to_self(self, worker_count: int):
+        """Every session_id created by worker i must parse back to index i."""
         for worker_index in range(worker_count):
             registry = _make_registry(worker_index, worker_count)
             for _ in range(50):
                 sid = registry.create_session()
-                assert session_id_bucket(sid, worker_count) == worker_index, (
-                    f"session_id {sid} from worker {worker_index}/{worker_count} "
-                    f"hashed to bucket {session_id_bucket(sid, worker_count)}"
-                )
+                if worker_count == 1:
+                    # Single-worker deployments keep emitting bare uuid hex
+                    # for back-compat; routing is trivially worker 0.
+                    assert len(sid) == 32
+                else:
+                    assert parse_worker_index(sid, worker_count) == worker_index, (
+                        f"session_id {sid} from worker {worker_index}/{worker_count} "
+                        f"did not parse to its own index"
+                    )
 
     def test_default_single_worker_behavior(self):
-        """worker_count=1 is the existing behavior; no regen needed."""
+        """worker_count=1 is the existing behavior; bare uuid hex."""
         registry = _make_registry(0, 1)
         sid = registry.create_session()
-        assert len(sid) == 32  # uuid4 hex
+        assert len(sid) == 32  # uuid4 hex, no prefix
+        assert sid in registry.sessions
+
+    def test_multi_worker_ids_carry_prefix(self):
+        """worker_count>1 ids must carry the Stripe-style w<idx>- prefix."""
+        registry = _make_registry(worker_index=2, worker_count=8)
+        sid = registry.create_session()
+        assert sid.startswith("w2-")
         assert sid in registry.sessions
 
     def test_invalid_worker_index(self):
@@ -110,9 +133,10 @@ class TestSessionRegistryRouting:
 
 
 class TestRouterAgreement:
-    """The front-end router and SessionRegistry must agree on the hash.
-
-    If anyone ever changes one without the other, these tests fail.
+    """The front-end router and SessionRegistry must agree on the routing
+    contract — now a prefix parse, not a hash. With prefix encoding there
+    is no "shared algorithm" to drift on, but the contract still has to
+    hold end-to-end.
     """
 
     @pytest.mark.parametrize("worker_count", [2, 3, 4, 7, 8])
@@ -134,6 +158,20 @@ class TestRouterAgreement:
                     f"session_id={sid} created by worker {worker_index} "
                     f"but router routed to {picked}"
                 )
+
+    def test_router_rejects_unknown_session_id(self):
+        """A session_id without the w<idx>- prefix should 404 at the router."""
+        from miles.rollout.session.session_router import SessionRouter
+
+        args = SimpleNamespace(miles_router_timeout=1.0)
+        backends = [f"http://127.0.0.1:{6000 + i}" for i in range(4)]
+        router = SessionRouter(args, backends)
+
+        with pytest.raises(ValueError):
+            router.pick_backend("/sessions/badid_no_prefix/v1/chat/completions")
+        with pytest.raises(ValueError):
+            # Out-of-range worker index (e.g. id minted under wider fleet).
+            router.pick_backend("/sessions/w9-deadbeef/v1/chat/completions")
 
     def test_router_stateless_paths_round_robin(self):
         """POST /sessions (no id) and other unmatched paths should not pin to one backend."""

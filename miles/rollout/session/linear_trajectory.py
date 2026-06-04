@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import logging
 import time
 import uuid
@@ -7,24 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from miles.rollout.session.session_errors import MessageValidationError, SessionNotFoundError, TokenizationError
-
-
-def session_id_bucket(session_id: str, worker_count: int) -> int:
-    """Map a session_id to a worker bucket in [0, worker_count).
-
-    Must match the routing decision made by the multi-process front-end
-    (``miles/rollout/session/session_router.py``). Uses md5 of the UTF-8
-    bytes truncated to 4 bytes (big-endian), modulo worker_count.
-
-    The exact hash function is load-bearing: the front-end and
-    ``SessionRegistry.create_session`` MUST agree on it, otherwise a
-    freshly-created session will be routed to a worker that does not own
-    it on the next request.
-    """
-    if worker_count <= 1:
-        return 0
-    h = hashlib.md5(session_id.encode("utf-8")).digest()
-    return int.from_bytes(h[:4], "big") % worker_count
 from miles.rollout.session.session_types import SessionRecord
 from miles.utils.chat_template_utils import (
     apply_chat_template,
@@ -320,11 +301,6 @@ class SessionRegistry:
     LinearTrajectory; called by the route handler under session.lock.
     """
 
-    # Safety cap on the uuid regen loop in create_session. With
-    # worker_count=N the expected number of tries is N; this cap guards
-    # against a pathological hash collision storm.
-    _MAX_UUID_REGEN_TRIES: int = 100
-
     def __init__(
         self,
         args,
@@ -352,27 +328,19 @@ class SessionRegistry:
     def create_session(self) -> str:
         """Generate a session_id that routes to this worker.
 
-        When ``worker_count > 1``, the front-end routes by
-        ``session_id_bucket(session_id, worker_count)``. We regenerate
-        uuids until we get one that hashes to our own bucket so that
-        every subsequent ``/sessions/{id}/...`` call lands here.
-        Average tries = ``worker_count``; bounded by
-        ``_MAX_UUID_REGEN_TRIES`` to defend against pathological cases.
+        Uses Stripe-style prefix encoding: ``w{worker_index}-{uuid4hex}``.
+        The front-end router parses the ``w<idx>-`` prefix to route
+        subsequent ``/sessions/{id}/...`` calls back to this worker.
+        See ``docs/sticky-session-routing-research.md`` for the design.
+
+        Single-worker deployments (``worker_count == 1``) keep emitting
+        bare uuid hex for backwards compatibility with existing tests
+        and operator tooling.
         """
         if self.worker_count == 1:
             session_id = uuid.uuid4().hex
         else:
-            for _ in range(self._MAX_UUID_REGEN_TRIES):
-                candidate = uuid.uuid4().hex
-                if session_id_bucket(candidate, self.worker_count) == self.worker_index:
-                    session_id = candidate
-                    break
-            else:
-                raise RuntimeError(
-                    f"create_session: failed to find a uuid that hashes to "
-                    f"worker_index={self.worker_index} after "
-                    f"{self._MAX_UUID_REGEN_TRIES} tries (worker_count={self.worker_count})"
-                )
+            session_id = f"w{self.worker_index}-{uuid.uuid4().hex}"
         self.sessions[session_id] = LinearTrajectory()
         return session_id
 
