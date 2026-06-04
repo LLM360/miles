@@ -1399,11 +1399,45 @@ def _start_session_server(args):
             backend_port = int(url.rsplit(":", 1)[1])
             wait_for_server_ready(ip, backend_port, p, timeout=60)
 
-        router_process = multiprocessing.Process(target=run_session_router, args=(args, backend_urls))
-        router_process.daemon = True
-        router_process.start()
-        tracked_processes.append(router_process)
-        wait_for_server_ready(ip, port, router_process, timeout=30)
+        router_worker_count = max(1, int(getattr(args, "session_router_workers", 1) or 1))
+        if router_worker_count == 1:
+            # Existing path — single router process. Bit-for-bit identical
+            # to the pre-existing behavior so default deployments don't
+            # see any change.
+            router_process = multiprocessing.Process(
+                target=run_session_router, args=(args, backend_urls), name="session-router"
+            )
+            router_process.daemon = True
+            router_process.start()
+            tracked_processes.append(router_process)
+            wait_for_server_ready(ip, port, router_process, timeout=30)
+        else:
+            # Multi-worker: spawn K independent uvicorn workers, all
+            # SO_REUSEPORT-bound to the same port. The Linux kernel
+            # hash-distributes incoming connections across them. The
+            # router state is per-process (rr counter, httpx pool); no
+            # cross-worker coordination is needed, and routing decisions
+            # are pure functions of the URL prefix so any worker can
+            # answer any request correctly.
+            router_workers: list[multiprocessing.Process] = []
+            for i in range(router_worker_count):
+                # Each worker gets a distinguishable instance_id for log
+                # correlation; the cluster-facing id stays on `args`.
+                rargs = _per_worker_args_copy(args)
+                rargs.session_server_instance_id = f"{args.session_server_instance_id}-router{i}"
+                p = multiprocessing.Process(
+                    target=run_session_router,
+                    args=(rargs, backend_urls),
+                    name=f"session-router-w{i}",
+                )
+                p.daemon = True
+                p.start()
+                router_workers.append(p)
+                tracked_processes.append(p)
+                logger.info("spawned session-router worker %d on :%d (pid=%d)", i, port, p.pid)
+            # One health-check suffices: SO_REUSEPORT means any worker
+            # can serve the probe.
+            wait_for_server_ready(ip, port, router_workers[0], timeout=30)
     except Exception:
         # Make sure we don't leak orphan backend workers if anything
         # above raises (e.g. a backend never becomes ready). The parent

@@ -1644,6 +1644,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "process behavior.",
             )
             parser.add_argument(
+                "--session-router-workers",
+                type=int,
+                default=1,
+                help="Number of uvicorn worker processes for the session-router "
+                "ASGI front-end. When >1, K independent uvicorn workers bind to "
+                "--session-server-port via SO_REUSEPORT and the Linux kernel "
+                "hash-distributes incoming connections across them. The router "
+                "is stateless (per-process round-robin counter for stateless "
+                "paths, otherwise pure-function URL-prefix routing), so adding "
+                "workers is safe. Default 1 preserves the existing single-"
+                "process behavior. Recommended in prod: ~= backends / 2.",
+            )
+            parser.add_argument(
                 "--tito-model",
                 type=str,
                 default="default",

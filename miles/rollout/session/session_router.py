@@ -24,6 +24,7 @@ its own process.
 import itertools
 import logging
 import re
+import socket
 
 import httpx
 import setproctitle
@@ -244,20 +245,87 @@ class SessionRouter:
             return await self.proxy(request)
 
 
+def _make_reuseport_socket(host: str, port: int) -> socket.socket:
+    """Open a TCP listener bound with SO_REUSEPORT for kernel-level load balancing.
+
+    Multiple processes can bind the same (host, port) when each one sets
+    SO_REUSEPORT before bind(). The Linux kernel (>= 3.9) then hash-distributes
+    incoming connections across the listener sockets, giving us K-way
+    parallelism without a userspace dispatcher.
+
+    Requires Linux. macOS has SO_REUSEPORT but with different semantics
+    (last-bound wins for unicast); the multi-worker path is intended for
+    Slurm/Linux production. The single-worker (K=1) path is unchanged.
+    """
+    family = socket.AF_INET6 if host and ":" in host else socket.AF_INET
+    sock = socket.socket(family=family, type=socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    sock.bind((host, port))
+    # Match uvicorn's own default backlog.
+    sock.listen(2048)
+    sock.set_inheritable(True)
+    return sock
+
+
 def run_session_router(args, backend_urls: list[str]):
-    """Entry point for the front-end process started by _start_session_server."""
+    """Entry point for the front-end process started by _start_session_server.
+
+    Honors ``args.session_router_workers`` (default 1):
+
+      * K=1: identical to pre-existing behavior (``uvicorn.run`` binds the
+        listening socket internally).
+      * K>1: the caller has already forked K worker processes; this one
+        opens a SO_REUSEPORT socket and hands it to
+        ``uvicorn.Server.run(sockets=[sock])``. The Linux kernel
+        distributes connections across the K workers.
+
+    NOTE on the uvicorn API: as of uvicorn 0.40--0.49 (the versions we
+    currently ship), ``uvicorn.Config`` does **not** have a ``reuse_port``
+    kwarg / attribute. The supported path for pre-bound listeners is
+    ``Server.run(sockets=[...])``. So we open the SO_REUSEPORT socket
+    ourselves in each worker and pass it in. See PR description for the
+    bench evidence motivating this change.
+    """
     setproctitle.setproctitle("miles-session-router")
     router = SessionRouter(args, backend_urls)
+    router_worker_count = max(1, int(getattr(args, "session_router_workers", 1) or 1))
+    if router_worker_count <= 1:
+        # Preserve exact pre-existing behavior — bit-for-bit identical to
+        # the previous implementation, log line included.
+        logger.info(
+            "[session-router] Starting on %s:%s, routing to %d backends: %s",
+            args.session_server_ip,
+            args.session_server_port,
+            len(backend_urls),
+            backend_urls,
+        )
+        uvicorn.run(
+            router.app,
+            host=args.session_server_ip,
+            port=args.session_server_port,
+            log_level="info",
+        )
+        return
+
     logger.info(
-        "[session-router] Starting on %s:%s, routing to %d backends: %s",
+        "[session-router] Starting on %s:%s, routing to %d backends: %s (router_workers=%d, SO_REUSEPORT)",
         args.session_server_ip,
         args.session_server_port,
         len(backend_urls),
         backend_urls,
+        router_worker_count,
     )
-    uvicorn.run(
+
+    # K>1: open our own SO_REUSEPORT socket and hand it to uvicorn.Server.
+    sock = _make_reuseport_socket(args.session_server_ip, args.session_server_port)
+    config = uvicorn.Config(
         router.app,
         host=args.session_server_ip,
         port=args.session_server_port,
         log_level="info",
+        loop="asyncio",
+        access_log=False,
     )
+    server = uvicorn.Server(config)
+    server.run(sockets=[sock])
