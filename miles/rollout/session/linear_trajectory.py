@@ -329,7 +329,6 @@ class SessionRegistry:
         Uses Stripe-style prefix encoding: ``w{worker_index}-{uuid4hex}``.
         The front-end router parses the ``w<idx>-`` prefix to route
         subsequent ``/sessions/{id}/...`` calls back to this worker.
-        See ``docs/sticky-session-routing-research.md`` for the design.
 
         Single-worker deployments (``worker_count == 1``) keep emitting
         bare uuid hex for backwards compatibility with existing tests

@@ -6,9 +6,6 @@ parses — via the prefix-encoding contract — back to the worker that
 created it. If this ever breaks, sticky routing breaks, and the
 session-server falls back to the auto-reseed path on every turn (silently
 losing state).
-
-See ``docs/sticky-session-routing-research.md`` for the design rationale
-(Stripe-style prefix encoding vs hash + rejection sampling).
 """
 
 from types import SimpleNamespace

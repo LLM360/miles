@@ -8,8 +8,7 @@ front-end on ``args.session_server_port``. The front-end:
   * Routes by parsing the ``w<idx>-`` prefix stamped onto the id by
     ``SessionRegistry.create_session``. Prefix-encoded ids (Stripe-style)
     eliminate the hash-agreement risk between router and backend — there
-    is no shared algorithm to drift on. See
-    ``docs/sticky-session-routing-research.md``.
+    is no shared algorithm to drift on.
   * For the stateless ``POST /sessions`` and ``GET /health`` paths,
     routes by a round-robin counter (any worker will do; the chosen
     worker stamps its own index on the returned id).
