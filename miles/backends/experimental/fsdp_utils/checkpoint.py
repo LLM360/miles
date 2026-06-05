@@ -12,10 +12,7 @@ import torch.distributed.checkpoint as dcp
 from torch.distributed.checkpoint.state_dict import get_state_dict, set_state_dict
 from torch.distributed.checkpoint.stateful import Stateful
 
-from miles.backends.training_utils.log_utils import (
-    init_train_step_counter,
-    save_train_step_counter,
-)
+from miles.backends.training_utils.log_utils import init_train_step_counter, save_train_step_counter
 
 logger = logging.getLogger(__name__)
 

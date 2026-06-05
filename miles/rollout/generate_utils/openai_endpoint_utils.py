@@ -247,5 +247,5 @@ def _truncate_sample_output(sample: Sample, keep_tokens: int, tokenizer) -> None
     if sample.loss_mask is not None:
         sample.loss_mask = sample.loss_mask[:keep_tokens]
     if sample.rollout_routed_experts is not None:
-        sample.rollout_routed_experts = sample.rollout_routed_experts[:len(sample.tokens) - 1]
+        sample.rollout_routed_experts = sample.rollout_routed_experts[: len(sample.tokens) - 1]
     sample.status = Sample.Status.TRUNCATED

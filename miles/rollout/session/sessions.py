@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -10,6 +11,7 @@ from miles.rollout.session.linear_trajectory import SessionRegistry
 from miles.rollout.session.session_errors import (
     SessionError,
     SessionNotFoundError,
+    SessionStateConflictError,
     TokenizationError,
     UpstreamResponseError,
 )
@@ -27,6 +29,8 @@ def setup_session_routes(app, backend, args):
         return
 
     session_server_instance_id = getattr(args, "session_server_instance_id", None)
+    worker_index = getattr(args, "session_server_worker_index", 0)
+    worker_count = getattr(args, "session_server_worker_count", 1)
 
     tokenizer = load_tokenizer(
         hf_checkpoint, chat_template_path=getattr(args, "chat_template_path", None), trust_remote_code=True
@@ -38,13 +42,24 @@ def setup_session_routes(app, backend, args):
         allowed_append_roles=getattr(args, "tito_allowed_append_roles", None),
     )
 
-    registry = SessionRegistry(args, tokenizer, tito_tokenizer=tito_tokenizer)
+    registry = SessionRegistry(
+        args,
+        tokenizer,
+        tito_tokenizer=tito_tokenizer,
+        worker_index=worker_index,
+        worker_count=worker_count,
+    )
 
     @app.get("/health")
     async def health():
         body = {"status": "ok"}
         if session_server_instance_id is not None:
             body["session_server_instance_id"] = session_server_instance_id
+        # Surface worker identity so operators can correlate logs across
+        # multi-process deployments. Always present (defaults 0/1) so
+        # parsers can rely on the schema.
+        body["worker_index"] = worker_index
+        body["worker_count"] = worker_count
         return body
 
     # --- DEBUG: track in-flight chat_completions ---
@@ -155,7 +170,12 @@ def setup_session_routes(app, backend, args):
                 request_body["no_stop_trim"] = False
 
                 request_messages = request_body.get("messages", [])
-                pretokenized = session.prepare_pretokenized(
+                # Run the sync tito-tokenizer call in a thread so the event
+                # loop isn't blocked while merge_tokens / chat-template render
+                # holds the GIL. At 300+ in-flight sessions this shaved ~40%
+                # off server p99 in microbench.
+                pretokenized = await asyncio.to_thread(
+                    session.prepare_pretokenized,
                     request_messages,
                     tools=request_body.get("tools"),
                     tito_tokenizer=registry.tito_tokenizer,
@@ -239,14 +259,33 @@ def setup_session_routes(app, backend, args):
                     return backend.build_proxy_response(result)
 
                 if session.num_assistant != expected_num_assistant:
+                    # Another writer committed an assistant turn while we were
+                    # in Phase 2 (unlocked proxy).  We cannot commit this
+                    # response: doing so would either (a) corrupt the
+                    # trajectory's accumulated_token_ids prefix invariant, or
+                    # (b) drop the state update and silently return a 200,
+                    # causing the cursor-mismatch assertion in
+                    # compute_samples_from_openai_records to fire downstream.
+                    # Return 409 so the caller treats this turn as a
+                    # retryable conflict and does not record it locally.
+                    # See run 1711903 evidence in
+                    # ~/run_analysis/1711903/1711903_errors_rca.md.
                     logger.warning(
                         f"Session {session_id} state changed during proxy "
                         f"(expected num_assistant={expected_num_assistant}, "
-                        f"got {session.num_assistant}), skipping state update"
+                        f"got {session.num_assistant}), returning 409"
                     )
-                    return backend.build_proxy_response(result)
+                    raise SessionStateConflictError(
+                        f"session {session_id} state changed during proxy "
+                        f"(expected num_assistant={expected_num_assistant}, "
+                        f"got {session.num_assistant})"
+                    )
 
-                session.update_pretokenized_state(
+                # Same rationale as the prepare_pretokenized call above —
+                # offload the sync merge_tokens / state update to a thread
+                # so concurrent in-flight sessions keep moving.
+                await asyncio.to_thread(
+                    session.update_pretokenized_state,
                     request_messages,
                     assistant_message,
                     prompt_token_ids=prompt_token_ids,

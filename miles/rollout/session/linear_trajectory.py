@@ -301,16 +301,43 @@ class SessionRegistry:
     LinearTrajectory; called by the route handler under session.lock.
     """
 
-    def __init__(self, args, tokenizer: Any, *, tito_tokenizer: TITOTokenizer):
+    def __init__(
+        self,
+        args,
+        tokenizer: Any,
+        *,
+        tito_tokenizer: TITOTokenizer,
+        worker_index: int = 0,
+        worker_count: int = 1,
+    ):
         self.sessions: dict[str, LinearTrajectory] = {}
         self._session_last_access: dict[str, float] = {}
         self.args = args
         self.tokenizer = tokenizer
         self.tito_tokenizer = tito_tokenizer
         self.comparator = tito_tokenizer.create_comparator()
+        if worker_count < 1:
+            raise ValueError(f"worker_count must be >= 1, got {worker_count}")
+        if not 0 <= worker_index < worker_count:
+            raise ValueError(f"worker_index must be in [0, {worker_count}), got {worker_index}")
+        self.worker_index = worker_index
+        self.worker_count = worker_count
 
     def create_session(self) -> str:
-        session_id = uuid.uuid4().hex
+        """Generate a session_id that routes to this worker.
+
+        Uses Stripe-style prefix encoding: ``w{worker_index}-{uuid4hex}``.
+        The front-end router parses the ``w<idx>-`` prefix to route
+        subsequent ``/sessions/{id}/...`` calls back to this worker.
+
+        Single-worker deployments (``worker_count == 1``) keep emitting
+        bare uuid hex for backwards compatibility with existing tests
+        and operator tooling.
+        """
+        if self.worker_count == 1:
+            session_id = uuid.uuid4().hex
+        else:
+            session_id = f"w{self.worker_index}-{uuid.uuid4().hex}"
         self.sessions[session_id] = LinearTrajectory()
         return session_id
 
@@ -340,10 +367,7 @@ class SessionRegistry:
         if not self._session_last_access:
             return
         now = time.monotonic()
-        stale = [
-            sid for sid, ts in self._session_last_access.items()
-            if now - ts > self._SESSION_TTL_SECS
-        ]
+        stale = [sid for sid, ts in self._session_last_access.items() if now - ts > self._SESSION_TTL_SECS]
         for sid in stale:
             self.sessions.pop(sid, None)
             self._session_last_access.pop(sid, None)

@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import itertools
 import logging
@@ -560,6 +561,7 @@ class RolloutManager:
             path = Path(self.args.load_debug_rollout_data.format(rollout_id=rollout_id))
             if path.suffix == ".parquet":
                 import pyarrow.parquet as pq
+
                 data = [Sample.from_dict(row) for row in pq.read_table(path).to_pylist()]
             else:
                 data = torch.load(path, weights_only=False)["samples"]
@@ -650,6 +652,7 @@ class RolloutManager:
             if save_format == "parquet":
                 import pyarrow as pa
                 import pyarrow.parquet as pq
+
                 path = path.with_suffix(".parquet")
                 table = pa.Table.from_pylist(samples)
                 table = table.replace_schema_metadata({b"rollout_id": str(rollout_id).encode()})
@@ -897,16 +900,8 @@ class RolloutManager:
                 rollout_data[key] = data[key]
 
             token_lens = [total_lengths[j] for j in partition]
-            response_lens = (
-                [data["response_lengths"][j] for j in partition]
-                if "response_lengths" in data
-                else []
-            )
-            loss_mask_lens = (
-                [_safe_len(data["loss_masks"][j]) for j in partition]
-                if "loss_masks" in data
-                else []
-            )
+            response_lens = [data["response_lengths"][j] for j in partition] if "response_lengths" in data else []
+            loss_mask_lens = [_safe_len(data["loss_masks"][j]) for j in partition] if "loss_masks" in data else []
 
             payload_bytes = _estimate_payload_bytes(rollout_data)
             ref = ray.put(rollout_data)
@@ -1304,6 +1299,11 @@ def _start_session_server(args):
     The session server runs as a separate process with its own port and proxies
     inference requests directly to SGLang worker engines.  It is always started
     as a standalone process regardless of whether ``--use-miles-router`` is active.
+
+    When ``--session-server-workers N`` is > 1, this function spawns N backend
+    SessionServer processes on consecutive ports and an ASGI front-end on
+    ``args.session_server_port`` that consistent-hash-routes by ``session_id``.
+    See ``miles/rollout/session/session_router.py``.
     """
     if not getattr(args, "use_session_server", False):
         return
@@ -1327,14 +1327,220 @@ def _start_session_server(args):
         )
 
     router_url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}"
+    worker_count = max(1, int(getattr(args, "session_server_workers", 1) or 1))
 
     from miles.rollout.session.session_server import run_session_server
 
-    process = multiprocessing.Process(target=run_session_server, args=(args, router_url))
-    process.daemon = True
-    process.start()
-    wait_for_server_ready(ip, port, process, timeout=30)
-    logger.info(f"Session server launched at {ip}:{port}")
+    if worker_count == 1:
+        # Preserve exact pre-existing behavior when the flag is default.
+        process = multiprocessing.Process(target=run_session_server, args=(args, router_url))
+        process.daemon = True
+        process.start()
+        wait_for_server_ready(ip, port, process, timeout=30)
+        logger.info(f"Session server launched at {ip}:{port}")
+        return
+
+    # Multi-process layout: N backends on consecutive ports starting at
+    # port + 1; ASGI front-end on `port` (the user-facing one).
+    from miles.rollout.session.session_router import run_session_router
+
+    # Mutable list so the reaper sees children as they're spawned. We
+    # MUST register the reaper BEFORE the first .start() call: the
+    # backend ready-window is ~60s per worker, and if the parent gets
+    # SIGTERM (Ray actor shutdown) mid-startup, otherwise all N children
+    # leak holding their ports — the next rollout then trips the
+    # "stale session server" RuntimeError. See audit H2.
+    tracked_processes: list[multiprocessing.Process] = []
+    backend_processes: list[multiprocessing.Process] = []
+    backend_urls: list[str] = []
+    # Track ports we've already handed out so worker i+1 doesn't race
+    # worker i: the child process hasn't bound yet when the next
+    # iteration calls is_port_available(), so without this set both
+    # children may target the same port and one crashes on bind. See
+    # PR #31 H2.
+    chosen_ports: set[int] = set()
+    _register_session_server_reaper(tracked_processes)
+    try:
+        for i in range(worker_count):
+            backend_port = port + 1 + i
+            # Find a free port at-or-above the desired one. We start one
+            # above args.session_server_port so the front-end has port
+            # itself reserved. Skip ports already chosen for previous
+            # workers — they may not be bound yet but the spawn is
+            # already in flight.
+            while not is_port_available(backend_port) or backend_port in chosen_ports:
+                backend_port += 1
+                if backend_port > 65535:
+                    raise RuntimeError(
+                        f"all ports exhausted while allocating port for "
+                        f"session-server worker {i}/{worker_count}; "
+                        f"started at {port + 1 + i}, walked past 65535. "
+                        f"chosen so far: {sorted(chosen_ports)}"
+                    )
+            chosen_ports.add(backend_port)
+            worker_args = _per_worker_args_copy(args)
+            worker_args.session_server_port = backend_port
+            worker_args.session_server_worker_index = i
+            worker_args.session_server_worker_count = worker_count
+            # Give each worker a stable, distinguishable instance id for
+            # log correlation while keeping the shared `args.session_server_instance_id`
+            # as the cluster-facing one.
+            worker_args.session_server_instance_id = f"{args.session_server_instance_id}-w{i}"
+            p = multiprocessing.Process(target=run_session_server, args=(worker_args, router_url))
+            p.daemon = True
+            p.start()
+            tracked_processes.append(p)
+            backend_processes.append(p)
+            backend_urls.append(f"http://{ip}:{backend_port}")
+
+        # Wait for every backend to come up before starting the front-end
+        # so the router never sees connection-refused races on first call.
+        for p, url in zip(backend_processes, backend_urls, strict=True):
+            backend_port = int(url.rsplit(":", 1)[1])
+            wait_for_server_ready(ip, backend_port, p, timeout=60)
+
+        router_worker_count = max(1, int(getattr(args, "session_router_workers", 1) or 1))
+        if router_worker_count == 1:
+            # Existing path — single router process. Bit-for-bit identical
+            # to the pre-existing behavior so default deployments don't
+            # see any change.
+            router_process = multiprocessing.Process(
+                target=run_session_router, args=(args, backend_urls), name="session-router"
+            )
+            router_process.daemon = True
+            router_process.start()
+            tracked_processes.append(router_process)
+            wait_for_server_ready(ip, port, router_process, timeout=30)
+        else:
+            # Multi-worker: spawn K independent uvicorn workers, all
+            # SO_REUSEPORT-bound to the same port. The Linux kernel
+            # hash-distributes incoming connections across them. The
+            # router state is per-process (rr counter, httpx pool); no
+            # cross-worker coordination is needed, and routing decisions
+            # are pure functions of the URL prefix so any worker can
+            # answer any request correctly.
+            router_workers: list[multiprocessing.Process] = []
+            for i in range(router_worker_count):
+                # Each worker gets a distinguishable instance_id for log
+                # correlation; the cluster-facing id stays on `args`.
+                rargs = _per_worker_args_copy(args)
+                rargs.session_server_instance_id = f"{args.session_server_instance_id}-router{i}"
+                p = multiprocessing.Process(
+                    target=run_session_router,
+                    args=(rargs, backend_urls),
+                    name=f"session-router-w{i}",
+                )
+                p.daemon = True
+                p.start()
+                router_workers.append(p)
+                tracked_processes.append(p)
+                logger.info("spawned session-router worker %d on :%d (pid=%d)", i, port, p.pid)
+            # One health-check suffices: SO_REUSEPORT means any worker
+            # can serve the probe.
+            wait_for_server_ready(ip, port, router_workers[0], timeout=30)
+    except Exception:
+        # Make sure we don't leak orphan backend workers if anything
+        # above raises (e.g. a backend never becomes ready). The parent
+        # is daemonized so children would otherwise outlive a failed
+        # start.
+        for p in tracked_processes:
+            if p.is_alive():
+                p.terminate()
+        raise
+
+    logger.info(
+        "Session server launched at %s:%s with %d workers on ports %s-%s",
+        ip,
+        port,
+        worker_count,
+        port + 1,
+        port + worker_count,
+    )
+
+
+def _per_worker_args_copy(args):
+    """Return a deep-isolated copy of ``args`` safe for per-worker mutation.
+
+    We mutate a handful of ``session_server_*`` attributes on the copy
+    before handing it to ``multiprocessing.Process``. The previous
+    implementation was ``copy.copy(args)`` (a shallow copy), which is
+    fine for scalar fields but shares references for any nested mutable
+    (list / dict / Namespace). Any future field that happens to be a
+    list/dict would have all N worker copies aliasing the same object —
+    mutating it in one worker (or in this very function, in a loop)
+    would silently corrupt the others.
+
+    ``copy.deepcopy`` is the safe default here. The args object is
+    parsed once at startup and is small (< 1 KB worth of strings and
+    primitives in practice), so the deepcopy cost is negligible
+    compared to the multiprocessing fork overhead.
+    """
+    return copy.deepcopy(args)
+
+
+def _register_session_server_reaper(processes):
+    """Make sure session-server child processes die with the parent.
+
+    Three layers:
+
+      * ``daemon=True`` on each child — Python's stdlib terminates
+        daemonic children automatically when the parent exits.
+      * ``atexit`` — runs on a normal Python exit (e.g. clean Ray
+        actor shutdown).
+      * ``SIGTERM`` handler — covers the case Ray actor preemption
+        sends SIGTERM and the parent stays alive briefly (the audit's
+        previous H3 fix removed this entirely, but PR #31's deep
+        review showed the resulting atexit-only reaper leaks zombies
+        that hold the session-server port — next rollout then trips
+        the "stale session server" RuntimeError).
+
+    The SIGTERM handler is intentionally simple: it does NOT chain to
+    any previous handler (chaining via ``signal.getsignal`` is racy
+    with Ray and corrupts the captured ``prev`` if this function is
+    called twice in one process). It just reaps and lets the default
+    SIGTERM action run via ``signal.SIG_DFL``.
+
+    After ``terminate()`` we ``join(timeout=10)`` so the child is
+    actually reaped — without this the child becomes a zombie until
+    the parent itself exits, which is exactly the leak we're trying
+    to prevent. If it's still alive after the join, escalate to
+    ``kill()`` so the port is definitely released.
+    """
+    import atexit
+    import signal
+
+    def _reap(*_):
+        for p in processes:
+            try:
+                if p.is_alive():
+                    p.terminate()
+            except Exception:
+                pass
+        for p in processes:
+            try:
+                p.join(timeout=10)
+                if p.is_alive():
+                    p.kill()
+                    p.join(timeout=2)
+            except Exception:
+                pass
+
+    atexit.register(_reap)
+
+    def _sigterm_handler(signum, frame):
+        # Simple delegation: reap, then re-raise the default SIGTERM
+        # behavior so the parent dies promptly. No chain semantics.
+        _reap()
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    try:
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+    except (ValueError, OSError):
+        # Not in main thread (e.g. running inside a Ray worker thread):
+        # signal handlers can only be installed from the main thread.
+        # The atexit + daemon=True fallbacks still cover us in that case.
+        pass
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):
@@ -1386,7 +1592,7 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
     # Mirror reward/* and response_stats/* as top-level wandb panels.
     for full_key, val in list(log_dict.items()):
         if full_key.startswith(("rollout/reward/", "rollout/response_stats/")):
-            log_dict[full_key[len("rollout/"):]] = val
+            log_dict[full_key[len("rollout/") :]] = val
     logger.info(f"perf {rollout_id}: {log_dict}")
     step = compute_rollout_step(args, rollout_id)
     log_dict["rollout/step"] = step
@@ -1600,9 +1806,7 @@ def _compute_grouped_response_metrics(args, group: list[Sample], prefix: str) ->
     }
 
 
-def _compute_group_outcome_metrics(
-    args, all_samples: list[Sample], prefix: str = "reward"
-) -> dict:
+def _compute_group_outcome_metrics(args, all_samples: list[Sample], prefix: str = "reward") -> dict:
     """Fraction of prompt groups that are unanimously correct or incorrect. GRPO only."""
     if args.advantage_estimator == "ppo":
         return {}
