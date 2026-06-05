@@ -100,7 +100,8 @@ class TestSessionConcurrencyContracts:
         Phase 2 (proxy) runs without the lock, so concurrent requests are not
         serialized at the backend level.  Phase 3 state updates are still
         serialized; the stale-update guard ensures only one writer wins per
-        generation, so no state corruption occurs.
+        generation — losers receive 409 SessionStateConflictError so the
+        caller doesn't record a phantom turn (see run 1711903 evidence).
         """
 
         def process_fn(prompt: str) -> ProcessResult:
@@ -128,11 +129,15 @@ class TestSessionConcurrencyContracts:
                 futures = [pool.submit(_chat, env.url, session_id, retry_payload) for _ in range(4)]
                 responses = [f.result(timeout=30.0) for f in futures]
 
-            # All requests should succeed (200) — no 500s.
-            assert all(resp.status_code == 200 for resp in responses)
+            # All requests reach the backend (split-lock allows concurrency).
             assert len(env.backend.request_log) == 4
-            # With split-lock, concurrent backend access is expected (not == 1).
             assert env.backend.max_concurrent >= 1
+
+            # Exactly one writer wins (200); losers get 409 conflict — no 500s,
+            # and no silent 200 that would drop the state update.
+            status_codes = sorted(resp.status_code for resp in responses)
+            assert all(c in (200, 409) for c in status_codes), f"Unexpected codes: {status_codes}"
+            assert status_codes.count(200) == 1, f"Expected exactly 1 winner, got {status_codes}"
 
     def test_different_sessions_can_run_in_parallel(self):
         def process_fn(prompt: str) -> ProcessResult:
@@ -420,3 +425,122 @@ class TestClosingRaceConditions:
                 results = [f.result(timeout=60.0) for f in futures]
 
             assert all(results)
+
+
+class TestStateConflictNoCursorMismatch:
+    """Regression: stale-update guard must not silently drop state.
+
+    Before this fix, when ``session.num_assistant`` changed during the
+    unlocked proxy phase, the chat handler returned the SGLang response
+    body with HTTP 200 but skipped both ``update_pretokenized_state`` and
+    ``append_record``.  The caller treated the 200 as a real turn and
+    appended the assistant message to its local trajectory, so on a later
+    ``compute_samples_from_openai_records`` the assertion
+    ``cursor == len(accumulated_token_ids)`` fired with a delta equal to
+    the dropped turn's token count.
+
+    Evidence: run 1711903 — 24 ``state changed during proxy`` warnings
+    produced 2 cursor-mismatch failures with deltas of 88 and 102 tokens.
+    See ``~/run_analysis/1711903/1711903_errors_rca.md``.
+
+    The fix returns 409 so the caller does NOT record the dropped turn.
+    """
+
+    def test_state_conflict_returns_409_and_session_records_match_token_ids(self):
+        """Concurrent same-session writers: exactly one wins; session state
+        and records remain mutually consistent (cursor invariant holds).
+        """
+
+        def process_fn(prompt: str) -> ProcessResult:
+            return ProcessResult(text="conflict-test", finish_reason="stop")
+
+        with _router_env(process_fn, latency=0.2) as env:
+            session_id = _create_session(env.url)
+
+            # Warm up an assistant checkpoint so retry payloads are valid.
+            warmup_payload = {"messages": [{"role": "user", "content": "warmup"}]}
+            warmup_resp = _chat(env.url, session_id, warmup_payload)
+            assert warmup_resp.status_code == 200
+            assistant = warmup_resp.json()["choices"][0]["message"]
+
+            retry_payload = {
+                "messages": [
+                    {"role": "user", "content": "warmup"},
+                    assistant,
+                    {"role": "system", "content": "retry-conflict"},
+                ]
+            }
+
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = [pool.submit(_chat, env.url, session_id, retry_payload) for _ in range(4)]
+                responses = [f.result(timeout=30.0) for f in futures]
+
+            status_codes = sorted(r.status_code for r in responses)
+            # Exactly one writer commits; the other three see the bumped
+            # num_assistant and get 409.
+            assert status_codes.count(200) == 1, f"expected 1 winner, got {status_codes}"
+            assert status_codes.count(409) == 3, f"expected 3 conflicts, got {status_codes}"
+
+            # 409 body carries an "error" field naming the conflict so
+            # callers can surface a useful retry message.
+            for resp in responses:
+                if resp.status_code == 409:
+                    body = resp.json()
+                    assert "error" in body
+                    assert "state changed during proxy" in body["error"]
+
+            # Session state must remain self-consistent: records list (one
+            # per committed turn) should align with the number of assistant
+            # checkpoints in trajectory_token_ids, so cursor walking in
+            # compute_samples_from_openai_records will succeed.
+            get_resp = requests.get(f"{env.url}/sessions/{session_id}", timeout=5.0)
+            assert get_resp.status_code == 200
+            body = get_resp.json()
+            # warmup (1) + exactly one conflict-winner (1) = 2 records.
+            assert len(body["records"]) == 2, f"expected 2 records, got {len(body['records'])}"
+            # accumulated_token_ids reflects the latest checkpoint; non-empty.
+            assert body["metadata"]["accumulated_token_ids"], "accumulated_token_ids must be non-empty"
+
+    def test_serial_followup_after_conflict_uses_winner_state(self):
+        """A serial turn after a conflict-resolved burst must succeed and
+        build on the winner's checkpoint — no stale-state crash."""
+
+        def process_fn(prompt: str) -> ProcessResult:
+            return ProcessResult(text="serial-followup", finish_reason="stop")
+
+        with _router_env(process_fn, latency=0.15) as env:
+            session_id = _create_session(env.url)
+            warmup_resp = _chat(env.url, session_id, {"messages": [{"role": "user", "content": "warm"}]})
+            assert warmup_resp.status_code == 200
+            assistant1 = warmup_resp.json()["choices"][0]["message"]
+
+            retry_payload = {
+                "messages": [
+                    {"role": "user", "content": "warm"},
+                    assistant1,
+                    {"role": "system", "content": "retry-burst"},
+                ]
+            }
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                futures = [pool.submit(_chat, env.url, session_id, retry_payload) for _ in range(3)]
+                burst = [f.result(timeout=30.0) for f in futures]
+
+            winners = [r for r in burst if r.status_code == 200]
+            assert len(winners) == 1
+            assistant2 = winners[0].json()["choices"][0]["message"]
+
+            # Build the next message list on top of the winner.
+            followup_payload = {
+                "messages": [
+                    {"role": "user", "content": "warm"},
+                    assistant1,
+                    {"role": "system", "content": "retry-burst"},
+                    assistant2,
+                    {"role": "system", "content": "after-conflict"},
+                ]
+            }
+            followup_resp = _chat(env.url, session_id, followup_payload)
+            assert followup_resp.status_code == 200, (
+                f"serial followup after conflict-resolved burst failed: {followup_resp.status_code} "
+                f"{followup_resp.text}"
+            )

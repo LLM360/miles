@@ -11,6 +11,7 @@ from miles.rollout.session.linear_trajectory import SessionRegistry
 from miles.rollout.session.session_errors import (
     SessionError,
     SessionNotFoundError,
+    SessionStateConflictError,
     TokenizationError,
     UpstreamResponseError,
 )
@@ -258,12 +259,27 @@ def setup_session_routes(app, backend, args):
                     return backend.build_proxy_response(result)
 
                 if session.num_assistant != expected_num_assistant:
+                    # Another writer committed an assistant turn while we were
+                    # in Phase 2 (unlocked proxy).  We cannot commit this
+                    # response: doing so would either (a) corrupt the
+                    # trajectory's accumulated_token_ids prefix invariant, or
+                    # (b) drop the state update and silently return a 200,
+                    # causing the cursor-mismatch assertion in
+                    # compute_samples_from_openai_records to fire downstream.
+                    # Return 409 so the caller treats this turn as a
+                    # retryable conflict and does not record it locally.
+                    # See run 1711903 evidence in
+                    # ~/run_analysis/1711903/1711903_errors_rca.md.
                     logger.warning(
                         f"Session {session_id} state changed during proxy "
                         f"(expected num_assistant={expected_num_assistant}, "
-                        f"got {session.num_assistant}), skipping state update"
+                        f"got {session.num_assistant}), returning 409"
                     )
-                    return backend.build_proxy_response(result)
+                    raise SessionStateConflictError(
+                        f"session {session_id} state changed during proxy "
+                        f"(expected num_assistant={expected_num_assistant}, "
+                        f"got {session.num_assistant})"
+                    )
 
                 # Same rationale as the prepare_pretokenized call above —
                 # offload the sync merge_tokens / state update to a thread
