@@ -6,9 +6,9 @@ requests are proxied through the router (sglang or miles), which handles
 load balancing and forwarding to worker engines.
 """
 
-import json
 import logging
 
+import orjson
 import httpx
 import setproctitle
 import uvicorn
@@ -55,15 +55,14 @@ class SessionServer:
             body = await request.body()
         if headers is None:
             headers = dict(request.headers)
-        headers = {
-            k: v for k, v in headers.items() if k.lower() not in ("content-length", "transfer-encoding", "host")
-        }
+        headers = {k: v for k, v in headers.items() if k.lower() not in ("content-length", "transfer-encoding", "host")}
 
         try:
             response = await self.client.request(request.method, url, content=body, headers=headers)
         except httpx.TransportError as exc:
             logger.warning("Proxy transport error for %s %s: %s", request.method, path, exc)
-            error_body = json.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"}).encode()
+            error_body = orjson.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"})
+
             return {
                 "request_body": body,
                 "response_body": error_body,
@@ -89,16 +88,12 @@ class SessionServer:
         # Also strip "server": uvicorn adds its own Server header; passing
         # the upstream one through produces two Server headers, which strict
         # HTTP parsers (aiohttp/llhttp via litellm) reject as malformed.
-        headers = {
-            k: v
-            for k, v in result["headers"].items()
-            if k.lower() not in ("content-length", "transfer-encoding", "server")
-        }
+        headers = {k: v for k, v in result["headers"].items() if k.lower() not in ("content-length", "transfer-encoding", "server")}
         content_type = headers.get("content-type", "")
         try:
-            data = json.loads(content)
+            data = orjson.loads(content)
             return JSONResponse(content=data, status_code=status_code, headers=headers)
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (orjson.JSONDecodeError, UnicodeDecodeError):
             return Response(content=content, status_code=status_code, headers=headers, media_type=content_type)
 
 

@@ -17,3 +17,4 @@ sglang-router>=0.2.3
 tensorboard
 transformers
 wandb
+orjson >= 3.10,<4

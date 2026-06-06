@@ -1,7 +1,7 @@
-import json
 import logging
 import time
 
+import orjson
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
@@ -28,9 +28,7 @@ def setup_session_routes(app, backend, args):
 
     session_server_instance_id = getattr(args, "session_server_instance_id", None)
 
-    tokenizer = load_tokenizer(
-        hf_checkpoint, chat_template_path=getattr(args, "chat_template_path", None), trust_remote_code=True
-    )
+    tokenizer = load_tokenizer(hf_checkpoint, chat_template_path=getattr(args, "chat_template_path", None), trust_remote_code=True)
 
     tito_tokenizer = get_tito_tokenizer(
         tokenizer,
@@ -54,15 +52,11 @@ def setup_session_routes(app, backend, args):
     async def debug_request_logger(request: Request, call_next):
         client = request.client
         client_info = f"{client.host}:{client.port}" if client else "unknown"
-        logger.info(
-            f"[session-server] REQUEST ARRIVED: {request.method} {request.url.path} from={client_info} inflight_chat={_inflight_chat['count']}"
-        )
+        logger.info(f"[session-server] REQUEST ARRIVED: {request.method} {request.url.path} from={client_info} inflight_chat={_inflight_chat['count']}")
         t0 = time.time()
         response = await call_next(request)
         elapsed = time.time() - t0
-        logger.info(
-            f"[session-server] REQUEST DONE: {request.method} {request.url.path} status={response.status_code} elapsed={elapsed:.3f}s from={client_info}"
-        )
+        logger.info(f"[session-server] REQUEST DONE: {request.method} {request.url.path} status={response.status_code} elapsed={elapsed:.3f}s from={client_info}")
         return response
 
     @app.exception_handler(SessionError)
@@ -101,9 +95,7 @@ def setup_session_routes(app, backend, args):
         if session.closing:
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
         session.closing = True
-        logger.debug(
-            f"[session-server] DELETE waiting for lock: session={session_id} lock_locked={session.lock.locked()}"
-        )
+        logger.debug(f"[session-server] DELETE waiting for lock: session={session_id} lock_locked={session.lock.locked()}")
         await session.lock.acquire()
         logger.debug(f"[session-server] DELETE acquired lock: session={session_id}")
         try:
@@ -136,7 +128,7 @@ def setup_session_routes(app, backend, args):
                     raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
                 body = await request.body()
-                request_body = json.loads(body) if body else {}
+                request_body = orjson.loads(body) if body else {}
 
                 # TITO token tracking requires three SGLang flags working together:
                 #   logprobs=True            → populates meta_info.output_token_logprobs
@@ -167,7 +159,7 @@ def setup_session_routes(app, backend, args):
                         len(pretokenized["input_ids"]),
                     )
 
-                body = json.dumps(request_body).encode()
+                body = orjson.dumps(request_body)
                 expected_num_assistant = session.num_assistant
             # --- lock released here ---
 
@@ -184,38 +176,29 @@ def setup_session_routes(app, backend, args):
                 error_body = result.get("response_body") or b""
                 if isinstance(error_body, bytes):
                     error_body = error_body.decode("utf-8", errors="replace")
-                if (
-                    result["status_code"] == 400
-                    and "rollback failed" in error_body.lower()
-                    and "input_ids" in request_body
-                ):
+                if result["status_code"] == 400 and "rollback failed" in error_body.lower() and "input_ids" in request_body:
                     logger.warning(
                         "SGLang rollback failed for session %s, retrying without prefix continuation",
                         session_id,
                     )
                     request_body.pop("input_ids", None)
-                    retry_body = json.dumps(request_body).encode()
+                    retry_body = orjson.dumps(request_body)
                     result = await backend.do_proxy(request, "v1/chat/completions", body=retry_body)
                     if result["status_code"] != 200:
                         return backend.build_proxy_response(result)
                 else:
                     return backend.build_proxy_response(result)
 
-            response = json.loads(result["response_body"])
+            response = orjson.loads(result["response_body"])
 
             choice = response.get("choices", [{}])[0]
 
             meta_info = choice.get("meta_info")
             if not isinstance(meta_info, dict) or "output_token_logprobs" not in meta_info:
-                raise UpstreamResponseError(
-                    "meta_info and output_token_logprobs must be in choice (requires logprobs=True)"
-                )
+                raise UpstreamResponseError("meta_info and output_token_logprobs must be in choice (requires logprobs=True)")
             assistant_message = choice.get("message", {})
             if assistant_message.get("content") is None:
-                raise UpstreamResponseError(
-                    "assistant message content is None, when tool call parser failed SGLang should still return "
-                    "an empty content rather than None. Please check your modified SGLang version."
-                )
+                raise UpstreamResponseError("assistant message content is None, when tool call parser failed SGLang should still return an empty content rather than None. Please check your modified SGLang version.")
 
             prompt_token_ids = choice.get("prompt_token_ids")
             output_token_logprobs = meta_info["output_token_logprobs"]
@@ -223,12 +206,7 @@ def setup_session_routes(app, backend, args):
 
             actual_output_logprobs_len = len(output_token_logprobs)
             if actual_output_logprobs_len != completion_tokens:
-                raise UpstreamResponseError(
-                    "invalid chat completion response: "
-                    f"len(output_token_logprobs)={actual_output_logprobs_len} "
-                    f"!= completion_tokens={completion_tokens}. "
-                    f"Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
-                )
+                raise UpstreamResponseError(f"invalid chat completion response: len(output_token_logprobs)={actual_output_logprobs_len} != completion_tokens={completion_tokens}. Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue.")
 
             completion_token_ids = [t[1] for t in output_token_logprobs]
 
@@ -239,11 +217,7 @@ def setup_session_routes(app, backend, args):
                     return backend.build_proxy_response(result)
 
                 if session.num_assistant != expected_num_assistant:
-                    logger.warning(
-                        f"Session {session_id} state changed during proxy "
-                        f"(expected num_assistant={expected_num_assistant}, "
-                        f"got {session.num_assistant}), skipping state update"
-                    )
+                    logger.warning(f"Session {session_id} state changed during proxy (expected num_assistant={expected_num_assistant}, got {session.num_assistant}), skipping state update")
                     return backend.build_proxy_response(result)
 
                 session.update_pretokenized_state(
