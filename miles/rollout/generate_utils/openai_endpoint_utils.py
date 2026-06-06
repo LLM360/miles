@@ -6,6 +6,8 @@ import asyncio
 import logging
 from argparse import Namespace
 from copy import deepcopy
+import hashlib
+import itertools
 
 from miles.rollout.generate_utils.generate_endpoint_utils import get_rollout_topk_from_response
 from miles.rollout.session.session_types import GetSessionResponse, SessionRecord
@@ -15,6 +17,36 @@ from miles.utils.types import Sample
 logger = logging.getLogger(__name__)
 
 _SESSION_REQUEST_TIMEOUT = 120
+_SESSION_SERVER_COUNTER = itertools.count()
+
+
+def _get_session_server_addrs(args: Namespace) -> list[str]:
+    addrs = getattr(args, "session_server_addrs", None)
+    if addrs:
+        if isinstance(addrs, str):
+            return [addr.strip() for addr in addrs.split(",") if addr.strip()]
+        return [str(addr).strip() for addr in addrs if str(addr).strip()]
+
+    session_ip = getattr(args, "session_server_ip", None)
+    session_port = getattr(args, "session_server_port", None)
+    if session_ip and session_port:
+        return [f"{session_ip}:{session_port}"]
+
+    return []
+
+
+def _pick_session_server_addr(addrs: list[str], routing_key: str | int | None) -> str:
+    if not addrs:
+        raise RuntimeError(
+            "No session server is configured. Pass --use-session-server "
+            "or --session-server-addrs."
+        )
+
+    if routing_key is None:
+        return addrs[next(_SESSION_SERVER_COUNTER) % len(addrs)]
+
+    digest = hashlib.blake2b(str(routing_key).encode(), digest_size=8).digest()
+    return addrs[int.from_bytes(digest, "big") % len(addrs)]
 
 
 class OpenAIEndpointTracer:
@@ -26,14 +58,10 @@ class OpenAIEndpointTracer:
 
     @staticmethod
     async def create(args: Namespace):
-        session_ip = getattr(args, "session_server_ip", None)
-        session_port = getattr(args, "session_server_port", None)
-        if not session_ip or not session_port:
-            raise RuntimeError(
-                "session_server_ip/session_server_port are not set. "
-                "Pass --use-session-server to start the session server."
-            )
-        session_url = f"http://{session_ip}:{session_port}"
+        session_addr = _pick_session_server_addr(
+            _get_session_server_addrs(args)
+        )
+        session_url = f"http://{session_addr}"
         session_server_instance_id = None
         try:
             health = await post(f"{session_url}/health", {}, action="get")

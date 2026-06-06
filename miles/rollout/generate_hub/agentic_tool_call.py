@@ -45,11 +45,19 @@ logger = logging.getLogger(__name__)
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
-    assert getattr(input.args, "session_server_ip", None) and getattr(input.args, "session_server_port", None), (
-        "agentic_tool_call.generate requires session_server_ip/session_server_port. "
-        "Pass --use-session-server to start the session server."
+    has_single_session_server = (
+        getattr(input.args, "session_server_ip", None)
+        and getattr(input.args, "session_server_port", None)
     )
-    tracer = await OpenAIEndpointTracer.create(input.args)
+    has_session_server_addrs = bool(getattr(input.args, "session_server_addrs", None))
+
+    assert has_single_session_server or has_session_server_addrs, (
+        "agentic_tool_call.generate requires session_server_ip/session_server_port "
+        "or session_server_addrs. Pass --use-session-server to start session servers."
+    )
+
+    routing_key = getattr(input.sample, "index", None)
+    tracer = await OpenAIEndpointTracer.create(input.args, routing_key=routing_key)
 
     custom_agent_function: Callable = load_function(input.args.custom_agent_function_path)
     assert (
@@ -66,10 +74,10 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
 
     log_prefix = f"[session={tracer.session_id}]"
 
-    session_ip = getattr(input.args, "session_server_ip", None)
-    session_port = getattr(input.args, "session_server_port", None)
-    if session_ip and session_port:
-        metadata = {**metadata, "session_server_id": f"{session_ip}:{session_port}"}
+    metadata = {
+        **metadata,
+        "session_server_id": tracer.router_url.removeprefix("http://"),
+    }
 
     agent_metadata = None
     t_start = time.monotonic()

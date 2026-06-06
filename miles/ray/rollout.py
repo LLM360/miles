@@ -8,6 +8,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+import copy
 
 import numpy as np
 import ray
@@ -339,6 +340,46 @@ class RolloutServer:
         return ray.get(handles) if handles else []
 
 
+@ray.remote
+class SessionServerActor:
+    def __init__(self, args, router_url: str, index: int):
+        configure_logger()
+        self.args = copy.copy(args)
+        self.router_url = router_url
+        self.index = index
+        self.process = None
+
+    def start(self) -> str:
+        from miles.rollout.session.session_server import run_session_server
+
+        ip = _wrap_ipv6(get_host_info()[1])
+        port = find_available_port(random.randint(5000, 6000))
+
+        self.args.session_server_ip = ip
+        self.args.session_server_port = port
+        self.args.session_server_instance_id = f"{uuid.uuid4().hex}-{self.index}"
+
+        self.process = multiprocessing.Process(
+            target=run_session_server,
+            args=(self.args, self.router_url),
+        )
+        self.process.daemon = True
+        self.process.start()
+
+        wait_for_server_ready(ip, port, self.process, timeout=30)
+
+        addr = f"{ip}:{port}"
+        logger.info("Started session server actor %s at %s", self.index, addr)
+        return addr
+
+    def stop(self):
+        if self.process is not None and self.process.is_alive():
+            self.process.terminate()
+            self.process.join(timeout=5)
+            if self.process.is_alive():
+                self.process.kill()
+
+
 # ---------------------------------------------------------------------------
 # RolloutManager
 # ---------------------------------------------------------------------------
@@ -383,7 +424,7 @@ class RolloutManager:
         else:
             init_http_client(args)
             self.servers = start_rollout_servers(args, pg)
-            _start_session_server(args)
+            self.session_server_actors = _start_session_servers(args)
         self.rollout_engine_lock = Lock.options(num_cpus=1, num_gpus=0).remote()
         self.rollout_id = -1
 
@@ -423,6 +464,11 @@ class RolloutManager:
             self._metric_checker.dispose()
         for monitor in self._health_monitors:
             monitor.stop()
+        for actor in getattr(self, "session_server_actors", []):
+            try:
+                ray.get(actor.stop.remote(), timeout=10)
+            except Exception as e:
+                logger.warning("Failed to stop session server actor: %s", e)
 
     @property
     def server(self) -> RolloutServer | None:
@@ -1297,44 +1343,42 @@ def _resolve_sglang_config(args) -> SglangConfig:
 # Logging / metrics helpers (unchanged)
 # ---------------------------------------------------------------------------
 
-
-def _start_session_server(args):
-    """Start a standalone session server when ``--use-session-server`` is set.
-
-    The session server runs as a separate process with its own port and proxies
-    inference requests directly to SGLang worker engines.  It is always started
-    as a standalone process regardless of whether ``--use-miles-router`` is active.
-    """
+def _start_session_servers(args):
     if not getattr(args, "use_session_server", False):
-        return
+        return []
 
-    hf_checkpoint = getattr(args, "hf_checkpoint", None)
-    if not hf_checkpoint:
-        raise ValueError("--use-session-server requires --hf-checkpoint to be set.")
-
-    if getattr(args, "session_server_ip", None) is None:
-        args.session_server_ip = args.sglang_router_ip
-    if getattr(args, "session_server_port", None) is None:
-        args.session_server_port = find_available_port(random.randint(5000, 6000))
-    if getattr(args, "session_server_instance_id", None) is None:
-        args.session_server_instance_id = uuid.uuid4().hex
-
-    ip, port = args.session_server_ip, args.session_server_port
-    if not is_port_available(port):
-        raise RuntimeError(
-            f"Port {port} is already in use — a stale session server may still be running. "
-            f"Run 'pkill -9 python' to kill it, then retry."
-        )
+    # External mode: user provided already-running session servers.
+    # These may be on any nodes. Do not start Ray actors in this case.
+    if getattr(args, "session_server_addrs", None):
+        logger.info("Using external session servers: %s", args.session_server_addrs)
+        return []
 
     router_url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}"
+    num_session_servers = int(getattr(args, "num_session_servers", 1))
 
-    from miles.rollout.session.session_server import run_session_server
+    actors = [
+        SessionServerActor.options(
+            num_cpus=0.1,
+            num_gpus=0,
+            scheduling_strategy="SPREAD",
+        ).remote(args, router_url, i)
+        for i in range(num_session_servers)
+    ]
 
-    process = multiprocessing.Process(target=run_session_server, args=(args, router_url))
-    process.daemon = True
-    process.start()
-    wait_for_server_ready(ip, port, process, timeout=30)
-    logger.info(f"Session server launched at {ip}:{port}")
+    session_server_addrs = ray.get([actor.start.remote() for actor in actors])
+    args.session_server_addrs = ",".join(session_server_addrs)
+
+    # Preserve old single-server fields for compatibility.
+    first_host, first_port = session_server_addrs[0].rsplit(":", 1)
+    args.session_server_ip = first_host
+    args.session_server_port = int(first_port)
+
+    logger.info(
+        "Started %s Ray session servers: %s",
+        len(session_server_addrs),
+        args.session_server_addrs,
+    )
+    return actors
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):

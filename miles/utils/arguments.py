@@ -1652,6 +1652,23 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "append their own planning/self-reflection turns before the "
                 "next tool or user message.",
             )
+            parser.add_argument(
+                "--num-session-servers",
+                type=int,
+                default=1,
+                help="Number of Ray session-server actors to start when --use-session-server is set.",
+            )
+
+            parser.add_argument(
+                "--session-server-addrs",
+                type=str,
+                default=None,
+                help=(
+                    "Comma-separated session server addresses, e.g. "
+                    "10.0.0.1:5100,10.0.0.2:5100. If set, Miles will use these "
+                    "servers instead of starting Ray session-server actors."
+                ),
+            )
             return parser
 
         def add_user_provided_function_arguments(parser):
