@@ -4,6 +4,7 @@ import time
 
 from starlette.responses import Response
 
+from miles.rollout.session.concurrency import run_session_worker
 from miles.rollout.session.core import (
     JSON_MEDIA_TYPE,
     ProxyRequest,
@@ -62,11 +63,12 @@ class SessionCoreV2(SessionCore):
     async def get_session(self, session_id: str) -> Response:
         """Mirrors ``core.SessionCore.get_session``, serving ``active_records()``."""
         session = self.registry.get_session(session_id)
-        metadata = self._session_metadata(session_id, session)
-        payload = GetSessionResponse(session_id=session_id, records=session.active_records(), metadata=metadata)
-        return Response(
-            content=_render_json(payload.model_dump(mode="json")), status_code=200, media_type=JSON_MEDIA_TYPE
-        )
+        async with session.lock:
+            metadata = self._session_metadata(session_id, session)
+            payload = GetSessionResponse(session_id=session_id, records=session.active_records(), metadata=metadata)
+            return Response(
+                content=_render_json(payload.model_dump(mode="json")), status_code=200, media_type=JSON_MEDIA_TYPE
+            )
 
     async def collect_samples(
         self, session_id: str, *, max_seq_len: int | None, agent_metadata: dict | None = None
@@ -74,57 +76,60 @@ class SessionCoreV2(SessionCore):
         """Samples op: assemble one raw sample per leaf, then run the
         pick/post-process hook pipeline and encode the result.
 
-        Synchronous on the server loop (no await), so the session read cannot
-        interleave with chat commits. Deterministic assembly/hook failures map
+        Assemble and encode under the session lock, so worker commits cannot
+        interleave with the read. Deterministic assembly/hook failures map
         to 422; unknown exceptions propagate.
         """
         session = self.registry.get_session(session_id)
-        metadata = self._session_metadata(session_id, session)
-        if agent_metadata is not None:
-            metadata["agent"] = agent_metadata
-        if not session.tree.nodes:
-            return _samples_response(
-                encode_samples([], metadata, empty_reason="no_records", fields=COMPUTED_FIELDS_V2)
-            )
-
-        try:
-            material = build_leaf_material(
-                self.config,
-                session,
-                self.registry,
-                session_id=session_id,
-                max_seq_len=max_seq_len,
-                use_addition_r3=self.use_addition_r3,
-            )
-        except (AssertionError, ValueError) as exc:
-            return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
-        if not material:
-            return _samples_response(
-                encode_samples([], metadata, empty_reason="all_truncated", fields=COMPUTED_FIELDS_V2)
-            )
-
-        # Hook lane: a policy bug is a deterministic 422 carrying the hook's
-        # identity, never a masked 500 (server death stays loud).
-        try:
-            picked = self.sample_picker(material, metadata)
-            picked_ids = [id(sample) for sample in picked]
-            allowed = {id(sample) for sample in material}
-            if any(sample_id not in allowed for sample_id in picked_ids) or len(picked_ids) != len(set(picked_ids)):
-                raise ValueError(
-                    "pick hook must return a subset of its input samples without duplicates (pure selection)"
+        async with session.lock:
+            metadata = self._session_metadata(session_id, session)
+            if agent_metadata is not None:
+                metadata["agent"] = agent_metadata
+            if not session.tree.nodes:
+                return _samples_response(
+                    encode_samples([], metadata, empty_reason="no_records", fields=COMPUTED_FIELDS_V2)
                 )
-            samples = self.sample_postprocessor(picked, metadata)
-        except Exception as exc:
-            body = (
-                f"session sample hook failed (picker={self.config.session_sample_picker_path}, "
-                f"postprocessor={self.config.session_sample_postprocessor_path}): {exc}"
-            )
-            return Response(content=body.encode(), status_code=422, media_type="text/plain")
-        if not samples:
-            return _samples_response(
-                encode_samples([], metadata, empty_reason="all_truncated", fields=COMPUTED_FIELDS_V2)
-            )
-        return _samples_response(encode_samples(samples, metadata, fields=COMPUTED_FIELDS_V2))
+
+            try:
+                material = build_leaf_material(
+                    self.config,
+                    session,
+                    self.registry,
+                    session_id=session_id,
+                    max_seq_len=max_seq_len,
+                    use_addition_r3=self.use_addition_r3,
+                )
+            except (AssertionError, ValueError) as exc:
+                return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
+            if not material:
+                return _samples_response(
+                    encode_samples([], metadata, empty_reason="all_truncated", fields=COMPUTED_FIELDS_V2)
+                )
+
+            # Hook lane: a policy bug is a deterministic 422 carrying the hook's
+            # identity, never a masked 500 (server death stays loud).
+            try:
+                picked = self.sample_picker(material, metadata)
+                picked_ids = [id(sample) for sample in picked]
+                allowed = {id(sample) for sample in material}
+                if any(sample_id not in allowed for sample_id in picked_ids) or len(picked_ids) != len(
+                    set(picked_ids)
+                ):
+                    raise ValueError(
+                        "pick hook must return a subset of its input samples without duplicates (pure selection)"
+                    )
+                samples = self.sample_postprocessor(picked, metadata)
+            except Exception as exc:
+                body = (
+                    f"session sample hook failed (picker={self.config.session_sample_picker_path}, "
+                    f"postprocessor={self.config.session_sample_postprocessor_path}): {exc}"
+                )
+                return Response(content=body.encode(), status_code=422, media_type="text/plain")
+            if not samples:
+                return _samples_response(
+                    encode_samples([], metadata, empty_reason="all_truncated", fields=COMPUTED_FIELDS_V2)
+                )
+            return _samples_response(encode_samples(samples, metadata, fields=COMPUTED_FIELDS_V2))
 
     async def chat_completions(
         self, session_id: str, *, method: str, query: str, headers: dict, body: bytes
@@ -152,7 +157,8 @@ class SessionCoreV2(SessionCore):
 
             request_messages = request_body.get("messages", [])
             position_for_request(session, request_messages, message_matcher=self.registry.message_matcher)
-            prompt_token_ids = prepare_pretokenized(
+            prompt_token_ids = await run_session_worker(
+                prepare_pretokenized,
                 session,
                 request_messages,
                 tools=request_body.get("tools"),
@@ -200,7 +206,8 @@ class SessionCoreV2(SessionCore):
                 request=request_body,
                 response=response,
             )
-            commit_generation(
+            await run_session_worker(
+                commit_generation,
                 session,
                 parent=attach_parent,
                 request_messages=request_messages,

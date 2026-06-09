@@ -5,17 +5,19 @@ HTTP-agnostic: the FastAPI adapter (``sessions.py`` + ``server.py``) turns each 
 - ``chat_completions`` strips the R3 replay payloads (``routed_experts`` / ``indexer_topk``) from the client reply copy-on-write; the ``SessionRecord`` keeps the full response for the training path (``GET /sessions/{id}``).
 - ``chat_completions`` holds the per-session lock for prep and state update but not across the proxy call; ``closing`` re-checks and the ``num_assistant`` check gate concurrent DELETE/chat.
 - ``stream: true`` is served as fake streaming: the backend call stays non-streaming (TITO needs the complete message + meta_info) and the full response is re-rendered as a single SSE chunk plus ``data: [DONE]``. Errors all happen before the SSE body is built, so they keep their real status codes as JSON.
-- ``collect_samples`` assembles training Samples from the session's records on the server (compute -> truncate -> merge, synchronously on the loop like the lock-free ``get_session``); deterministic assembly failures return 422 with the assertion text.
+- ``collect_samples`` assembles training Samples from the session's records on the server (compute -> truncate -> merge, synchronously on the loop under the session lock); deterministic assembly failures return 422 with the assertion text.
 """
 
 import json
 import logging
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 from starlette.responses import Response
 
 from miles.rollout.generate_utils.sample_utils import merge_samples
+from miles.rollout.session.concurrency import run_session_worker
 from miles.rollout.session.config import SessionServerConfig
 from miles.rollout.session.errors import (
     MessageValidationError,
@@ -249,6 +251,27 @@ def _is_prefix_rollback_error(result: dict) -> bool:
     return result["status_code"] == 400 and "rollback failed" in body.lower()
 
 
+def _commit_linear_response(
+    session,
+    *,
+    request_messages,
+    assistant_message,
+    prompt_token_ids,
+    completion_token_ids,
+    max_trim_tokens,
+    record_fields,
+):
+    """Publish the checkpoint and its matching record under one worker lifetime."""
+    session.update_pretokenized_state(
+        request_messages,
+        assistant_message,
+        prompt_token_ids=prompt_token_ids,
+        completion_token_ids=completion_token_ids,
+        max_trim_tokens=max_trim_tokens,
+    )
+    session.append_record(SessionRecord(timestamp=time.time(), **record_fields))
+
+
 class SessionCore:
     """HTTP session operations over one ``SessionRegistry``."""
 
@@ -318,13 +341,14 @@ class SessionCore:
         session = self.registry.sessions.get(session_id)
         if session is None and self.registry.is_deleted(session_id):
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
-        metadata = self._session_metadata(session_id, session) if session is not None else {}
-        payload = GetSessionResponse(
-            session_id=session_id, records=session.records if session is not None else [], metadata=metadata
-        )
-        return Response(
-            content=_render_json(payload.model_dump(mode="json")), status_code=200, media_type=JSON_MEDIA_TYPE
-        )
+        async with session.lock if session is not None else nullcontext():
+            metadata = self._session_metadata(session_id, session) if session is not None else {}
+            payload = GetSessionResponse(
+                session_id=session_id, records=session.records if session is not None else [], metadata=metadata
+            )
+            return Response(
+                content=_render_json(payload.model_dump(mode="json")), status_code=200, media_type=JSON_MEDIA_TYPE
+            )
 
     async def collect_samples(self, session_id: str, *, max_seq_len: int | None) -> Response:
         """Assemble training Samples from this session's records.
@@ -332,30 +356,31 @@ class SessionCore:
         Validation failures return 422; unexpected errors propagate.
         """
         session = self.registry.get_session(session_id)
-        metadata = self._session_metadata(session_id, session)
-        tokenizer = self.registry.tokenizer
-        if not session.records:
-            return _samples_response(encode_samples([], metadata, empty_reason="no_records"))
-        try:
-            samples = compute_samples_from_openai_records(
-                self.config,
-                session.records,
-                tokenizer,
-                accumulated_token_ids=metadata.get("accumulated_token_ids"),
-                max_trim_tokens=metadata.get("max_trim_tokens", 0),
-                use_addition_r3=self.use_addition_r3,
-            )
-            if max_seq_len is not None:
-                samples = truncate_samples_by_total_tokens(samples, max_seq_len, tokenizer)
-            if not samples:
-                return _samples_response(encode_samples([], metadata, empty_reason="all_truncated"))
-            if self.use_addition_r3:
-                samples = [merge_samples_with_addition_r3(self.config, samples, session.records, tokenizer)]
-            else:
-                samples = [merge_samples(samples, tokenizer)]
-        except (AssertionError, ValueError) as exc:
-            return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
-        return _samples_response(encode_samples(samples, metadata))
+        async with session.lock:
+            metadata = self._session_metadata(session_id, session)
+            tokenizer = self.registry.tokenizer
+            if not session.records:
+                return _samples_response(encode_samples([], metadata, empty_reason="no_records"))
+            try:
+                samples = compute_samples_from_openai_records(
+                    self.config,
+                    session.records,
+                    tokenizer,
+                    accumulated_token_ids=metadata.get("accumulated_token_ids"),
+                    max_trim_tokens=metadata.get("max_trim_tokens", 0),
+                    use_addition_r3=self.use_addition_r3,
+                )
+                if max_seq_len is not None:
+                    samples = truncate_samples_by_total_tokens(samples, max_seq_len, tokenizer)
+                if not samples:
+                    return _samples_response(encode_samples([], metadata, empty_reason="all_truncated"))
+                if self.use_addition_r3:
+                    samples = [merge_samples_with_addition_r3(self.config, samples, session.records, tokenizer)]
+                else:
+                    samples = [merge_samples(samples, tokenizer)]
+            except (AssertionError, ValueError) as exc:
+                return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
+            return _samples_response(encode_samples(samples, metadata))
 
     async def delete_session(self, session_id: str) -> Response:
         session = self.registry.get_session(session_id)
@@ -395,7 +420,8 @@ class SessionCore:
             )
 
             request_messages = request_body.get("messages", [])
-            prompt_token_ids = session.prepare_pretokenized(
+            prompt_token_ids = await run_session_worker(
+                session.prepare_pretokenized,
                 request_messages,
                 tools=request_body.get("tools"),
                 tito_tokenizer=tito_tokenizer,
@@ -467,24 +493,23 @@ class SessionCore:
                 session.messages,
                 request_messages,
             )
-            session.update_pretokenized_state(
-                stored_request_messages,
-                assistant_message,
+            await run_session_worker(
+                _commit_linear_response,
+                session,
+                request_messages=stored_request_messages,
+                assistant_message=assistant_message,
                 prompt_token_ids=prompt_token_ids,
                 completion_token_ids=completion_token_ids,
                 max_trim_tokens=self.registry.tito_tokenizer.max_trim_tokens,
+                record_fields={
+                    "request_timestamp": request_timestamp,
+                    "method": method,
+                    "path": "/v1/chat/completions",
+                    "status_code": result["status_code"],
+                    "request": request_body,
+                    "response": response,
+                },
             )
-
-            record = SessionRecord(
-                timestamp=time.time(),
-                request_timestamp=request_timestamp,
-                method=method,
-                path="/v1/chat/completions",
-                status_code=result["status_code"],
-                request=request_body,
-                response=response,
-            )
-            session.append_record(record)
         # --- lock released ---
 
         return _chat_client_response(result, response, client_stream)
