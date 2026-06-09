@@ -11,6 +11,7 @@ from miles.rollout.session.linear_trajectory import SessionRegistry
 from miles.rollout.session.session_errors import (
     SessionError,
     SessionNotFoundError,
+    SessionStateConflictError,
     TokenizationError,
     UpstreamResponseError,
 )
@@ -98,10 +99,17 @@ def setup_session_routes(app, backend, args):
 
     @app.delete("/sessions/{session_id}")
     async def delete_session(session_id: str):
+        # Lock-restored chat flow holds session.lock through Phase 1+2+3.
+        # Preserve DELETE preemption by cancelling the in-flight proxy task
+        # (the cancellation channel stored on the session). The cancelled
+        # chat returns 410 to its caller, then releases the lock so DELETE
+        # can acquire it and remove the session.
         session = registry.get_session(session_id)
         if session.closing:
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
         session.closing = True
+        if session.current_proxy_task is not None:
+            session.current_proxy_task.cancel()
         logger.debug(
             f"[session-server] DELETE waiting for lock: session={session_id} lock_locked={session.lock.locked()}"
         )
@@ -117,12 +125,23 @@ def setup_session_routes(app, backend, args):
     async def chat_completions(request: Request, session_id: str):
         """Proxy a chat completion through SGLang with TITO token tracking.
 
-        Flow: prepare pretokenized input_ids (lock held briefly) → inject
-        SGLang flags → proxy to backend (NO lock) → validate response →
-        update trajectory checkpoint (lock held briefly) → append session record.
+        Flow: ALL three phases run under ``session.lock`` —
+          Phase 1: prepare pretokenized input_ids + inject SGLang flags
+          Phase 2: proxy to backend (lock held; cancellation channel via
+                   ``session.current_proxy_task`` lets DELETE preempt)
+          Phase 3: validate response, update trajectory checkpoint, record
 
-        The lock is NOT held during the slow proxy call to avoid blocking
-        DELETE/other operations when the agent disconnects mid-request.
+        Holding the lock through Phase 2 eliminates the cursor-mismatch race
+        that the split-lock design (lock-Phase-1 → unlock-Phase-2 → relock-
+        Phase-3) introduced: two same-session writers could both reach
+        Phase 3, the stale-state guard silently dropped the second commit
+        while still returning 200, and the caller appended a phantom
+        assistant record to its trajectory.
+
+        DELETE preemption is preserved via the cancellation channel:
+        ``delete_session`` cancels ``session.current_proxy_task``; the chat
+        coroutine catches ``CancelledError`` and returns 410 Gone, then
+        releases the lock so DELETE can acquire it.
         """
         _inflight_chat["count"] += 1
         try:
@@ -130,12 +149,12 @@ def setup_session_routes(app, backend, args):
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
-            # --- Phase 1: prepare request (lock held briefly) ---
             async with session.lock:
                 # Double-check: session may have been marked closing while waiting for lock.
                 if session.closing:
                     raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
+                # --- Phase 1: prepare request ---
                 body = await request.body()
                 request_body = json.loads(body) if body else {}
 
@@ -171,82 +190,99 @@ def setup_session_routes(app, backend, args):
 
                 body = json.dumps(request_body).encode()
                 expected_num_assistant = session.num_assistant
-            # --- lock released here ---
 
-            # --- Phase 2: proxy to SGLang (NO lock held) ---
-            result = await backend.do_proxy(request, "v1/chat/completions", body=body)
+                # --- Phase 2: proxy to SGLang (lock held; cancellation channel) ---
+                session.current_proxy_task = asyncio.create_task(
+                    backend.do_proxy(request, "v1/chat/completions", body=body)
+                )
+                try:
+                    result = await session.current_proxy_task
+                except asyncio.CancelledError:
+                    # DELETE preempted this request. Surface 410 Gone to the caller
+                    # so litellm/harbor treats it as a definite session-closed signal
+                    # (distinct from 404 "never existed" and 409 "retryable conflict").
+                    return JSONResponse(status_code=410, content={"error": "session closing"})
+                finally:
+                    session.current_proxy_task = None
 
-            # If SGLang returned a non-200 error (e.g. 400 for context too long),
-            # pass it through to the agent without recording — the agent can retry
-            # or handle the error.
-            if result["status_code"] != 200:
-                # Rollback failures indicate corrupted prefix-cache state in SGLang.
-                # Retry once without pretokenized input_ids so SGLang processes the
-                # request from scratch instead of attempting prefix continuation.
-                error_body = result.get("response_body") or b""
-                if isinstance(error_body, bytes):
-                    error_body = error_body.decode("utf-8", errors="replace")
-                if (
-                    result["status_code"] == 400
-                    and "rollback failed" in error_body.lower()
-                    and "input_ids" in request_body
-                ):
-                    logger.warning(
-                        "SGLang rollback failed for session %s, retrying without prefix continuation",
-                        session_id,
-                    )
-                    request_body.pop("input_ids", None)
-                    retry_body = json.dumps(request_body).encode()
-                    result = await backend.do_proxy(request, "v1/chat/completions", body=retry_body)
-                    if result["status_code"] != 200:
+                # If SGLang returned a non-200 error (e.g. 400 for context too long),
+                # pass it through to the agent without recording — the agent can retry
+                # or handle the error.
+                if result["status_code"] != 200:
+                    # Rollback failures indicate corrupted prefix-cache state in SGLang.
+                    # Retry once without pretokenized input_ids so SGLang processes the
+                    # request from scratch instead of attempting prefix continuation.
+                    error_body = result.get("response_body") or b""
+                    if isinstance(error_body, bytes):
+                        error_body = error_body.decode("utf-8", errors="replace")
+                    if (
+                        result["status_code"] == 400
+                        and "rollback failed" in error_body.lower()
+                        and "input_ids" in request_body
+                    ):
+                        logger.warning(
+                            "SGLang rollback failed for session %s, retrying without prefix continuation",
+                            session_id,
+                        )
+                        request_body.pop("input_ids", None)
+                        retry_body = json.dumps(request_body).encode()
+                        session.current_proxy_task = asyncio.create_task(
+                            backend.do_proxy(request, "v1/chat/completions", body=retry_body)
+                        )
+                        try:
+                            result = await session.current_proxy_task
+                        except asyncio.CancelledError:
+                            return JSONResponse(status_code=410, content={"error": "session closing"})
+                        finally:
+                            session.current_proxy_task = None
+                        if result["status_code"] != 200:
+                            return backend.build_proxy_response(result)
+                    else:
                         return backend.build_proxy_response(result)
-                else:
-                    return backend.build_proxy_response(result)
 
-            response = json.loads(result["response_body"])
+                response = json.loads(result["response_body"])
 
-            choice = response.get("choices", [{}])[0]
+                choice = response.get("choices", [{}])[0]
 
-            meta_info = choice.get("meta_info")
-            if not isinstance(meta_info, dict) or "output_token_logprobs" not in meta_info:
-                raise UpstreamResponseError(
-                    "meta_info and output_token_logprobs must be in choice (requires logprobs=True)"
-                )
-            assistant_message = choice.get("message", {})
-            if assistant_message.get("content") is None:
-                raise UpstreamResponseError(
-                    "assistant message content is None, when tool call parser failed SGLang should still return "
-                    "an empty content rather than None. Please check your modified SGLang version."
-                )
-
-            prompt_token_ids = choice.get("prompt_token_ids")
-            output_token_logprobs = meta_info["output_token_logprobs"]
-            completion_tokens = meta_info["completion_tokens"]
-
-            actual_output_logprobs_len = len(output_token_logprobs)
-            if actual_output_logprobs_len != completion_tokens:
-                raise UpstreamResponseError(
-                    "invalid chat completion response: "
-                    f"len(output_token_logprobs)={actual_output_logprobs_len} "
-                    f"!= completion_tokens={completion_tokens}. "
-                    f"Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
-                )
-
-            completion_token_ids = [t[1] for t in output_token_logprobs]
-
-            # --- Phase 3: update state (lock held briefly) ---
-            async with session.lock:
-                if session.closing:
-                    logger.warning(f"Session {session_id} closed during proxy, skipping state update")
-                    return backend.build_proxy_response(result)
-
-                if session.num_assistant != expected_num_assistant:
-                    logger.warning(
-                        f"Session {session_id} state changed during proxy "
-                        f"(expected num_assistant={expected_num_assistant}, "
-                        f"got {session.num_assistant}), skipping state update"
+                meta_info = choice.get("meta_info")
+                if not isinstance(meta_info, dict) or "output_token_logprobs" not in meta_info:
+                    raise UpstreamResponseError(
+                        "meta_info and output_token_logprobs must be in choice (requires logprobs=True)"
                     )
-                    return backend.build_proxy_response(result)
+                assistant_message = choice.get("message", {})
+                if assistant_message.get("content") is None:
+                    raise UpstreamResponseError(
+                        "assistant message content is None, when tool call parser failed SGLang should still return "
+                        "an empty content rather than None. Please check your modified SGLang version."
+                    )
+
+                prompt_token_ids = choice.get("prompt_token_ids")
+                output_token_logprobs = meta_info["output_token_logprobs"]
+                completion_tokens = meta_info["completion_tokens"]
+
+                actual_output_logprobs_len = len(output_token_logprobs)
+                if actual_output_logprobs_len != completion_tokens:
+                    raise UpstreamResponseError(
+                        "invalid chat completion response: "
+                        f"len(output_token_logprobs)={actual_output_logprobs_len} "
+                        f"!= completion_tokens={completion_tokens}. "
+                        f"Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
+                    )
+
+                completion_token_ids = [t[1] for t in output_token_logprobs]
+
+                # --- Phase 3: update state (still under the same lock) ---
+                # Defensive assert: with the lock held through Phase 1+2+3, no
+                # other writer can mutate num_assistant. If this fires, some
+                # future change has reintroduced a split-lock window — surface
+                # 409 instead of silently dropping the commit (the
+                # cursor-mismatch class of incident under the old design).
+                if session.num_assistant != expected_num_assistant:
+                    raise SessionStateConflictError(
+                        f"session {session_id} state changed during proxy "
+                        f"(expected num_assistant={expected_num_assistant}, "
+                        f"got {session.num_assistant})"
+                    )
 
                 await asyncio.to_thread(
                     session.update_pretokenized_state,
@@ -266,7 +302,6 @@ def setup_session_routes(app, backend, args):
                     response=response,
                 )
                 session.append_record(record)
-            # --- lock released here ---
 
             return backend.build_proxy_response(result)
         finally:

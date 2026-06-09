@@ -49,6 +49,13 @@ class LinearTrajectory:
 
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
     closing: bool = field(default=False, repr=False, compare=False)
+    # DELETE preemption channel: the chat-completions handler stashes its
+    # in-flight proxy task here so a concurrent DELETE can cancel it without
+    # waiting on the lock. The chat coroutine catches CancelledError and
+    # returns 410 Gone. Cleared in the chat handler's finally.
+    current_proxy_task: "asyncio.Task | None" = field(
+        default=None, repr=False, compare=False
+    )
     messages: list[dict[str, Any]] = field(default_factory=list)
     records: list[SessionRecord] = field(default_factory=list)
     trajectory_token_ids: list[list[int]] = field(default_factory=list)
