@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -155,7 +156,8 @@ def setup_session_routes(app, backend, args):
                 request_body["no_stop_trim"] = False
 
                 request_messages = request_body.get("messages", [])
-                pretokenized = session.prepare_pretokenized(
+                pretokenized = await asyncio.to_thread(
+                    session.prepare_pretokenized,
                     request_messages,
                     tools=request_body.get("tools"),
                     tito_tokenizer=registry.tito_tokenizer,
@@ -246,7 +248,8 @@ def setup_session_routes(app, backend, args):
                     )
                     return backend.build_proxy_response(result)
 
-                session.update_pretokenized_state(
+                await asyncio.to_thread(
+                    session.update_pretokenized_state,
                     request_messages,
                     assistant_message,
                     prompt_token_ids=prompt_token_ids,
