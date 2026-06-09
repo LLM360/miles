@@ -394,12 +394,10 @@ class TestClosingRaceConditions:
             # prior split-lock design the in-flight chat would have completed
             # with 200 before DELETE acquired the lock.) No 500s allowed.
             status_codes = [r.status_code for r in results]
-            assert all(c in (200, 404, 410) for c in status_codes), (
-                f"Unexpected status codes: {status_codes}"
-            )
-            assert 200 in status_codes or 410 in status_codes, (
-                f"Expected at least one in-flight chat (200 or 410), got {status_codes}"
-            )
+            assert all(c in (200, 404, 410) for c in status_codes), f"Unexpected status codes: {status_codes}"
+            assert (
+                200 in status_codes or 410 in status_codes
+            ), f"Expected at least one in-flight chat (200 or 410), got {status_codes}"
 
     def test_rapid_create_chat_delete_cycles(self):
         """Rapidly create, chat, and delete sessions to stress the lifecycle.

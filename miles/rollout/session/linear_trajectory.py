@@ -53,9 +53,7 @@ class LinearTrajectory:
     # in-flight proxy task here so a concurrent DELETE can cancel it without
     # waiting on the lock. The chat coroutine catches CancelledError and
     # returns 410 Gone. Cleared in the chat handler's finally.
-    current_proxy_task: "asyncio.Task | None" = field(
-        default=None, repr=False, compare=False
-    )
+    current_proxy_task: "asyncio.Task | None" = field(default=None, repr=False, compare=False)
     messages: list[dict[str, Any]] = field(default_factory=list)
     records: list[SessionRecord] = field(default_factory=list)
     trajectory_token_ids: list[list[int]] = field(default_factory=list)
