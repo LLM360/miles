@@ -187,8 +187,7 @@ def setup_session_routes(app, backend, args):
 
         _stats["reqs_total"] += 1
         logger.info(
-            "[session-server] chat_start worker_port=%s session_id=%s req_id=%s "
-            "messages_len=%d inflight_before=%d",
+            "[session-server] chat_start worker_port=%s session_id=%s req_id=%s " "messages_len=%d inflight_before=%d",
             worker_port,
             session_id,
             req_id,
