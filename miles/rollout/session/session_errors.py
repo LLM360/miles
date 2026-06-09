@@ -3,10 +3,11 @@
 Hierarchy
 ---------
 SessionError (base)
-├── SessionNotFoundError       → 404  session does not exist
-├── MessageValidationError     → 400  messages structure/content invalid
-├── TokenizationError          → 500  TITO tokenizer / prefix mismatch
-└── UpstreamResponseError      → 502  SGLang response invalid or unexpected
+├── SessionNotFoundError         → 404  session does not exist
+├── MessageValidationError       → 400  messages structure/content invalid
+├── SessionStateConflictError    → 409  Phase-3 commit guard fired (defense-in-depth)
+├── TokenizationError            → 500  TITO tokenizer / prefix mismatch
+└── UpstreamResponseError        → 502  SGLang response invalid or unexpected
 """
 
 
@@ -30,6 +31,20 @@ class MessageValidationError(SessionError):
     """
 
     status_code: int = 400
+
+
+class SessionStateConflictError(SessionError):
+    """Raised as a defensive assert when the Phase-3 commit guard fires.
+
+    With the lock-restored chat flow (lock held through Phase 1+2+3), this
+    branch is unreachable in practice — no other writer can mutate the
+    session while the proxy is in flight. We keep the guard + 409 surface
+    as a defense in depth: if a future change reintroduces a split-lock
+    window, callers see a clear retryable conflict instead of a silently
+    dropped commit that would corrupt the trajectory's accumulated state.
+    """
+
+    status_code: int = 409
 
 
 class TokenizationError(SessionError):

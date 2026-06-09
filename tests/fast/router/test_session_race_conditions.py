@@ -321,7 +321,10 @@ class TestClosingRaceConditions:
                 d1 = delete_1.result(timeout=30.0)
                 d2 = delete_2.result(timeout=30.0)
 
-            assert chat_resp.status_code == 200
+            # Lock-restored chat flow: DELETE preempts the in-flight chat via the
+            # cancellation channel; the cancelled chat returns 410 Gone. (Under
+            # the prior split-lock design the chat would complete with 200.)
+            assert chat_resp.status_code == 410
             # One delete succeeds, the other gets 404
             codes = sorted([d1.status_code, d2.status_code])
             assert codes == [204, 404], f"Expected [204, 404], got {codes}"
@@ -385,12 +388,16 @@ class TestClosingRaceConditions:
 
             assert delete_resp.status_code == 204
 
-            # At least one chat must succeed (the one holding the lock when
-            # delete arrived).  Others may get 200 (acquired lock before
-            # closing) or 404 (saw closing=True).  No 500s allowed.
+            # Lock-restored chat flow: the in-flight chat at DELETE time gets
+            # cancelled via the proxy-task channel (→ 410). Queued chats then
+            # acquire the lock, see closing=True, and return 404. (Under the
+            # prior split-lock design the in-flight chat would have completed
+            # with 200 before DELETE acquired the lock.) No 500s allowed.
             status_codes = [r.status_code for r in results]
-            assert all(c in (200, 404) for c in status_codes), f"Unexpected status codes: {status_codes}"
-            assert 200 in status_codes, f"Expected at least one 200, got {status_codes}"
+            assert all(c in (200, 404, 410) for c in status_codes), f"Unexpected status codes: {status_codes}"
+            assert (
+                200 in status_codes or 410 in status_codes
+            ), f"Expected at least one in-flight chat (200 or 410), got {status_codes}"
 
     def test_rapid_create_chat_delete_cycles(self):
         """Rapidly create, chat, and delete sessions to stress the lifecycle.
