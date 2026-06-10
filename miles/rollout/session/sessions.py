@@ -349,6 +349,33 @@ def setup_session_routes(app, backend, args):
                     )
                     return backend.build_proxy_response(result)
 
+                # SGLang aborted this generation (a weight-update pause or a
+                # queue-pressure shed). It comes back as a 200 with a partial
+                # body and finish_reason="abort"; the caller's litellm silently
+                # remaps that to "stop", so the only litellm-proof signal is a
+                # response header. Record it PROVISIONALLY (tail-only, no token
+                # state commit) so the agent's abort-retry re-issues this same
+                # turn from the prior checkpoint and supersedes this record on
+                # success; if retries are exhausted it stays as the honest final
+                # ABORTED turn (merge tolerates a trailing non-COMPLETED turn,
+                # and check_no_aborted then drops the group). Committing it as a
+                # normal turn would instead leave a mid-trajectory ABORTED record
+                # once the agent continues, crashing merge_samples (a.status must
+                # be COMPLETED).
+                if choice.get("finish_reason") == "abort":
+                    session.append_provisional_record(
+                        SessionRecord(
+                            timestamp=time.time(),
+                            method=request.method,
+                            path="/v1/chat/completions",
+                            status_code=result["status_code"],
+                            request=request_body,
+                            response=response,
+                        )
+                    )
+                    result["headers"]["x-sglang-aborted"] = "1"
+                    return backend.build_proxy_response(result)
+
                 # Same rationale as the prepare_pretokenized call above —
                 # offload the sync merge_tokens / state update to a thread
                 # so concurrent in-flight sessions keep moving.
