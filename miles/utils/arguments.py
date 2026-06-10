@@ -2613,8 +2613,10 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             parser.add_argument(
                 "--session-server-workers",
+                "--session-server-count",
+                dest="session_server_workers",
                 type=int,
-                default=32,
+                default=1,
                 help="Number of session server instances.",
             )
             parser.add_argument(

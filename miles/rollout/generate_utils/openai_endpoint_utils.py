@@ -46,16 +46,33 @@ class OpenAIEndpointTracer:
     @staticmethod
     async def create(args: Namespace):
         session_addrs = getattr(args, "session_server_addrs", None)
-        if not session_addrs:
+        legacy_backends = getattr(args, "session_server_backends", None)
+        if session_addrs:
+            session_addr = random.choice(session_addrs)
+            session_url = f"http://{session_addr}"
+        elif legacy_backends:
+            session_url = random.choice(legacy_backends).rstrip("/")
+            session_addr = session_url.removeprefix("http://").removeprefix("https://")
+        elif getattr(args, "session_server_ip", None) and getattr(args, "session_server_port", None):
+            session_addr = f"{args.session_server_ip}:{args.session_server_port}"
+            session_url = f"http://{session_addr}"
+        else:
             raise RuntimeError(
                 "session_server_addrs is not set. Pass --use-session-server to start the session server."
             )
-        # The only routing decision in the system: pick the owning instance once
-        # per session; every later touch of the session reuses this URL.
-        session_addr = random.choice(session_addrs)
-        session_url = f"http://{session_addr}"
+        # Bind the session once. Canonical workers publish instance IDs at startup;
+        # legacy callers discover theirs from health, as on stable.
         instance_ids = getattr(args, "session_server_instance_ids", None) or {}
         session_server_instance_id = instance_ids.get(session_addr)
+        if not session_addrs:
+            try:
+                health = await post(f"{session_url}/health", {}, action="get")
+                if isinstance(health, dict):
+                    session_server_instance_id = health.get("session_server_instance_id")
+                    if session_server_instance_id is not None:
+                        args.session_server_instance_id = session_server_instance_id
+            except Exception as exc:
+                logger.warning("Failed to get session server health from %s: %s", session_url, exc)
         response = await post(f"{session_url}/sessions", {}, action="post")
         session_id = response["session_id"]
         use_v2 = getattr(args, "use_session_server", None) == "v2"

@@ -26,6 +26,15 @@ from miles.rollout.session.errors import (
     UpstreamResponseError,
 )
 from miles.rollout.session.linear_trajectory import SessionRegistry
+from miles.rollout.session.observability import (
+    WorkerStats,
+    measure_phase,
+    measured_session_lock,
+    observe_chat,
+    publish_response,
+    record_request_shape,
+    warn_state_change,
+)
 from miles.rollout.session.samples.codec import encode_samples
 from miles.rollout.session.samples.merge import (
     compute_samples_from_openai_records,
@@ -288,6 +297,7 @@ class SessionCore:
         self.registry = registry
         self.config = config
         self.instance_id = session_server_instance_id
+        self.request_stats = WorkerStats(port=getattr(config, "port", None))
         # Derived from pause_generation_mode at server bootstrap; session code
         # must depend on this capability, never on the weight-update mode.
         self.use_addition_r3 = use_addition_r3
@@ -395,6 +405,7 @@ class SessionCore:
             session.lock.release()
         return Response(status_code=204)
 
+    @observe_chat
     async def chat_completions(
         self, session_id: str, *, method: str, query: str, headers: dict, body: bytes
     ) -> Response:
@@ -411,7 +422,7 @@ class SessionCore:
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
         # --- Phase 1: prepare request (lock held briefly) ---
-        async with session.lock:
+        async with measured_session_lock(session.lock):
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
@@ -420,13 +431,15 @@ class SessionCore:
             )
 
             request_messages = request_body.get("messages", [])
-            prompt_token_ids = await run_session_worker(
-                session.prepare_pretokenized,
-                request_messages,
-                tools=request_body.get("tools"),
-                tito_tokenizer=tito_tokenizer,
-                message_matcher=self.registry.message_matcher,
-            )
+            record_request_shape(request_messages)
+            with measure_phase("tokenize_in_ms"):
+                prompt_token_ids = await run_session_worker(
+                    session.prepare_pretokenized,
+                    request_messages,
+                    tools=request_body.get("tools"),
+                    tito_tokenizer=tito_tokenizer,
+                    message_matcher=self.registry.message_matcher,
+                )
             request_body["input_ids"] = prompt_token_ids
             logger.debug("Using TITO input_ids: %d tokens", len(prompt_token_ids))
 
@@ -440,9 +453,10 @@ class SessionCore:
 
         # --- Phase 2: proxy to backend (NO lock held) ---
         headers = {**headers, "X-SMG-Routing-Key": session_id}
-        result = await self.backend.do_proxy(
-            ProxyRequest(method=method, query=query), "v1/chat/completions", body=proxy_body, headers=headers
-        )
+        with measure_phase("proxy_elapsed_ms"):
+            result = await self.backend.do_proxy(
+                ProxyRequest(method=method, query=query), "v1/chat/completions", body=proxy_body, headers=headers
+            )
 
         # Stable's backend can recover a prefix-cache rollback failure by
         # rendering the messages again. Keep the retry narrowly scoped.
@@ -450,12 +464,13 @@ class SessionCore:
         if retried_without_prefix:
             logger.warning("Retrying session %s without prefix continuation", session_id)
             retry_body = {k: v for k, v in request_body.items() if k != "input_ids"}
-            result = await self.backend.do_proxy(
-                ProxyRequest(method=method, query=query),
-                "v1/chat/completions",
-                body=_render_json(retry_body),
-                headers=headers,
-            )
+            with measure_phase("proxy_elapsed_ms"):
+                result = await self.backend.do_proxy(
+                    ProxyRequest(method=method, query=query),
+                    "v1/chat/completions",
+                    body=_render_json(retry_body),
+                    headers=headers,
+                )
 
         # Other errors, including a failed retry, pass through unrecorded.
         if result["status_code"] != 200:
@@ -476,16 +491,14 @@ class SessionCore:
         )
 
         # --- Phase 3: update state (lock held briefly) ---
-        async with session.lock:
+        async with measured_session_lock(session.lock):
             if session.closing:
                 logger.warning(f"Session {session_id} closed during proxy, skipping state update")
                 return _chat_client_response(result, response, client_stream)
 
             if session.num_assistant != expected_num_assistant:
-                logger.warning(
-                    f"Session {session_id} state changed during proxy "
-                    f"(expected num_assistant={expected_num_assistant}, "
-                    f"got {session.num_assistant}), skipping state update"
+                warn_state_change(
+                    self.request_stats, session_id, expected_num_assistant, session.num_assistant, headers
                 )
                 return _chat_client_response(result, response, client_stream)
 
@@ -493,23 +506,25 @@ class SessionCore:
                 session.messages,
                 request_messages,
             )
-            await run_session_worker(
-                _commit_linear_response,
-                session,
-                request_messages=stored_request_messages,
-                assistant_message=assistant_message,
-                prompt_token_ids=prompt_token_ids,
-                completion_token_ids=completion_token_ids,
-                max_trim_tokens=self.registry.tito_tokenizer.max_trim_tokens,
-                record_fields={
-                    "request_timestamp": request_timestamp,
-                    "method": method,
-                    "path": "/v1/chat/completions",
-                    "status_code": result["status_code"],
-                    "request": request_body,
-                    "response": response,
-                },
-            )
+            with measure_phase("tokenize_out_ms"):
+                await run_session_worker(
+                    publish_response,
+                    _commit_linear_response,
+                    session,
+                    request_messages=stored_request_messages,
+                    assistant_message=assistant_message,
+                    prompt_token_ids=prompt_token_ids,
+                    completion_token_ids=completion_token_ids,
+                    max_trim_tokens=self.registry.tito_tokenizer.max_trim_tokens,
+                    record_fields={
+                        "request_timestamp": request_timestamp,
+                        "method": method,
+                        "path": "/v1/chat/completions",
+                        "status_code": result["status_code"],
+                        "request": request_body,
+                        "response": response,
+                    },
+                )
         # --- lock released ---
 
         return _chat_client_response(result, response, client_stream)

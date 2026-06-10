@@ -51,6 +51,8 @@ async def wait_session_server_ready(args):
     # The canonical driver-side value; rollout code picks from this list. Instances may sit on
     # different hosts, so each one is addressed in full rather than by a port under a shared ip.
     args.session_server_addrs = [f"{x.host}:{x.port}" for x in addrs]
+    # Stable clients use full URLs; both lists describe the same owned workers.
+    args.session_server_backends = [f"http://{addr}" for addr in args.session_server_addrs]
 
     # Spawn all children before waiting on any: each child pays the ~10s
     # transformers import, so N servers start in ~one import of wall-time.

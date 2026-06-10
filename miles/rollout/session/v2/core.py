@@ -17,6 +17,13 @@ from miles.rollout.session.core import (
     proxy_result_to_response,
 )
 from miles.rollout.session.errors import SessionNotFoundError, TokenizationError
+from miles.rollout.session.observability import (
+    measure_phase,
+    measured_session_lock,
+    observe_chat,
+    publish_response,
+    record_request_shape,
+)
 from miles.rollout.session.samples.codec import COMPUTED_FIELDS_V2, encode_samples
 from miles.rollout.session.types import GetSessionResponse, SessionRecord
 from miles.rollout.session.v2.session_state import (
@@ -131,6 +138,7 @@ class SessionCoreV2(SessionCore):
                 )
             return _samples_response(encode_samples(samples, metadata, fields=COMPUTED_FIELDS_V2))
 
+    @observe_chat
     async def chat_completions(
         self, session_id: str, *, method: str, query: str, headers: dict, body: bytes
     ) -> Response:
@@ -147,7 +155,7 @@ class SessionCoreV2(SessionCore):
             raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
         # --- Phase 1: prepare request (lock held briefly) ---
-        async with session.lock:
+        async with measured_session_lock(session.lock):
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
@@ -156,14 +164,16 @@ class SessionCoreV2(SessionCore):
             )
 
             request_messages = request_body.get("messages", [])
+            record_request_shape(request_messages)
             position_for_request(session, request_messages, message_matcher=self.registry.message_matcher)
-            prompt_token_ids = await run_session_worker(
-                prepare_pretokenized,
-                session,
-                request_messages,
-                tools=request_body.get("tools"),
-                tito_tokenizer=tito_tokenizer,
-            )
+            with measure_phase("tokenize_in_ms"):
+                prompt_token_ids = await run_session_worker(
+                    prepare_pretokenized,
+                    session,
+                    request_messages,
+                    tools=request_body.get("tools"),
+                    tito_tokenizer=tito_tokenizer,
+                )
             request_body["input_ids"] = prompt_token_ids
             logger.debug("Using TITO input_ids: %d tokens", len(prompt_token_ids))
 
@@ -175,9 +185,10 @@ class SessionCoreV2(SessionCore):
 
         # --- Phase 2: proxy to backend (NO lock held) ---
         headers = {**headers, "X-SMG-Routing-Key": session_id}
-        result = await self.backend.do_proxy(
-            ProxyRequest(method=method, query=query), "v1/chat/completions", body=proxy_body, headers=headers
-        )
+        with measure_phase("proxy_elapsed_ms"):
+            result = await self.backend.do_proxy(
+                ProxyRequest(method=method, query=query), "v1/chat/completions", body=proxy_body, headers=headers
+            )
 
         # Non-200 (e.g. 400 context too long) passes through unrecorded so the
         # agent can retry or handle the error.
@@ -192,7 +203,7 @@ class SessionCoreV2(SessionCore):
         )
 
         # --- Phase 3: update state (lock held briefly) ---
-        async with session.lock:
+        async with measured_session_lock(session.lock):
             if session.closing:
                 logger.warning(f"Session {session_id} closed during proxy, skipping state update")
                 return _chat_client_response(result, response, client_stream)
@@ -206,19 +217,21 @@ class SessionCoreV2(SessionCore):
                 request=request_body,
                 response=response,
             )
-            await run_session_worker(
-                commit_generation,
-                session,
-                parent=attach_parent,
-                request_messages=request_messages,
-                assistant_message=assistant_message,
-                prompt_token_ids=prompt_token_ids,
-                completion_token_ids=completion_token_ids,
-                max_trim_tokens=tito_tokenizer.max_trim_tokens,
-                record=record,
-                response_id=response.get("id", ""),
-                finish_reason=choice.get("finish_reason") or "",
-            )
+            with measure_phase("tokenize_out_ms"):
+                await run_session_worker(
+                    publish_response,
+                    commit_generation,
+                    session,
+                    parent=attach_parent,
+                    request_messages=request_messages,
+                    assistant_message=assistant_message,
+                    prompt_token_ids=prompt_token_ids,
+                    completion_token_ids=completion_token_ids,
+                    max_trim_tokens=tito_tokenizer.max_trim_tokens,
+                    record=record,
+                    response_id=response.get("id", ""),
+                    finish_reason=choice.get("finish_reason") or "",
+                )
         # --- lock released ---
 
         return _chat_client_response(result, response, client_stream)

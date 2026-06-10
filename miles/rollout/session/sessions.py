@@ -237,3 +237,5 @@ def setup_session_routes(app, backend, config: SessionServerConfig, *, use_addit
             headers=dict(request.headers),
             body=body,
         )
+
+    return core

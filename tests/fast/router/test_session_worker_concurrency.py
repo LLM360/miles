@@ -121,6 +121,9 @@ def test_reads_and_cancellation_wait_for_complete_state(monkeypatch, version, ph
         assert len(snapshot["records"]) == expected_turns
         assert snapshot["metadata"]["accumulated_token_ids"] == ([0, 10] if expected_turns else [])
         assert all(state == {"records": 1, "tokens": [0, 10]} for state in sample_states)
+        assert core.request_stats.reqs_total == 2
+        assert core.request_stats.inflight == 0
+        assert core.request_stats.turns_completed == (1 if cancel and phase == "prepare" else 2)
         final = json.loads((await core.get_session(sid)).body)
         assert len(final["records"]) == (0 if cancel and phase == "prepare" else 1)
         assert not session.lock.locked()

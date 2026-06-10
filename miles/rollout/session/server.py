@@ -6,8 +6,11 @@
 - ``run_session_server`` is the subprocess entry point: fresh interpreter, so it configures logging and the process title itself, then serves uvicorn.
 """
 
+import asyncio
 import json
 import logging
+import os
+import time
 
 import httpx
 import setproctitle
@@ -16,6 +19,7 @@ from fastapi import FastAPI
 
 from miles.rollout.session.config import SessionServerConfig
 from miles.rollout.session.core import ProxyRequest
+from miles.rollout.session.observability import log_worker_stats
 from miles.rollout.session.sessions import setup_session_routes
 from miles.utils.logging_utils import configure_logger_raw
 from miles.utils.workers.argv_utils import parse_config_argv
@@ -45,7 +49,21 @@ class SessionServer:
         # `retract` may recompute earlier rows and must return full R3; all other
         # pause modes preserve prior rows and can request only the appended R3.
         self.use_addition_r3 = config.pause_generation_mode != "retract"
-        setup_session_routes(self.app, self, config, use_addition_r3=self.use_addition_r3)
+        self.core = setup_session_routes(self.app, self, config, use_addition_r3=self.use_addition_r3)
+        self._stats_task = None
+        self.app.router.on_startup.append(self._start_stats)
+        self.app.router.on_shutdown.append(self._stop_stats)
+
+    async def _start_stats(self):
+        self._stats_task = asyncio.create_task(log_worker_stats(self.core.request_stats))
+
+    async def _stop_stats(self):
+        if self._stats_task is not None:
+            self._stats_task.cancel()
+            try:
+                await self._stats_task
+            except asyncio.CancelledError:
+                pass
 
     async def do_proxy(self, request: ProxyRequest, path: str, *, body: bytes, headers: dict) -> dict:
         url = f"{self.backend_url}/{path}"
@@ -54,10 +72,19 @@ class SessionServer:
 
         headers = {k: v for k, v in headers.items() if k.lower() not in _DROP_REQUEST_HEADERS}
 
+        started = time.monotonic()
         try:
             response = await self.client.request(request.method, url, content=body, headers=headers)
         except httpx.TransportError as exc:
-            logger.warning("Proxy transport error for %s %s: %s", request.method, path, exc)
+            logger.warning(
+                "[session-server] proxy_transport_error method=%s path=%s url=%s elapsed_ms=%.1f error_type=%s error=%s",
+                request.method,
+                path,
+                url,
+                (time.monotonic() - started) * 1000,
+                type(exc).__name__,
+                exc,
+            )
             error_body = json.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"}).encode()
             return {
                 "request_body": body,
@@ -77,7 +104,7 @@ class SessionServer:
 def run_session_server(config: SessionServerConfig):
     """Entry point to start the standalone session server as a subprocess."""
     # Spawned as a fresh interpreter, so it inherits no logging config.
-    configure_logger_raw("session_server")
+    configure_logger_raw(f"session_server pid={os.getpid()}")
     # Visible to `pkill -9 miles`; without this the daemon inherits "python".
     setproctitle.setproctitle("miles-session-server")
 
