@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import itertools
 import logging
@@ -383,7 +384,7 @@ class RolloutManager:
         else:
             init_http_client(args)
             self.servers = start_rollout_servers(args, pg)
-            _start_session_server(args)
+            _start_session_servers(args)
         self.rollout_engine_lock = Lock.options(num_cpus=1, num_gpus=0).remote()
         self.rollout_id = -1
 
@@ -1292,12 +1293,19 @@ def _resolve_sglang_config(args) -> SglangConfig:
 # ---------------------------------------------------------------------------
 
 
-def _start_session_server(args):
-    """Start a standalone session server when ``--use-session-server`` is set.
+def _start_session_servers(args):
+    """Start N independent vanilla session-server processes on the SGLang gateway node.
 
-    The session server runs as a separate process with its own port and proxies
-    inference requests directly to SGLang worker engines.  It is always started
-    as a standalone process regardless of whether ``--use-miles-router`` is active.
+    Each session-server is a standalone process bound to its own port; MSA clients
+    pick one at random per session via ``args.session_server_backends`` (callee-side
+    multi-backend dispatch). This replaces the single-server design with a multi-
+    backend design that relieves the per-process GIL when many concurrent sessions
+    saturate one process.
+
+    ``args.session_server_count`` (default 1) controls N. For N=1 the behavior is
+    identical to the previous single-server path. ``session_server_ip`` /
+    ``session_server_port`` are preserved for back-compat (set to host_ip / first
+    chosen port respectively).
     """
     if not getattr(args, "use_session_server", False):
         return
@@ -1308,27 +1316,61 @@ def _start_session_server(args):
 
     if getattr(args, "session_server_ip", None) is None:
         args.session_server_ip = args.sglang_router_ip
-    if getattr(args, "session_server_port", None) is None:
-        args.session_server_port = find_available_port(random.randint(5000, 6000))
     if getattr(args, "session_server_instance_id", None) is None:
         args.session_server_instance_id = uuid.uuid4().hex
 
-    ip, port = args.session_server_ip, args.session_server_port
-    if not is_port_available(port):
-        raise RuntimeError(
-            f"Port {port} is already in use — a stale session server may still be running. "
-            f"Run 'pkill -9 python' to kill it, then retry."
-        )
+    host_ip = args.session_server_ip
+    count = max(1, int(getattr(args, "session_server_count", 1) or 1))
 
     router_url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}"
 
     from miles.rollout.session.session_server import run_session_server
 
-    process = multiprocessing.Process(target=run_session_server, args=(args, router_url))
-    process.daemon = True
-    process.start()
-    wait_for_server_ready(ip, port, process, timeout=30)
-    logger.info(f"Session server launched at {ip}:{port}")
+    chosen_ports: list[int] = []
+    processes: list[multiprocessing.Process] = []
+
+    # Pre-fill the explicit port (if any) as the first backend so back-compat
+    # callers landing on backend 0 hit a deterministic port.
+    explicit_port = getattr(args, "session_server_port", None)
+    if explicit_port is not None:
+        if not is_port_available(explicit_port):
+            raise RuntimeError(
+                f"Port {explicit_port} is already in use — a stale session server may still be running. "
+                f"Run 'pkill -9 python' to kill it, then retry."
+            )
+        chosen_ports.append(explicit_port)
+
+    while len(chosen_ports) < count:
+        port = find_available_port(random.randint(5000, 6000))
+        # Avoid races: reject duplicates produced by the random seed.
+        if port in chosen_ports:
+            continue
+        chosen_ports.append(port)
+
+    for port in chosen_ports:
+        # Each child sees its own port via a shallow-copied args namespace.
+        child_args = copy.copy(args)
+        child_args.session_server_port = port
+        child_args.session_server_ip = host_ip
+        process = multiprocessing.Process(target=run_session_server, args=(child_args, router_url))
+        process.daemon = True
+        process.start()
+        processes.append(process)
+
+    for port, process in zip(chosen_ports, processes, strict=True):
+        wait_for_server_ready(host_ip, port, process, timeout=30)
+        logger.info(f"Session server launched at {host_ip}:{port}")
+
+    # Publish the backend set; back-compat fields point at backend 0.
+    args.session_server_backends = [f"http://{host_ip}:{port}" for port in chosen_ports]
+    args.session_server_ip = host_ip
+    args.session_server_port = chosen_ports[0]
+    logger.info(
+        "Session-server multi-backend dispatch enabled: N=%d, backends=%s",
+        count,
+        args.session_server_backends,
+    )
+    return args.session_server_backends
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):
