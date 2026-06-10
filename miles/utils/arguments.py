@@ -1633,6 +1633,15 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Port of the standalone session server. Auto-allocated if not set.",
             )
             parser.add_argument(
+                "--session-server-count",
+                type=int,
+                default=1,
+                help="Number of independent vanilla session-server processes to launch "
+                "on the SGLang gateway node. Each MSA call is bound to a randomly-picked "
+                "backend at session creation. Use >1 to relieve the per-process GIL when "
+                "many concurrent sessions saturate a single process.",
+            )
+            parser.add_argument(
                 "--tito-model",
                 type=str,
                 default="default",
