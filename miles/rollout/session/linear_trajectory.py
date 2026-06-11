@@ -62,6 +62,30 @@ class LinearTrajectory:
     def append_record(self, record: SessionRecord) -> None:
         self.records.append(record)
 
+    def append_provisional_record(self, record: SessionRecord) -> None:
+        """Append a record WITHOUT committing it to the trajectory token state.
+
+        Used for an aborted generation (``finish_reason == "abort"``, e.g. an
+        SGLang weight-update pause): the record shows up as the trajectory tail
+        — so a *terminal* abort is the honest final turn — but ``num_assistant``
+        and ``token_ids`` are left untouched, so the agent's abort-retry
+        re-issues the same turn from the prior checkpoint. Any earlier
+        provisional (a prior aborted attempt at this same turn) is dropped first;
+        a subsequent committed turn drops it via ``update_pretokenized_state``.
+        Must be called under ``self.lock``.
+        """
+        self._drop_provisional_records()
+        self.records.append(record)
+
+    def _drop_provisional_records(self) -> None:
+        """Discard uncommitted (provisional) records past the committed count.
+
+        Committed turns keep ``records`` aligned 1:1 with ``num_assistant``, so
+        any trailing record beyond that count is a provisional abort that the
+        current turn supersedes.
+        """
+        del self.records[self.num_assistant :]
+
     def prepare_pretokenized(
         self,
         request_messages: list[dict[str, Any]],
@@ -115,6 +139,12 @@ class LinearTrajectory:
         checkpoint (tolerating up to ``max_trim_tokens`` trailing differences).
         Must be called under ``self.lock``.
         """
+        # A successful turn supersedes any provisional abort tail recorded for
+        # this same turn (see append_provisional_record), so the committed
+        # records stay 1:1 with num_assistant and merge_samples never sees a
+        # mid-trajectory ABORTED record.
+        self._drop_provisional_records()
+
         all_token_ids = prompt_token_ids + completion_token_ids
 
         prev = self.token_ids

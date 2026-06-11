@@ -735,3 +735,110 @@ class TestComputeSessionMismatch:
         # Verify tools were passed to apply_chat_template
         _, kwargs = mock_template.call_args
         assert kwargs["tools"] == tools
+
+
+def _committed_record(finish_reason: str = "tool_calls") -> SessionRecord:
+    return SessionRecord(
+        timestamp=0.0,
+        method="POST",
+        path="/v1/chat/completions",
+        status_code=200,
+        request={"messages": [SYS_MSG, USER_MSG]},
+        response={"choices": [{"finish_reason": finish_reason}]},
+    )
+
+
+def _abort_record() -> SessionRecord:
+    return SessionRecord(
+        timestamp=0.0,
+        method="POST",
+        path="/v1/chat/completions",
+        status_code=200,
+        request={"messages": [SYS_MSG, USER_MSG, ASSISTANT_MSG_1, TOOL_MSG_1]},
+        response={"choices": [{"finish_reason": "abort"}]},
+    )
+
+
+class TestProvisionalAbortRecord:
+    """A turn aborted by SGLang (finish_reason='abort', e.g. a weight-update
+    pause) is appended as a PROVISIONAL trajectory tail: it shows up as the
+    last record but does NOT advance committed token state
+    (num_assistant / token_ids), so the agent's retry re-issues the same turn
+    from the prior checkpoint.
+
+    - A successful commit at the same turn SUPERSEDES the provisional, so no
+      mid-trajectory ABORTED record reaches merge_samples() (which asserts every
+      non-final turn is COMPLETED).
+    - If no commit follows (retries exhausted), the provisional remains as the
+      honest final ABORTED turn — merge tolerates a trailing non-COMPLETED turn,
+      and check_no_aborted then drops the group.
+    """
+
+    def _commit_turn1(self, session) -> SessionRecord:
+        session.update_pretokenized_state(
+            [SYS_MSG, USER_MSG], ASSISTANT_MSG_1, [1, 2, 3], [10, 11], max_trim_tokens=0
+        )
+        rec = _committed_record()
+        session.append_record(rec)
+        return rec
+
+    def test_provisional_abort_does_not_advance_committed_state(self, registry: SessionRegistry):
+        session = registry.get_session(registry.create_session())
+        self._commit_turn1(session)
+        assert session.num_assistant == 1
+        assert session.token_ids == [1, 2, 3, 10, 11]
+        assert len(session.records) == 1
+
+        abort_rec = _abort_record()
+        session.append_provisional_record(abort_rec)
+
+        # Committed trajectory state is untouched — only the tail record changes.
+        assert session.num_assistant == 1
+        assert session.token_ids == [1, 2, 3, 10, 11]
+        assert session.records[-1] is abort_rec
+        assert len(session.records) == 2
+
+    def test_successful_commit_supersedes_provisional_abort(self, registry: SessionRegistry):
+        session = registry.get_session(registry.create_session())
+        r1 = self._commit_turn1(session)
+
+        # Turn 2 aborts (provisional), then the retry of the same turn succeeds.
+        session.append_provisional_record(_abort_record())
+        t2_msgs = [SYS_MSG, USER_MSG, ASSISTANT_MSG_1, TOOL_MSG_1]
+        session.update_pretokenized_state(
+            t2_msgs, ASSISTANT_MSG_FINAL, [1, 2, 3, 10, 11, 20, 21], [30, 31], max_trim_tokens=0
+        )
+        r2 = _committed_record("stop")
+        session.append_record(r2)
+
+        # The provisional abort is gone: records are exactly the two committed turns,
+        # and no record is a mid-trajectory abort.
+        assert session.num_assistant == 2
+        assert session.records == [r1, r2]
+        assert all(rec.response["choices"][0]["finish_reason"] != "abort" for rec in session.records)
+
+    def test_terminal_provisional_abort_remains_last_record(self, registry: SessionRegistry):
+        session = registry.get_session(registry.create_session())
+        r1 = self._commit_turn1(session)
+
+        abort_rec = _abort_record()
+        session.append_provisional_record(abort_rec)
+        # No retry follows; the trajectory ends on the abort.
+
+        assert session.records == [r1, abort_rec]
+        assert session.records[-1].response["choices"][0]["finish_reason"] == "abort"
+        assert session.num_assistant == 1
+
+    def test_consecutive_aborts_keep_single_provisional(self, registry: SessionRegistry):
+        session = registry.get_session(registry.create_session())
+        self._commit_turn1(session)
+
+        first_abort = _abort_record()
+        second_abort = _abort_record()
+        session.append_provisional_record(first_abort)
+        session.append_provisional_record(second_abort)
+
+        # Re-aborting the same turn replaces the provisional rather than stacking.
+        assert session.records[-1] is second_abort
+        assert len(session.records) == 2
+        assert session.num_assistant == 1
