@@ -24,30 +24,64 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     assert not state.aborted
     state.aborted = True
 
-    urls = await get_worker_urls(args)
-    logger.info(f"Abort request for {urls}")
-    await asyncio.gather(*[post(f"{url}/abort_request", {"abort_all": True}) for url in urls])
+    # Drain session servers BEFORE killing in-flight engine requests so agent
+    # sessions cannot start new turns conditioned on aborted (mid-decode
+    # truncated) output.
+    session_backends = _get_session_server_backends(args)
+    await _post_session_servers(session_backends, "/sessions/drain")
 
-    # make sure all the pending tasks are finished; a failed task must not
-    # kill the rollout (mirror the main loop's per-task error handling)
-    aborted_samples = []
-    for group in await asyncio.gather(*pendings, return_exceptions=True):
-        if isinstance(group, BaseException):
-            logger.error(f"[abort] Pending generation task raised: {group!r}", exc_info=group)
-            continue
-        if not args.partial_rollout:
-            continue
+    try:
+        urls = await get_worker_urls(args)
+        logger.info(f"Abort request for {urls}")
+        await asyncio.gather(*[post(f"{url}/abort_request", {"abort_all": True}) for url in urls])
 
-        # for partial rollout, collect the partial samples into the data buffer
-        for sample in group:
-            if sample.response and "start_rollout_id" not in sample.metadata:
-                sample.metadata["start_rollout_id"] = rollout_id
-        aborted_samples.append(group)
+        # make sure all the pending tasks are finished; a failed task must not
+        # kill the rollout (mirror the main loop's per-task error handling)
+        aborted_samples = []
+        for group in await asyncio.gather(*pendings, return_exceptions=True):
+            if isinstance(group, BaseException):
+                logger.error(f"[abort] Pending generation task raised: {group!r}", exc_info=group)
+                continue
+            if not args.partial_rollout:
+                continue
 
-    if args.partial_rollout:
-        logger.info(f"Collected {sum(len(x) for x in aborted_samples)} partial samples into the data buffer")
+            # for partial rollout, collect the partial samples into the data buffer
+            for sample in group:
+                if sample.response and "start_rollout_id" not in sample.metadata:
+                    sample.metadata["start_rollout_id"] = rollout_id
+            aborted_samples.append(group)
+
+        if args.partial_rollout:
+            logger.info(f"Collected {sum(len(x) for x in aborted_samples)} partial samples into the data buffer")
+    finally:
+        # By now every generate task has returned (or abort itself failed);
+        # always reopen — a drained-but-never-resumed session server would
+        # deadlock every subsequent rollout and eval.
+        await _post_session_servers(session_backends, "/sessions/resume")
 
     return aborted_samples
+
+
+def _get_session_server_backends(args) -> list[str]:
+    if not getattr(args, "use_session_server", False):
+        return []
+    backends = list(getattr(args, "session_server_backends", None) or [])
+    if not backends and getattr(args, "session_server_ip", None) and getattr(args, "session_server_port", None):
+        backends = [f"http://{args.session_server_ip}:{args.session_server_port}"]
+    return backends
+
+
+async def _post_session_servers(backends: list[str], path: str) -> None:
+    if not backends:
+        return
+    # Low max_retries: an unreachable session server must not stall the
+    # abort; Layer-1 sample filtering backstops a failed drain.
+    results = await asyncio.gather(
+        *[post(f"{url}{path}", {}, max_retries=3) for url in backends], return_exceptions=True
+    )
+    for url, result in zip(backends, results, strict=True):
+        if isinstance(result, BaseException):
+            logger.error(f"[abort] POST {url}{path} failed: {result!r}")
 
 
 async def get_worker_urls(args: Namespace):
