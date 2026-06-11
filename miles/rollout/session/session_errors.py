@@ -6,7 +6,8 @@ SessionError (base)
 ├── SessionNotFoundError       → 404  session does not exist
 ├── MessageValidationError     → 400  messages structure/content invalid
 ├── TokenizationError          → 500  TITO tokenizer / prefix mismatch
-└── UpstreamResponseError      → 502  SGLang response invalid or unexpected
+├── UpstreamResponseError      → 502  SGLang response invalid or unexpected
+└── SessionUnavailableError    → 503  server draining (rollout abort in progress)
 """
 
 
@@ -49,3 +50,9 @@ class UpstreamResponseError(SessionError):
     """
 
     status_code: int = 502
+
+
+class SessionUnavailableError(SessionError):
+    """Raised when the server is draining (rollout abort in progress)."""
+
+    status_code: int = 503

@@ -92,10 +92,14 @@ class TestSessionRoutes:
         assert data["session_id"] == session_id
         assert data["records"] == []
 
-    def test_get_session_not_found(self, router_env):
+    def test_get_session_unknown_returns_empty(self, router_env):
+        # Sessions that never received a model call resolve to an empty
+        # record set (not 404) so trace collection works for aborted trials.
         response = requests.get(f"{router_env.url}/sessions/nonexistent", timeout=5.0)
-        assert response.status_code == 404
-        assert response.json()["error"] == "session not found: session_id=nonexistent"
+        assert response.status_code == 200
+        body = response.json()
+        assert body["session_id"] == "nonexistent"
+        assert body["records"] == []
 
     def test_delete_session(self, router_env):
         session_id = requests.post(f"{router_env.url}/sessions", timeout=5.0).json()["session_id"]
@@ -183,3 +187,49 @@ class TestTokenizationOffload:
             f"/health blocked for {elapsed:.2f}s during tokenization; "
             "event loop was not free (tokenization not offloaded)"
         )
+
+
+class TestDrainResume:
+    """Rollout abort drains the session server so in-flight agent sessions
+    cannot issue turns conditioned on aborted (mid-decode truncated) output."""
+
+    def test_drain_marks_existing_sessions_closing(self, router_env):
+        session_id = requests.post(f"{router_env.url}/sessions", timeout=5.0).json()["session_id"]
+        try:
+            drain = requests.post(f"{router_env.url}/sessions/drain", timeout=5.0)
+            assert drain.status_code == 200
+            assert drain.json()["sessions_closed"] >= 1
+
+            chat = requests.post(
+                f"{router_env.url}/sessions/{session_id}/v1/chat/completions",
+                json={"messages": [{"role": "user", "content": "hi"}]},
+                timeout=5.0,
+            )
+            assert chat.status_code == 404
+        finally:
+            requests.post(f"{router_env.url}/sessions/resume", timeout=5.0)
+
+    def test_chat_rejected_while_draining_even_for_unknown_session(self, router_env):
+        # get_or_create_session must not resurrect a session during drain
+        try:
+            requests.post(f"{router_env.url}/sessions/drain", timeout=5.0)
+            chat = requests.post(
+                f"{router_env.url}/sessions/{uuid.uuid4().hex}/v1/chat/completions",
+                json={"messages": [{"role": "user", "content": "hi"}]},
+                timeout=5.0,
+            )
+            assert chat.status_code == 404
+        finally:
+            requests.post(f"{router_env.url}/sessions/resume", timeout=5.0)
+
+    def test_drain_rejects_new_sessions_until_resume(self, router_env):
+        try:
+            requests.post(f"{router_env.url}/sessions/drain", timeout=5.0)
+            create = requests.post(f"{router_env.url}/sessions", timeout=5.0)
+            assert create.status_code == 503
+        finally:
+            resume = requests.post(f"{router_env.url}/sessions/resume", timeout=5.0)
+
+        assert resume.status_code == 200
+        create = requests.post(f"{router_env.url}/sessions", timeout=5.0)
+        assert create.status_code == 200

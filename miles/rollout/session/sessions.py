@@ -12,6 +12,7 @@ from miles.rollout.session.linear_trajectory import SessionRegistry
 from miles.rollout.session.session_errors import (
     SessionError,
     SessionNotFoundError,
+    SessionUnavailableError,
     TokenizationError,
     UpstreamResponseError,
 )
@@ -101,10 +102,33 @@ def setup_session_routes(app, backend, args):
     async def session_error_handler(request: Request, exc: SessionError):
         return JSONResponse(status_code=exc.status_code, content={"error": str(exc)})
 
+    # Set while a rollout abort is in progress: the trainer drains the server
+    # so in-flight agent sessions cannot issue turns conditioned on aborted
+    # (mid-decode truncated) output, then resumes it for the next step.
+    _draining = {"value": False}
+
     @app.post("/sessions")
     async def create_session():
+        if _draining["value"]:
+            raise SessionUnavailableError("session server is draining (rollout abort in progress)")
         session_id = registry.create_session()
         return {"session_id": session_id}
+
+    @app.post("/sessions/drain")
+    async def drain_sessions():
+        _draining["value"] = True
+        closed = 0
+        for session in list(registry.sessions.values()):
+            if not session.closing:
+                session.closing = True
+                closed += 1
+        logger.info(f"[session-server] drain: marked {closed} session(s) closing")
+        return {"draining": True, "sessions_closed": closed}
+
+    @app.post("/sessions/resume")
+    async def resume_sessions():
+        _draining["value"] = False
+        return {"draining": False}
 
     @app.get("/sessions/{session_id}")
     async def get_session(session_id: str):
@@ -196,6 +220,10 @@ def setup_session_routes(app, backend, args):
         )
         _inflight_chat["count"] += 1
         try:
+            # 404 (not 503): agent-side OpenAI clients retry 5xx but treat
+            # 404 as terminal, which is what we want during a drain.
+            if _draining["value"]:
+                raise SessionNotFoundError(f"session server draining: session_id={session_id}")
             session = registry.get_or_create_session(session_id)
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
