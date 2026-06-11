@@ -2,7 +2,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from miles.rollout.generate_utils.sample_utils import _merge_sample_pair
+from miles.rollout.generate_utils.sample_utils import (
+    _merge_sample_pair,
+    drop_samples_after_first_non_completed,
+    merge_samples,
+)
 from miles.utils.types import Sample
 
 
@@ -154,3 +158,94 @@ class TestMergeSamples:
 
         with pytest.raises(AssertionError, match="loss_mask length"):
             _merge_sample_pair(a, b, mock_tokenizer)
+
+
+class TestDropSamplesAfterFirstNonCompleted:
+    def _statuses(self, *statuses):
+        return [make_sample(status=status, index=i) for i, status in enumerate(statuses)]
+
+    def test_all_completed_unchanged(self):
+        samples = self._statuses(
+            Sample.Status.COMPLETED, Sample.Status.COMPLETED, Sample.Status.COMPLETED
+        )
+        kept, dropped = drop_samples_after_first_non_completed(samples)
+        assert kept == samples
+        assert dropped == 0
+
+    def test_non_completed_final_turn_unchanged(self):
+        samples = self._statuses(Sample.Status.COMPLETED, Sample.Status.ABORTED)
+        kept, dropped = drop_samples_after_first_non_completed(samples)
+        assert kept == samples
+        assert dropped == 0
+
+    def test_mid_session_aborted_drops_trailing_turns(self):
+        samples = self._statuses(
+            Sample.Status.COMPLETED,
+            Sample.Status.ABORTED,
+            Sample.Status.COMPLETED,
+            Sample.Status.COMPLETED,
+        )
+        kept, dropped = drop_samples_after_first_non_completed(samples)
+        assert kept == samples[:2]
+        assert dropped == 2
+
+    def test_mid_session_truncated_drops_trailing_turns(self):
+        samples = self._statuses(
+            Sample.Status.COMPLETED, Sample.Status.TRUNCATED, Sample.Status.COMPLETED
+        )
+        kept, dropped = drop_samples_after_first_non_completed(samples)
+        assert kept == samples[:2]
+        assert dropped == 1
+
+    def test_first_turn_aborted_drops_all_trailing_turns(self):
+        samples = self._statuses(Sample.Status.ABORTED, Sample.Status.COMPLETED)
+        kept, dropped = drop_samples_after_first_non_completed(samples)
+        assert kept == samples[:1]
+        assert dropped == 1
+
+    def test_single_sample_unchanged(self):
+        samples = self._statuses(Sample.Status.ABORTED)
+        kept, dropped = drop_samples_after_first_non_completed(samples)
+        assert kept == samples
+        assert dropped == 0
+
+
+class TestMergeSamplesAfterAbortedTurn:
+    """Regression: the engine aborted turn 2 mid-decode (e.g. end-of-rollout
+    abort_request), but the agent kept going and produced a COMPLETED turn 3.
+    merge_samples cannot represent a non-final aborted turn."""
+
+    def _make_session_turns(self):
+        turn1 = make_sample(
+            tokens=[1, 2, 10, 11],
+            response="turn1",
+            response_length=2,
+            loss_mask=[1, 1],
+        )
+        turn2 = make_sample(
+            tokens=[1, 2, 10, 11, 50, 20, 21],
+            response="turn2-partial",
+            response_length=2,
+            loss_mask=[1, 1],
+            status=Sample.Status.ABORTED,
+        )
+        turn3 = make_sample(
+            tokens=[1, 2, 10, 11, 50, 20, 21, 60, 30, 31],
+            response="turn3",
+            response_length=2,
+            loss_mask=[1, 1],
+        )
+        return [turn1, turn2, turn3]
+
+    def test_merge_without_drop_raises(self, mock_tokenizer):
+        with pytest.raises(AssertionError, match="a.status must be COMPLETED"):
+            merge_samples(self._make_session_turns(), mock_tokenizer)
+
+    def test_drop_then_merge_ends_aborted(self, mock_tokenizer):
+        kept, dropped = drop_samples_after_first_non_completed(self._make_session_turns())
+
+        assert dropped == 1
+        merged = merge_samples(kept, mock_tokenizer)
+        assert merged.status == Sample.Status.ABORTED
+        assert merged.response_length == 2 + 1 + 2  # turn1 + obs + turn2
+        assert "turn2-partial" in merged.response
