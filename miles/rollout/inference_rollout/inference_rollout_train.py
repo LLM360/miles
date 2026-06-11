@@ -12,7 +12,7 @@ from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_fil
 from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
-from miles.utils.misc import as_completed_async, load_function
+from miles.utils.misc import load_function
 from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
@@ -28,9 +28,13 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     logger.info(f"Abort request for {urls}")
     await asyncio.gather(*[post(f"{url}/abort_request", {"abort_all": True}) for url in urls])
 
-    # make sure all the pending tasks are finished
+    # make sure all the pending tasks are finished; a failed task must not
+    # kill the rollout (mirror the main loop's per-task error handling)
     aborted_samples = []
-    async for group in as_completed_async(pendings):
+    for group in await asyncio.gather(*pendings, return_exceptions=True):
+        if isinstance(group, BaseException):
+            logger.error(f"[abort] Pending generation task raised: {group!r}", exc_info=group)
+            continue
         if not args.partial_rollout:
             continue
 
