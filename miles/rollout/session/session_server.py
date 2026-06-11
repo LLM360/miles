@@ -10,8 +10,8 @@ import asyncio
 import logging
 import time
 
-import orjson
 import httpx
+import orjson
 import setproctitle
 import uvicorn
 from fastapi import FastAPI, Request
@@ -57,7 +57,9 @@ class SessionServer:
             body = await request.body()
         if headers is None:
             headers = dict(request.headers)
-        headers = {k: v for k, v in headers.items() if k.lower() not in ("content-length", "transfer-encoding", "host")}
+        headers = {
+            k: v for k, v in headers.items() if k.lower() not in ("content-length", "transfer-encoding", "host")
+        }
 
         _t_proxy_start = time.monotonic()
         try:
@@ -99,7 +101,11 @@ class SessionServer:
         # Also strip "server": uvicorn adds its own Server header; passing
         # the upstream one through produces two Server headers, which strict
         # HTTP parsers (aiohttp/llhttp via litellm) reject as malformed.
-        headers = {k: v for k, v in result["headers"].items() if k.lower() not in ("content-length", "transfer-encoding", "server")}
+        headers = {
+            k: v
+            for k, v in result["headers"].items()
+            if k.lower() not in ("content-length", "transfer-encoding", "server")
+        }
         content_type = headers.get("content-type", "")
         try:
             data = orjson.loads(content)
