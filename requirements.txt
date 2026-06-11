@@ -5,6 +5,7 @@ httpx[http2]
 mcp[cli]
 memray  # needed for debugging (but is lightweight), we can put it to dev mode when using pyproject.toml
 omegaconf
+orjson>=3.10,<4
 pillow
 psutil
 pybase64
@@ -18,4 +19,3 @@ sglang-router>=0.2.3
 tensorboard
 transformers
 wandb
-orjson>=3.10,<4
