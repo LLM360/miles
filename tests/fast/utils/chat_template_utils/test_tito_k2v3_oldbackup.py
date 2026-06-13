@@ -1,36 +1,26 @@
-"""TITO contract tests for the K2V3 family — current IFM chat template.
+"""TITO contract tests for the K2V3 family — LEGACY chat template.
 
-This file targets ``K2V3TITOTokenizer`` (``--tito-model k2v3``), used for
-current K2V3 checkpoints (``bbq-8b-mid3_v3`` and later) whose chat
-template is the IFM-style ``bbq-0601`` template:
+This file targets ``K2V3OldBackupTITOTokenizer`` (``--tito-model
+k2v3_oldbackup``), used for legacy K2V3 checkpoints (``bbq-8b-mid3-final``
+and earlier) whose chat template emits ``<|im_end|>\\n`` between messages.
 
-  - ChatML tokens are namespaced as ``<|ifm|im_start|>`` / ``<|ifm|im_end|>``
-  - NO whitespace is emitted between ``<|ifm|im_end|>`` and the next
-    ``<|ifm|im_start|>`` (the model autoregressively stops at
-    ``<|ifm|im_end|>`` and the rollout buffer already matches the
-    canonical template render)
-  - Assistant messages REQUIRE a thinking field
-    (``think`` / ``think_fast`` / ``think_faster`` / ``reasoning`` /
-    ``reasoning_content``) — the template raises otherwise
-
-For legacy K2V3 checkpoints (``bbq-8b-mid3-final`` and earlier) using the
-``<|im_end|>\\n`` template, see ``test_tito_k2v3_oldbackup.py``.
+For current K2V3 checkpoints (``bbq-8b-mid3_v3`` and later) using the
+IFM template, see ``test_tito_k2v3.py``.
 
 Coverage contract — this file protects these invariants:
 
-  (I1) Current K2V3 (IFM) chat template emits ``<|ifm|im_end|>`` with NO
-       trailing whitespace between messages.
-  (I2) Realistic rollout buffers end at ``<|ifm|im_end|>`` (matches
-       canonical render token-for-token — no fix required).
-  (I3) ``K2V3TITOTokenizer.merge_tokens`` does NOT insert any boundary
-       tokens (regression guard: prevents reintroducing the legacy
-       ``\\n`` fix that would break bit-identity here).
+  (I1) Legacy K2V3 canonical chat template renders ``<|im_end|>\\n`` after
+       every message (the trailing ``\\n`` comes from jinja block whitespace).
+  (I2) Realistic rollout buffers can end at ``<|im_end|>`` WITHOUT the
+       trailing ``\\n`` — the model stops at ``<|im_end|>`` on
+       autoregressive emission.
+  (I3) ``K2V3OldBackupTITOTokenizer.merge_tokens`` inserts the missing ``\\n``
+       when ``prefix[-1] == <|im_end|>``, so the merged buffer matches
+       canonical render.
   (I4) Appended env messages (tool / user / system) round-trip through
        ``merge_tokens`` and still match the canonical render — across
        both realistic single-turn buffers and multi-turn parser-driven
        session histories.
-  (I5) Hard-asserted refusal: instantiating ``K2V3TITOTokenizer`` on a
-       legacy checkpoint (no ``<|ifm|im_end|>`` token) raises at init.
 
 The file is split into three banner-marked sections:
 
@@ -53,18 +43,18 @@ The file is split into three banner-marked sections:
       * ``test_production_prefix_check_raises_on_intentional_violation``
             — runtime defense (``update_pretokenized_state``'s prefix
             check) is alive
-      * ``test_k2v3_subclass_is_wired``
-            — registry returns ``K2V3TITOTokenizer``, not the base or
-            the legacy class
-      * ``test_k2v3_init_rejects_legacy_checkpoint``
-            — I5: init raises ValueError when loaded on a tokenizer
-            whose vocab lacks ``<|ifm|im_end|>``
+      * ``test_k2v3_oldbackup_subclass_is_wired``
+            — registry returns ``K2V3OldBackupTITOTokenizer``, not the
+            base or current K2V3 class
+
+Why this file exists separately from ``test_tito_tokenizer_model_matrix.py``:
+that file builds ``pretokenized`` via ``apply_chat_template(..., add_generation_prompt=False)``,
+which already contains the trailing ``\\n``, so the boundary fix path
+never fires and the test passes whether the fix exists or not. This file
+routes through ``update_pretokenized_state`` instead, producing the
+realistic ``prefix[-1] == <|im_end|>`` state that the fix exists for.
 
 Skips at module level if the K2V3 checkpoint is not on this host.
-
-NOTE: production training on this IFM checkpoint also requires
-IFM-compatible SGLang parsers (see LLM360/sglang#33) — those are
-orthogonal to TITO correctness but mandatory for the rollout path.
 """
 
 from __future__ import annotations
@@ -97,26 +87,32 @@ from miles.utils.test_utils.mock_trajectories import (
 
 K2V3_MODEL_PATH = os.environ.get(
     "TITO_TEST_MODEL_PATH_K2V3",
-    "/mnt/weka/shrd/k2m/suqi.sun/bbq_image/bbq-8b-mid3_v3/checkpoint_0005500",
+    "/mnt/weka/shrd/k2m/suqi.sun/bbq_image/bbq-8b-mid3-final",
 )
 _ALLOWED_APPEND_ROLES = ["tool", "user", "system"]
 
-# K2V3 IFM template's generation prompt depends on reasoning_effort
-# (high → <ifm|think>, medium → <ifm|think_fast>, low → <ifm|think_faster>).
-# The IFM template REQUIRES a valid reasoning_effort value — raises on
-# anything outside {high, medium, low}. Production runs with high effort.
+# K2V3 chat template's generation prompt depends on reasoning_effort
+# (high → <think>, medium → <think_fast>, low → <think_faster>). Production
+# runs with high effort; pinning here so test is deterministic regardless
+# of any future template-default change. Override via env if needed.
 _K2V3_REASONING_EFFORT = os.environ.get("TITO_TEST_REASONING_EFFORT_K2V3", "high")
 _K2V3_CHAT_TEMPLATE_KWARGS = {"reasoning_effort": _K2V3_REASONING_EFFORT}
 
-# Per-K2V3 SGLang parser names for the IFM tokens (<ifm|tool_call>,
-# <ifm|think>, etc.). Defaults match the K2V3 IFM production config (see
-# LLM360/sglang#33 for the IFM-compatible parser implementations).
+# Per-K2V3 SGLang parser names. Defaults match the K2V3 production
+# config:
+#   SGLANG_TOOL_PARSER=hermes
+#   SGLANG_REASONING_PARSER=deepseek-r1
+# Both rely on `<think>...</think>` (deepseek-r1) and the hermes
+# `<tool_call>\n{json}\n</tool_call>` shape that K2V3's chat template emits.
 #
-# If the configured parser is not registered in this SGLang build, the
-# parser round-trip tests skip with an explicit reason rather than
-# silently turning green.
-_K2V3_TOOL_PARSER = os.environ.get("TITO_TEST_TOOL_PARSER_K2V3", "k2_v3")
-_K2V3_REASONING_PARSER = os.environ.get("TITO_TEST_REASONING_PARSER_K2V3", "k2_v3")
+# Older SGLang builds may register `hermes` under a different name (e.g.
+# the qwen25 detector handles the same shape). Override via env in those
+# environments — e.g. ``TITO_TEST_TOOL_PARSER_K2V3=qwen25``. If the
+# configured parser is not registered in this SGLang build, the parser
+# round-trip test skips with an explicit reason rather than silently
+# turning green.
+_K2V3_TOOL_PARSER = os.environ.get("TITO_TEST_TOOL_PARSER_K2V3", "hermes")
+_K2V3_REASONING_PARSER = os.environ.get("TITO_TEST_REASONING_PARSER_K2V3", "deepseek-r1")
 
 
 @pytest.fixture(scope="module")
@@ -134,7 +130,7 @@ def tokenizer() -> AutoTokenizer:
 def tito_tok(tokenizer):
     return get_tito_tokenizer(
         tokenizer,
-        tokenizer_type=TITOTokenizerType.K2V3,
+        tokenizer_type=TITOTokenizerType.K2V3_OLDBACKUP,
         allowed_append_roles=_ALLOWED_APPEND_ROLES,
         chat_template_kwargs=_K2V3_CHAT_TEMPLATE_KWARGS,
     )
@@ -170,31 +166,24 @@ def _with_synthetic_thinking(
     return _Synthesized
 
 
-# All assistant messages in this file's trajectories carry a thinking
-# field: the IFM chat template raises if an assistant message lacks one
-# of {think, think_fast, think_faster, reasoning, reasoning_content}.
-# Trajectories that don't natively carry thinking are wrapped via
-# ``_with_synthetic_thinking`` to inject ``reasoning_content`` on each
-# assistant turn before rendering. Native thinking trajectories are used
-# as-is (they already carry per-message reasoning content).
+# Native + synthetic-thinking-injected trajectories. Each entry exercises a
+# distinct rollout shape; the thinking variants additionally trigger the
+# K2V3 chat template's reasoning-block path (<|im_start|>assistant\n<think>\n
+# ... </think>\ncontent<|im_end|>).
 CONVERSATIONS: list[tuple[str, type]] = [
     # Single assistant turn — single tool call.
-    ("single_tool", _with_synthetic_thinking(SingleToolTrajectory)),
+    ("single_tool", SingleToolTrajectory),
     ("single_tool_thinking", SingleToolThinkingTrajectory),
     # Multiple assistant turns — single tool call per turn.
-    ("multi_turn", _with_synthetic_thinking(MultiTurnTrajectory)),
+    ("multi_turn", MultiTurnTrajectory),
     ("multi_turn_thinking", MultiTurnThinkingTrajectory),
     # Single assistant turn — multiple parallel tool calls.
-    ("multi_tool_single_turn", _with_synthetic_thinking(MultiToolSingleTurnTrajectory)),
-    # Native thinking variant doesn't exist for parallel-tools-single-turn;
-    # synthesize a second distinct shape via the same wrapper with a
-    # different reasoning string.
-    (
-        "multi_tool_single_turn_thinking",
-        _with_synthetic_thinking(MultiToolSingleTurnTrajectory, reasoning="Planning the parallel tool calls."),
-    ),
+    ("multi_tool_single_turn", MultiToolSingleTurnTrajectory),
+    # No native thinking variant exists for parallel-tools-single-turn;
+    # synthesize by injecting reasoning_content into the assistant turn.
+    ("multi_tool_single_turn_thinking", _with_synthetic_thinking(MultiToolSingleTurnTrajectory)),
     # Multiple assistant turns AND tool calls (chain shape).
-    ("multi_tool_multi_turn", _with_synthetic_thinking(LongChainTrajectory)),
+    ("multi_tool_multi_turn", LongChainTrajectory),
     ("multi_tool_multi_turn_thinking", LongChainThinkingTrajectory),
 ]
 
@@ -262,14 +251,14 @@ def _realistic_emit_ids(
     """Synthesize completion_token_ids that mirror SGLang's autoregressive emit.
 
     The model emits starting from inside the assistant generation prompt
-    and stops at ``<|ifm|im_end|>`` (no trailing ``\\n``). We compute this by
+    and stops at ``<|im_end|>`` (no trailing ``\\n``). We compute this by
     diffing two chat-template renders:
 
         full   = render(request + [assistant], add_generation_prompt=False)
         prompt = render(request,               add_generation_prompt=True)
         emit_text = full[len(prompt):]                # what model would emit
         emit_text = emit_text.rstrip("\\n")          # strip jinja's trailing \\n
-        assert emit_text.endswith("<|ifm|im_end|>")
+        assert emit_text.endswith("<|im_end|>")
         emit_ids = tokenizer.encode(emit_text)
     """
     full_text = _render_text(
@@ -290,12 +279,11 @@ def _realistic_emit_ids(
     )
     emit_text = full_text[len(prompt_text) :]
     # Strip the trailing newline(s) the jinja whitespace adds after
-    # `<|ifm|im_end|>`. The model autoregressively stops at the stop token
-    # without producing trailing whitespace. (The IFM template emits no
-    # newline between messages; the rstrip is a no-op safety net.)
+    # `<|im_end|>`. The model autoregressively stops at the stop token
+    # without producing them.
     emit_text_stop = emit_text.rstrip("\n")
-    assert emit_text_stop.endswith("<|ifm|im_end|>"), (
-        f"unexpected emit_text shape (does not end with <|ifm|im_end|>): " f"{emit_text_stop!r}"
+    assert emit_text_stop.endswith("<|im_end|>"), (
+        f"unexpected emit_text shape (does not end with <|im_end|>): " f"{emit_text_stop!r}"
     )
     return list(tokenizer.encode(emit_text_stop, add_special_tokens=False))
 
@@ -358,20 +346,18 @@ def _drive_session_through_trajectory(
     ids=lambda x: x if isinstance(x, str) else None,
 )
 def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, tito_tok):
-    """Invariants I1+I2+I3: rollout buffer ending at ``<|ifm|im_end|>``
-    matches canonical chat-template render under pure concat (no
-    boundary fix needed).
+    """Invariants I1+I2+I3: rollout buffer ending at ``<|im_end|>`` (no
+    trailing ``\\n``) merges back to canonical chat-template render.
 
     Phase 1 compares the finalized session buffer to canonical. Phase 2
     appends a synthetic tool follow-up so ``merge_tokens`` runs against
-    a buffer whose last token is ``<|ifm|im_end|>`` mid-sequence — a
-    regression guard against anyone reintroducing the legacy ``\\n``
-    fix (which would inject a spurious byte here).
+    a buffer whose last token is ``<|im_end|>`` even on single-turn
+    trajectories (defeats ``trim_trailing_ids`` shielding that would
+    otherwise hide a missing boundary fix).
 
-    ``ASSISTANT_TEXT`` mismatches are tolerated (BPE-merge noise +
-    parser whitespace, non-severe by the comparator);
-    ``SPECIAL_TOKEN_*`` and ``NON_ASSISTANT_TEXT`` mismatches fail
-    the test.
+    ``ASSISTANT_TEXT`` mismatches are tolerated (BPE-merge noise,
+    non-severe by the comparator); ``SPECIAL_TOKEN_*`` and
+    ``NON_ASSISTANT_TEXT`` mismatches fail the test.
     """
     messages = deepcopy(trajectory_cls.MESSAGES)
     tools = deepcopy(getattr(trajectory_cls, "TOOLS", None))
@@ -382,9 +368,9 @@ def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, 
     comparator = tito_tok.create_comparator()
 
     # Phase 1 — finalized buffer vs canonical (covers structural drift in the
-    # whole trajectory). For the IFM template there's no trailing-newline
-    # difference between buffer end-state and canonical render, so this phase
-    # is a pure correctness check rather than relying on ``trim_trailing_ids``.
+    # whole trajectory, but the comparator's ``trim_trailing_ids`` hides
+    # end-of-sequence ``<|im_end|>`` vs ``<|im_end|>\\n`` differences if the
+    # trajectory has only ONE assistant turn).
     expected_final = _render_ids(
         session.messages,
         tito_tok.tokenizer,
@@ -410,9 +396,9 @@ def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, 
     # trajectories: simulate a NEXT-turn env append by calling
     # ``prepare_pretokenized`` with one extra ``tool`` message. This triggers
     # ``tito_tok.merge_tokens(...)`` against a buffer whose last token is
-    # ``<|ifm|im_end|>`` (the model's autoregressive stop), which is the
+    # ``<|im_end|>`` (the model's autoregressive stop), which is the
     # production state the boundary fix exists for. The follow-up moves the
-    # ``<|ifm|im_end|>`` from end-of-sequence to mid-sequence, defeating
+    # ``<|im_end|>`` from end-of-sequence to mid-sequence, defeating
     # ``trim_trailing_ids`` and surfacing missing-fix bugs that phase 1
     # would hide.
     follow_up = {"role": "tool", "content": "[test] synthetic follow-up env"}
@@ -446,11 +432,12 @@ def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, 
 
 
 # ---------------------------------------------------------------------------
-# (Section A cont.) Append-case test — drives every (trajectory shape x env
-# append shape) combination through ``merge_tokens`` against a realistic
-# ``<|ifm|im_end|>``-terminated buffer. Catches both missing-bit-identity
-# bugs in merge_tokens itself and any spurious boundary tokens accidentally
-# reintroduced from the legacy implementation.
+# (Section A cont.) Append-case test — mirrors the breadth of
+# ``test_tito_tokenizer_model_matrix.py`` but routes through
+# ``update_pretokenized_state`` so the buffer used for ``merge_tokens`` has
+# the realistic ``<|im_end|>``-end shape (defeats the comparator's
+# ``trim_trailing_ids`` shielding that hides missing-fix bugs in the
+# model_matrix variant).
 # ---------------------------------------------------------------------------
 
 
@@ -523,7 +510,7 @@ _ENV_APPEND_SHAPES: list[_EnvAppendShape] = [
 )
 def test_append_via_realistic_buffer(traj_name, traj_cls, env_shape, tito_tok):
     """Invariants I3+I4 (core): ``merge_tokens`` against a realistic
-    ``<|ifm|im_end|>``-terminated buffer matches canonical render, for the
+    ``<|im_end|>``-terminated buffer matches canonical render, for the
     cross-product of trajectory shape × env append shape.
 
     8 trajectories × 4 env shapes = 32 ``merge_tokens`` contexts —
@@ -544,7 +531,7 @@ def test_append_via_realistic_buffer(traj_name, traj_cls, env_shape, tito_tok):
     pretokenized_buffer = list(session.token_ids)
     assert pretokenized_buffer and pretokenized_buffer[-1] == tito_tok._im_end_id, (
         f"K2V3 [{traj_name} + {env_shape.name}] setup error: pretokenized "
-        f"buffer should end at <|ifm|im_end|> after drive, got last token "
+        f"buffer should end at <|im_end|> after drive, got last token "
         f"{pretokenized_buffer[-1] if pretokenized_buffer else 'EMPTY'}"
     )
 
@@ -685,11 +672,11 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
     parser shape (plain / + tool_calls / + reasoning / + parallel
     tool_calls) gets exercised.
 
-    ``ASSISTANT_TEXT`` mismatches are tolerated as parser whitespace /
-    BPE noise (matches production CI's strict-assertion exemption).
-    The IFM-compatible parsers (LLM360/sglang#33) may differ from the
-    legacy parsers' rstrip behavior; this test enforces the structural
-    round-trip contract regardless.
+    ``ASSISTANT_TEXT`` mismatches are tolerated — the ``deepseek-r1``
+    parser does not ``rstrip`` reasoning content, so re-render inserts
+    an extra ``\\n`` before ``</think>``. Production classifies this as
+    ``ASSISTANT_TEXT`` and the strict CI check excludes it; this test
+    matches that contract.
 
     Skips if SGLang parsers are unavailable in this environment.
     """
@@ -726,13 +713,13 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
         f"K2V3 [{traj_name}] chat template not append-only: prompt-only " f"render is not a prefix of full render."
     )
     raw_assistant_emit = full_text[len(prompt_text) :].rstrip("\n")
-    assert raw_assistant_emit.endswith("<|ifm|im_end|>"), (
+    assert raw_assistant_emit.endswith("<|im_end|>"), (
         f"K2V3 [{traj_name}] unexpected raw_assistant_emit shape: " f"{raw_assistant_emit!r}"
     )
 
     # 2) Run real ReasoningParser on the raw emit (only if the trajectory's
     #    truth_msg actually has reasoning_content — otherwise there's no
-    #    <ifm|think>...</ifm|think> to extract).
+    #    <think>...</think> to extract).
     text_after_reasoning = raw_assistant_emit
     parsed_reasoning = ""
     if _K2V3_REASONING_PARSER and has_reasoning:
@@ -780,7 +767,7 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
         parsed_msg["reasoning_content"] = parsed_reasoning
 
     # 4) Drive session with parser-derived assistant_message.
-    # ``raw_assistant_emit`` already ends with ``<|ifm|im_end|>`` (the model's
+    # ``raw_assistant_emit`` already ends with ``<|im_end|>`` (the model's
     # autoregressive stop), so the tokenized form is the complete emit.
     # Do NOT append ``tokenizer.eos_token_id`` — for K2V3 that is
     # ``<|endoftext|>``, which the model never emits at turn boundary
@@ -981,7 +968,7 @@ def _drive_one_assistant_turn_through_real_parsers(
         "chat template not append-only between " "render(request_messages) and render(request_messages + [truth_msg])"
     )
     raw_emit = full_text[len(prompt_text) :].rstrip("\n")
-    assert raw_emit.endswith("<|ifm|im_end|>"), f"unexpected raw_emit shape: {raw_emit!r}"
+    assert raw_emit.endswith("<|im_end|>"), f"unexpected raw_emit shape: {raw_emit!r}"
 
     has_reasoning = bool(truth_assistant_msg.get("reasoning_content"))
     parsed_content, parsed_tool_calls, parsed_reasoning = _run_parsers_on_emit(
@@ -1154,8 +1141,7 @@ def test_production_prefix_check_raises_on_intentional_violation(tito_tok):
     """
     session = LinearTrajectory()
     user_q = {"role": "user", "content": "Test."}
-    # IFM template requires assistant messages to carry a thinking field.
-    asst1 = {"role": "assistant", "content": "ok", "reasoning_content": "thinking"}
+    asst1 = {"role": "assistant", "content": "ok"}
 
     # Seed: drive a single normal turn so the session has stored token_ids.
     prompt_ids = _render_ids(
@@ -1164,12 +1150,10 @@ def test_production_prefix_check_raises_on_intentional_violation(tito_tok):
         tools=None,
         add_generation_prompt=True,
     )
-    # The model autoregressively stops at <|ifm|im_end|> (not eos_token,
-    # which is <|ifm|endoftext|> in the IFM family — used for sequence
-    # separators in SFT data, not for message boundaries).
+    eos = getattr(tito_tok.tokenizer, "eos_token_id", None)
     completion_ids = list(tito_tok.tokenizer.encode("ok", add_special_tokens=False))
-    if not completion_ids or completion_ids[-1] != tito_tok._im_end_id:
-        completion_ids.append(tito_tok._im_end_id)
+    if eos is not None and (not completion_ids or completion_ids[-1] != int(eos)):
+        completion_ids.append(int(eos))
     session.update_pretokenized_state(
         request_messages=[user_q],
         assistant_message=asst1,
@@ -1181,7 +1165,7 @@ def test_production_prefix_check_raises_on_intentional_violation(tito_tok):
     # Now feed bogus prompt_ids — completely different from what's stored.
     bogus_prompt = [99999] * (len(session.token_ids) + 5)
     bogus_completion = [12345]
-    asst2 = {"role": "assistant", "content": "next", "reasoning_content": "thinking"}
+    asst2 = {"role": "assistant", "content": "next"}
     tool_msg = {"role": "tool", "content": "irrelevant"}
 
     with pytest.raises(TokenizationError, match=r"pretokenized prefix mismatch"):
@@ -1194,58 +1178,15 @@ def test_production_prefix_check_raises_on_intentional_violation(tito_tok):
         )
 
 
-def test_k2v3_subclass_is_wired(tito_tok):
-    """Sanity: ``get_tito_tokenizer(..., TITOTokenizerType.K2V3)`` returns
-    the current ``K2V3TITOTokenizer`` (IFM) — not silently falling back to
-    the base ``TITOTokenizer`` or accidentally to ``K2V3OldBackupTITOTokenizer``.
-    Catches a future regression where the registry entry is removed or
-    pointed elsewhere."""
-    from miles.utils.chat_template_utils.tito_tokenizer import (
-        K2V3OldBackupTITOTokenizer,
-        K2V3TITOTokenizer,
+def test_k2v3_oldbackup_subclass_is_wired(tito_tok):
+    """Sanity: ``get_tito_tokenizer(..., TITOTokenizerType.K2V3_OLDBACKUP)`` returns
+    the K2V3OldBackup subclass — not silently falling back to the base
+    ``TITOTokenizer`` or accidentally to the current K2V3 class. Catches a
+    future regression where the registry entry is removed or pointed
+    elsewhere."""
+    from miles.utils.chat_template_utils.tito_tokenizer import K2V3OldBackupTITOTokenizer
+
+    assert isinstance(tito_tok, K2V3OldBackupTITOTokenizer), (
+        f"expected K2V3OldBackupTITOTokenizer, got {type(tito_tok).__name__}. "
+        f"_TOKENIZER_REGISTRY[TITOTokenizerType.K2V3_OLDBACKUP] may be misregistered."
     )
-
-    assert isinstance(tito_tok, K2V3TITOTokenizer), (
-        f"expected K2V3TITOTokenizer, got {type(tito_tok).__name__}. "
-        f"_TOKENIZER_REGISTRY[TITOTokenizerType.K2V3] may be misregistered."
-    )
-    assert not isinstance(tito_tok, K2V3OldBackupTITOTokenizer), (
-        "K2V3 is now the IFM tokenizer; TITOTokenizerType.K2V3 must not "
-        "map to K2V3OldBackupTITOTokenizer."
-    )
-
-
-def test_k2v3_init_rejects_legacy_checkpoint(tokenizer):
-    """Invariant I5: instantiating ``K2V3TITOTokenizer`` on a tokenizer
-    whose vocab lacks ``<|ifm|im_end|>`` raises a ValueError at init,
-    pointing users at ``--tito-model k2v3_oldbackup`` for legacy
-    checkpoints.
-
-    Uses a stub tokenizer wrapper that pretends ``<|ifm|im_end|>`` is the
-    unk token — the same condition the production loader hits on a
-    legacy checkpoint that doesn't have the IFM token in vocab.
-    """
-    from miles.utils.chat_template_utils.tito_tokenizer import K2V3TITOTokenizer
-
-    class _LegacyVocabStub:
-        """Wraps ``tokenizer`` but maps <|ifm|im_end|> to unk_token_id, the
-        production-realistic shape of a legacy checkpoint."""
-
-        def __init__(self, real):
-            self._real = real
-            self.unk_token_id = getattr(real, "unk_token_id", 0) or 0
-
-        def __getattr__(self, name):
-            return getattr(self._real, name)
-
-        def convert_tokens_to_ids(self, token):
-            if token == "<|ifm|im_end|>":
-                return self.unk_token_id
-            return self._real.convert_tokens_to_ids(token)
-
-    with pytest.raises(ValueError, match=r"requires <\|ifm\|im_end\|>"):
-        K2V3TITOTokenizer(
-            _LegacyVocabStub(tokenizer),
-            chat_template_kwargs=_K2V3_CHAT_TEMPLATE_KWARGS,
-            allowed_append_roles=_ALLOWED_APPEND_ROLES,
-        )
