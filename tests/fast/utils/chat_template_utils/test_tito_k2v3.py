@@ -1,4 +1,4 @@
-"""TITO contract tests for the K2V3 family — current IFM chat template.
+r"""TITO contract tests for the K2V3 family — current IFM chat template.
 
 This file targets ``K2V3TITOTokenizer`` (``--tito-model k2v3``), used for
 current K2V3 checkpoints (``bbq-8b-mid3_v3`` and later) whose chat
@@ -14,7 +14,7 @@ template is the IFM-style ``bbq-0601`` template:
     ``reasoning_content``) — the template raises otherwise
 
 For legacy K2V3 checkpoints (``bbq-8b-mid3-final`` and earlier) using the
-``<|im_end|>\\n`` template, see ``test_tito_k2v3_oldbackup.py``.
+``<|im_end|>\n`` template, see ``test_tito_k2v3_oldbackup.py``.
 
 Coverage contract — this file protects these invariants:
 
@@ -24,7 +24,7 @@ Coverage contract — this file protects these invariants:
        canonical render token-for-token — no fix required).
   (I3) ``K2V3TITOTokenizer.merge_tokens`` does NOT insert any boundary
        tokens (regression guard: prevents reintroducing the legacy
-       ``\\n`` fix that would break bit-identity here).
+       ``\n`` fix that would break bit-identity here).
   (I4) Appended env messages (tool / user / system) round-trip through
        ``merge_tokens`` and still match the canonical render — across
        both realistic single-turn buffers and multi-turn parser-driven
@@ -259,16 +259,16 @@ def _realistic_emit_ids(
     tools: list[dict] | None,
     tokenizer: AutoTokenizer,
 ) -> list[int]:
-    """Synthesize completion_token_ids that mirror SGLang's autoregressive emit.
+    r"""Synthesize completion_token_ids that mirror SGLang's autoregressive emit.
 
     The model emits starting from inside the assistant generation prompt
-    and stops at ``<|ifm|im_end|>`` (no trailing ``\\n``). We compute this by
+    and stops at ``<|ifm|im_end|>`` (no trailing ``\n``). We compute this by
     diffing two chat-template renders:
 
         full   = render(request + [assistant], add_generation_prompt=False)
         prompt = render(request,               add_generation_prompt=True)
         emit_text = full[len(prompt):]                # what model would emit
-        emit_text = emit_text.rstrip("\\n")          # strip jinja's trailing \\n
+        emit_text = emit_text.rstrip("\n")           # strip jinja's trailing \n
         assert emit_text.endswith("<|ifm|im_end|>")
         emit_ids = tokenizer.encode(emit_text)
     """
@@ -358,14 +358,14 @@ def _drive_session_through_trajectory(
     ids=lambda x: x if isinstance(x, str) else None,
 )
 def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, tito_tok):
-    """Invariants I1+I2+I3: rollout buffer ending at ``<|ifm|im_end|>``
+    r"""Invariants I1+I2+I3: rollout buffer ending at ``<|ifm|im_end|>``
     matches canonical chat-template render under pure concat (no
     boundary fix needed).
 
     Phase 1 compares the finalized session buffer to canonical. Phase 2
     appends a synthetic tool follow-up so ``merge_tokens`` runs against
     a buffer whose last token is ``<|ifm|im_end|>`` mid-sequence — a
-    regression guard against anyone reintroducing the legacy ``\\n``
+    regression guard against anyone reintroducing the legacy ``\n``
     fix (which would inject a spurious byte here).
 
     ``ASSISTANT_TEXT`` mismatches are tolerated (BPE-merge noise +

@@ -345,7 +345,7 @@ class GLM47TITOTokenizer(TITOTokenizer):
 
 
 class K2V3TITOTokenizer(TITOTokenizer):
-    """K2V3 family with the IFM-style chat template (introduced 2026-06-01).
+    r"""K2V3 family with the IFM-style chat template (introduced 2026-06-01).
 
     The current K2V3 chat template (``bbq-0601`` / ``bbq-8b-mid3_v3`` and
     later) namespaces ChatML tokens as ``<|ifm|im_start|>`` /
@@ -359,11 +359,11 @@ class K2V3TITOTokenizer(TITOTokenizer):
     Empirical sanity check::
 
         apply_chat_template([user, asst, user], tokenize=False)
-        → '...A1<|ifm|im_end|><|ifm|im_start|>user\\n...'
-                              ^^ no \\n between messages
+        → '...A1<|ifm|im_end|><|ifm|im_start|>user\n...'
+                              ^^ no \n between messages
 
     For legacy K2V3 checkpoints (``bbq-8b-mid3-final`` and earlier) whose
-    chat template uses ``<|im_end|>\\n`` between messages, use
+    chat template uses ``<|im_end|>\n`` between messages, use
     :class:`K2V3OldBackupTITOTokenizer` (``--tito-model k2v3_oldbackup``)
     instead.
     """
@@ -405,24 +405,24 @@ class K2V3TITOTokenizer(TITOTokenizer):
 
 
 class K2V3OldBackupTITOTokenizer(TITOTokenizer):
-    """K2V3 family with the LEGACY chat template (``<|im_end|>\\n``).
+    r"""K2V3 family with the LEGACY chat template (``<|im_end|>\n``).
 
     Use this with legacy K2V3 checkpoints (``bbq-8b-mid3-final`` and
-    earlier) whose chat template emits ``<|im_end|>\\n`` after every
+    earlier) whose chat template emits ``<|im_end|>\n`` after every
     message (jinja block whitespace between ``{{- '<|im_end|>' }}`` and
     the next block is preserved by default ``trim_blocks``), but where
     the model autoregressively stops at ``<|im_end|>`` without producing
-    the trailing ``\\n``. ``merge_tokens`` inserts the missing newline so
+    the trailing ``\n``. ``merge_tokens`` inserts the missing newline so
     the pretokenized buffer matches the canonical template output.
 
     Empirical sanity check::
 
         apply_chat_template([user, assistant, user], tokenize=False)
-        → '...hello<|im_end|>\\n<|im_start|>user\\n...'
+        → '...hello<|im_end|>\n<|im_start|>user\n...'
                           ^^
 
     For current K2V3 checkpoints (``bbq-8b-mid3_v3`` and later) whose
-    template uses ``<|ifm|im_end|>`` with no trailing ``\\n``, use
+    template uses ``<|ifm|im_end|>`` with no trailing ``\n``, use
     :class:`K2V3TITOTokenizer` (``--tito-model k2v3``) instead.
     """
 

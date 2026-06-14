@@ -1,20 +1,20 @@
-"""TITO contract tests for the K2V3 family — LEGACY chat template.
+r"""TITO contract tests for the K2V3 family — LEGACY chat template.
 
 This file targets ``K2V3OldBackupTITOTokenizer`` (``--tito-model
 k2v3_oldbackup``), used for legacy K2V3 checkpoints (``bbq-8b-mid3-final``
-and earlier) whose chat template emits ``<|im_end|>\\n`` between messages.
+and earlier) whose chat template emits ``<|im_end|>\n`` between messages.
 
 For current K2V3 checkpoints (``bbq-8b-mid3_v3`` and later) using the
 IFM template, see ``test_tito_k2v3.py``.
 
 Coverage contract — this file protects these invariants:
 
-  (I1) Legacy K2V3 canonical chat template renders ``<|im_end|>\\n`` after
-       every message (the trailing ``\\n`` comes from jinja block whitespace).
+  (I1) Legacy K2V3 canonical chat template renders ``<|im_end|>\n`` after
+       every message (the trailing ``\n`` comes from jinja block whitespace).
   (I2) Realistic rollout buffers can end at ``<|im_end|>`` WITHOUT the
-       trailing ``\\n`` — the model stops at ``<|im_end|>`` on
+       trailing ``\n`` — the model stops at ``<|im_end|>`` on
        autoregressive emission.
-  (I3) ``K2V3OldBackupTITOTokenizer.merge_tokens`` inserts the missing ``\\n``
+  (I3) ``K2V3OldBackupTITOTokenizer.merge_tokens`` inserts the missing ``\n``
        when ``prefix[-1] == <|im_end|>``, so the merged buffer matches
        canonical render.
   (I4) Appended env messages (tool / user / system) round-trip through
@@ -49,7 +49,7 @@ The file is split into three banner-marked sections:
 
 Why this file exists separately from ``test_tito_tokenizer_model_matrix.py``:
 that file builds ``pretokenized`` via ``apply_chat_template(..., add_generation_prompt=False)``,
-which already contains the trailing ``\\n``, so the boundary fix path
+which already contains the trailing ``\n``, so the boundary fix path
 never fires and the test passes whether the fix exists or not. This file
 routes through ``update_pretokenized_state`` instead, producing the
 realistic ``prefix[-1] == <|im_end|>`` state that the fix exists for.
@@ -248,16 +248,16 @@ def _realistic_emit_ids(
     tools: list[dict] | None,
     tokenizer: AutoTokenizer,
 ) -> list[int]:
-    """Synthesize completion_token_ids that mirror SGLang's autoregressive emit.
+    r"""Synthesize completion_token_ids that mirror SGLang's autoregressive emit.
 
     The model emits starting from inside the assistant generation prompt
-    and stops at ``<|im_end|>`` (no trailing ``\\n``). We compute this by
+    and stops at ``<|im_end|>`` (no trailing ``\n``). We compute this by
     diffing two chat-template renders:
 
         full   = render(request + [assistant], add_generation_prompt=False)
         prompt = render(request,               add_generation_prompt=True)
         emit_text = full[len(prompt):]                # what model would emit
-        emit_text = emit_text.rstrip("\\n")          # strip jinja's trailing \\n
+        emit_text = emit_text.rstrip("\n")           # strip jinja's trailing \n
         assert emit_text.endswith("<|im_end|>")
         emit_ids = tokenizer.encode(emit_text)
     """
@@ -346,8 +346,8 @@ def _drive_session_through_trajectory(
     ids=lambda x: x if isinstance(x, str) else None,
 )
 def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, tito_tok):
-    """Invariants I1+I2+I3: rollout buffer ending at ``<|im_end|>`` (no
-    trailing ``\\n``) merges back to canonical chat-template render.
+    r"""Invariants I1+I2+I3: rollout buffer ending at ``<|im_end|>`` (no
+    trailing ``\n``) merges back to canonical chat-template render.
 
     Phase 1 compares the finalized session buffer to canonical. Phase 2
     appends a synthetic tool follow-up so ``merge_tokens`` runs against
@@ -369,7 +369,7 @@ def test_buffer_matches_canonical_under_realistic_rollout(name, trajectory_cls, 
 
     # Phase 1 — finalized buffer vs canonical (covers structural drift in the
     # whole trajectory, but the comparator's ``trim_trailing_ids`` hides
-    # end-of-sequence ``<|im_end|>`` vs ``<|im_end|>\\n`` differences if the
+    # end-of-sequence ``<|im_end|>`` vs ``<|im_end|>\n`` differences if the
     # trajectory has only ONE assistant turn).
     expected_final = _render_ids(
         session.messages,
@@ -664,7 +664,7 @@ def _try_json_decode_tool_args(tool_calls: list[dict]) -> list[dict]:
     ids=lambda x: x if isinstance(x, str) else None,
 )
 def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cls, tito_tok):
-    """Invariant I4 with parser substitution: raw assistant emit →
+    r"""Invariant I4 with parser substitution: raw assistant emit →
     ReasoningParser + FunctionCallParser → ``parsed_msg`` → re-render via
     chat_template still round-trips structurally to canonical.
 
@@ -674,7 +674,7 @@ def test_chat_template_round_trip_through_real_sglang_parsers(traj_name, traj_cl
 
     ``ASSISTANT_TEXT`` mismatches are tolerated — the ``deepseek-r1``
     parser does not ``rstrip`` reasoning content, so re-render inserts
-    an extra ``\\n`` before ``</think>``. Production classifies this as
+    an extra ``\n`` before ``</think>``. Production classifies this as
     ``ASSISTANT_TEXT`` and the strict CI check excludes it; this test
     matches that contract.
 
