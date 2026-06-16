@@ -14,6 +14,7 @@ import time
 from contextlib import nullcontext
 from dataclasses import dataclass
 
+import orjson
 from starlette.responses import Response
 
 from miles.rollout.generate_utils.sample_utils import merge_samples
@@ -159,8 +160,8 @@ def proxy_result_to_response(result: dict) -> Response:
     headers = {k: v for k, v in result["headers"].items() if k.lower() not in _DROP_RESPONSE_HEADERS}
     content_type = headers.get("content-type", "")
     try:
-        data = json.loads(content)
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        data = orjson.loads(content)
+    except (orjson.JSONDecodeError, UnicodeDecodeError):
         # Match the old Response(media_type=content_type): pass it through verbatim
         # (incl. "" when upstream sent no content-type) so the wire bytes are identical.
         return Response(content=content, status_code=status_code, headers=headers, media_type=content_type)
@@ -174,8 +175,8 @@ def prepare_chat_request(body: bytes, args, tito_tokenizer) -> tuple:
     request-scoped clone.
     """
     try:
-        request_body = json.loads(body) if body else {}
-    except json.JSONDecodeError as e:
+        request_body = orjson.loads(body) if body else {}
+    except orjson.JSONDecodeError as e:
         raise MessageValidationError(f"invalid JSON body: {e}") from e
 
     # Fake streaming: the backend must stay non-streaming (TITO needs the
@@ -224,7 +225,7 @@ def extract_completion(result: dict) -> tuple:
     completion_token_ids)``; malformed upstream payloads raise
     ``UpstreamResponseError``.
     """
-    response = json.loads(result["response_body"])
+    response = orjson.loads(result["response_body"])
     choice = response.get("choices", [{}])[0]
 
     meta_info = choice.get("meta_info")
@@ -447,7 +448,7 @@ class SessionCore:
             # the checkpoint this request builds on.
             self._maybe_request_addition_r3(request_body, session.token_ids, prompt_token_ids)
 
-            proxy_body = json.dumps(request_body).encode()
+            proxy_body = orjson.dumps(request_body)
             expected_num_assistant = session.num_assistant
         # --- lock released ---
 
@@ -468,7 +469,7 @@ class SessionCore:
                 result = await self.backend.do_proxy(
                     ProxyRequest(method=method, query=query),
                     "v1/chat/completions",
-                    body=_render_json(retry_body),
+                    body=orjson.dumps(retry_body),
                     headers=headers,
                 )
 

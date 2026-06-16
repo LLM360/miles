@@ -4,9 +4,9 @@ Thin layer: converts each HTTP request to primitive inputs, calls
 ``SessionCore``. All session/TITO logic lives in ``core``.
 """
 
-import json
 import logging
 
+import orjson
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from sglang.srt.entrypoints.openai.protocol import ChatCompletionResponse
@@ -96,7 +96,7 @@ def setup_session_routes(app, backend, config: SessionServerConfig, *, use_addit
     @app.get("/health")
     async def health():
         response = await core.health()
-        body = json.loads(response.body)
+        body = orjson.loads(response.body)
         body["anthropic_intermediate_system_supported"] = not merge_inline_system
         return Response(content=_render_json(body), status_code=response.status_code, media_type=JSON_MEDIA_TYPE)
 
@@ -219,7 +219,7 @@ def setup_session_routes(app, backend, config: SessionServerConfig, *, use_addit
         # Starlette matches routes in registration order; keep this before session_proxy.
         # Parse here so malformed input is not reported as an assembly error (422).
         body = await request.body()
-        params = json.loads(body) if body else {}
+        params = orjson.loads(body) if body else {}
         if use_v2:
             return await core.collect_samples(
                 session_id, max_seq_len=params.get("max_seq_len"), agent_metadata=params.get("metadata")

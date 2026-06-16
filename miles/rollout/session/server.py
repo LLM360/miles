@@ -7,12 +7,12 @@
 """
 
 import asyncio
-import json
 import logging
 import os
 import time
 
 import httpx
+import orjson
 import setproctitle
 import uvicorn
 from fastapi import FastAPI
@@ -85,7 +85,7 @@ class SessionServer:
                 type(exc).__name__,
                 exc,
             )
-            error_body = json.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"}).encode()
+            error_body = orjson.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"})
             return {
                 "request_body": body,
                 "response_body": error_body,

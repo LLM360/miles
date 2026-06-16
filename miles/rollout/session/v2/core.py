@@ -1,7 +1,7 @@
-import json
 import logging
 import time
 
+import orjson
 from starlette.responses import Response
 
 from miles.rollout.session.concurrency import run_session_worker
@@ -179,7 +179,7 @@ class SessionCoreV2(SessionCore):
 
             self._maybe_request_addition_r3(request_body, session.active_token_ids(), prompt_token_ids)
 
-            proxy_body = json.dumps(request_body).encode()
+            proxy_body = orjson.dumps(request_body)
             attach_parent = session.active_leaf
         # --- lock released ---
 

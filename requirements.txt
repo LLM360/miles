@@ -34,3 +34,4 @@ xxhash==3.7.1  # disk-delta weight sync (checksum)
 zstandard==0.25.0  # disk-delta weight sync (codec)
 
 psutil
+orjson==3.11.8
