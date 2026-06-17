@@ -27,6 +27,7 @@ from miles.rollout.base_types import (
 from miles.rollout.inference_rollout.compatibility import call_rollout_function, load_rollout_function
 from miles.utils import dumper_utils, tracking_utils
 from miles.utils.environ import enable_experimental_rollout_refactor
+from miles.utils.flops_utils import calculate_workloads
 from miles.utils.health_monitor import RolloutHealthMonitor
 from miles.utils.http_utils import (
     _wrap_ipv6,
@@ -856,7 +857,11 @@ class RolloutManager:
         total_lengths = [len(t) for t in data["tokens"]]
         data["total_lengths"] = total_lengths
 
-        if self.args.balance_data:
+        balance_by_flops = getattr(self.args, "balance_by_flops", False)
+        if balance_by_flops:
+            workloads = calculate_workloads(total_lengths, self.args)
+            partitions = get_seqlen_balanced_partitions(workloads, dp_size, equal_size=True)
+        elif self.args.balance_data:
             partitions = get_seqlen_balanced_partitions(total_lengths, dp_size, equal_size=True)
         else:
             partitions = [range(i, len(total_lengths), dp_size) for i in range(dp_size)]
