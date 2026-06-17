@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from miles.utils.flops_utils import calculate_fwd_flops
+from miles.utils.flops_utils import calculate_workloads
 from miles.utils.seqlen_balancing import (
     expand_bins_by_splitting,
     first_fit_decreasing_pack,
@@ -25,7 +25,7 @@ def has_full_schedule_config(train_parallel_config: dict | None) -> bool:
 
 
 def _calculate_workloads(step_lengths, args):
-    return [calculate_fwd_flops([sl], args) for sl in step_lengths]
+    return calculate_workloads(step_lengths, args)
 
 
 def build_dp_schedule(

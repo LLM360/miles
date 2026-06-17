@@ -201,3 +201,8 @@ def flops_args_from_hf_config(config):
         qk_pos_emb_head_dim=getattr(config, "qk_rope_head_dim", None) or 0,
         v_head_dim=getattr(config, "v_head_dim", None) or 0,
     )
+
+
+def calculate_workloads(seqlens, args):
+    """Per-sequence forward FLOPs for rank assignment and micro-batch balancing."""
+    return [calculate_fwd_flops([seqlen], args) for seqlen in seqlens]

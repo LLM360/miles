@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from miles.utils.audit_utils.witness.allocator import WitnessInfo
 from miles.utils.data import get_minimum_num_micro_batch_size
+from miles.utils.flops_utils import calculate_workloads
 from miles.utils.ft_utils.process_group_utils import GeneralPGUtil
 from miles.utils.object_store import ObjectStoreGetResult
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
@@ -528,7 +529,8 @@ def get_data_iterator(
         for i, num_mbs in enumerate(num_microbatches):
             start, end = i * num_local_gbs, (i + 1) * num_local_gbs
             samples = rollout_data["total_lengths"][start:end]
-            partitions = get_seqlen_balanced_partitions(samples, num_mbs, equal_size=False)
+            weights = calculate_workloads(samples, args) if getattr(args, "balance_by_flops", False) else samples
+            partitions = get_seqlen_balanced_partitions(weights, num_mbs, equal_size=False)
             for j in range(num_mbs):
                 for k in range(len(partitions[j])):
                     partitions[j][k] += start

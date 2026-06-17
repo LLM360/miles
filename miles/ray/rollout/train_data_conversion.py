@@ -6,6 +6,7 @@ import torch
 from miles.ray.rollout.diagnostics import log_rollout_dp_shards
 from miles.utils import object_store
 from miles.utils.dp_schedule import build_dp_schedule, has_full_schedule_config
+from miles.utils.flops_utils import calculate_workloads
 from miles.utils.multi_lora import is_multi_lora_enabled
 from miles.utils.object_store import ValueSpec
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
@@ -364,7 +365,10 @@ def split_train_data_by_dp_raw(args, data: dict[str, Any], *, dp_size: int) -> l
     total_lengths = [len(t) for t in data["tokens"]]
     data["total_lengths"] = total_lengths
 
-    if args.balance_data:
+    if getattr(args, "balance_by_flops", False):
+        workloads = calculate_workloads(total_lengths, args)
+        partitions = get_seqlen_balanced_partitions(workloads, dp_size, equal_size=True)
+    elif args.balance_data:
         partitions = get_seqlen_balanced_partitions(total_lengths, dp_size, equal_size=True)
     else:
         partitions = [range(i, len(total_lengths), dp_size) for i in range(dp_size)]
