@@ -442,11 +442,36 @@ class GLM47TITOTokenizer(TITOTokenizer):
 
 
 # ---------------------------------------------------------------------------
-# Legacy K2V3 implementation
+# Current IFM and legacy K2V3 implementations
 # ---------------------------------------------------------------------------
 
 
 class K2V3TITOTokenizer(TITOTokenizer):
+    """IFM K2V3: adjacent message markers need no inserted newline.
+
+    Legacy checkpoints with ``<|im_end|>`` use ``k2v3_oldbackup``. Both
+    families retain their checkpoint-native template and caller kwargs.
+    """
+
+    _default_assistant_start_str = "<|ifm|im_start|>assistant"
+
+    def __init__(self, tokenizer, chat_template_kwargs=None, assistant_start_str=None):
+        super().__init__(
+            tokenizer,
+            chat_template_kwargs,
+            assistant_start_str or self._default_assistant_start_str,
+        )
+        ifm_end_id = tokenizer.convert_tokens_to_ids("<|ifm|im_end|>")
+        if ifm_end_id is None or ifm_end_id == getattr(tokenizer, "unk_token_id", None):
+            raise ValueError(
+                "K2V3TITOTokenizer requires <|ifm|im_end|> in the vocabulary. "
+                "For legacy checkpoints use --tito-model k2v3_oldbackup."
+            )
+        self._im_end_id = ifm_end_id
+        self.trailing_token_ids = frozenset({ifm_end_id})
+
+
+class K2V3OldBackupTITOTokenizer(TITOTokenizer):
     """K2V3 family.
 
     The chat template emits ``<|im_end|>\\n`` after every message (jinja
@@ -476,10 +501,16 @@ class K2V3TITOTokenizer(TITOTokenizer):
             chat_template_kwargs,
             assistant_start_str or self._default_assistant_start_str,
         )
+        im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
+        if im_end_id is None or im_end_id == getattr(tokenizer, "unk_token_id", None):
+            raise ValueError(
+                "K2V3OldBackupTITOTokenizer requires <|im_end|> in the vocabulary. "
+                "For IFM checkpoints use --tito-model k2v3."
+            )
         nl_ids = tokenizer.encode("\n", add_special_tokens=False)
         assert len(nl_ids) == 1, f"Expected single newline token, got {nl_ids}"
         self._newline_id: int = nl_ids[0]
-        self._im_end_id: int = tokenizer.convert_tokens_to_ids("<|im_end|>")
+        self._im_end_id: int = im_end_id
         self.trailing_token_ids = frozenset({self._newline_id})
 
     def merge_tokens(
@@ -930,6 +961,7 @@ class TITOTokenizerType(StrEnum):
     QWENNEXT = "qwennext"
     GLM47 = "glm47"
     K2V3 = "k2v3"
+    K2V3_OLDBACKUP = "k2v3_oldbackup"
     NEMOTRON3 = "nemotron3"
     KIMI25 = "kimi25"
     KIMI26 = "kimi26"
@@ -959,6 +991,8 @@ class TITOTokenizerType(StrEnum):
                 return GLM47TITOTokenizer
             case cls.K2V3:
                 return K2V3TITOTokenizer
+            case cls.K2V3_OLDBACKUP:
+                return K2V3OldBackupTITOTokenizer
             case cls.NEMOTRON3:
                 return Nemotron3TITOTokenizer
             case cls.KIMI25:
