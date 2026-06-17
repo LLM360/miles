@@ -1200,18 +1200,14 @@ def test_k2v3_subclass_is_wired(tito_tok):
     the base ``TITOTokenizer`` or accidentally to ``K2V3OldBackupTITOTokenizer``.
     Catches a future regression where the registry entry is removed or
     pointed elsewhere."""
-    from miles.utils.chat_template_utils.tito_tokenizer import (
-        K2V3OldBackupTITOTokenizer,
-        K2V3TITOTokenizer,
-    )
+    from miles.utils.chat_template_utils.tito_tokenizer import K2V3OldBackupTITOTokenizer, K2V3TITOTokenizer
 
     assert isinstance(tito_tok, K2V3TITOTokenizer), (
         f"expected K2V3TITOTokenizer, got {type(tito_tok).__name__}. "
         f"_TOKENIZER_REGISTRY[TITOTokenizerType.K2V3] may be misregistered."
     )
     assert not isinstance(tito_tok, K2V3OldBackupTITOTokenizer), (
-        "K2V3 is now the IFM tokenizer; TITOTokenizerType.K2V3 must not "
-        "map to K2V3OldBackupTITOTokenizer."
+        "K2V3 is now the IFM tokenizer; TITOTokenizerType.K2V3 must not " "map to K2V3OldBackupTITOTokenizer."
     )
 
 
