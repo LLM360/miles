@@ -125,3 +125,13 @@ def calculate_fwd_flops(
         total_flops += calculate_lm_head_flops(seqlen, hidden_size, vocab_size)
 
     return total_flops
+
+
+def calculate_workloads(seqlens, args):
+    """Return per-sequence forward FLOPs for Karmarkar-Karp balancing weights.
+
+    One workload value per sequence length, capturing the quadratic cost of
+    attention plus the model architecture (MoE, LoRA, attention projections).
+    Used by ``--balance-by-flops`` for DP rank assignment and micro-batch packing.
+    """
+    return [calculate_fwd_flops([sl], args) for sl in seqlens]
