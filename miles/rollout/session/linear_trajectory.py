@@ -49,10 +49,30 @@ class LinearTrajectory:
 
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
     closing: bool = field(default=False, repr=False, compare=False)
+    # Set by POST /sessions/{id}/close during a rollout abort. The in-flight
+    # chat_completions proxy races its do_proxy against this event and, when it
+    # fires, cancels + explicitly closes the proxy connection (so the router
+    # aborts the worker) and returns a synthesized finish_reason="abort".
+    abort_event: "asyncio.Event | None" = field(default=None, repr=False, compare=False)
+    # Handle to the single in-flight proxy task for this (linear) session, so
+    # /close can report whether a turn was in flight. None when idle.
+    inflight_proxy_task: "asyncio.Task | None" = field(default=None, repr=False, compare=False)
     messages: list[dict[str, Any]] = field(default_factory=list)
     records: list[SessionRecord] = field(default_factory=list)
     trajectory_token_ids: list[list[int]] = field(default_factory=list)
     num_assistant: int = 0
+
+    def get_abort_event(self) -> asyncio.Event:
+        """Return the per-session abort event, creating it on first use (on-loop).
+
+        Lazy (not a ``default_factory``) so the Event binds to the running event
+        loop rather than import/instantiation time. The check+create has no
+        ``await`` between read and assignment, so concurrent callers on the single
+        session-server loop cannot create two distinct events.
+        """
+        if self.abort_event is None:
+            self.abort_event = asyncio.Event()
+        return self.abort_event
 
     @property
     def token_ids(self) -> list[int]:

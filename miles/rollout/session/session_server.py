@@ -7,11 +7,12 @@ load balancing and forwarding to worker engines.
 """
 
 import asyncio
+import contextlib
+import json
 import logging
 import time
 
 import httpx
-import orjson
 import setproctitle
 import uvicorn
 from fastapi import FastAPI, Request
@@ -67,7 +68,8 @@ class SessionServer:
         except httpx.TransportError as exc:
             _elapsed_ms = (time.monotonic() - _t_proxy_start) * 1000.0
             logger.warning(
-                "[session-server] proxy_transport_error method=%s path=%s url=%s elapsed_ms=%.1f error_type=%s error=%s",
+                "[session-server] proxy_transport_error method=%s path=%s url=%s elapsed_ms=%.1f "
+                "error_type=%s error=%s",
                 request.method,
                 path,
                 url,
@@ -75,7 +77,7 @@ class SessionServer:
                 type(exc).__name__,
                 exc,
             )
-            error_body = orjson.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"})
+            error_body = json.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"}).encode()
             return {
                 "request_body": body,
                 "response_body": error_body,
@@ -89,6 +91,88 @@ class SessionServer:
             "status_code": response.status_code,
             "headers": dict(response.headers),
         }
+
+    # Sentinel returned by do_proxy_with_abort when the abort event fired first.
+    ABORTED = object()
+
+    async def do_proxy_with_abort(
+        self,
+        request: Request,
+        path: str,
+        body: bytes,
+        abort_event: asyncio.Event,
+    ):
+        """Proxy like do_proxy, but race the request against ``abort_event``.
+
+        Returns the normal do_proxy result dict on success, or ``self.ABORTED`` if
+        the abort fired first -- after cancelling the request and explicitly
+        closing its connection so the router aborts the worker generation.
+
+        A DEDICATED per-request client is used (not the shared pool) so the abort
+        path can force the socket closed. The GO/NO-GO spike
+        (scripts/spikes/abort_propagation_spike.py) confirmed this aborts the
+        engine sub-second; explicit aclose() is kept for cross-version determinism.
+        """
+        url = f"{self.backend_url}/{path}"
+        if request.url.query:
+            url = f"{url}?{request.url.query}"
+        headers = {
+            k: v
+            for k, v in dict(request.headers).items()
+            if k.lower() not in ("content-length", "transfer-encoding", "host")
+        }
+
+        req_client = httpx.AsyncClient(timeout=self.client.timeout)
+        proxy_task = asyncio.create_task(
+            req_client.request(request.method, url, content=body, headers=headers)
+        )
+        abort_task = asyncio.create_task(abort_event.wait())
+        try:
+            done, _pending = await asyncio.wait(
+                {proxy_task, abort_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if proxy_task not in done:
+                # Abort fired first: cancel + drain the request, then force-close
+                # the connection (sends FIN) so the router aborts the worker.
+                proxy_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError):
+                    await proxy_task
+                await req_client.aclose()
+                return self.ABORTED
+
+            # Proxy completed first.
+            try:
+                response = proxy_task.result()
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "[session-server] proxy_transport_error path=%s url=%s error_type=%s error=%s",
+                    path,
+                    url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return {
+                    "request_body": body,
+                    "response_body": json.dumps(
+                        {"error": f"backend transport error: {type(exc).__name__}: {exc}"}
+                    ).encode(),
+                    "status_code": 502,
+                    "headers": {"content-type": "application/json"},
+                }
+            content = await response.aread()
+            return {
+                "request_body": body,
+                "response_body": content,
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+            }
+        finally:
+            if not abort_task.done():
+                abort_task.cancel()
+            if not proxy_task.done():
+                proxy_task.cancel()
+            # Idempotent; already closed on the abort branch.
+            await req_client.aclose()
 
     def build_proxy_response(self, result: dict) -> Response:
         content = result["response_body"]
@@ -108,9 +192,9 @@ class SessionServer:
         }
         content_type = headers.get("content-type", "")
         try:
-            data = orjson.loads(content)
+            data = json.loads(content)
             return JSONResponse(content=data, status_code=status_code, headers=headers)
-        except (orjson.JSONDecodeError, UnicodeDecodeError):
+        except (json.JSONDecodeError, UnicodeDecodeError):
             return Response(content=content, status_code=status_code, headers=headers, media_type=content_type)
 
 
@@ -135,7 +219,8 @@ async def _stats_logger_loop(worker_port, interval_seconds: float = 30.0):
             if stats is None:
                 # Routes not wired yet (very early startup) — emit a sparse log.
                 logger.info(
-                    "[session-server] stats worker_port=%s reqs_total=0 reqs_since_last=0 inflight_now=0 turns_completed=0",
+                    "[session-server] stats worker_port=%s reqs_total=0 reqs_since_last=0 "
+                    "inflight_now=0 turns_completed=0",
                     worker_port,
                 )
             else:
@@ -148,7 +233,8 @@ async def _stats_logger_loop(worker_port, interval_seconds: float = 30.0):
                 rss_mb = mi.rss / 1024.0 / 1024.0
                 vms_mb = mi.vms / 1024.0 / 1024.0
                 logger.info(
-                    "[session-server] stats worker_port=%s reqs_total=%d reqs_since_last=%d inflight_now=%d turns_completed=%d rss_mb=%.0f vms_mb=%.0f",
+                    "[session-server] stats worker_port=%s reqs_total=%d reqs_since_last=%d "
+                    "inflight_now=%d turns_completed=%d rss_mb=%.0f vms_mb=%.0f",
                     worker_port,
                     reqs_total,
                     delta,

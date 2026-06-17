@@ -1674,6 +1674,52 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "append their own planning/self-reflection turns before the "
                 "next tool or user message.",
             )
+            # --- Agent-first abort (Phase 3) ---
+            parser.add_argument(
+                "--agent-server-url",
+                type=str,
+                default=os.environ.get("AGENT_SERVER_URL") or os.environ.get("SWE_AGENT_URL"),
+                help="Harbor server base URL for agent-first rollout abort (Layer 1: "
+                "POST /rollouts/{id}/abort). Defaults to $AGENT_SERVER_URL then "
+                "$SWE_AGENT_URL -- the SAME resolution the agent function uses, so the "
+                "abort discriminator never silently diverges from the agent's harbor "
+                "target. Unset (e.g. session-server-only runs with no harbor) -> abort "
+                "falls back to engine abort_all, which is correct for that topology.",
+            )
+            parser.add_argument(
+                "--rollout-abort-grace-t1",
+                type=float,
+                default=5.0,
+                help="Seconds to await cooperative agent teardown before re-signalling "
+                "the harbor server (abort Layer 2). Sized for the post-env.close() path: "
+                "harbor poller pickup (~1s) + LLM/exec interrupt + agent unwind. A tight "
+                "T1 is harmless -- overshoot only triggers an idempotent re-signal, never "
+                "a force-cancel (that is gated on T2).",
+            )
+            parser.add_argument(
+                "--rollout-abort-deadline-t2",
+                type=float,
+                default=15.0,
+                help="Seconds before force-cancelling still-pending rollout tasks and "
+                "broadcasting abort_all to the engines (abort Layer 2 hard cutoff). This "
+                "is the safety-critical knob: it must cover the slowest trial's full "
+                "unwind, including environment.stop()'s forced-delete round-trip on the "
+                "/run critical path. Raise it if live abort measurement shows slow "
+                "teardown; correctness is guaranteed regardless by the Layer-3 "
+                "fail-closed quiescence gate.",
+            )
+            parser.add_argument(
+                "--rollout-abort-quiesce-retries",
+                type=int,
+                default=15,
+                help="Layer-3 quiescence gate: max /get_load polls before failing the step.",
+            )
+            parser.add_argument(
+                "--rollout-abort-quiesce-interval",
+                type=float,
+                default=0.5,
+                help="Layer-3 quiescence gate: seconds between /get_load polls.",
+            )
             return parser
 
         def add_user_provided_function_arguments(parser):

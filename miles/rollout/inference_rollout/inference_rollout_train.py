@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from argparse import Namespace
 from collections.abc import Callable
 
@@ -9,40 +10,78 @@ from tqdm import tqdm
 
 from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
+from miles.rollout.inference_rollout.abort_utils import engines_quiescent, run_abort_protocol
 from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
-from miles.utils.misc import as_completed_async, load_function
+from miles.utils.misc import load_function
 from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
 
-async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[list[Sample]]:
-    args = state.args
+async def _signal_harbor(harbor_url: str, rollout_id: int) -> None:
+    """Layer 1/2: tell the harbor server to abort all in-flight trials of this
+    rollout step. Best-effort -- escalation + the quiescence gate backstop it."""
+    try:
+        await post(f"{harbor_url}/rollouts/{rollout_id}/abort", {})
+    except Exception as exc:
+        logger.warning(f"[abort] harbor signal failed url={harbor_url} rollout_id={rollout_id}: {exc!r}")
 
+
+async def _abort_all_engines(args: Namespace) -> None:
+    urls = await get_worker_urls(args)
+    logger.info(f"[abort] abort_all -> {urls}")
+    results = await asyncio.gather(
+        *[post(f"{url}/abort_request", {"abort_all": True}) for url in urls],
+        return_exceptions=True,
+    )
+    for url, r in zip(urls, results):
+        if isinstance(r, Exception):
+            logger.warning(f"[abort] abort_all failed for {url}: {r!r}")
+
+
+async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[list[Sample]]:
+    """Three-layer end-of-step abort (agent-first abort design).
+
+    Agentic rollouts: Layer 1 signals the harbor server (agents tear down their
+    own sessions -> engine aborts), with T1/T2 escalation to abort_all. Vanilla
+    rollouts keep the blunt abort_all. Layer 3 gate (assert_engines_quiescent)
+    runs before returning, so the weight update never starts on a live decode.
+    Partial-sample collection is preserved.
+    """
+    args = state.args
     assert not state.aborted
     state.aborted = True
 
-    urls = await get_worker_urls(args)
-    logger.info(f"Abort request for {urls}")
-    await asyncio.gather(*[post(f"{url}/abort_request", {"abort_all": True}) for url in urls])
+    harbor_url = getattr(args, "agent_server_url", None)
+    is_agentic = bool(
+        getattr(args, "use_session_server", False)
+        and getattr(args, "custom_agent_function_path", None)
+        and harbor_url
+    )
 
-    # make sure all the pending tasks are finished
-    aborted_samples = []
-    async for group in as_completed_async(pendings):
-        if not args.partial_rollout:
-            continue
+    async def _signal():
+        await _signal_harbor(harbor_url, rollout_id)
 
-        # for partial rollout, collect the partial samples into the data buffer
-        for sample in group:
-            if sample.response and "start_rollout_id" not in sample.metadata:
-                sample.metadata["start_rollout_id"] = rollout_id
-        aborted_samples.append(group)
+    async def _abort_all():
+        await _abort_all_engines(args)
+
+    aborted_samples = await run_abort_protocol(
+        pendings,
+        partial_rollout=args.partial_rollout,
+        rollout_id=rollout_id,
+        is_agentic=is_agentic,
+        t1=getattr(args, "rollout_abort_grace_t1", 5.0),
+        t2=getattr(args, "rollout_abort_deadline_t2", 15.0),
+        signal_harbor=_signal,
+        abort_all_engines=_abort_all,
+    )
 
     if args.partial_rollout:
-        logger.info(f"Collected {sum(len(x) for x in aborted_samples)} partial samples into the data buffer")
+        logger.info(f"[abort] collected {sum(len(x) for x in aborted_samples)} partial samples")
 
+    await assert_engines_quiescent(args)  # Layer 3 invariant gate
     return aborted_samples
 
 
@@ -53,6 +92,52 @@ async def get_worker_urls(args: Namespace):
     else:
         response = await get(f"http://{args.sglang_router_ip}:{args.sglang_router_port}/workers")
         return [worker["url"] for worker in response["workers"]]
+
+
+async def assert_engines_quiescent(args: Namespace) -> None:
+    """Layer-3 invariant gate: hard-fail the step unless every engine is idle
+    before the weight update. Trusts nothing in Layers 1-2 -- a residual in-flight
+    decode would poison the weight update."""
+    urls = await get_worker_urls(args)
+
+    async def _fetch():
+        # Each worker's /get_load returns a LIST of per-shard GetLoadReqOutput dicts.
+        results = await asyncio.gather(*[get(f"{u}/get_load") for u in urls], return_exceptions=True)
+        loads: list[dict] = []
+        for r in results:
+            if isinstance(r, Exception):
+                # Unreachable worker -> treat as non-quiescent (force retry/fail).
+                loads.append({"num_reqs": 1, "num_waiting_reqs": 0})
+            elif isinstance(r, list):
+                loads.extend(r)
+            elif isinstance(r, dict):
+                loads.append(r)
+        return loads
+
+    ok = await engines_quiescent(
+        _fetch,
+        retries=getattr(args, "rollout_abort_quiesce_retries", 15),
+        interval=getattr(args, "rollout_abort_quiesce_interval", 0.5),
+    )
+    if not ok:
+        raise RuntimeError(
+            "[abort] engines NOT quiescent after abort -- refusing the weight update "
+            "(a residual in-flight decode would poison training)."
+        )
+    logger.info("[abort] engines quiescent -- weight update may proceed")
+
+
+def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:
+    """Stamp the dispatching rollout id into every sample's metadata.
+
+    sample.metadata flows through the agent function into the harbor /run
+    payload, so trial records carry the step that executed them (a
+    partial-rollout sample re-dispatched later is re-stamped; its origin
+    stays in metadata["start_rollout_id"]).
+    """
+    for group in samples:
+        for sample in group:
+            sample.metadata["rollout_id"] = rollout_id
 
 
 def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
@@ -95,6 +180,7 @@ async def generate_rollout_async(
         while len(data) + len(pendings) < target_data_size:
             # get samples from the buffer and submit the generation requests.
             samples = data_source(args.over_sampling_batch_size)
+            stamp_rollout_id(samples, rollout_id)
             pendings.update(submit_generate_tasks(state, samples))
 
         # wait for the generation to finish

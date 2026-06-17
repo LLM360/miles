@@ -1,9 +1,9 @@
 import asyncio
+import json
 import logging
 import time
 import uuid
 
-import orjson
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
@@ -144,6 +144,34 @@ def setup_session_routes(app, backend, args):
             session.lock.release()
         return Response(status_code=204)
 
+    @app.post("/sessions/{session_id}/close")
+    async def close_session(session_id: str):
+        """Idempotent, terminal abort latch for one session (rollout abort).
+
+        Latches closing=True (so new turns are rejected), signals the abort event
+        (the in-flight chat_completions proxy observes it and cancels + force-closes
+        its upstream connection so the router aborts the worker), and reports
+        whether a turn was in flight. The check+latch is synchronous (no await
+        between read and set), so it is atomic under the single-loop scheduler --
+        the same guarantee delete_session relies on. Engine quiescence is owned by
+        the trainer's Layer-3 /get_load gate; the return value is observability.
+        """
+        session = registry.sessions.get(session_id)
+        if session is None:
+            # Unknown / already-removed session: idempotent no-op success.
+            return {"closed": True, "aborted_inflight": False}
+        already = session.closing
+        session.closing = True
+        session.get_abort_event().set()
+        had_inflight = (
+            session.inflight_proxy_task is not None and not session.inflight_proxy_task.done()
+        )
+        logger.info(
+            f"[session-server] close: session_id={session_id} already_closing={already} "
+            f"aborted_inflight={had_inflight}"
+        )
+        return {"closed": True, "aborted_inflight": had_inflight}
+
     @app.post("/sessions/{session_id}/v1/chat/completions")
     async def chat_completions(request: Request, session_id: str):
         """Proxy a chat completion through SGLang with TITO token tracking.
@@ -180,14 +208,14 @@ def setup_session_routes(app, backend, args):
         # outside the critical section, which actually trims lock-hold time.
         _raw_body = await request.body()
         try:
-            _early_request_body = orjson.loads(_raw_body) if _raw_body else {}
-        except orjson.JSONDecodeError:
+            _early_request_body = json.loads(_raw_body) if _raw_body else {}
+        except json.JSONDecodeError:
             _early_request_body = {}
         _messages_len = len(_early_request_body.get("messages") or [])
 
         _stats["reqs_total"] += 1
         logger.info(
-            "[session-server] chat_start worker_port=%s session_id=%s req_id=%s messages_len=%d inflight_before=%d",
+            "[session-server] chat_start worker_port=%s session_id=%s req_id=%s " "messages_len=%d inflight_before=%d",
             worker_port,
             session_id,
             req_id,
@@ -199,6 +227,10 @@ def setup_session_routes(app, backend, args):
             session = registry.get_or_create_session(session_id)
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
+            # Register the in-flight handle synchronously here -- once we commit to
+            # processing, there is no await before this point, so a concurrent
+            # /close observing inflight_proxy_task cannot see a stale None.
+            session.inflight_proxy_task = asyncio.current_task()
 
             # --- Phase 1: prepare request (lock held briefly) ---
             t_lock_wait_start = time.monotonic()
@@ -249,22 +281,50 @@ def setup_session_routes(app, backend, args):
                         len(pretokenized["input_ids"]),
                     )
 
-                body = orjson.dumps(request_body)
+                body = json.dumps(request_body).encode()
                 expected_num_assistant = session.num_assistant
             # --- lock released here ---
 
-            # Tag every turn of this session with a routing key so a routing-key
-            # gateway policy (manual / consistent_hashing) pins the session to one
-            # worker, reusing the worker that holds its KV cache. Emitted
-            # unconditionally: the gateway is launched externally (miles does not
-            # know its policy), and policies that don't route on the key
-            # (e.g. cache_aware) ignore the header.
-            proxy_headers = {**dict(request.headers), "X-SMG-Routing-Key": session_id}
-
             # --- Phase 2: proxy to SGLang (NO lock held) ---
+            def _synth_abort_response():
+                # Trainer aborted this session mid-turn (POST /sessions/{id}/close).
+                # do_proxy_with_abort already force-closed the upstream connection so
+                # the router aborts the worker. Return a synthesized finish_reason=
+                # "abort" the agent treats as terminal; do NOT record it (Phase 3 is
+                # skipped, same as the closing-skip path).
+                logger.info(
+                    f"[session-server] chat aborted mid-proxy: session_id={session_id} req_id={req_id}"
+                )
+                abort_body = json.dumps(
+                    {
+                        "id": f"chatcmpl-abort-{req_id}",
+                        "object": "chat.completion",
+                        "model": _early_request_body.get("model", ""),
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {"role": "assistant", "content": ""},
+                                "finish_reason": "abort",
+                            }
+                        ],
+                        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                    }
+                ).encode()
+                return backend.build_proxy_response(
+                    {
+                        "status_code": 200,
+                        "response_body": abort_body,
+                        "headers": {"content-type": "application/json"},
+                    }
+                )
+
             t_proxy_start = time.monotonic()
-            result = await backend.do_proxy(request, "v1/chat/completions", body=body, headers=proxy_headers)
+            result = await backend.do_proxy_with_abort(
+                request, "v1/chat/completions", body, session.get_abort_event()
+            )
             t_proxy_end = time.monotonic()
+            if result is backend.ABORTED:
+                return _synth_abort_response()
 
             # If SGLang returned a non-200 error (e.g. 400 for context too long),
             # pass it through to the agent without recording — the agent can retry
@@ -286,17 +346,22 @@ def setup_session_routes(app, backend, args):
                         session_id,
                     )
                     request_body.pop("input_ids", None)
-                    retry_body = orjson.dumps(request_body)
-                    result = await backend.do_proxy(
-                        request, "v1/chat/completions", body=retry_body, headers=proxy_headers
+                    retry_body = json.dumps(request_body).encode()
+                    # Use the abort-aware proxy on the retry too, so a /close racing
+                    # the rare rollback-retry still aborts cooperatively (Layer 2/3
+                    # are the correctness backstops, but keep Layer-1 consistent).
+                    result = await backend.do_proxy_with_abort(
+                        request, "v1/chat/completions", retry_body, session.get_abort_event()
                     )
                     t_proxy_end = time.monotonic()
+                    if result is backend.ABORTED:
+                        return _synth_abort_response()
                     if result["status_code"] != 200:
                         return backend.build_proxy_response(result)
                 else:
                     return backend.build_proxy_response(result)
 
-            response = orjson.loads(result["response_body"])
+            response = json.loads(result["response_body"])
 
             choice = response.get("choices", [{}])[0]
 
@@ -308,7 +373,8 @@ def setup_session_routes(app, backend, args):
             assistant_message = choice.get("message", {})
             if assistant_message.get("content") is None:
                 raise UpstreamResponseError(
-                    "assistant message content is None, when tool call parser failed SGLang should still return an empty content rather than None. Please check your modified SGLang version."
+                    "assistant message content is None, when tool call parser failed SGLang should still return "
+                    "an empty content rather than None. Please check your modified SGLang version."
                 )
 
             prompt_token_ids = choice.get("prompt_token_ids")
@@ -318,7 +384,10 @@ def setup_session_routes(app, backend, args):
             actual_output_logprobs_len = len(output_token_logprobs)
             if actual_output_logprobs_len != completion_tokens:
                 raise UpstreamResponseError(
-                    f"invalid chat completion response: len(output_token_logprobs)={actual_output_logprobs_len} != completion_tokens={completion_tokens}. Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
+                    "invalid chat completion response: "
+                    f"len(output_token_logprobs)={actual_output_logprobs_len} "
+                    f"!= completion_tokens={completion_tokens}. "
+                    f"Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
                 )
 
             completion_token_ids = [t[1] for t in output_token_logprobs]
@@ -339,7 +408,11 @@ def setup_session_routes(app, backend, args):
                     # SessionStateConflictError instead ships separately (see
                     # the follow-up lock-restore PR).
                     logger.warning(
-                        "[session-server] state_changed_during_proxy worker_port=%s session_id=%s req_id=%s expected_num_assistant=%d got_num_assistant=%d inflight_chat_count=%d caller_request_id=%s proxy_elapsed_ms=%.1f",
+                        "[session-server] state_changed_during_proxy "
+                        "worker_port=%s session_id=%s req_id=%s "
+                        "expected_num_assistant=%d got_num_assistant=%d "
+                        "inflight_chat_count=%d caller_request_id=%s "
+                        "proxy_elapsed_ms=%.1f",
                         worker_port,
                         session_id,
                         req_id,
@@ -390,12 +463,19 @@ def setup_session_routes(app, backend, args):
             return backend.build_proxy_response(result)
         finally:
             _inflight_chat["count"] -= 1
+            # Clear the in-flight proxy handle (guarded: `session` is unbound on
+            # the early draining/404 path that raises before get_or_create).
+            if (_sess := locals().get("session")) is not None:
+                _sess.inflight_proxy_task = None
             t_handler_end = time.monotonic()
             # One INFO log per request, irrespective of which path the handler
             # took (success, 404, upstream error). Spans that didn't run come
             # through as 0.0 ms — a valid signal ("we never got there").
             logger.info(
-                "[session-server] chat_done worker_port=%s session_id=%s req_id=%s lock_wait_ms=%.1f tokenize_in_ms=%.1f proxy_elapsed_ms=%.1f tokenize_out_ms=%.1f total_ms=%.1f inflight_now=%d prompt_tokens=%d completion_tokens=%d",
+                "[session-server] chat_done worker_port=%s session_id=%s req_id=%s "
+                "lock_wait_ms=%.1f tokenize_in_ms=%.1f proxy_elapsed_ms=%.1f "
+                "tokenize_out_ms=%.1f total_ms=%.1f inflight_now=%d "
+                "prompt_tokens=%d completion_tokens=%d",
                 worker_port,
                 session_id,
                 req_id,
