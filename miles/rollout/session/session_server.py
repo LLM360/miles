@@ -7,16 +7,17 @@ load balancing and forwarding to worker engines.
 """
 
 import asyncio
-import contextlib
-import json
 import logging
 import time
 
 import httpx
+import orjson
 import setproctitle
+import sglang_router
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from packaging.version import parse
 from starlette.responses import Response
 
 from miles.rollout.session.sessions import get_worker_stats, setup_session_routes
@@ -29,6 +30,7 @@ class SessionServer:
     requests through the inference router (sglang or miles)."""
 
     def __init__(self, args, backend_url: str):
+        self.args = args
         self.backend_url = backend_url
         self.app = FastAPI()
 
@@ -77,7 +79,7 @@ class SessionServer:
                 type(exc).__name__,
                 exc,
             )
-            error_body = json.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"}).encode()
+            error_body = orjson.dumps({"error": f"backend transport error: {type(exc).__name__}: {exc}"})
             return {
                 "request_body": body,
                 "response_body": error_body,
@@ -92,87 +94,25 @@ class SessionServer:
             "headers": dict(response.headers),
         }
 
-    # Sentinel returned by do_proxy_with_abort when the abort event fired first.
-    ABORTED = object()
+    async def get_worker_urls(self) -> list[str]:
+        """Worker base URLs from the router (same resolution the trainer uses)."""
+        if parse(sglang_router.__version__) <= parse("0.2.1") or getattr(self.args, "use_miles_router", False):
+            resp = await self.client.get(f"{self.backend_url}/list_workers")
+            return resp.json()["urls"]
+        resp = await self.client.get(f"{self.backend_url}/workers")
+        return [w["url"] for w in resp.json()["workers"]]
 
-    async def do_proxy_with_abort(
-        self,
-        request: Request,
-        path: str,
-        body: bytes,
-        abort_event: asyncio.Event,
-    ):
-        """Proxy like do_proxy, but race the request against ``abort_event``.
-
-        Returns the normal do_proxy result dict on success, or ``self.ABORTED`` if
-        the abort fired first -- after cancelling the request and explicitly
-        closing its connection so the router aborts the worker generation.
-
-        A DEDICATED per-request client is used (not the shared pool) so the abort
-        path can force the socket closed. The GO/NO-GO spike
-        (scripts/spikes/abort_propagation_spike.py) confirmed this aborts the
-        engine sub-second; explicit aclose() is kept for cross-version determinism.
-        """
-        url = f"{self.backend_url}/{path}"
-        if request.url.query:
-            url = f"{url}?{request.url.query}"
-        headers = {
-            k: v
-            for k, v in dict(request.headers).items()
-            if k.lower() not in ("content-length", "transfer-encoding", "host")
-        }
-
-        req_client = httpx.AsyncClient(timeout=self.client.timeout)
-        proxy_task = asyncio.create_task(
-            req_client.request(request.method, url, content=body, headers=headers)
+    async def abort_request(self, rid: str) -> None:
+        """Ask SGLang to abort one request id. Broadcast to every worker -- only the
+        owner acts (an unknown rid is a 200 no-op). Raises only if all workers fail."""
+        urls = await self.get_worker_urls()
+        results = await asyncio.gather(
+            *(self.client.post(f"{url}/abort_request", json={"rid": rid}) for url in urls),
+            return_exceptions=True,
         )
-        abort_task = asyncio.create_task(abort_event.wait())
-        try:
-            done, _pending = await asyncio.wait(
-                {proxy_task, abort_task}, return_when=asyncio.FIRST_COMPLETED
-            )
-            if proxy_task not in done:
-                # Abort fired first: cancel + drain the request, then force-close
-                # the connection (sends FIN) so the router aborts the worker.
-                proxy_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError):
-                    await proxy_task
-                await req_client.aclose()
-                return self.ABORTED
-
-            # Proxy completed first.
-            try:
-                response = proxy_task.result()
-            except httpx.HTTPError as exc:
-                logger.warning(
-                    "[session-server] proxy_transport_error path=%s url=%s error_type=%s error=%s",
-                    path,
-                    url,
-                    type(exc).__name__,
-                    exc,
-                )
-                return {
-                    "request_body": body,
-                    "response_body": json.dumps(
-                        {"error": f"backend transport error: {type(exc).__name__}: {exc}"}
-                    ).encode(),
-                    "status_code": 502,
-                    "headers": {"content-type": "application/json"},
-                }
-            content = await response.aread()
-            return {
-                "request_body": body,
-                "response_body": content,
-                "status_code": response.status_code,
-                "headers": dict(response.headers),
-            }
-        finally:
-            if not abort_task.done():
-                abort_task.cancel()
-            if not proxy_task.done():
-                proxy_task.cancel()
-            # Idempotent; already closed on the abort branch.
-            await req_client.aclose()
+        failures = [r for r in results if isinstance(r, Exception)]
+        if failures and len(failures) == len(urls):
+            raise RuntimeError(f"abort_request rid={rid} failed on all {len(urls)} workers")
 
     def build_proxy_response(self, result: dict) -> Response:
         content = result["response_body"]
@@ -192,9 +132,9 @@ class SessionServer:
         }
         content_type = headers.get("content-type", "")
         try:
-            data = json.loads(content)
+            data = orjson.loads(content)
             return JSONResponse(content=data, status_code=status_code, headers=headers)
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except (orjson.JSONDecodeError, UnicodeDecodeError):
             return Response(content=content, status_code=status_code, headers=headers, media_type=content_type)
 
 

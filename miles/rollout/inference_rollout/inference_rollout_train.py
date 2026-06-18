@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import time
 from argparse import Namespace
 from collections.abc import Callable
 
@@ -10,7 +9,7 @@ from tqdm import tqdm
 
 from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
-from miles.rollout.inference_rollout.abort_utils import engines_quiescent, run_abort_protocol
+from miles.rollout.inference_rollout.abort_utils import collect_finished_rollouts, engines_idle
 from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
@@ -21,12 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 async def _signal_harbor(harbor_url: str, rollout_id: int) -> None:
-    """Layer 1/2: tell the harbor server to abort all in-flight trials of this
-    rollout step. Best-effort -- escalation + the quiescence gate backstop it."""
-    try:
-        await post(f"{harbor_url}/rollouts/{rollout_id}/abort", {})
-    except Exception as exc:
-        logger.warning(f"[abort] harbor signal failed url={harbor_url} rollout_id={rollout_id}: {exc!r}")
+    """Tell the harbor server to abort all in-flight trials of this rollout step.
+    Raises on failure -- an abort we could not signal must not be silently dropped."""
+    await post(f"{harbor_url}/rollouts/{rollout_id}/abort", {})
 
 
 async def _abort_all_engines(args: Namespace) -> None:
@@ -36,52 +32,45 @@ async def _abort_all_engines(args: Namespace) -> None:
         *[post(f"{url}/abort_request", {"abort_all": True}) for url in urls],
         return_exceptions=True,
     )
-    for url, r in zip(urls, results):
+    for url, r in zip(urls, results, strict=True):
         if isinstance(r, Exception):
             logger.warning(f"[abort] abort_all failed for {url}: {r!r}")
 
 
 async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[list[Sample]]:
-    """Three-layer end-of-step abort (agent-first abort design).
+    """End-of-step rollout abort.
 
-    Agentic rollouts: Layer 1 signals the harbor server (agents tear down their
-    own sessions -> engine aborts), with T1/T2 escalation to abort_all. Vanilla
-    rollouts keep the blunt abort_all. Layer 3 gate (assert_engines_quiescent)
-    runs before returning, so the weight update never starts on a live decode.
-    Partial-sample collection is preserved.
+    Agentic rollouts signal the harbor server once: each trial closes its
+    sessions, which cancels the in-flight SGLang request and tears down the
+    environment. Vanilla rollouts broadcast abort_all to the engines. Either way
+    the trainer then awaits the pending tasks and asserts the engines are idle
+    before the weight update, so it never starts on a live decode. Partial-sample
+    collection is preserved.
     """
     args = state.args
     assert not state.aborted
     state.aborted = True
 
-    harbor_url = getattr(args, "agent_server_url", None)
-    is_agentic = bool(
-        getattr(args, "use_session_server", False)
-        and getattr(args, "custom_agent_function_path", None)
-        and harbor_url
-    )
+    is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
 
-    async def _signal():
+    if is_agentic:
+        harbor_url = getattr(args, "agent_server_url", None)
+        if not harbor_url:
+            raise RuntimeError("agentic rollout abort requires --agent-server-url")
         await _signal_harbor(harbor_url, rollout_id)
-
-    async def _abort_all():
+    else:
         await _abort_all_engines(args)
 
-    aborted_samples = await run_abort_protocol(
+    aborted_samples = await collect_finished_rollouts(
         pendings,
         partial_rollout=args.partial_rollout,
         rollout_id=rollout_id,
-        is_agentic=is_agentic,
-        t1=getattr(args, "rollout_abort_grace_t1", 5.0),
-        t2=getattr(args, "rollout_abort_deadline_t2", 15.0),
-        signal_harbor=_signal,
-        abort_all_engines=_abort_all,
     )
 
     if args.partial_rollout:
         logger.info(f"[abort] collected {sum(len(x) for x in aborted_samples)} partial samples")
 
-    await assert_engines_quiescent(args)  # Layer 3 invariant gate
+    await assert_engines_idle(args)
     return aborted_samples
 
 
@@ -94,10 +83,9 @@ async def get_worker_urls(args: Namespace):
         return [worker["url"] for worker in response["workers"]]
 
 
-async def assert_engines_quiescent(args: Namespace) -> None:
-    """Layer-3 invariant gate: hard-fail the step unless every engine is idle
-    before the weight update. Trusts nothing in Layers 1-2 -- a residual in-flight
-    decode would poison the weight update."""
+async def assert_engines_idle(args: Namespace) -> None:
+    """Hard-fail the step unless every engine is idle before the weight update.
+    A residual in-flight decode would poison the weight update."""
     urls = await get_worker_urls(args)
 
     async def _fetch():
@@ -106,7 +94,7 @@ async def assert_engines_quiescent(args: Namespace) -> None:
         loads: list[dict] = []
         for r in results:
             if isinstance(r, Exception):
-                # Unreachable worker -> treat as non-quiescent (force retry/fail).
+                # Unreachable worker -> treat as busy (force retry/fail).
                 loads.append({"num_reqs": 1, "num_waiting_reqs": 0})
             elif isinstance(r, list):
                 loads.extend(r)
@@ -114,17 +102,17 @@ async def assert_engines_quiescent(args: Namespace) -> None:
                 loads.append(r)
         return loads
 
-    ok = await engines_quiescent(
+    ok = await engines_idle(
         _fetch,
-        retries=getattr(args, "rollout_abort_quiesce_retries", 15),
-        interval=getattr(args, "rollout_abort_quiesce_interval", 0.5),
+        retries=getattr(args, "rollout_idle_check_retries", 15),
+        interval=getattr(args, "rollout_idle_check_interval", 0.5),
     )
     if not ok:
         raise RuntimeError(
-            "[abort] engines NOT quiescent after abort -- refusing the weight update "
+            "[abort] engines NOT idle after abort -- refusing the weight update "
             "(a residual in-flight decode would poison training)."
         )
-    logger.info("[abort] engines quiescent -- weight update may proceed")
+    logger.info("[abort] engines idle -- weight update may proceed")
 
 
 def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:

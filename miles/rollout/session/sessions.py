@@ -1,9 +1,9 @@
 import asyncio
-import json
 import logging
 import time
 import uuid
 
+import orjson
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
@@ -39,6 +39,12 @@ def get_worker_stats(port):
     return _worker_stats.get(port if port is not None else "default")
 
 
+def inject_sglang_rid(request_body: dict, rid: str) -> None:
+    """Set the SGLang request id on a chat-completions body. The single boundary
+    that knows SGLang's wire shape (a top-level ``rid``)."""
+    request_body["rid"] = rid
+
+
 def setup_session_routes(app, backend, args):
     hf_checkpoint = getattr(args, "hf_checkpoint", None)
     if not hf_checkpoint:
@@ -66,14 +72,12 @@ def setup_session_routes(app, backend, args):
             body["session_server_instance_id"] = session_server_instance_id
         return body
 
-    # --- DEBUG: track in-flight chat_completions ---
+    # In-flight chat_completions counter (read by the stats logger).
     _inflight_chat = {"count": 0}
 
-    # Per-worker observability counters (read by the background stats logger
-    # in ``session_server.run_session_server``). ``reqs_total`` increments on
-    # every handler entry; ``turns_completed`` increments only on successful
-    # Phase 3 commit (separate so we can spot tail-truncation symptoms — many
-    # entries, few commits).
+    # Per-worker observability counters read by the background stats logger.
+    # reqs_total counts handler entries; turns_completed counts turns whose
+    # state update succeeded.
     worker_port = getattr(args, "session_server_port", None)
     _stats = {
         "reqs_total": 0,
@@ -148,29 +152,44 @@ def setup_session_routes(app, backend, args):
     async def close_session(session_id: str):
         """Idempotent, terminal abort latch for one session (rollout abort).
 
-        Latches closing=True (so new turns are rejected), signals the abort event
-        (the in-flight chat_completions proxy observes it and cancels + force-closes
-        its upstream connection so the router aborts the worker), and reports
-        whether a turn was in flight. The check+latch is synchronous (no await
-        between read and set), so it is atomic under the single-loop scheduler --
-        the same guarantee delete_session relies on. Engine quiescence is owned by
-        the trainer's Layer-3 /get_load gate; the return value is observability.
+        Under the lock: latch closing=True (so new turns are rejected) and snapshot
+        this session's SGLang rids. Then ask SGLang to abort each rid; the aborted
+        generations return finish_reason=abort, which unblocks the proxy handlers.
+        Taking the same lock request registration uses closes the
+        register-after-snapshot race. The return value is observability.
         """
         session = registry.sessions.get(session_id)
         if session is None:
             # Unknown / already-removed session: idempotent no-op success.
-            return {"closed": True, "aborted_inflight": False}
-        already = session.closing
-        session.closing = True
-        session.get_abort_event().set()
-        had_inflight = (
-            session.inflight_proxy_task is not None and not session.inflight_proxy_task.done()
-        )
+            return {"closed": True, "aborted_rids": 0}
+
+        async with session.lock:
+            already_closing = session.closing
+            session.closing = True
+            rids = list(session.inflight_rids)
+
+        abort_results = await asyncio.gather(*(backend.abort_request(r) for r in rids), return_exceptions=True)
+        abort_failures = [r for r in abort_results if isinstance(r, Exception)]
+        if abort_failures:
+            logger.warning(
+                "[session-server] close: SGLang abort failed session_id=%s failures=%d/%d",
+                session_id,
+                len(abort_failures),
+                len(rids),
+            )
         logger.info(
-            f"[session-server] close: session_id={session_id} already_closing={already} "
-            f"aborted_inflight={had_inflight}"
+            "[session-server] close: session_id=%s already_closing=%s aborted_rids=%d abort_failures=%d",
+            session_id,
+            already_closing,
+            len(rids),
+            len(abort_failures),
         )
-        return {"closed": True, "aborted_inflight": had_inflight}
+        return {
+            "closed": True,
+            "already_closing": already_closing,
+            "aborted_rids": len(rids),
+            "abort_failures": len(abort_failures),
+        }
 
     @app.post("/sessions/{session_id}/v1/chat/completions")
     async def chat_completions(request: Request, session_id: str):
@@ -183,11 +202,10 @@ def setup_session_routes(app, backend, args):
         The lock is NOT held during the slow proxy call to avoid blocking
         DELETE/other operations when the agent disconnects mid-request.
         """
-        # --- observability state for the chat_done log ---
-        # t_handler_start anchors total_ms; the lock_wait / tokenize_in /
-        # proxy / tokenize_out spans are seeded equal to it so the chat_done
-        # log emits 0.0 ms for any phase the handler skipped (e.g. early
-        # 404 / 410 / upstream error short-circuits).
+        # Observability state for the chat_done log: t_handler_start anchors
+        # total_ms; the lock_wait / tokenize_in / proxy / tokenize_out spans are
+        # seeded equal to it so the log emits 0.0 ms for any span the handler
+        # skipped (e.g. early 404 / 410 / upstream error short-circuits).
         t_handler_start = time.monotonic()
         t_lock_wait_start = t_handler_start
         t_lock_acquired = t_handler_start
@@ -201,15 +219,13 @@ def setup_session_routes(app, backend, args):
         completion_tokens_emit = -1
         req_id = uuid.uuid4().hex[:8]
 
-        # Read body up-front so chat_start can log messages_len. The body is
-        # consumed at most once by Starlette; cache it on the local for reuse
-        # in Phase 1 below. This sequencing differs slightly from the original
-        # (body was read inside the lock); the cost is moving a JSON parse
-        # outside the critical section, which actually trims lock-hold time.
+        # Read body up-front so chat_start can log messages_len. Starlette
+        # consumes the body at most once; cache it for reuse under the lock
+        # below. Parsing it outside the lock trims lock-hold time.
         _raw_body = await request.body()
         try:
-            _early_request_body = json.loads(_raw_body) if _raw_body else {}
-        except json.JSONDecodeError:
+            _early_request_body = orjson.loads(_raw_body) if _raw_body else {}
+        except orjson.JSONDecodeError:
             _early_request_body = {}
         _messages_len = len(_early_request_body.get("messages") or [])
 
@@ -222,17 +238,15 @@ def setup_session_routes(app, backend, args):
             _messages_len,
             _inflight_chat["count"],
         )
+        # The SGLang rid this turn registers; the finally unregisters it.
+        # Stays None on the early-reject paths.
+        rid = None
         _inflight_chat["count"] += 1
         try:
             session = registry.get_or_create_session(session_id)
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
-            # Register the in-flight handle synchronously here -- once we commit to
-            # processing, there is no await before this point, so a concurrent
-            # /close observing inflight_proxy_task cannot see a stale None.
-            session.inflight_proxy_task = asyncio.current_task()
 
-            # --- Phase 1: prepare request (lock held briefly) ---
             t_lock_wait_start = time.monotonic()
             async with session.lock:
                 t_lock_acquired = time.monotonic()
@@ -281,21 +295,24 @@ def setup_session_routes(app, backend, args):
                         len(pretokenized["input_ids"]),
                     )
 
-                body = json.dumps(request_body).encode()
+                # Tag the request with a stable SGLang rid so /close can abort it
+                # explicitly.
+                rid = f"{session_id}:{req_id}"
+                inject_sglang_rid(request_body, rid)
+                body = orjson.dumps(request_body)
                 expected_num_assistant = session.num_assistant
-            # --- lock released here ---
+                # Register the rid under the lock (the proxy runs after the lock
+                # releases) so a racing /close cannot snapshot an empty set and
+                # then miss it.
+                session.inflight_rids.add(rid)
 
-            # --- Phase 2: proxy to SGLang (NO lock held) ---
             def _synth_abort_response():
-                # Trainer aborted this session mid-turn (POST /sessions/{id}/close).
-                # do_proxy_with_abort already force-closed the upstream connection so
-                # the router aborts the worker. Return a synthesized finish_reason=
-                # "abort" the agent treats as terminal; do NOT record it (Phase 3 is
-                # skipped, same as the closing-skip path).
-                logger.info(
-                    f"[session-server] chat aborted mid-proxy: session_id={session_id} req_id={req_id}"
-                )
-                abort_body = json.dumps(
+                # Trainer aborted this session mid-turn (POST /sessions/{id}/close
+                # aborted this request's SGLang rid). SGLang returns the aborted
+                # generation; synthesize a clean finish_reason="abort" the agent
+                # treats as terminal and do NOT record it.
+                logger.info(f"[session-server] chat aborted mid-proxy: session_id={session_id} req_id={req_id}")
+                abort_body = orjson.dumps(
                     {
                         "id": f"chatcmpl-abort-{req_id}",
                         "object": "chat.completion",
@@ -309,7 +326,7 @@ def setup_session_routes(app, backend, args):
                         ],
                         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
                     }
-                ).encode()
+                )
                 return backend.build_proxy_response(
                     {
                         "status_code": 200,
@@ -319,11 +336,11 @@ def setup_session_routes(app, backend, args):
                 )
 
             t_proxy_start = time.monotonic()
-            result = await backend.do_proxy_with_abort(
-                request, "v1/chat/completions", body, session.get_abort_event()
-            )
+            result = await backend.do_proxy(request, "v1/chat/completions", body)
             t_proxy_end = time.monotonic()
-            if result is backend.ABORTED:
+            # /close aborts the rid -> SGLang returns finish_reason=abort and sets
+            # closing first, so a set closing flag means this turn was aborted.
+            if session.closing:
                 return _synth_abort_response()
 
             # If SGLang returned a non-200 error (e.g. 400 for context too long),
@@ -346,22 +363,27 @@ def setup_session_routes(app, backend, args):
                         session_id,
                     )
                     request_body.pop("input_ids", None)
-                    retry_body = json.dumps(request_body).encode()
-                    # Use the abort-aware proxy on the retry too, so a /close racing
-                    # the rare rollback-retry still aborts cooperatively (Layer 2/3
-                    # are the correctness backstops, but keep Layer-1 consistent).
-                    result = await backend.do_proxy_with_abort(
-                        request, "v1/chat/completions", retry_body, session.get_abort_event()
-                    )
+                    retry_rid = f"{session_id}:{req_id}:retry1"
+                    inject_sglang_rid(request_body, retry_rid)
+                    retry_body = orjson.dumps(request_body)
+                    # Re-register a fresh rid for the retry so a /close racing the
+                    # rare rollback-retry still aborts it.
+                    async with session.lock:
+                        session.inflight_rids.discard(rid)
+                        if session.closing:
+                            return _synth_abort_response()
+                        rid = retry_rid
+                        session.inflight_rids.add(rid)
+                    result = await backend.do_proxy(request, "v1/chat/completions", retry_body)
                     t_proxy_end = time.monotonic()
-                    if result is backend.ABORTED:
+                    if session.closing:
                         return _synth_abort_response()
                     if result["status_code"] != 200:
                         return backend.build_proxy_response(result)
                 else:
                     return backend.build_proxy_response(result)
 
-            response = json.loads(result["response_body"])
+            response = orjson.loads(result["response_body"])
 
             choice = response.get("choices", [{}])[0]
 
@@ -392,21 +414,15 @@ def setup_session_routes(app, backend, args):
 
             completion_token_ids = [t[1] for t in output_token_logprobs]
 
-            # --- Phase 3: update state (lock held briefly) ---
             async with session.lock:
                 if session.closing:
                     logger.warning(f"Session {session_id} closed during proxy, skipping state update")
                     return backend.build_proxy_response(result)
 
                 if session.num_assistant != expected_num_assistant:
-                    # This is the diagnostic gap that bit the cursor-mismatch RCA:
-                    # under split-lock another writer can race to Phase 3 between
-                    # our Phase-1 snapshot and Phase-3 reacquire. We log enriched
-                    # fields so the warning is grep-correlatable with caller
-                    # retries, but the current behaviour preserves prod's
-                    # silent-skip — the lock-restoration fix that raises
-                    # SessionStateConflictError instead ships separately (see
-                    # the follow-up lock-restore PR).
+                    # Under the split lock another writer can change num_assistant
+                    # between our snapshot and our re-acquire of the lock; log the
+                    # mismatch and skip the state update.
                     logger.warning(
                         "[session-server] state_changed_during_proxy "
                         "worker_port=%s session_id=%s req_id=%s "
@@ -448,7 +464,6 @@ def setup_session_routes(app, backend, args):
                 )
                 session.append_record(record)
 
-                # Successful Phase 3 commit — pull token counts for chat_done.
                 try:
                     prompt_tokens_emit = int(meta_info.get("prompt_tokens", -1))
                 except (TypeError, ValueError):
@@ -458,15 +473,14 @@ def setup_session_routes(app, backend, args):
                 except (TypeError, ValueError):
                     completion_tokens_emit = -1
                 _stats["turns_completed"] += 1
-            # --- lock released here ---
 
             return backend.build_proxy_response(result)
         finally:
             _inflight_chat["count"] -= 1
-            # Clear the in-flight proxy handle (guarded: `session` is unbound on
-            # the early draining/404 path that raises before get_or_create).
-            if (_sess := locals().get("session")) is not None:
-                _sess.inflight_proxy_task = None
+            # Unregister this turn's rid (idempotent with /close).
+            if rid is not None:
+                async with session.lock:
+                    session.inflight_rids.discard(rid)
             t_handler_end = time.monotonic()
             # One INFO log per request, irrespective of which path the handler
             # took (success, 404, upstream error). Spans that didn't run come
