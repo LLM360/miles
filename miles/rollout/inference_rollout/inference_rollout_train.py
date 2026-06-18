@@ -86,16 +86,27 @@ async def generate_rollout_async(
     # target_data_size is the total number of valid samples to get
     target_data_size = args.rollout_batch_size
 
+    # When oversampling is disabled, submit exactly target_data_size groups once and keep
+    # whatever survives the dynamic filter (the batch may end short); otherwise keep sampling
+    # in over_sampling_batch_size chunks until target_data_size groups are collected.
+    submit_budget = target_data_size if args.disable_oversampling else None
+
     pendings = set()
     data = []
     all_data = []
+    submitted = 0
     do_print = True
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
-        while len(data) + len(pendings) < target_data_size:
+        while len(data) + len(pendings) < target_data_size and (submit_budget is None or submitted < submit_budget):
             # get samples from the buffer and submit the generation requests.
-            samples = data_source(args.over_sampling_batch_size)
+            n = args.over_sampling_batch_size if submit_budget is None else submit_budget - submitted
+            samples = data_source(n)
+            submitted += len(samples)
             pendings.update(submit_generate_tasks(state, samples))
+
+        if not pendings:
+            break
 
         # wait for the generation to finish
         logger.debug(f"[rollout] Waiting on {len(pendings)} pending tasks, data={len(data)}/{target_data_size}")
@@ -129,15 +140,22 @@ async def generate_rollout_async(
                 pbar.update(args.n_samples_per_prompt)
 
     pbar.close()
-    sample = data[-1][0][0] if isinstance(data[-1][0], list) else data[-1][0]
-    logger.info(
-        f"Finish rollout: {[str(sample.prompt) + sample.response]}, label: {sample.label}, reward: {sample.reward}",
-    )
+    if data:
+        sample = data[-1][0][0] if isinstance(data[-1][0], list) else data[-1][0]
+        logger.info(
+            f"Finish rollout: {[str(sample.prompt) + sample.response]}, label: {sample.label}, reward: {sample.reward}",
+        )
 
     # there are still some unfinished requests, abort them
     aborted_samples = await abort(state, pendings, rollout_id)
 
-    assert len(data) == args.rollout_batch_size, f"Got {len(data)} samples, expected {args.rollout_batch_size}"
+    if args.disable_oversampling:
+        if len(data) < args.rollout_batch_size:
+            logger.warning(
+                f"[rollout] oversampling disabled: {len(data)}/{args.rollout_batch_size} groups survived the dynamic filter"
+            )
+    else:
+        assert len(data) == args.rollout_batch_size, f"Got {len(data)} samples, expected {args.rollout_batch_size}"
     data = sorted(data, key=lambda group: group[0][0].index if isinstance(group[0], list) else group[0].index)
     all_samples = sorted(
         all_data, key=lambda group: group[0][0].index if isinstance(group[0], list) else group[0].index
