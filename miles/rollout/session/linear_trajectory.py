@@ -49,9 +49,6 @@ class LinearTrajectory:
 
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
     closing: bool = field(default=False, repr=False, compare=False)
-    # SGLang request ids this session currently owns. Registered/discarded under
-    # ``lock``; /close aborts every rid in the set.
-    inflight_rids: set[str] = field(default_factory=set, repr=False, compare=False)
     messages: list[dict[str, Any]] = field(default_factory=list)
     records: list[SessionRecord] = field(default_factory=list)
     trajectory_token_ids: list[list[int]] = field(default_factory=list)

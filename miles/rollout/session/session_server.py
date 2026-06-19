@@ -13,11 +13,9 @@ import time
 import httpx
 import orjson
 import setproctitle
-import sglang_router
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from packaging.version import parse
 from starlette.responses import Response
 
 from miles.rollout.session.sessions import get_worker_stats, setup_session_routes
@@ -93,26 +91,6 @@ class SessionServer:
             "status_code": response.status_code,
             "headers": dict(response.headers),
         }
-
-    async def get_worker_urls(self) -> list[str]:
-        """Worker base URLs from the router (same resolution the trainer uses)."""
-        if parse(sglang_router.__version__) <= parse("0.2.1") or getattr(self.args, "use_miles_router", False):
-            resp = await self.client.get(f"{self.backend_url}/list_workers")
-            return resp.json()["urls"]
-        resp = await self.client.get(f"{self.backend_url}/workers")
-        return [w["url"] for w in resp.json()["workers"]]
-
-    async def abort_request(self, rid: str) -> None:
-        """Ask SGLang to abort one request id. Broadcast to every worker -- only the
-        owner acts (an unknown rid is a 200 no-op). Raises only if all workers fail."""
-        urls = await self.get_worker_urls()
-        results = await asyncio.gather(
-            *(self.client.post(f"{url}/abort_request", json={"rid": rid}) for url in urls),
-            return_exceptions=True,
-        )
-        failures = [r for r in results if isinstance(r, Exception)]
-        if failures and len(failures) == len(urls):
-            raise RuntimeError(f"abort_request rid={rid} failed on all {len(urls)} workers")
 
     def build_proxy_response(self, result: dict) -> Response:
         content = result["response_body"]

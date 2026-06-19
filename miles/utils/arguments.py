@@ -1680,23 +1680,11 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=os.environ.get("AGENT_SERVER_URL") or os.environ.get("SWE_AGENT_URL"),
                 help="Harbor server base URL for agentic rollout abort "
-                "(POST /rollouts/{id}/abort). Defaults to $AGENT_SERVER_URL then "
+                "(POST /abort_all). Defaults to $AGENT_SERVER_URL then "
                 "$SWE_AGENT_URL -- the SAME resolution the agent function uses, so the "
                 "abort discriminator never silently diverges from the agent's harbor "
                 "target. Required for agentic rollouts (session server + custom agent "
                 "function); the abort fails closed if it is unset.",
-            )
-            parser.add_argument(
-                "--rollout-idle-check-retries",
-                type=int,
-                default=15,
-                help="Engine-idle check: max /get_load polls before failing the step.",
-            )
-            parser.add_argument(
-                "--rollout-idle-check-interval",
-                type=float,
-                default=0.5,
-                help="Engine-idle check: seconds between /get_load polls.",
             )
             return parser
 

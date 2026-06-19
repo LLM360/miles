@@ -39,12 +39,6 @@ def get_worker_stats(port):
     return _worker_stats.get(port if port is not None else "default")
 
 
-def inject_sglang_rid(request_body: dict, rid: str) -> None:
-    """Set the SGLang request id on a chat-completions body. The single boundary
-    that knows SGLang's wire shape (a top-level ``rid``)."""
-    request_body["rid"] = rid
-
-
 def setup_session_routes(app, backend, args):
     hf_checkpoint = getattr(args, "hf_checkpoint", None)
     if not hf_checkpoint:
@@ -150,46 +144,23 @@ def setup_session_routes(app, backend, args):
 
     @app.post("/sessions/{session_id}/close")
     async def close_session(session_id: str):
-        """Idempotent, terminal abort latch for one session (rollout abort).
-
-        Under the lock: latch closing=True (so new turns are rejected) and snapshot
-        this session's SGLang rids. Then ask SGLang to abort each rid; the aborted
-        generations return finish_reason=abort, which unblocks the proxy handlers.
-        Taking the same lock request registration uses closes the
-        register-after-snapshot race. The return value is observability.
-        """
+        """Mark the session closed (so new turns are rejected) and drop it from the
+        registry. Idempotent: an unknown or already-closed session is a no-op."""
         session = registry.sessions.get(session_id)
         if session is None:
-            # Unknown / already-removed session: idempotent no-op success.
-            return {"closed": True, "aborted_rids": 0}
+            return {"closed": True, "already_closing": False}
 
+        already_closing = session.closing
+        session.closing = True
         async with session.lock:
-            already_closing = session.closing
-            session.closing = True
-            rids = list(session.inflight_rids)
-
-        abort_results = await asyncio.gather(*(backend.abort_request(r) for r in rids), return_exceptions=True)
-        abort_failures = [r for r in abort_results if isinstance(r, Exception)]
-        if abort_failures:
-            logger.warning(
-                "[session-server] close: SGLang abort failed session_id=%s failures=%d/%d",
-                session_id,
-                len(abort_failures),
-                len(rids),
-            )
+            if not already_closing:
+                registry.remove_session(session_id)
         logger.info(
-            "[session-server] close: session_id=%s already_closing=%s aborted_rids=%d abort_failures=%d",
+            "[session-server] close: session_id=%s already_closing=%s",
             session_id,
             already_closing,
-            len(rids),
-            len(abort_failures),
         )
-        return {
-            "closed": True,
-            "already_closing": already_closing,
-            "aborted_rids": len(rids),
-            "abort_failures": len(abort_failures),
-        }
+        return {"closed": True, "already_closing": already_closing}
 
     @app.post("/sessions/{session_id}/v1/chat/completions")
     async def chat_completions(request: Request, session_id: str):
@@ -238,9 +209,6 @@ def setup_session_routes(app, backend, args):
             _messages_len,
             _inflight_chat["count"],
         )
-        # The SGLang rid this turn registers; the finally unregisters it.
-        # Stays None on the early-reject paths.
-        rid = None
         _inflight_chat["count"] += 1
         try:
             session = registry.get_or_create_session(session_id)
@@ -295,53 +263,16 @@ def setup_session_routes(app, backend, args):
                         len(pretokenized["input_ids"]),
                     )
 
-                # Tag the request with a stable SGLang rid so /close can abort it
-                # explicitly.
-                rid = f"{session_id}:{req_id}"
-                inject_sglang_rid(request_body, rid)
                 body = orjson.dumps(request_body)
                 expected_num_assistant = session.num_assistant
-                # Register the rid under the lock (the proxy runs after the lock
-                # releases) so a racing /close cannot snapshot an empty set and
-                # then miss it.
-                session.inflight_rids.add(rid)
-
-            def _synth_abort_response():
-                # Trainer aborted this session mid-turn (POST /sessions/{id}/close
-                # aborted this request's SGLang rid). SGLang returns the aborted
-                # generation; synthesize a clean finish_reason="abort" the agent
-                # treats as terminal and do NOT record it.
-                logger.info(f"[session-server] chat aborted mid-proxy: session_id={session_id} req_id={req_id}")
-                abort_body = orjson.dumps(
-                    {
-                        "id": f"chatcmpl-abort-{req_id}",
-                        "object": "chat.completion",
-                        "model": _early_request_body.get("model", ""),
-                        "choices": [
-                            {
-                                "index": 0,
-                                "message": {"role": "assistant", "content": ""},
-                                "finish_reason": "abort",
-                            }
-                        ],
-                        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-                    }
-                )
-                return backend.build_proxy_response(
-                    {
-                        "status_code": 200,
-                        "response_body": abort_body,
-                        "headers": {"content-type": "application/json"},
-                    }
-                )
 
             t_proxy_start = time.monotonic()
             result = await backend.do_proxy(request, "v1/chat/completions", body)
             t_proxy_end = time.monotonic()
-            # /close aborts the rid -> SGLang returns finish_reason=abort and sets
-            # closing first, so a set closing flag means this turn was aborted.
+            # Session was closed mid-turn: return the engine's response without
+            # recording it into the trajectory.
             if session.closing:
-                return _synth_abort_response()
+                return backend.build_proxy_response(result)
 
             # If SGLang returned a non-200 error (e.g. 400 for context too long),
             # pass it through to the agent without recording — the agent can retry
@@ -363,21 +294,11 @@ def setup_session_routes(app, backend, args):
                         session_id,
                     )
                     request_body.pop("input_ids", None)
-                    retry_rid = f"{session_id}:{req_id}:retry1"
-                    inject_sglang_rid(request_body, retry_rid)
                     retry_body = orjson.dumps(request_body)
-                    # Re-register a fresh rid for the retry so a /close racing the
-                    # rare rollback-retry still aborts it.
-                    async with session.lock:
-                        session.inflight_rids.discard(rid)
-                        if session.closing:
-                            return _synth_abort_response()
-                        rid = retry_rid
-                        session.inflight_rids.add(rid)
                     result = await backend.do_proxy(request, "v1/chat/completions", retry_body)
                     t_proxy_end = time.monotonic()
                     if session.closing:
-                        return _synth_abort_response()
+                        return backend.build_proxy_response(result)
                     if result["status_code"] != 200:
                         return backend.build_proxy_response(result)
                 else:
@@ -477,10 +398,6 @@ def setup_session_routes(app, backend, args):
             return backend.build_proxy_response(result)
         finally:
             _inflight_chat["count"] -= 1
-            # Unregister this turn's rid (idempotent with /close).
-            if rid is not None:
-                async with session.lock:
-                    session.inflight_rids.discard(rid)
             t_handler_end = time.monotonic()
             # One INFO log per request, irrespective of which path the handler
             # took (success, 404, upstream error). Spans that didn't run come

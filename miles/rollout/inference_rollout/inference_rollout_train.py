@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
-from miles.rollout.inference_rollout.abort_utils import collect_finished_rollouts, engines_idle
+from miles.rollout.inference_rollout.abort_utils import collect_finished_rollouts
 from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
@@ -19,10 +19,10 @@ from miles.utils.types import Sample
 logger = logging.getLogger(__name__)
 
 
-async def _signal_harbor(harbor_url: str, rollout_id: int) -> None:
-    """Tell the harbor server to abort all in-flight trials of this rollout step.
+async def _signal_harbor(harbor_url: str) -> None:
+    """Tell the harbor server to cancel every in-flight trial and close its session.
     Raises on failure -- an abort we could not signal must not be silently dropped."""
-    await post(f"{harbor_url}/rollouts/{rollout_id}/abort", {})
+    await post(f"{harbor_url}/abort_all", {})
 
 
 async def _abort_all_engines(args: Namespace) -> None:
@@ -40,26 +40,23 @@ async def _abort_all_engines(args: Namespace) -> None:
 async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[list[Sample]]:
     """End-of-step rollout abort.
 
-    Agentic rollouts signal the harbor server once: each trial closes its
-    sessions, which cancels the in-flight SGLang request and tears down the
-    environment. Vanilla rollouts broadcast abort_all to the engines. Either way
-    the trainer then awaits the pending tasks and asserts the engines are idle
-    before the weight update, so it never starts on a live decode. Partial-sample
-    collection is preserved.
+    Agentic rollouts first signal the harbor server, which cancels each trial and
+    closes its session. Every rollout then broadcasts abort_all to the engines to
+    clear any in-flight decode, and the trainer drains the pending tasks.
+    Partial-sample collection is preserved.
     """
     args = state.args
     assert not state.aborted
     state.aborted = True
 
     is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
-
     if is_agentic:
         harbor_url = getattr(args, "agent_server_url", None)
         if not harbor_url:
             raise RuntimeError("agentic rollout abort requires --agent-server-url")
-        await _signal_harbor(harbor_url, rollout_id)
-    else:
-        await _abort_all_engines(args)
+        await _signal_harbor(harbor_url)
+
+    await _abort_all_engines(args)
 
     aborted_samples = await collect_finished_rollouts(
         pendings,
@@ -70,7 +67,6 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     if args.partial_rollout:
         logger.info(f"[abort] collected {sum(len(x) for x in aborted_samples)} partial samples")
 
-    await assert_engines_idle(args)
     return aborted_samples
 
 
@@ -81,38 +77,6 @@ async def get_worker_urls(args: Namespace):
     else:
         response = await get(f"http://{args.sglang_router_ip}:{args.sglang_router_port}/workers")
         return [worker["url"] for worker in response["workers"]]
-
-
-async def assert_engines_idle(args: Namespace) -> None:
-    """Hard-fail the step unless every engine is idle before the weight update.
-    A residual in-flight decode would poison the weight update."""
-    urls = await get_worker_urls(args)
-
-    async def _fetch():
-        # Each worker's /get_load returns a LIST of per-shard GetLoadReqOutput dicts.
-        results = await asyncio.gather(*[get(f"{u}/get_load") for u in urls], return_exceptions=True)
-        loads: list[dict] = []
-        for r in results:
-            if isinstance(r, Exception):
-                # Unreachable worker -> treat as busy (force retry/fail).
-                loads.append({"num_reqs": 1, "num_waiting_reqs": 0})
-            elif isinstance(r, list):
-                loads.extend(r)
-            elif isinstance(r, dict):
-                loads.append(r)
-        return loads
-
-    ok = await engines_idle(
-        _fetch,
-        retries=getattr(args, "rollout_idle_check_retries", 15),
-        interval=getattr(args, "rollout_idle_check_interval", 0.5),
-    )
-    if not ok:
-        raise RuntimeError(
-            "[abort] engines NOT idle after abort -- refusing the weight update "
-            "(a residual in-flight decode would poison training)."
-        )
-    logger.info("[abort] engines idle -- weight update may proceed")
 
 
 def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:
