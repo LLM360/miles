@@ -9,7 +9,6 @@ from tqdm import tqdm
 
 from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
-from miles.rollout.inference_rollout.abort_utils import collect_finished_rollouts
 from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
@@ -58,11 +57,21 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
 
     await _abort_all_engines(args)
 
-    aborted_samples = await collect_finished_rollouts(
-        pendings,
-        partial_rollout=args.partial_rollout,
-        rollout_id=rollout_id,
-    )
+    # Drain the still-pending tasks. For partial rollout, keep each drained group
+    # that has a response, stamping its origin step if not already set.
+    aborted_samples: list[list[Sample]] = []
+    for task in asyncio.as_completed(pendings):
+        try:
+            group = await task
+        except Exception as exc:  # a failed pending task must not abort the drain
+            logger.error(f"[abort] pending rollout task raised: {exc!r}", exc_info=exc)
+            continue
+        if not args.partial_rollout or group is None:
+            continue
+        for sample in group:
+            if sample.response and "start_rollout_id" not in sample.metadata:
+                sample.metadata["start_rollout_id"] = rollout_id
+        aborted_samples.append(group)
 
     if args.partial_rollout:
         logger.info(f"[abort] collected {sum(len(x) for x in aborted_samples)} partial samples")
