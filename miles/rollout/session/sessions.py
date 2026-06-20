@@ -142,26 +142,6 @@ def setup_session_routes(app, backend, args):
             session.lock.release()
         return Response(status_code=204)
 
-    @app.post("/sessions/{session_id}/close")
-    async def close_session(session_id: str):
-        """Mark the session closed (so new turns are rejected) and drop it from the
-        registry. Idempotent: an unknown or already-closed session is a no-op."""
-        session = registry.sessions.get(session_id)
-        if session is None:
-            return {"closed": True, "already_closing": False}
-
-        already_closing = session.closing
-        session.closing = True
-        async with session.lock:
-            if not already_closing:
-                registry.remove_session(session_id)
-        logger.info(
-            "[session-server] close: session_id=%s already_closing=%s",
-            session_id,
-            already_closing,
-        )
-        return {"closed": True, "already_closing": already_closing}
-
     @app.post("/sessions/{session_id}/v1/chat/completions")
     async def chat_completions(request: Request, session_id: str):
         """Proxy a chat completion through SGLang with TITO token tracking.
