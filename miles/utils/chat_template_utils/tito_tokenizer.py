@@ -340,25 +340,90 @@ class GLM47TITOTokenizer(TITOTokenizer):
 
 
 # ---------------------------------------------------------------------------
-# K2V3 family implementation
+# K2V3 family — current (IFM) chat template
 # ---------------------------------------------------------------------------
 
 
 class K2V3TITOTokenizer(TITOTokenizer):
-    """K2V3 family.
+    r"""K2V3 family with the IFM-style chat template (introduced 2026-06-01).
 
-    The chat template emits ``<|im_end|>\\n`` after every message (jinja
-    block whitespace between ``{{- '<|im_end|>' }}`` and the next block
-    is preserved by default ``trim_blocks``), but the model
-    autoregressively stops at ``<|im_end|>`` without generating the
-    trailing ``\\n``. ``merge_tokens`` inserts the missing newline so the
-    pretokenized buffer matches the canonical template output.
+    The current K2V3 chat template (``bbq-0601`` / ``bbq-8b-mid3_v3`` and
+    later) namespaces ChatML tokens as ``<|ifm|im_start|>`` /
+    ``<|ifm|im_end|>`` and emits NO whitespace between
+    ``<|ifm|im_end|>`` and the next ``<|ifm|im_start|>``. The model
+    autoregressively stops at ``<|ifm|im_end|>`` with no trailing byte;
+    the rollout buffer already matches the canonical template render
+    exactly. ``merge_tokens`` therefore needs no boundary fix — it
+    inherits the base ``TITOTokenizer`` concat behavior.
+
+    Empirical sanity check::
+
+        apply_chat_template([user, asst, user], tokenize=False)
+        → '...A1<|ifm|im_end|><|ifm|im_start|>user\n...'
+                              ^^ no \n between messages
+
+    For legacy K2V3 checkpoints (``bbq-8b-mid3-final`` and earlier) whose
+    chat template uses ``<|im_end|>\n`` between messages, use
+    :class:`K2V3OldBackupTITOTokenizer` (``--tito-model k2v3_oldbackup``)
+    instead.
+    """
+
+    _default_assistant_start_str: str = "<|ifm|im_start|>assistant"
+
+    def __init__(
+        self,
+        tokenizer: Any,
+        chat_template_kwargs: dict[str, Any] | None = None,
+        assistant_start_str: str | None = None,
+        allowed_append_roles: list[str] | None = None,
+    ):
+        super().__init__(
+            tokenizer,
+            chat_template_kwargs,
+            assistant_start_str or self._default_assistant_start_str,
+            allowed_append_roles=allowed_append_roles,
+        )
+        # Hard assert against misconfiguration: refuse to load on a legacy
+        # K2V3 checkpoint whose vocab does not have <|ifm|im_end|>.
+        ifm_end_id = tokenizer.convert_tokens_to_ids("<|ifm|im_end|>")
+        unk_id = getattr(tokenizer, "unk_token_id", None)
+        if ifm_end_id is None or ifm_end_id == unk_id:
+            raise ValueError(
+                "K2V3TITOTokenizer (current/IFM chat template) requires "
+                "<|ifm|im_end|> in the tokenizer vocab. The loaded "
+                "tokenizer does not have this token, suggesting you are "
+                "on a legacy K2V3 checkpoint. Use --tito-model "
+                "k2v3_oldbackup for those."
+            )
+        self._im_end_id: int = ifm_end_id
+        self.trailing_token_ids = frozenset({ifm_end_id})
+
+
+# ---------------------------------------------------------------------------
+# K2V3 family — legacy (<|im_end|>\n) chat template
+# ---------------------------------------------------------------------------
+
+
+class K2V3OldBackupTITOTokenizer(TITOTokenizer):
+    r"""K2V3 family with the LEGACY chat template (``<|im_end|>\n``).
+
+    Use this with legacy K2V3 checkpoints (``bbq-8b-mid3-final`` and
+    earlier) whose chat template emits ``<|im_end|>\n`` after every
+    message (jinja block whitespace between ``{{- '<|im_end|>' }}`` and
+    the next block is preserved by default ``trim_blocks``), but where
+    the model autoregressively stops at ``<|im_end|>`` without producing
+    the trailing ``\n``. ``merge_tokens`` inserts the missing newline so
+    the pretokenized buffer matches the canonical template output.
 
     Empirical sanity check::
 
         apply_chat_template([user, assistant, user], tokenize=False)
-        → '...hello<|im_end|>\\n<|im_start|>user\\n...'
+        → '...hello<|im_end|>\n<|im_start|>user\n...'
                           ^^
+
+    For current K2V3 checkpoints (``bbq-8b-mid3_v3`` and later) whose
+    template uses ``<|ifm|im_end|>`` with no trailing ``\n``, use
+    :class:`K2V3TITOTokenizer` (``--tito-model k2v3``) instead.
     """
 
     _default_assistant_start_str: str = "<|im_start|>assistant"
@@ -376,10 +441,22 @@ class K2V3TITOTokenizer(TITOTokenizer):
             assistant_start_str or self._default_assistant_start_str,
             allowed_append_roles=allowed_append_roles,
         )
+        # Hard assert against misconfiguration: refuse to load on a current
+        # K2V3 checkpoint whose vocab does not have <|im_end|>.
+        im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
+        unk_id = getattr(tokenizer, "unk_token_id", None)
+        if im_end_id is None or im_end_id == unk_id:
+            raise ValueError(
+                "K2V3OldBackupTITOTokenizer (legacy chat template) "
+                "requires <|im_end|> in the tokenizer vocab. The loaded "
+                "tokenizer does not have this token, suggesting you are "
+                "on a current K2V3 checkpoint that uses the IFM template. "
+                "Use --tito-model k2v3 for those."
+            )
         nl_ids = tokenizer.encode("\n", add_special_tokens=False)
         assert len(nl_ids) == 1, f"Expected single newline token, got {nl_ids}"
         self._newline_id: int = nl_ids[0]
-        self._im_end_id: int = tokenizer.convert_tokens_to_ids("<|im_end|>")
+        self._im_end_id: int = im_end_id
         self.trailing_token_ids = frozenset({self._newline_id})
 
     def merge_tokens(
@@ -406,6 +483,7 @@ class TITOTokenizerType(str, Enum):
     QWEN3 = "qwen3"
     GLM47 = "glm47"
     K2V3 = "k2v3"
+    K2V3_OLDBACKUP = "k2v3_oldbackup"
 
 
 _TOKENIZER_REGISTRY: dict[TITOTokenizerType, type[TITOTokenizer]] = {
@@ -413,6 +491,7 @@ _TOKENIZER_REGISTRY: dict[TITOTokenizerType, type[TITOTokenizer]] = {
     TITOTokenizerType.QWEN3: Qwen3TITOTokenizer,
     TITOTokenizerType.GLM47: GLM47TITOTokenizer,
     TITOTokenizerType.K2V3: K2V3TITOTokenizer,
+    TITOTokenizerType.K2V3_OLDBACKUP: K2V3OldBackupTITOTokenizer,
 }
 
 

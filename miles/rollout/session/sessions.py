@@ -1,9 +1,9 @@
 import asyncio
-import json
 import logging
 import time
 import uuid
 
+import orjson
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
@@ -182,14 +182,14 @@ def setup_session_routes(app, backend, args):
         # outside the critical section, which actually trims lock-hold time.
         _raw_body = await request.body()
         try:
-            _early_request_body = json.loads(_raw_body) if _raw_body else {}
-        except json.JSONDecodeError:
+            _early_request_body = orjson.loads(_raw_body) if _raw_body else {}
+        except orjson.JSONDecodeError:
             _early_request_body = {}
         _messages_len = len(_early_request_body.get("messages") or [])
 
         _stats["reqs_total"] += 1
         logger.info(
-            "[session-server] chat_start worker_port=%s session_id=%s req_id=%s " "messages_len=%d inflight_before=%d",
+            "[session-server] chat_start worker_port=%s session_id=%s req_id=%s messages_len=%d inflight_before=%d",
             worker_port,
             session_id,
             req_id,
@@ -251,13 +251,21 @@ def setup_session_routes(app, backend, args):
                         len(pretokenized["input_ids"]),
                     )
 
-                body = json.dumps(request_body).encode()
+                body = orjson.dumps(request_body)
                 expected_num_assistant = session.num_assistant
             # --- lock released here ---
 
+            # Tag every turn of this session with a routing key so a routing-key
+            # gateway policy (manual / consistent_hashing) pins the session to one
+            # worker, reusing the worker that holds its KV cache. Emitted
+            # unconditionally: the gateway is launched externally (miles does not
+            # know its policy), and policies that don't route on the key
+            # (e.g. cache_aware) ignore the header.
+            proxy_headers = {**dict(request.headers), "X-SMG-Routing-Key": session_id}
+
             # --- Phase 2: proxy to SGLang (NO lock held) ---
             t_proxy_start = time.monotonic()
-            result = await backend.do_proxy(request, "v1/chat/completions", body=body)
+            result = await backend.do_proxy(request, "v1/chat/completions", body=body, headers=proxy_headers)
             t_proxy_end = time.monotonic()
 
             # If SGLang returned a non-200 error (e.g. 400 for context too long),
@@ -280,15 +288,17 @@ def setup_session_routes(app, backend, args):
                         session_id,
                     )
                     request_body.pop("input_ids", None)
-                    retry_body = json.dumps(request_body).encode()
-                    result = await backend.do_proxy(request, "v1/chat/completions", body=retry_body)
+                    retry_body = orjson.dumps(request_body)
+                    result = await backend.do_proxy(
+                        request, "v1/chat/completions", body=retry_body, headers=proxy_headers
+                    )
                     t_proxy_end = time.monotonic()
                     if result["status_code"] != 200:
                         return backend.build_proxy_response(result)
                 else:
                     return backend.build_proxy_response(result)
 
-            response = json.loads(result["response_body"])
+            response = orjson.loads(result["response_body"])
 
             choice = response.get("choices", [{}])[0]
 
@@ -300,8 +310,7 @@ def setup_session_routes(app, backend, args):
             assistant_message = choice.get("message", {})
             if assistant_message.get("content") is None:
                 raise UpstreamResponseError(
-                    "assistant message content is None, when tool call parser failed SGLang should still return "
-                    "an empty content rather than None. Please check your modified SGLang version."
+                    "assistant message content is None, when tool call parser failed SGLang should still return an empty content rather than None. Please check your modified SGLang version."
                 )
 
             prompt_token_ids = choice.get("prompt_token_ids")
@@ -311,10 +320,7 @@ def setup_session_routes(app, backend, args):
             actual_output_logprobs_len = len(output_token_logprobs)
             if actual_output_logprobs_len != completion_tokens:
                 raise UpstreamResponseError(
-                    "invalid chat completion response: "
-                    f"len(output_token_logprobs)={actual_output_logprobs_len} "
-                    f"!= completion_tokens={completion_tokens}. "
-                    f"Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
+                    f"invalid chat completion response: len(output_token_logprobs)={actual_output_logprobs_len} != completion_tokens={completion_tokens}. Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
                 )
 
             completion_token_ids = [t[1] for t in output_token_logprobs]
@@ -335,11 +341,7 @@ def setup_session_routes(app, backend, args):
                     # SessionStateConflictError instead ships separately (see
                     # the follow-up lock-restore PR).
                     logger.warning(
-                        "[session-server] state_changed_during_proxy "
-                        "worker_port=%s session_id=%s req_id=%s "
-                        "expected_num_assistant=%d got_num_assistant=%d "
-                        "inflight_chat_count=%d caller_request_id=%s "
-                        "proxy_elapsed_ms=%.1f",
+                        "[session-server] state_changed_during_proxy worker_port=%s session_id=%s req_id=%s expected_num_assistant=%d got_num_assistant=%d inflight_chat_count=%d caller_request_id=%s proxy_elapsed_ms=%.1f",
                         worker_port,
                         session_id,
                         req_id,
@@ -395,10 +397,7 @@ def setup_session_routes(app, backend, args):
             # took (success, 404, upstream error). Spans that didn't run come
             # through as 0.0 ms — a valid signal ("we never got there").
             logger.info(
-                "[session-server] chat_done worker_port=%s session_id=%s req_id=%s "
-                "lock_wait_ms=%.1f tokenize_in_ms=%.1f proxy_elapsed_ms=%.1f "
-                "tokenize_out_ms=%.1f total_ms=%.1f inflight_now=%d "
-                "prompt_tokens=%d completion_tokens=%d",
+                "[session-server] chat_done worker_port=%s session_id=%s req_id=%s lock_wait_ms=%.1f tokenize_in_ms=%.1f proxy_elapsed_ms=%.1f tokenize_out_ms=%.1f total_ms=%.1f inflight_now=%d prompt_tokens=%d completion_tokens=%d",
                 worker_port,
                 session_id,
                 req_id,

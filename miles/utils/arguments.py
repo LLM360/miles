@@ -686,6 +686,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
 
             parser.add_argument(
+                "--balance-by-flops",
+                action="store_true",
+                default=False,
+                help=(
+                    "Use FLOPs-based workload estimation for DP rank assignment and micro-batch partitioning "
+                    "via Karmarkar-Karp instead of token-count balancing. FLOPs are computed from the full "
+                    "model config (hidden_size, ffn_hidden_size, MoE experts/topk, LoRA ranks) via "
+                    "calculate_fwd_flops, capturing the quadratic cost of attention. Produces more balanced "
+                    "micro-batches when sequence lengths vary widely. Requires --use-dynamic-batch-size."
+                ),
+            )
+
+            parser.add_argument(
                 "--use-dynamic-batch-size",
                 action="store_true",
                 default=False,
@@ -1955,6 +1968,9 @@ def miles_validate_args(args):
         assert args.max_tokens_per_gpu is not None, "max_tokens_per_gpu must be set when use_dynamic_batch_size is set"
         if args.log_probs_max_tokens_per_gpu is None:
             args.log_probs_max_tokens_per_gpu = args.max_tokens_per_gpu
+
+    if getattr(args, "balance_by_flops", False):
+        assert args.use_dynamic_batch_size, "--balance-by-flops requires --use-dynamic-batch-size"
 
     if args.eps_clip_high is None:
         args.eps_clip_high = args.eps_clip
