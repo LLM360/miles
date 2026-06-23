@@ -18,10 +18,49 @@ from miles.utils.types import Sample
 logger = logging.getLogger(__name__)
 
 
-async def _signal_harbor(harbor_url: str) -> None:
+def _summarize_abort_response(response: object) -> tuple[int, int, list[str], list[str]]:
+    """Flatten a harbor /abort_all response into
+    (aborted_trials, already_done, aborted_instance_ids, already_done_instance_ids).
+
+    The response is either a single-worker dict carrying ``aborted`` /
+    ``already_done_items`` lists, or a router-aggregate dict whose per-worker dicts
+    each carry their own lists under ``worker_results``."""
+    if not isinstance(response, dict):
+        logger.warning(f"[abort] abort_all returned non-dict response: {response!r}")
+        return 0, 0, [], []
+    worker_results = response.get("worker_results")
+    workers = worker_results if isinstance(worker_results, list) else [response]
+    aborted_trials = 0
+    already_done = 0
+    aborted_instances: list[str] = []
+    already_done_instances: list[str] = []
+    for worker in workers:
+        if not isinstance(worker, dict):
+            continue
+        aborted_trials += int(worker.get("aborted_trials", 0) or 0)
+        already_done += int(worker.get("already_done", 0) or 0)
+        for item in worker.get("aborted") or []:
+            if isinstance(item, dict) and item.get("instance_id"):
+                aborted_instances.append(str(item["instance_id"]))
+        for item in worker.get("already_done_items") or []:
+            if isinstance(item, dict) and item.get("instance_id"):
+                already_done_instances.append(str(item["instance_id"]))
+    return aborted_trials, already_done, aborted_instances, already_done_instances
+
+
+async def _signal_harbor(harbor_url: str, rollout_id: int) -> None:
     """Tell the harbor server to cancel every in-flight trial and close its session.
-    Raises on failure -- an abort we could not signal must not be silently dropped."""
-    await post(f"{harbor_url}/abort_all", {})
+    Raises on failure -- an abort we could not signal must not be silently dropped.
+
+    Collects the /abort_all response and logs how many trials harbor cancelled and
+    their instance ids, tagged with the rollout step that triggered the abort."""
+    response = await post(f"{harbor_url}/abort_all", {})
+    aborted_trials, already_done, aborted_instances, already_done_instances = _summarize_abort_response(response)
+    logger.info(
+        f"[abort] rollout_id={rollout_id} harbor abort_all: aborted_trials={aborted_trials} "
+        f"already_done={already_done} aborted_instances={aborted_instances} "
+        f"already_done_instances={already_done_instances}"
+    )
 
 
 async def _abort_all_engines(args: Namespace) -> None:
@@ -48,12 +87,21 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     assert not state.aborted
     state.aborted = True
 
+    # The tasks still in flight when the abort fires -- i.e. the batch being
+    # aborted. Named by instance id (see submit_generate_tasks) so this lines up
+    # with the aborted_instances harbor reports back from /abort_all below.
+    pending_tasks = sorted(t.get_name() for t in pendings)
+    logger.info(
+        f"[abort] rollout_id={rollout_id} draining {len(pending_tasks)} in-flight rollout "
+        f"tasks: {pending_tasks}"
+    )
+
     is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
     if is_agentic:
         harbor_url = getattr(args, "agent_server_url", None)
         if not harbor_url:
             raise RuntimeError("agentic rollout abort requires --agent-server-url")
-        await _signal_harbor(harbor_url)
+        await _signal_harbor(harbor_url, rollout_id)
 
     await _abort_all_engines(args)
 
@@ -101,6 +149,18 @@ def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:
             sample.metadata["rollout_id"] = rollout_id
 
 
+def _group_task_name(group: list[Sample]) -> str:
+    """Stable label for a rollout task: the group's harbor instance id (falling
+    back to the sample index) so in-flight tasks can be named in abort logs."""
+    if not group:
+        return "?"
+    head = group[0][0] if isinstance(group[0], list) else group[0]
+    instance_id = head.metadata.get("instance_id")
+    if instance_id:
+        return str(instance_id)
+    return str(head.index) if head.index is not None else "?"
+
+
 def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
     return [
         asyncio.create_task(
@@ -110,7 +170,8 @@ def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
                 group,
                 sampling_params=state.sampling_params.copy(),
                 evaluation=False,
-            )
+            ),
+            name=_group_task_name(group),
         )
         for group in samples
     ]
