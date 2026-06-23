@@ -246,8 +246,16 @@ def setup_session_routes(app, backend, args):
                 body = orjson.dumps(request_body)
                 expected_num_assistant = session.num_assistant
 
+            # Tag every turn of this session with a routing key so a routing-key
+            # gateway policy (manual / consistent_hashing) pins the session to one
+            # worker, reusing the worker that holds its KV cache. Emitted
+            # unconditionally: the gateway is launched externally (miles does not
+            # know its policy), and policies that don't route on the key
+            # (e.g. cache_aware) ignore the header.
+            proxy_headers = {**dict(request.headers), "X-SMG-Routing-Key": session_id}
+
             t_proxy_start = time.monotonic()
-            result = await backend.do_proxy(request, "v1/chat/completions", body)
+            result = await backend.do_proxy(request, "v1/chat/completions", body=body, headers=proxy_headers)
             t_proxy_end = time.monotonic()
             # Session was closed mid-turn: return the engine's response without
             # recording it into the trajectory.
@@ -275,7 +283,9 @@ def setup_session_routes(app, backend, args):
                     )
                     request_body.pop("input_ids", None)
                     retry_body = orjson.dumps(request_body)
-                    result = await backend.do_proxy(request, "v1/chat/completions", retry_body)
+                    result = await backend.do_proxy(
+                        request, "v1/chat/completions", body=retry_body, headers=proxy_headers
+                    )
                     t_proxy_end = time.monotonic()
                     if session.closing:
                         return backend.build_proxy_response(result)
