@@ -80,6 +80,16 @@ async def generate_rollout_async(
 
     # instantiate data filters
     dynamic_filter = load_function(args.dynamic_sampling_filter_path)
+    if dynamic_filter is not None:
+        logger.info(
+            "Dynamic sampling filter: %s | min_reward_std=%.4g | min_mean_reward=%.4g | max_mean_reward=%.4g",
+            args.dynamic_sampling_filter_path,
+            getattr(args, "dynamic_sampling_min_reward_std", 1e-3),
+            getattr(args, "dynamic_sampling_min_mean_reward", 0.1),
+            getattr(args, "dynamic_sampling_max_mean_reward", 0.8),
+        )
+    if args.rollout_sample_filter_path:
+        logger.info("Rollout sample filter: %s", args.rollout_sample_filter_path)
 
     metric_gatherer = MetricGatherer()
 
