@@ -46,7 +46,7 @@ def observe_chat(function):
         caller_id = next((v for k, v in headers.items() if k.lower() == "x-request-id"), "-")
         stats.reqs_total += 1
         stats.inflight += 1
-        logger.info(
+        logger.debug(
             "[session-server] chat_start worker_port=%s session_id=%s req_id=%s caller_request_id=%s inflight_before=%d",
             stats.port,
             session_id,
@@ -59,7 +59,7 @@ def observe_chat(function):
         finally:
             stats.inflight -= 1
             stats.turns_completed += int(metrics.committed)
-            logger.info(
+            logger.debug(
                 "[session-server] chat_done worker_port=%s session_id=%s req_id=%s caller_request_id=%s "
                 "lock_wait_ms=%.1f tokenize_in_ms=%.1f proxy_elapsed_ms=%.1f tokenize_out_ms=%.1f "
                 "total_ms=%.1f inflight_now=%d prompt_tokens=%d completion_tokens=%d messages_len=%d",

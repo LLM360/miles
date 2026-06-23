@@ -15,7 +15,7 @@ from miles.rollout.session.observability import WorkerStats, log_worker_stats
 
 @pytest.mark.parametrize("version", [1, 2])
 def test_success_error_and_missing_session_have_balanced_counters(caplog, version):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.DEBUG)
 
     async def scenario():
         core, sid = _core(version)
@@ -30,6 +30,8 @@ def test_success_error_and_missing_session_have_balanced_counters(caplog, versio
         assert core.request_stats.inflight == 0
 
     asyncio.run(scenario())
+    request_logs = [r for r in caplog.records if "chat_start " in r.getMessage() or "chat_done " in r.getMessage()]
+    assert all(r.levelno == logging.DEBUG for r in request_logs)
     logs = [record.getMessage() for record in caplog.records]
     assert sum("chat_start " in line for line in logs) == 3
     done = [line for line in logs if "chat_done " in line]
