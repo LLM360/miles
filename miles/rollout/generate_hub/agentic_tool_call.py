@@ -118,8 +118,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     samples, num_dropped = drop_samples_after_first_non_completed(samples)
     if num_dropped > 0:
         logger.warning(
-            f"{log_prefix} Dropped {num_dropped} trailing turn(s) generated after a "
-            f"{samples[-1].status.name} turn"
+            f"{log_prefix} Dropped {num_dropped} trailing turn(s) generated after a " f"{samples[-1].status.name} turn"
         )
         for s in samples:
             s.metadata["dropped_trailing_turns"] = num_dropped
