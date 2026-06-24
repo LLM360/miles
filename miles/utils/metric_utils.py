@@ -118,3 +118,8 @@ def compute_rollout_step(args, rollout_id):
     if args.wandb_always_use_train_step:
         return rollout_id * args.rollout_batch_size * args.n_samples_per_prompt // args.global_batch_size
     return rollout_id
+
+
+def compute_samples_seen(args, rollout_id: int) -> int:
+    """Cumulative samples through (and including) rollout `rollout_id` (0-indexed)."""
+    return args.rollout_batch_size * args.n_samples_per_prompt * (rollout_id + 1)

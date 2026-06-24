@@ -49,8 +49,6 @@ logging.getLogger("megatron").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 import math
-from typing import Any
-
 
 
 def validate_rollout_for_grpo_training_step(
@@ -69,7 +67,6 @@ def validate_rollout_for_grpo_training_step(
     Logs useful diagnostics before raising so NCCL-desync root cause is visible
     in the first failing rank's log.
     """
-    import math
     import socket
     import traceback
 
@@ -218,10 +215,7 @@ def validate_rollout_for_grpo_training_step(
                 shapes.append(type(x).__name__)
                 dtypes.append(type(x).__name__)
                 devices.append("python")
-        return (
-            f"{key}: len={len(xs)} first_shapes={shapes} "
-            f"first_dtypes={dtypes} first_devices={devices}"
-        )
+        return f"{key}: len={len(xs)} first_shapes={shapes} " f"first_dtypes={dtypes} first_devices={devices}"
 
     def _basic_batch_summary():
         keys = sorted(list(rollout_data.keys()))
@@ -420,7 +414,9 @@ def validate_rollout_for_grpo_training_step(
             _add_error(f"loss_masks[{i}] has no active tokens, sum={mask_sum}, response_len={resp}")
         if mask_sum > resp:
             # Warning-only: float/weighted masks can legitimately have sum > resp.
-            _add_warning(f"loss_masks[{i}] sum={mask_sum} exceeds response_len={resp} (expected for float/weighted masks)")
+            _add_warning(
+                f"loss_masks[{i}] sum={mask_sum} exceeds response_len={resp} (expected for float/weighted masks)"
+            )
 
         if torch.is_tensor(mask):
             # Binary check: warning, not fatal, because masks may be float.

@@ -1,3 +1,4 @@
+import copy
 import dataclasses
 import itertools
 import logging
@@ -26,6 +27,7 @@ from miles.rollout.base_types import (
 from miles.rollout.inference_rollout.compatibility import call_rollout_function, load_rollout_function
 from miles.utils import dumper_utils, tracking_utils
 from miles.utils.environ import enable_experimental_rollout_refactor
+from miles.utils.flops_utils import calculate_workloads
 from miles.utils.health_monitor import RolloutHealthMonitor
 from miles.utils.http_utils import (
     _wrap_ipv6,
@@ -38,7 +40,13 @@ from miles.utils.http_utils import (
 from miles.utils.iter_utils import group_by
 from miles.utils.logging_utils import configure_logger
 from miles.utils.metric_checker import MetricChecker
-from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step, compute_statistics, dict_add_prefix
+from miles.utils.metric_utils import (
+    compute_pass_rate,
+    compute_rollout_step,
+    compute_samples_seen,
+    compute_statistics,
+    dict_add_prefix,
+)
 from miles.utils.misc import load_function
 from miles.utils.ray_utils import Box
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
@@ -377,7 +385,7 @@ class RolloutManager:
         else:
             init_http_client(args)
             self.servers = start_rollout_servers(args, pg)
-            _start_session_server(args)
+            _start_session_servers(args)
         self.rollout_engine_lock = Lock.options(num_cpus=1, num_gpus=0).remote()
         self.rollout_id = -1
 
@@ -554,6 +562,7 @@ class RolloutManager:
             path = Path(self.args.load_debug_rollout_data.format(rollout_id=rollout_id))
             if path.suffix == ".parquet":
                 import pyarrow.parquet as pq
+
                 data = [Sample.from_dict(row) for row in pq.read_table(path).to_pylist()]
             else:
                 data = torch.load(path, weights_only=False)["samples"]
@@ -644,6 +653,7 @@ class RolloutManager:
             if save_format == "parquet":
                 import pyarrow as pa
                 import pyarrow.parquet as pq
+
                 path = path.with_suffix(".parquet")
                 table = pa.Table.from_pylist(samples)
                 table = table.replace_schema_metadata({b"rollout_id": str(rollout_id).encode()})
@@ -752,6 +762,11 @@ class RolloutManager:
         if samples[0].train_metadata is not None:
             train_data["metadata"] = [sample.train_metadata for sample in samples]
 
+        # Presence of metadata["domain"] activates per-domain metric fan-out in policy_loss_function.
+        domains = [s.metadata.get("domain") for s in samples]
+        if any(domains):
+            train_data["domains"] = domains
+
         if any(sample.multimodal_train_inputs is not None for sample in samples):
             train_data["multimodal_train_inputs"] = [sample.multimodal_train_inputs for sample in samples]
 
@@ -842,7 +857,11 @@ class RolloutManager:
         total_lengths = [len(t) for t in data["tokens"]]
         data["total_lengths"] = total_lengths
 
-        if self.args.balance_data:
+        balance_by_flops = getattr(self.args, "balance_by_flops", False)
+        if balance_by_flops:
+            workloads = calculate_workloads(total_lengths, self.args)
+            partitions = get_seqlen_balanced_partitions(workloads, dp_size, equal_size=True)
+        elif self.args.balance_data:
             partitions = get_seqlen_balanced_partitions(total_lengths, dp_size, equal_size=True)
         else:
             partitions = [range(i, len(total_lengths), dp_size) for i in range(dp_size)]
@@ -869,6 +888,7 @@ class RolloutManager:
                 "prompt",
                 "teacher_log_probs",
                 "weight_versions",
+                "domains",
             ]:
                 if key not in data:
                     continue
@@ -885,16 +905,8 @@ class RolloutManager:
                 rollout_data[key] = data[key]
 
             token_lens = [total_lengths[j] for j in partition]
-            response_lens = (
-                [data["response_lengths"][j] for j in partition]
-                if "response_lengths" in data
-                else []
-            )
-            loss_mask_lens = (
-                [_safe_len(data["loss_masks"][j]) for j in partition]
-                if "loss_masks" in data
-                else []
-            )
+            response_lens = [data["response_lengths"][j] for j in partition] if "response_lengths" in data else []
+            loss_mask_lens = [_safe_len(data["loss_masks"][j]) for j in partition] if "loss_masks" in data else []
 
             payload_bytes = _estimate_payload_bytes(rollout_data)
             ref = ray.put(rollout_data)
@@ -1286,12 +1298,19 @@ def _resolve_sglang_config(args) -> SglangConfig:
 # ---------------------------------------------------------------------------
 
 
-def _start_session_server(args):
-    """Start a standalone session server when ``--use-session-server`` is set.
+def _start_session_servers(args):
+    """Start N independent vanilla session-server processes on the SGLang gateway node.
 
-    The session server runs as a separate process with its own port and proxies
-    inference requests directly to SGLang worker engines.  It is always started
-    as a standalone process regardless of whether ``--use-miles-router`` is active.
+    Each session-server is a standalone process bound to its own port; MSA clients
+    pick one at random per session via ``args.session_server_backends`` (callee-side
+    multi-backend dispatch). This replaces the single-server design with a multi-
+    backend design that relieves the per-process GIL when many concurrent sessions
+    saturate one process.
+
+    ``args.session_server_count`` (default 1) controls N. For N=1 the behavior is
+    identical to the previous single-server path. ``session_server_ip`` /
+    ``session_server_port`` are preserved for back-compat (set to host_ip / first
+    chosen port respectively).
     """
     if not getattr(args, "use_session_server", False):
         return
@@ -1302,27 +1321,61 @@ def _start_session_server(args):
 
     if getattr(args, "session_server_ip", None) is None:
         args.session_server_ip = args.sglang_router_ip
-    if getattr(args, "session_server_port", None) is None:
-        args.session_server_port = find_available_port(random.randint(5000, 6000))
     if getattr(args, "session_server_instance_id", None) is None:
         args.session_server_instance_id = uuid.uuid4().hex
 
-    ip, port = args.session_server_ip, args.session_server_port
-    if not is_port_available(port):
-        raise RuntimeError(
-            f"Port {port} is already in use — a stale session server may still be running. "
-            f"Run 'pkill -9 python' to kill it, then retry."
-        )
+    host_ip = args.session_server_ip
+    count = max(1, int(getattr(args, "session_server_count", 1) or 1))
 
     router_url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}"
 
     from miles.rollout.session.session_server import run_session_server
 
-    process = multiprocessing.Process(target=run_session_server, args=(args, router_url))
-    process.daemon = True
-    process.start()
-    wait_for_server_ready(ip, port, process, timeout=30)
-    logger.info(f"Session server launched at {ip}:{port}")
+    chosen_ports: list[int] = []
+    processes: list[multiprocessing.Process] = []
+
+    # Pre-fill the explicit port (if any) as the first backend so back-compat
+    # callers landing on backend 0 hit a deterministic port.
+    explicit_port = getattr(args, "session_server_port", None)
+    if explicit_port is not None:
+        if not is_port_available(explicit_port):
+            raise RuntimeError(
+                f"Port {explicit_port} is already in use — a stale session server may still be running. "
+                f"Run 'pkill -9 python' to kill it, then retry."
+            )
+        chosen_ports.append(explicit_port)
+
+    while len(chosen_ports) < count:
+        port = find_available_port(random.randint(5000, 6000))
+        # Avoid races: reject duplicates produced by the random seed.
+        if port in chosen_ports:
+            continue
+        chosen_ports.append(port)
+
+    for port in chosen_ports:
+        # Each child sees its own port via a shallow-copied args namespace.
+        child_args = copy.copy(args)
+        child_args.session_server_port = port
+        child_args.session_server_ip = host_ip
+        process = multiprocessing.Process(target=run_session_server, args=(child_args, router_url))
+        process.daemon = True
+        process.start()
+        processes.append(process)
+
+    for port, process in zip(chosen_ports, processes, strict=True):
+        wait_for_server_ready(host_ip, port, process, timeout=30)
+        logger.info(f"Session server launched at {host_ip}:{port}")
+
+    # Publish the backend set; back-compat fields point at backend 0.
+    args.session_server_backends = [f"http://{host_ip}:{port}" for port in chosen_ports]
+    args.session_server_ip = host_ip
+    args.session_server_port = chosen_ports[0]
+    logger.info(
+        "Session-server multi-backend dispatch enabled: N=%d, backends=%s",
+        count,
+        args.session_server_backends,
+    )
+    return args.session_server_backends
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):
@@ -1371,10 +1424,16 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
     log_dict = {**(rollout_extra_metrics or {})}
     log_dict |= dict_add_prefix(compute_metrics_from_samples(args, samples), "rollout/")
     log_dict |= dict_add_prefix(compute_perf_metrics_from_samples(args, samples, rollout_time), "perf/")
+    # Mirror reward/* and response_stats/* as top-level wandb panels.
+    for full_key, val in list(log_dict.items()):
+        if full_key.startswith(("rollout/reward/", "rollout/response_stats/")):
+            log_dict[full_key[len("rollout/") :]] = val
     logger.info(f"perf {rollout_id}: {log_dict}")
     step = compute_rollout_step(args, rollout_id)
     log_dict["rollout/step"] = step
     log_dict["train/rollout_id"] = rollout_id
+    log_dict["samples_seen"] = compute_samples_seen(args, rollout_id)
+    log_dict["rollout_step"] = step
     tracking_utils.log(args, log_dict, step_key="rollout/step")
 
 
@@ -1422,11 +1481,11 @@ def compute_metrics_from_samples(args, samples):
     log_dict |= _compute_group_outcome_metrics(args, samples, prefix="reward")
 
     # per-correctness (no count_frac: for binary rewards = mean reward = already in reward/raw_reward)
-    correct = [s for s in samples if s.get_reward_value(args) > 0]
-    incorrect = [s for s in samples if s.get_reward_value(args) <= 0]
+    correct = [s for s in samples if _correctness(s, args)]
+    incorrect = [s for s in samples if not _correctness(s, args)]
+    log_dict["reward/correctness"] = len(correct) / n
     for label, grp in [("correct", correct), ("incorrect", incorrect)]:
         if grp:
-            log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{label}", n, include_count_frac=False)
             log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{label}")
 
     # per-category and combined (only if category data present)
@@ -1438,12 +1497,11 @@ def compute_metrics_from_samples(args, samples):
             log_dict |= _compute_grouped_reward_metrics(args, cat_grp, f"reward/{cat}", n)
             log_dict |= _compute_grouped_response_metrics(args, cat_grp, f"response_stats/{cat}")
             log_dict |= _compute_group_outcome_metrics(args, cat_grp, prefix=f"reward/{cat}")
-            for label, grp in [
-                ("correct", [s for s in cat_grp if s.get_reward_value(args) > 0]),
-                ("incorrect", [s for s in cat_grp if s.get_reward_value(args) <= 0]),
-            ]:
+            cat_correct = [s for s in cat_grp if _correctness(s, args)]
+            cat_incorrect = [s for s in cat_grp if not _correctness(s, args)]
+            log_dict[f"reward/{cat}/correctness"] = len(cat_correct) / len(cat_grp)
+            for label, grp in [("correct", cat_correct), ("incorrect", cat_incorrect)]:
                 if grp:
-                    log_dict |= _compute_grouped_reward_metrics(args, grp, f"reward/{cat}/{label}", n)
                     log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{cat}/{label}")
 
     return log_dict
@@ -1485,6 +1543,9 @@ def compute_perf_metrics_from_samples(args, samples, rollout_time):
 def _compute_zero_std_metrics(args, all_samples: list[Sample]):
     # only compute in GRPO-like algorithms where one prompt has multiple responses
     if args.advantage_estimator == "ppo":
+        return {}
+    # Skip non-scalar rewards (round() and zero-std comparison are ill-defined on dicts).
+    if all_samples and not isinstance(all_samples[0].get_reward_value(args), (int, float)):
         return {}
 
     def _is_zero_std(samples: list[Sample]):
@@ -1530,8 +1591,11 @@ def _compute_reward_cat_metrics(args, all_samples: list[Sample]):
     return {f"error_cat/{reward_cat}": len(s) / len(all_samples) for reward_cat, s in samples_of_reward_cat.items()}
 
 
-# Candidate metadata keys to auto-detect problem category (checked in order)
-_CANDIDATE_CATEGORY_KEYS = ["category", "type", "subject", "domain", "problem_type"]
+# Candidate metadata keys to auto-detect problem category (checked in order).
+# `domain` is first because it's the routing key in multi-teacher setups; if a sample
+# carries both `domain` and one of the legacy fields like `category`, group by domain
+# so per-cat correctness panels match the per-domain loss panels.
+_CANDIDATE_CATEGORY_KEYS = ["domain", "category", "type", "subject", "problem_type"]
 
 
 def _get_problem_category_key(args, all_samples: list[Sample]) -> str | None:
@@ -1547,11 +1611,22 @@ def _get_problem_category_key(args, all_samples: list[Sample]) -> str | None:
     return None
 
 
+def _correctness(sample: Sample, args) -> bool:
+    """Non-scalar reward fns set metadata["correctness_reward"]; scalars fall back to sign."""
+    if "correctness_reward" in sample.metadata:
+        return sample.metadata["correctness_reward"] > 0
+    val = sample.get_reward_value(args)
+    return isinstance(val, (int, float)) and val > 0
+
+
 def _compute_grouped_reward_metrics(
     args, group: list[Sample], prefix: str, n_total: int, include_count_frac: bool = True
 ) -> dict:
     """Reward/outcome metrics for a split — emitted under reward/ sections."""
-    result = {f"{prefix}/raw_reward": np.mean([s.get_reward_value(args) for s in group]).item()}
+    result = {}
+    # Skip raw_reward when reward is non-scalar (e.g. dict-valued OPD rewards).
+    if group and isinstance(group[0].get_reward_value(args), (int, float)):
+        result[f"{prefix}/raw_reward"] = np.mean([s.get_reward_value(args) for s in group]).item()
     if include_count_frac:
         result[f"{prefix}/count_frac"] = len(group) / n_total
     return result
@@ -1566,9 +1641,7 @@ def _compute_grouped_response_metrics(args, group: list[Sample], prefix: str) ->
     }
 
 
-def _compute_group_outcome_metrics(
-    args, all_samples: list[Sample], prefix: str = "reward"
-) -> dict:
+def _compute_group_outcome_metrics(args, all_samples: list[Sample], prefix: str = "reward") -> dict:
     """Fraction of prompt groups that are unanimously correct or incorrect. GRPO only."""
     if args.advantage_estimator == "ppo":
         return {}
@@ -1576,8 +1649,8 @@ def _compute_group_outcome_metrics(
     n_groups = len(groups)
     if n_groups == 0:
         return {}
-    all_correct = sum(1 for g in groups if all(s.get_reward_value(args) > 0 for s in g))
-    all_incorrect = sum(1 for g in groups if all(s.get_reward_value(args) <= 0 for s in g))
+    all_correct = sum(1 for g in groups if all(_correctness(s, args) for s in g))
+    all_incorrect = sum(1 for g in groups if all(not _correctness(s, args) for s in g))
     return {
         f"{prefix}/all_correct_group_frac": all_correct / n_groups,
         f"{prefix}/all_incorrect_group_frac": all_incorrect / n_groups,
