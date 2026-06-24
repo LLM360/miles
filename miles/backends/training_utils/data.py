@@ -7,6 +7,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 
 from miles.utils.data import get_minimum_num_micro_batch_size
+from miles.utils.flops_utils import calculate_workloads
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.types import RolloutBatch
 
@@ -127,9 +128,7 @@ def get_batch(
     # same list (aggregate_train_losses keys positionally on the first microbatch).
     if has_domains:
         if not hasattr(data_iterator, "_all_domains_cache"):
-            data_iterator._all_domains_cache = sorted(
-                {d for d in data_iterator.rollout_data["domains"] if d}
-            )
+            data_iterator._all_domains_cache = sorted({d for d in data_iterator.rollout_data["domains"] if d})
         batch["all_domains"] = data_iterator._all_domains_cache
 
     tokens = batch["tokens"]
@@ -414,7 +413,11 @@ def get_data_iterator(
         for i, num_mbs in enumerate(num_microbatches):
             start, end = i * num_local_gbs, (i + 1) * num_local_gbs
             samples = rollout_data["total_lengths"][start:end]
-            partitions = get_seqlen_balanced_partitions(samples, num_mbs, equal_size=False)
+            if getattr(args, "balance_by_flops", False):
+                weights = calculate_workloads(samples, args)
+                partitions = get_seqlen_balanced_partitions(weights, num_mbs, equal_size=False)
+            else:
+                partitions = get_seqlen_balanced_partitions(samples, num_mbs, equal_size=False)
             for j in range(num_mbs):
                 for k in range(len(partitions[j])):
                     partitions[j][k] += start

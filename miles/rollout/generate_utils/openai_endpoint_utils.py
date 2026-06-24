@@ -4,6 +4,7 @@ Utilities for the OpenAI endpoint
 
 import asyncio
 import logging
+import random
 from argparse import Namespace
 from copy import deepcopy
 
@@ -26,14 +27,24 @@ class OpenAIEndpointTracer:
 
     @staticmethod
     async def create(args: Namespace):
-        session_ip = getattr(args, "session_server_ip", None)
-        session_port = getattr(args, "session_server_port", None)
-        if not session_ip or not session_port:
-            raise RuntimeError(
-                "session_server_ip/session_server_port are not set. "
-                "Pass --use-session-server to start the session server."
-            )
-        session_url = f"http://{session_ip}:{session_port}"
+        # Multi-backend dispatch (callee-side random pick): if the spawner
+        # published ``session_server_backends`` (N>=1 vanilla session-server
+        # processes co-located with the SGLang gateway), pick one uniformly
+        # at random and bind this trajectory to it for its lifetime. Falls
+        # back to the legacy single-server fields when no backend list is
+        # published.
+        backends = getattr(args, "session_server_backends", None)
+        if backends:
+            session_url = random.choice(backends)
+        else:
+            session_ip = getattr(args, "session_server_ip", None)
+            session_port = getattr(args, "session_server_port", None)
+            if not session_ip or not session_port:
+                raise RuntimeError(
+                    "session_server_ip/session_server_port are not set. "
+                    "Pass --use-session-server to start the session server."
+                )
+            session_url = f"http://{session_ip}:{session_port}"
         session_server_instance_id = None
         try:
             health = await post(f"{session_url}/health", {}, action="get")
@@ -247,5 +258,5 @@ def _truncate_sample_output(sample: Sample, keep_tokens: int, tokenizer) -> None
     if sample.loss_mask is not None:
         sample.loss_mask = sample.loss_mask[:keep_tokens]
     if sample.rollout_routed_experts is not None:
-        sample.rollout_routed_experts = sample.rollout_routed_experts[:len(sample.tokens) - 1]
+        sample.rollout_routed_experts = sample.rollout_routed_experts[: len(sample.tokens) - 1]
     sample.status = Sample.Status.TRUNCATED
