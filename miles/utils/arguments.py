@@ -354,6 +354,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--disable-oversampling",
+                action="store_true",
+                default=False,
+                help=(
+                    "Submit exactly rollout_batch_size groups and keep whatever survives the dynamic "
+                    "filter, instead of oversampling to refill groups dropped by the filter. The batch "
+                    "may end short; pair with --use-dynamic-global-batch-size when many groups are dropped."
+                ),
+            )
+            parser.add_argument(
                 "--dynamic-sampling-filter-path",
                 type=str,
                 default=None,
