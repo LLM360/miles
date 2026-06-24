@@ -13,6 +13,7 @@ Agent function contract:
       prompt: ...,
       request_kwargs: dict,
       metadata: dict,       # sample.metadata — env-specific fields
+      agent_config: dict,   # optional, only when --custom-agent-config-json is set
       **kwargs,
   ) -> dict | None:
       ...
@@ -29,6 +30,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
+import orjson
 from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
 
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
@@ -76,10 +78,13 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     try:
         logger.debug(f"{log_prefix} Starting agent function call")
         agent_metadata = await custom_agent_function(
-            base_url=tracer.base_url,
-            prompt=input.sample.prompt,
-            request_kwargs=build_chat_request_kwargs(input.sampling_params),
-            metadata=metadata,
+            **build_agent_function_kwargs(
+                input.args,
+                base_url=tracer.base_url,
+                prompt=input.sample.prompt,
+                sampling_params=input.sampling_params,
+                metadata=metadata,
+            )
         )
         logger.debug(f"{log_prefix} Agent function returned in {time.monotonic()-t_start:.1f}s")
     except Exception as e:
@@ -140,8 +145,45 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     return GenerateFnOutput(samples=samples)
 
 
+def build_agent_function_kwargs(
+    args: argparse.Namespace,
+    *,
+    base_url: str,
+    prompt: Any,
+    sampling_params: dict[str, Any],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    kwargs = {
+        "base_url": base_url,
+        "prompt": prompt,
+        "request_kwargs": build_chat_request_kwargs(sampling_params),
+        "metadata": metadata,
+    }
+    agent_config = getattr(args, "custom_agent_config", None)
+    if agent_config is not None:
+        kwargs["agent_config"] = agent_config
+    return kwargs
+
+
+def parse_custom_agent_config_json(value: str) -> dict[str, Any]:
+    try:
+        parsed = orjson.loads(value)
+    except orjson.JSONDecodeError as e:
+        raise argparse.ArgumentTypeError(f"must be valid JSON: {e}") from e
+    if not isinstance(parsed, dict):
+        raise argparse.ArgumentTypeError("must be a JSON object")
+    return parsed
+
+
 def _add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--custom-agent-function-path", type=str)
+    parser.add_argument(
+        "--custom-agent-config-json",
+        type=parse_custom_agent_config_json,
+        default=None,
+        dest="custom_agent_config",
+        help="JSON object passed to the custom agent function as agent_config.",
+    )
     parser.add_argument("--generate-multi-samples", action="store_true", default=False)
     parser.add_argument(
         "--max-seq-len",
