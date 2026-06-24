@@ -24,6 +24,7 @@ from miles.utils.reloadable_process_group import destroy_process_groups, monkey_
 from miles.utils.replay_base import all_replay_managers
 from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
+from miles.utils.training_semantics import validate_loss_masks_for_removed_samples
 from miles.utils.types import RolloutBatch
 
 from ...utils.profile_utils import TrainProfiler
@@ -334,6 +335,13 @@ def validate_rollout_for_grpo_training_step(
         if got != n:
             _add_error(f"{key!r} length mismatch: got {got}, expected {n}")
 
+    remove_samples = rollout_data.get("remove_samples")
+    if remove_samples is not None:
+        if not _is_seq(remove_samples):
+            _add_error(f"'remove_samples' must be list/tuple, got {type(remove_samples).__name__}")
+        elif len(remove_samples) != n:
+            _add_error(f"'remove_samples' length mismatch: got {len(remove_samples)}, expected {n}")
+
     token_key = None
     if _present("tokens"):
         token_key = "tokens"
@@ -416,8 +424,6 @@ def validate_rollout_for_grpo_training_step(
             continue
 
         mask_sum = _sum_float(mask)
-        if mask_sum <= 0:
-            _add_error(f"loss_masks[{i}] has no active tokens, sum={mask_sum}, response_len={resp}")
         if mask_sum > resp:
             # Warning-only: float/weighted masks can legitimately have sum > resp.
             _add_warning(f"loss_masks[{i}] sum={mask_sum} exceeds response_len={resp} (expected for float/weighted masks)")
@@ -430,6 +436,11 @@ def validate_rollout_for_grpo_training_step(
                     _add_warning(f"loss_masks[{i}] is not binary 0/1")
             except Exception as e:
                 _add_warning(f"binary check failed for loss_masks[{i}]: {type(e).__name__}: {e}")
+
+    try:
+        validate_loss_masks_for_removed_samples(rollout_data["loss_masks"], response_lengths, remove_samples)
+    except ValueError as e:
+        _add_error(str(e))
 
     # max_seq_lens if present.
     if _present("max_seq_lens"):

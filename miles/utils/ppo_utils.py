@@ -212,6 +212,7 @@ def get_reinforce_plus_plus_returns(
     rewards: torch.Tensor,
     kl: list[torch.Tensor],
     loss_masks: list[torch.Tensor],
+    remove_samples: list[bool] | None,
     response_lengths: list[int],
     total_lengths: list[int],
     kl_coef: float,
@@ -224,6 +225,7 @@ def get_reinforce_plus_plus_returns(
         rewards (Tensor): A tensor of scalar rewards for each sequence.
         kl (List[Tensor]): List of per-token KL divergence tensors for sequence chunks.
         loss_masks (List[Tensor]): List of response-only loss masks for each full sequence.
+        remove_samples (List[bool] | None): Whether each sequence is intentionally removed.
         response_lengths (List[int]): The full length of each response sequence.
         total_lengths (List[int]): The full length of each sequence (prompt + response).
         kl_coef (float): Coefficient for the KL penalty.
@@ -241,6 +243,7 @@ def get_reinforce_plus_plus_returns(
     for i in range(len(rewards)):
         local_kl_chunk = kl[i]
         total_len, response_len = total_lengths[i], response_lengths[i]
+        remove_sample = remove_samples is not None and remove_samples[i]
 
         if cp_size > 1:
             # Step 1,2:Gather all chunks and token_offsets from all ranks and reconstruct the full response tensor by splitting and placing each part
@@ -251,6 +254,15 @@ def get_reinforce_plus_plus_returns(
             full_kl_response = local_kl_chunk
 
         # Step 3: Compute returns on full response kl tensor.
+        if remove_sample:
+            returns_for_seq = torch.zeros_like(full_kl_response)
+            if cp_size > 1:
+                from miles.backends.training_utils.cp_utils import slice_log_prob_with_cp
+
+                returns_for_seq = slice_log_prob_with_cp(returns_for_seq, total_len, response_len)
+            final_returns_chunks.append(returns_for_seq)
+            continue
+
         token_level_rewards = -kl_coef * full_kl_response
         full_mask = loss_masks[i]
         assert full_mask.sum().item() > 0, f"Sequence at index {i} is fully masked."

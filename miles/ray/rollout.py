@@ -48,6 +48,7 @@ from miles.utils.metric_utils import (
 from miles.utils.misc import load_function
 from miles.utils.ray_utils import Box
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
+from miles.utils.training_semantics import post_process_rewards_excluding_removed
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import Sample
 
@@ -678,28 +679,7 @@ class RolloutManager:
         if self.custom_reward_post_process_func is not None:
             return self.custom_reward_post_process_func(self.args, samples)
 
-        raw_rewards = [sample.get_reward_value(self.args) for sample in samples]
-        if (
-            self.args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"]
-            and self.args.rewards_normalization
-        ):
-            # group norm
-            rewards = torch.tensor(raw_rewards, dtype=torch.float)
-            if rewards.shape[-1] == self.args.n_samples_per_prompt * self.args.rollout_batch_size:
-                rewards = rewards.reshape(-1, self.args.n_samples_per_prompt)
-            else:
-                # when samples count are not equal in each group
-                rewards = rewards.view(-1, rewards.shape[-1])
-            mean = rewards.mean(dim=-1, keepdim=True)
-            rewards = rewards - mean
-
-            if self.args.advantage_estimator in ["grpo", "gspo"] and self.args.grpo_std_normalization:
-                std = rewards.std(dim=-1, keepdim=True)
-                rewards = rewards / (std + 1e-6)
-
-            return raw_rewards, rewards.flatten().tolist()
-
-        return raw_rewards, raw_rewards
+        return post_process_rewards_excluding_removed(self.args, samples)
 
     def _convert_samples_to_train_data(self, samples: list[Sample] | list[list[Sample]]):
         """
@@ -722,6 +702,7 @@ class RolloutManager:
             "raw_reward": raw_rewards,
             "truncated": [1 if sample.status == Sample.Status.TRUNCATED else 0 for sample in samples],
             "sample_indices": [sample.index for sample in samples],
+            "remove_samples": [sample.remove_sample for sample in samples],
         }
 
         # loss mask
@@ -873,6 +854,7 @@ class RolloutManager:
                 "rewards",
                 "truncated",
                 "loss_masks",
+                "remove_samples",
                 "round_number",
                 "sample_indices",
                 "rollout_log_probs",
