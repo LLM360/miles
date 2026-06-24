@@ -1,3 +1,4 @@
+import math
 from argparse import Namespace
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -27,6 +28,44 @@ from .cp_utils import (
     get_sum_of_sample_mean,
 )
 from .parallel import get_parallel_state
+
+
+def get_oapl_targets(
+    rewards: list[float],
+    group_indices: list[int | None] | None,
+    n_samples_per_prompt: int,
+    beta1: float,
+    device: torch.device | int | str,
+) -> list[torch.Tensor]:
+    """Compute OAPL A* targets using the paper's log-mean-exp V* estimate."""
+    if beta1 <= 0:
+        raise ValueError(f"oapl beta1 must be positive, got {beta1}")
+    if not rewards:
+        return []
+
+    reward_tensor = torch.tensor(rewards, dtype=torch.float32, device=device)
+    if group_indices is not None and len(group_indices) == len(rewards) and all(key is not None for key in group_indices):
+        keys = list(group_indices)
+    else:
+        group_size = max(1, int(n_samples_per_prompt or 1))
+        keys = [i // group_size for i in range(len(rewards))]
+
+    grouped: dict[int, list[int]] = {}
+    for i, key in enumerate(keys):
+        grouped.setdefault(int(key), []).append(i)
+
+    targets: list[torch.Tensor | None] = [None] * len(rewards)
+    for indices in grouped.values():
+        group_rewards = reward_tensor[indices]
+        v_star_hat = beta1 * (torch.logsumexp(group_rewards / beta1, dim=0) - math.log(len(indices)))
+        for idx in indices:
+            targets[idx] = reward_tensor[idx] - v_star_hat
+
+    missing = [i for i, target in enumerate(targets) if target is None]
+    if missing:
+        raise RuntimeError(f"OAPL target construction missed sample indices: {missing}")
+
+    return [target.reshape(()) for target in targets]
 
 
 def get_responses(
@@ -331,6 +370,22 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
         returns = get_grpo_returns(rewards, kl)
         # TODO: is the copy necessary?
         advantages = [r for r in returns]
+
+    elif args.advantage_estimator == "oapl":
+        assert log_probs is not None, "OAPL requires rollout_log_probs to compute target-shaped tensors"
+        raw_rewards = rollout_data.get("raw_reward", rewards)
+        if any(not isinstance(reward, (int, float)) for reward in raw_rewards):
+            raise ValueError("OAPL requires scalar rewards.")
+        oapl_targets = get_oapl_targets(
+            rewards=[float(reward) for reward in raw_rewards],
+            group_indices=rollout_data.get("group_indices"),
+            n_samples_per_prompt=args.n_samples_per_prompt,
+            beta1=args.oapl_beta1,
+            device=log_probs[0].device,
+        )
+        rollout_data["oapl_targets"] = oapl_targets
+        advantages = [target.expand_as(log_prob).clone() for target, log_prob in zip(oapl_targets, log_probs, strict=False)]
+        returns = [advantage.clone() for advantage in advantages]
 
     elif args.advantage_estimator == "ppo":
         old_rewards = rewards
@@ -792,6 +847,119 @@ def policy_loss_function(
     return loss, reported_loss
 
 
+def oapl_loss_function(
+    args: Namespace,
+    batch: RolloutBatch,
+    logits: torch.Tensor,
+    sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Compute OAPL's squared sequence-logprob regression loss.
+
+    OAPL compares the current trainer policy against the inference policy that
+    generated the rollout. The rollout/inference logprobs are therefore the
+    behavior-policy reference, not an importance-sampling correction.
+    """
+    if not batch.get("rollout_log_probs"):
+        raise ValueError("OAPL requires rollout_log_probs in the training batch.")
+    if not batch.get("oapl_targets"):
+        raise ValueError("OAPL requires oapl_targets computed before microbatching.")
+
+    response_lengths = batch["response_lengths"]
+    total_lengths = batch["total_lengths"]
+    max_seq_lens = batch.get("max_seq_lens", None)
+
+    log_probs_and_entropy = get_log_probs_and_entropy(
+        logits,
+        args=args,
+        unconcat_tokens=batch["unconcat_tokens"],
+        total_lengths=total_lengths,
+        response_lengths=response_lengths,
+        with_entropy=True,
+        max_seq_lens=max_seq_lens,
+    )
+
+    current_log_probs = log_probs_and_entropy["log_probs"]
+    rollout_log_probs = batch["rollout_log_probs"]
+
+    full_current_log_probs = [
+        all_gather_with_cp(log_prob, total_length, response_length, args.qkv_format, max_seq_len)
+        for log_prob, total_length, response_length, max_seq_len in zip(
+            current_log_probs,
+            total_lengths,
+            response_lengths,
+            max_seq_lens if max_seq_lens is not None else [None] * len(response_lengths),
+            strict=False,
+        )
+    ]
+    full_rollout_log_probs = [
+        all_gather_with_cp(log_prob, total_length, response_length, args.qkv_format, max_seq_len)
+        for log_prob, total_length, response_length, max_seq_len in zip(
+            rollout_log_probs,
+            total_lengths,
+            response_lengths,
+            max_seq_lens if max_seq_lens is not None else [None] * len(response_lengths),
+            strict=False,
+        )
+    ]
+
+    sample_losses = []
+    predictions = []
+    targets = []
+    logprob_ratios = []
+    current_logprob_sums = []
+    rollout_logprob_sums = []
+    for current, rollout, loss_mask, target in zip(
+        full_current_log_probs,
+        full_rollout_log_probs,
+        batch["loss_masks"],
+        batch["oapl_targets"],
+        strict=False,
+    ):
+        mask = loss_mask.to(device=current.device, dtype=torch.float32)
+        target = target.to(device=current.device, dtype=torch.float32).reshape(())
+        logprob_ratio = ((current.float() - rollout.float()) * mask).sum()
+        prediction = args.oapl_beta2 * logprob_ratio
+        sample_losses.append((prediction - target) ** 2)
+        predictions.append(prediction)
+        targets.append(target)
+        logprob_ratios.append(logprob_ratio)
+        current_logprob_sums.append((current.float() * mask).sum())
+        rollout_logprob_sums.append((rollout.float() * mask).sum())
+
+    if sample_losses:
+        sample_losses = torch.stack(sample_losses)
+        predictions = torch.stack(predictions)
+        targets = torch.stack(targets)
+        logprob_ratios = torch.stack(logprob_ratios)
+        current_logprob_sums = torch.stack(current_logprob_sums)
+        rollout_logprob_sums = torch.stack(rollout_logprob_sums)
+        oapl_loss = sample_losses.sum()
+    else:
+        oapl_loss = logits.sum() * 0
+        predictions = targets = logprob_ratios = current_logprob_sums = rollout_logprob_sums = torch.zeros(
+            (), device=logits.device
+        )
+
+    entropy = torch.cat(log_probs_and_entropy["entropy"], dim=0)
+    entropy_loss = sum_of_sample_mean(entropy) if entropy.numel() else logits.sum() * 0
+    loss = oapl_loss - args.entropy_coef * entropy_loss
+    loss = loss + 0 * logits.sum()
+
+    reported_loss = {
+        "loss": loss.clone().detach(),
+        "oapl_loss": oapl_loss.clone().detach(),
+        "oapl_abs_error": (predictions - targets).abs().mean().clone().detach(),
+        "oapl_prediction": predictions.mean().clone().detach(),
+        "oapl_target": targets.mean().clone().detach(),
+        "oapl_logprob_ratio": logprob_ratios.mean().clone().detach(),
+        "log_probs": current_logprob_sums.mean().clone().detach(),
+        "rollout_log_probs": rollout_logprob_sums.mean().clone().detach(),
+        "entropy_loss": entropy_loss.clone().detach(),
+    }
+
+    return loss, reported_loss
+
+
 def value_loss_function(
     args: Namespace,
     batch: RolloutBatch,
@@ -948,6 +1116,8 @@ def loss_function(
     match args.loss_type:
         case "policy_loss":
             func = policy_loss_function
+        case "oapl_loss":
+            func = oapl_loss_function
         case "value_loss":
             func = value_loss_function
         case "sft_loss":

@@ -460,6 +460,7 @@ class FSDPTrainRayActor(TrainRayActor):
                             "log_probs",
                             "advantages",
                             "returns",
+                            "oapl_targets",
                             "ref_log_probs",
                             "rollout_log_probs",
                         ],

@@ -726,6 +726,7 @@ class RolloutManager:
             "raw_reward": raw_rewards,
             "truncated": [1 if sample.status == Sample.Status.TRUNCATED else 0 for sample in samples],
             "sample_indices": [sample.index for sample in samples],
+            "group_indices": [sample.group_index for sample in samples],
         }
 
         # loss mask

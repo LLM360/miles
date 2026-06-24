@@ -395,6 +395,7 @@ def train_one_step(
                 "values",
                 "advantages",
                 "returns",
+                "oapl_targets",
                 "rollout_log_probs",
                 "max_seq_lens",
             ],

@@ -909,10 +909,10 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             parser.add_argument(
                 "--loss-type",
                 type=str,
-                choices=["policy_loss", "sft_loss", "custom_loss"],
+                choices=["policy_loss", "oapl_loss", "sft_loss", "custom_loss"],
                 default="policy_loss",
                 help=(
-                    "Choose loss type, currently support ppo policy_loss or sft_loss, "
+                    "Choose loss type, currently support ppo policy_loss, oapl_loss, or sft_loss, "
                     "if custom_loss is set, we will use the function path from `--custom-loss-function-path`."
                 ),
             )
@@ -942,8 +942,27 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                     "reinforce_plus_plus_baseline",
                     "ppo",
                     "on_policy_distillation",
+                    "oapl",
                 ],
                 default="grpo",
+            )
+            parser.add_argument(
+                "--oapl-beta1",
+                type=float,
+                default=1.0,
+                help=(
+                    "OAPL beta for the V* log-mean-exp baseline in Eq. 2 of the paper. "
+                    "The paper default for both math and code experiments is 1."
+                ),
+            )
+            parser.add_argument(
+                "--oapl-beta2",
+                type=float,
+                default=1e-3,
+                help=(
+                    "OAPL beta for the squared log-probability-ratio regression loss in Eq. 3. "
+                    "The paper default for both math and code experiments is 1e-3."
+                ),
             )
             parser.add_argument(
                 "--disable-compute-advantages-and-returns",
@@ -1997,6 +2016,19 @@ def miles_validate_args(args):
 
     if args.use_rollout_logprobs:
         assert not args.use_tis, "use_rollout_logprobs and use_tis cannot be set at the same time."
+
+    if args.advantage_estimator == "oapl" or args.loss_type == "oapl_loss":
+        assert args.advantage_estimator == "oapl", "--loss-type=oapl_loss requires --advantage-estimator=oapl"
+        assert args.loss_type == "oapl_loss", "--advantage-estimator=oapl requires --loss-type=oapl_loss"
+        assert args.use_rollout_logprobs, "OAPL requires --use-rollout-logprobs for the inference-policy logprobs"
+        assert not args.use_tis, "OAPL does not use token-level importance sampling; remove --use-tis"
+        assert not args.use_kl_loss, "OAPL uses the inference policy as its KL reference; remove --use-kl-loss"
+        assert args.kl_coef == 0, "OAPL does not apply reference-model KL reward shaping; set --kl-coef=0"
+        assert not args.normalize_advantages, "OAPL uses its closed-form A* targets; remove --normalize-advantages"
+        assert args.oapl_beta1 > 0, "--oapl-beta1 must be positive"
+        assert args.oapl_beta2 > 0, "--oapl-beta2 must be positive"
+        if args.n_samples_per_prompt < 2:
+            logger.warning("OAPL is group-based; n_samples_per_prompt=%s gives a degenerate baseline.", args.n_samples_per_prompt)
 
     if args.get_mismatch_metrics:
         assert (
