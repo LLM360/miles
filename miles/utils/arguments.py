@@ -375,6 +375,28 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
 
+            parser.add_argument(
+                "--dynamic-sampling-min-reward-std",
+                type=float,
+                default=1e-3,
+                help="Minimum reward std for a group to be kept during dynamic sampling. Groups with std below this threshold are dropped. "
+                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
+            )
+            parser.add_argument(
+                "--dynamic-sampling-min-mean-reward",
+                type=float,
+                default=0.1,
+                help="Minimum mean reward for a group to be kept during dynamic sampling. Groups below this threshold are dropped. "
+                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
+            )
+            parser.add_argument(
+                "--dynamic-sampling-max-mean-reward",
+                type=float,
+                default=0.8,
+                help="Maximum mean reward for a group to be kept during dynamic sampling. Groups above this threshold are dropped. "
+                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
+            )
+
             # partial rollout
             parser.add_argument(
                 "--partial-rollout",
