@@ -28,6 +28,7 @@ class SessionServer:
     requests through the inference router (sglang or miles)."""
 
     def __init__(self, args, backend_url: str):
+        self.args = args
         self.backend_url = backend_url
         self.app = FastAPI()
 
@@ -67,7 +68,8 @@ class SessionServer:
         except httpx.TransportError as exc:
             _elapsed_ms = (time.monotonic() - _t_proxy_start) * 1000.0
             logger.warning(
-                "[session-server] proxy_transport_error method=%s path=%s url=%s elapsed_ms=%.1f error_type=%s error=%s",
+                "[session-server] proxy_transport_error method=%s path=%s url=%s elapsed_ms=%.1f "
+                "error_type=%s error=%s",
                 request.method,
                 path,
                 url,
@@ -135,7 +137,8 @@ async def _stats_logger_loop(worker_port, interval_seconds: float = 30.0):
             if stats is None:
                 # Routes not wired yet (very early startup) — emit a sparse log.
                 logger.info(
-                    "[session-server] stats worker_port=%s reqs_total=0 reqs_since_last=0 inflight_now=0 turns_completed=0",
+                    "[session-server] stats worker_port=%s reqs_total=0 reqs_since_last=0 "
+                    "inflight_now=0 turns_completed=0",
                     worker_port,
                 )
             else:
@@ -148,7 +151,8 @@ async def _stats_logger_loop(worker_port, interval_seconds: float = 30.0):
                 rss_mb = mi.rss / 1024.0 / 1024.0
                 vms_mb = mi.vms / 1024.0 / 1024.0
                 logger.info(
-                    "[session-server] stats worker_port=%s reqs_total=%d reqs_since_last=%d inflight_now=%d turns_completed=%d rss_mb=%.0f vms_mb=%.0f",
+                    "[session-server] stats worker_port=%s reqs_total=%d reqs_since_last=%d "
+                    "inflight_now=%d turns_completed=%d rss_mb=%.0f vms_mb=%.0f",
                     worker_port,
                     reqs_total,
                     delta,
