@@ -2,7 +2,7 @@ import logging
 from argparse import Namespace
 from typing import Any
 
-from miles.rollout.generate_utils.sample_utils import merge_samples
+from miles.rollout.generate_utils.sample_utils import drop_samples_after_first_non_completed, merge_samples
 from miles.rollout.session.errors import TokenizationError
 from miles.rollout.session.samples.merge import (
     compute_samples_from_openai_records,
@@ -71,6 +71,10 @@ def build_leaf_material(
             max_trim_tokens=registry.tito_tokenizer.max_trim_tokens,
             use_addition_r3=use_addition_r3,
         )
+        turns, num_dropped = drop_samples_after_first_non_completed(turns)
+        if num_dropped:
+            for turn in turns:
+                turn.metadata["dropped_trailing_turns"] = num_dropped
         if max_seq_len is not None:
             turns = truncate_samples_by_total_tokens(turns, max_seq_len, registry.tokenizer)
         if not turns:

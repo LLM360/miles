@@ -12,6 +12,7 @@ from miles.rollout.session.core import (
     _chat_client_response,
     _render_json,
     _samples_response,
+    closed_chat_response,
     extract_completion,
     prepare_chat_request,
     proxy_result_to_response,
@@ -189,6 +190,9 @@ class SessionCoreV2(SessionCore):
             result = await self.backend.do_proxy(
                 ProxyRequest(method=method, query=query), "v1/chat/completions", body=proxy_body, headers=headers
             )
+
+        if session.closing:
+            return closed_chat_response(result, client_stream)
 
         # Non-200 (e.g. 400 context too long) passes through unrecorded so the
         # agent can retry or handle the error.

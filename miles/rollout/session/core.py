@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import orjson
 from starlette.responses import Response
 
-from miles.rollout.generate_utils.sample_utils import merge_samples
+from miles.rollout.generate_utils.sample_utils import drop_samples_after_first_non_completed, merge_samples
 from miles.rollout.session.concurrency import run_session_worker
 from miles.rollout.session.config import SessionServerConfig
 from miles.rollout.session.errors import (
@@ -254,6 +254,17 @@ def extract_completion(result: dict) -> tuple:
     return response, choice, assistant_message, completion_token_ids
 
 
+def closed_chat_response(result: dict, client_stream: bool) -> Response:
+    """Forward a closed session's completion without validating or recording it."""
+    if result["status_code"] == 200:
+        try:
+            response = orjson.loads(result["response_body"])
+            return _chat_client_response(result, response, client_stream)
+        except (orjson.JSONDecodeError, KeyError, TypeError, AttributeError):
+            pass
+    return proxy_result_to_response(result)
+
+
 def _is_prefix_rollback_error(result: dict) -> bool:
     body = result.get("response_body") or b""
     if isinstance(body, bytes):
@@ -381,6 +392,11 @@ class SessionCore:
                     max_trim_tokens=metadata.get("max_trim_tokens", 0),
                     use_addition_r3=self.use_addition_r3,
                 )
+                samples, num_dropped = drop_samples_after_first_non_completed(samples)
+                if num_dropped:
+                    logger.warning("Session %s dropped %d turns after an incomplete turn", session_id, num_dropped)
+                    for sample in samples:
+                        sample.metadata["dropped_trailing_turns"] = num_dropped
                 if max_seq_len is not None:
                     samples = truncate_samples_by_total_tokens(samples, max_seq_len, tokenizer)
                 if not samples:
@@ -459,6 +475,9 @@ class SessionCore:
                 ProxyRequest(method=method, query=query), "v1/chat/completions", body=proxy_body, headers=headers
             )
 
+        if session.closing:
+            return closed_chat_response(result, client_stream)
+
         # Stable's backend can recover a prefix-cache rollback failure by
         # rendering the messages again. Keep the retry narrowly scoped.
         retried_without_prefix = _is_prefix_rollback_error(result)
@@ -472,6 +491,9 @@ class SessionCore:
                     body=orjson.dumps(retry_body),
                     headers=headers,
                 )
+
+        if session.closing:
+            return closed_chat_response(result, client_stream)
 
         # Other errors, including a failed retry, pass through unrecorded.
         if result["status_code"] != 200:
