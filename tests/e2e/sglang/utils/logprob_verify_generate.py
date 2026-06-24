@@ -65,7 +65,7 @@ import numpy as np
 import pybase64
 
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
-from miles.rollout.generate_hub.agentic_tool_call import build_chat_request_kwargs
+from miles.rollout.generate_hub.agentic_tool_call import build_agent_function_kwargs
 from miles.rollout.generate_utils.openai_endpoint_utils import (
     OpenAIEndpointTracer,
     compute_samples_from_openai_records,
@@ -107,10 +107,13 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         metadata = {**metadata, "max_seq_len": max_seq_len}
 
     agent_metadata = await custom_agent_function(
-        base_url=tracer.base_url,
-        prompt=input.sample.prompt,
-        request_kwargs=build_chat_request_kwargs(input.sampling_params),
-        metadata=metadata,
+        **build_agent_function_kwargs(
+            input.args,
+            base_url=tracer.base_url,
+            prompt=input.sample.prompt,
+            sampling_params=input.sampling_params,
+            metadata=metadata,
+        )
     )
 
     records, session_metadata = await tracer.collect_records()
