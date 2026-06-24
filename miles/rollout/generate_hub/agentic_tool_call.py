@@ -39,7 +39,7 @@ from miles.rollout.generate_utils.openai_endpoint_utils import (
     compute_samples_from_openai_records,
     truncate_samples_by_total_tokens,
 )
-from miles.rollout.generate_utils.sample_utils import merge_samples
+from miles.rollout.generate_utils.sample_utils import drop_samples_after_first_non_completed, merge_samples
 from miles.utils.misc import load_function
 from miles.utils.types import Sample
 
@@ -116,6 +116,17 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     )
     for s in samples:
         s.metadata.update(agent_metadata or {})
+
+    # An aborted/length-limited turn invalidates everything generated after
+    # it; the agent may have kept going on truncated output (e.g. when the
+    # engine aborts in-flight requests at the end of a rollout step).
+    samples, num_dropped = drop_samples_after_first_non_completed(samples)
+    if num_dropped > 0:
+        logger.warning(
+            f"{log_prefix} Dropped {num_dropped} trailing turn(s) generated after a " f"{samples[-1].status.name} turn"
+        )
+        for s in samples:
+            s.metadata["dropped_trailing_turns"] = num_dropped
 
     if max_seq_len is not None:
         samples = truncate_samples_by_total_tokens(samples, max_seq_len, input.state.tokenizer)

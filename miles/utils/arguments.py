@@ -1706,6 +1706,18 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "append their own planning/self-reflection turns before the "
                 "next tool or user message.",
             )
+            # Agentic rollout abort
+            parser.add_argument(
+                "--agent-server-url",
+                type=str,
+                default=os.environ.get("AGENT_SERVER_URL") or os.environ.get("SWE_AGENT_URL"),
+                help="Harbor server base URL for agentic rollout abort "
+                "(POST /abort_all). Defaults to $AGENT_SERVER_URL then "
+                "$SWE_AGENT_URL -- the SAME resolution the agent function uses, so the "
+                "abort discriminator never silently diverges from the agent's harbor "
+                "target. Required for agentic rollouts (session server + custom agent "
+                "function); the abort fails closed if it is unset.",
+            )
             return parser
 
         def add_user_provided_function_arguments(parser):

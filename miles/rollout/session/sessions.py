@@ -66,14 +66,12 @@ def setup_session_routes(app, backend, args):
             body["session_server_instance_id"] = session_server_instance_id
         return body
 
-    # --- DEBUG: track in-flight chat_completions ---
+    # In-flight chat_completions counter (read by the stats logger).
     _inflight_chat = {"count": 0}
 
-    # Per-worker observability counters (read by the background stats logger
-    # in ``session_server.run_session_server``). ``reqs_total`` increments on
-    # every handler entry; ``turns_completed`` increments only on successful
-    # Phase 3 commit (separate so we can spot tail-truncation symptoms — many
-    # entries, few commits).
+    # Per-worker observability counters read by the background stats logger.
+    # reqs_total counts handler entries; turns_completed counts turns whose
+    # state update succeeded.
     worker_port = getattr(args, "session_server_port", None)
     _stats = {
         "reqs_total": 0,
@@ -157,11 +155,10 @@ def setup_session_routes(app, backend, args):
         The lock is NOT held during the slow proxy call to avoid blocking
         DELETE/other operations when the agent disconnects mid-request.
         """
-        # --- observability state for the chat_done log ---
-        # t_handler_start anchors total_ms; the lock_wait / tokenize_in /
-        # proxy / tokenize_out spans are seeded equal to it so the chat_done
-        # log emits 0.0 ms for any phase the handler skipped (e.g. early
-        # 404 / 410 / upstream error short-circuits).
+        # Observability state for the chat_done log: t_handler_start anchors
+        # total_ms; the lock_wait / tokenize_in / proxy / tokenize_out spans are
+        # seeded equal to it so the log emits 0.0 ms for any span the handler
+        # skipped (e.g. early 404 / 410 / upstream error short-circuits).
         t_handler_start = time.monotonic()
         t_lock_wait_start = t_handler_start
         t_lock_acquired = t_handler_start
@@ -175,11 +172,9 @@ def setup_session_routes(app, backend, args):
         completion_tokens_emit = -1
         req_id = uuid.uuid4().hex[:8]
 
-        # Read body up-front so chat_start can log messages_len. The body is
-        # consumed at most once by Starlette; cache it on the local for reuse
-        # in Phase 1 below. This sequencing differs slightly from the original
-        # (body was read inside the lock); the cost is moving a JSON parse
-        # outside the critical section, which actually trims lock-hold time.
+        # Read body up-front so chat_start can log messages_len. Starlette
+        # consumes the body at most once; cache it for reuse under the lock
+        # below. Parsing it outside the lock trims lock-hold time.
         _raw_body = await request.body()
         try:
             _early_request_body = orjson.loads(_raw_body) if _raw_body else {}
@@ -202,7 +197,6 @@ def setup_session_routes(app, backend, args):
             if session.closing:
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
 
-            # --- Phase 1: prepare request (lock held briefly) ---
             t_lock_wait_start = time.monotonic()
             async with session.lock:
                 t_lock_acquired = time.monotonic()
@@ -253,7 +247,6 @@ def setup_session_routes(app, backend, args):
 
                 body = orjson.dumps(request_body)
                 expected_num_assistant = session.num_assistant
-            # --- lock released here ---
 
             # Tag every turn of this session with a routing key so a routing-key
             # gateway policy (manual / consistent_hashing) pins the session to one
@@ -263,10 +256,13 @@ def setup_session_routes(app, backend, args):
             # (e.g. cache_aware) ignore the header.
             proxy_headers = {**dict(request.headers), "X-SMG-Routing-Key": session_id}
 
-            # --- Phase 2: proxy to SGLang (NO lock held) ---
             t_proxy_start = time.monotonic()
             result = await backend.do_proxy(request, "v1/chat/completions", body=body, headers=proxy_headers)
             t_proxy_end = time.monotonic()
+            # Session was closed mid-turn: return the engine's response without
+            # recording it into the trajectory.
+            if session.closing:
+                return backend.build_proxy_response(result)
 
             # If SGLang returned a non-200 error (e.g. 400 for context too long),
             # pass it through to the agent without recording — the agent can retry
@@ -293,6 +289,8 @@ def setup_session_routes(app, backend, args):
                         request, "v1/chat/completions", body=retry_body, headers=proxy_headers
                     )
                     t_proxy_end = time.monotonic()
+                    if session.closing:
+                        return backend.build_proxy_response(result)
                     if result["status_code"] != 200:
                         return backend.build_proxy_response(result)
                 else:
@@ -310,7 +308,8 @@ def setup_session_routes(app, backend, args):
             assistant_message = choice.get("message", {})
             if assistant_message.get("content") is None:
                 raise UpstreamResponseError(
-                    "assistant message content is None, when tool call parser failed SGLang should still return an empty content rather than None. Please check your modified SGLang version."
+                    "assistant message content is None, when tool call parser failed SGLang should still return "
+                    "an empty content rather than None. Please check your modified SGLang version."
                 )
 
             prompt_token_ids = choice.get("prompt_token_ids")
@@ -320,28 +319,29 @@ def setup_session_routes(app, backend, args):
             actual_output_logprobs_len = len(output_token_logprobs)
             if actual_output_logprobs_len != completion_tokens:
                 raise UpstreamResponseError(
-                    f"invalid chat completion response: len(output_token_logprobs)={actual_output_logprobs_len} != completion_tokens={completion_tokens}. Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
+                    "invalid chat completion response: "
+                    f"len(output_token_logprobs)={actual_output_logprobs_len} "
+                    f"!= completion_tokens={completion_tokens}. "
+                    f"Please check whether you use the correct SGLang branch which has fix the tokenizer batch decode issue."
                 )
 
             completion_token_ids = [t[1] for t in output_token_logprobs]
 
-            # --- Phase 3: update state (lock held briefly) ---
             async with session.lock:
                 if session.closing:
                     logger.warning(f"Session {session_id} closed during proxy, skipping state update")
                     return backend.build_proxy_response(result)
 
                 if session.num_assistant != expected_num_assistant:
-                    # This is the diagnostic gap that bit the cursor-mismatch RCA:
-                    # under split-lock another writer can race to Phase 3 between
-                    # our Phase-1 snapshot and Phase-3 reacquire. We log enriched
-                    # fields so the warning is grep-correlatable with caller
-                    # retries, but the current behaviour preserves prod's
-                    # silent-skip — the lock-restoration fix that raises
-                    # SessionStateConflictError instead ships separately (see
-                    # the follow-up lock-restore PR).
+                    # Under the split lock another writer can change num_assistant
+                    # between our snapshot and our re-acquire of the lock; log the
+                    # mismatch and skip the state update.
                     logger.warning(
-                        "[session-server] state_changed_during_proxy worker_port=%s session_id=%s req_id=%s expected_num_assistant=%d got_num_assistant=%d inflight_chat_count=%d caller_request_id=%s proxy_elapsed_ms=%.1f",
+                        "[session-server] state_changed_during_proxy "
+                        "worker_port=%s session_id=%s req_id=%s "
+                        "expected_num_assistant=%d got_num_assistant=%d "
+                        "inflight_chat_count=%d caller_request_id=%s "
+                        "proxy_elapsed_ms=%.1f",
                         worker_port,
                         session_id,
                         req_id,
@@ -377,7 +377,6 @@ def setup_session_routes(app, backend, args):
                 )
                 session.append_record(record)
 
-                # Successful Phase 3 commit — pull token counts for chat_done.
                 try:
                     prompt_tokens_emit = int(meta_info.get("prompt_tokens", -1))
                 except (TypeError, ValueError):
@@ -387,7 +386,6 @@ def setup_session_routes(app, backend, args):
                 except (TypeError, ValueError):
                     completion_tokens_emit = -1
                 _stats["turns_completed"] += 1
-            # --- lock released here ---
 
             return backend.build_proxy_response(result)
         finally:

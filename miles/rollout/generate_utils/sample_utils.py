@@ -4,6 +4,23 @@ from dataclasses import fields
 from miles.utils.types import Sample
 
 
+def drop_samples_after_first_non_completed(samples: list[Sample]) -> tuple[list[Sample], int]:
+    """Keep turns up to and including the first non-COMPLETED one.
+
+    A turn that ended early (engine abort during rollout shutdown, per-turn
+    length limit) means every later turn was conditioned on incomplete
+    output, so those turns are invalid training data. Dropping them
+    establishes the ``merge_samples`` invariant that only the final sample
+    may be non-COMPLETED.
+
+    Returns the kept prefix and the number of dropped samples.
+    """
+    for i, sample in enumerate(samples[:-1]):
+        if sample.status != Sample.Status.COMPLETED:
+            return samples[: i + 1], len(samples) - i - 1
+    return samples, 0
+
+
 def merge_samples(samples: list[Sample], tokenizer) -> Sample:
     acc = samples[0]
     for sample in samples[1:]:

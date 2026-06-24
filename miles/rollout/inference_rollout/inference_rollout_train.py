@@ -12,36 +12,112 @@ from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_fil
 from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
-from miles.utils.misc import as_completed_async, load_function
+from miles.utils.misc import load_function
 from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
 
-async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[list[Sample]]:
-    args = state.args
+def _summarize_abort_response(response: object) -> tuple[int, int, list[str], list[str]]:
+    """Flatten a harbor /abort_all response into
+    (aborted_trials, already_done, aborted_instance_ids, already_done_instance_ids).
 
+    The response is either a single-worker dict carrying ``aborted`` /
+    ``already_done_items`` lists, or a router-aggregate dict whose per-worker dicts
+    each carry their own lists under ``worker_results``."""
+    if not isinstance(response, dict):
+        logger.warning(f"[abort] abort_all returned non-dict response: {response!r}")
+        return 0, 0, [], []
+    worker_results = response.get("worker_results")
+    workers = worker_results if isinstance(worker_results, list) else [response]
+    aborted_trials = 0
+    already_done = 0
+    aborted_instances: list[str] = []
+    already_done_instances: list[str] = []
+    for worker in workers:
+        if not isinstance(worker, dict):
+            continue
+        aborted_trials += int(worker.get("aborted_trials", 0) or 0)
+        already_done += int(worker.get("already_done", 0) or 0)
+        for item in worker.get("aborted") or []:
+            if isinstance(item, dict) and item.get("instance_id"):
+                aborted_instances.append(str(item["instance_id"]))
+        for item in worker.get("already_done_items") or []:
+            if isinstance(item, dict) and item.get("instance_id"):
+                already_done_instances.append(str(item["instance_id"]))
+    return aborted_trials, already_done, aborted_instances, already_done_instances
+
+
+async def _signal_harbor(harbor_url: str, rollout_id: int) -> None:
+    """Tell the harbor server to cancel every in-flight trial and close its session.
+    Raises on failure -- an abort we could not signal must not be silently dropped.
+
+    Collects the /abort_all response and logs how many trials harbor cancelled and
+    their instance ids, tagged with the rollout step that triggered the abort."""
+    response = await post(f"{harbor_url}/abort_all", {})
+    aborted_trials, already_done, aborted_instances, already_done_instances = _summarize_abort_response(response)
+    logger.info(
+        f"[abort] rollout_id={rollout_id} harbor abort_all: aborted_trials={aborted_trials} "
+        f"already_done={already_done} aborted_instances={aborted_instances} "
+        f"already_done_instances={already_done_instances}"
+    )
+
+
+async def _abort_all_engines(args: Namespace) -> None:
+    urls = await get_worker_urls(args)
+    logger.info(f"[abort] abort_all -> {urls}")
+    results = await asyncio.gather(
+        *[post(f"{url}/abort_request", {"abort_all": True}) for url in urls],
+        return_exceptions=True,
+    )
+    for url, r in zip(urls, results, strict=True):
+        if isinstance(r, Exception):
+            logger.warning(f"[abort] abort_all failed for {url}: {r!r}")
+
+
+async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[list[Sample]]:
+    """End-of-step rollout abort.
+
+    Agentic rollouts first signal the harbor server, which cancels each trial and
+    closes its session. Every rollout then broadcasts abort_all to the engines to
+    clear any in-flight decode, and the trainer drains the pending tasks.
+    Partial-sample collection is preserved.
+    """
+    args = state.args
     assert not state.aborted
     state.aborted = True
 
-    urls = await get_worker_urls(args)
-    logger.info(f"Abort request for {urls}")
-    await asyncio.gather(*[post(f"{url}/abort_request", {"abort_all": True}) for url in urls])
+    # How many rollout tasks are still in flight when the abort fires. The
+    # specific instances harbor cancels are reported by /abort_all below.
+    logger.info(f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks")
 
-    # make sure all the pending tasks are finished
-    aborted_samples = []
-    async for group in as_completed_async(pendings):
-        if not args.partial_rollout:
+    is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
+    if is_agentic:
+        harbor_url = getattr(args, "agent_server_url", None)
+        if not harbor_url:
+            raise RuntimeError("agentic rollout abort requires --agent-server-url")
+        await _signal_harbor(harbor_url, rollout_id)
+
+    await _abort_all_engines(args)
+
+    # Drain the still-pending tasks. For partial rollout, keep each drained group
+    # that has a response, stamping its origin step if not already set.
+    aborted_samples: list[list[Sample]] = []
+    for task in asyncio.as_completed(pendings):
+        try:
+            group = await task
+        except Exception as exc:  # a failed pending task must not abort the drain
+            logger.error(f"[abort] pending rollout task raised: {exc!r}", exc_info=exc)
             continue
-
-        # for partial rollout, collect the partial samples into the data buffer
+        if not args.partial_rollout or group is None:
+            continue
         for sample in group:
             if sample.response and "start_rollout_id" not in sample.metadata:
                 sample.metadata["start_rollout_id"] = rollout_id
         aborted_samples.append(group)
 
     if args.partial_rollout:
-        logger.info(f"Collected {sum(len(x) for x in aborted_samples)} partial samples into the data buffer")
+        logger.info(f"[abort] collected {sum(len(x) for x in aborted_samples)} partial samples")
 
     return aborted_samples
 
@@ -53,6 +129,19 @@ async def get_worker_urls(args: Namespace):
     else:
         response = await get(f"http://{args.sglang_router_ip}:{args.sglang_router_port}/workers")
         return [worker["url"] for worker in response["workers"]]
+
+
+def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:
+    """Stamp the dispatching rollout id into every sample's metadata.
+
+    sample.metadata flows through the agent function into the harbor /run
+    payload, so trial records carry the step that executed them (a
+    partial-rollout sample re-dispatched later is re-stamped; its origin
+    stays in metadata["start_rollout_id"]).
+    """
+    for group in samples:
+        for sample in group:
+            sample.metadata["rollout_id"] = rollout_id
 
 
 def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
@@ -111,6 +200,7 @@ async def generate_rollout_async(
             remaining = target_data_size - submitted
             n = remaining if args.disable_oversampling else args.over_sampling_batch_size
             samples = data_source(n)
+            stamp_rollout_id(samples, rollout_id)
             submitted += len(samples)
             pendings.update(submit_generate_tasks(state, samples))
 
