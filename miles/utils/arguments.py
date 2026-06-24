@@ -354,6 +354,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--disable-oversampling",
+                action="store_true",
+                default=False,
+                help=(
+                    "Submit exactly rollout_batch_size groups and keep whatever survives the dynamic "
+                    "filter, instead of oversampling to refill groups dropped by the filter. The batch "
+                    "may end short; pair with --use-dynamic-global-batch-size when many groups are dropped."
+                ),
+            )
+            parser.add_argument(
                 "--dynamic-sampling-filter-path",
                 type=str,
                 default=None,
@@ -363,6 +373,28 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                     "We will do dynamic filter for sampling as in DAPO. e.g. not all correct or all wrong samples."
                     "You could use `miles.rollout.filter_hub.dynamic_sampling_filters.check_reward_nonzero_std` as an example."
                 ),
+            )
+
+            parser.add_argument(
+                "--dynamic-sampling-min-reward-std",
+                type=float,
+                default=1e-3,
+                help="Minimum reward std for a group to be kept during dynamic sampling. Groups with std below this threshold are dropped. "
+                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
+            )
+            parser.add_argument(
+                "--dynamic-sampling-min-mean-reward",
+                type=float,
+                default=0.1,
+                help="Minimum mean reward for a group to be kept during dynamic sampling. Groups below this threshold are dropped. "
+                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
+            )
+            parser.add_argument(
+                "--dynamic-sampling-max-mean-reward",
+                type=float,
+                default=0.8,
+                help="Maximum mean reward for a group to be kept during dynamic sampling. Groups above this threshold are dropped. "
+                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
             )
 
             # partial rollout

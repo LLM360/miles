@@ -84,13 +84,13 @@ def setup_session_routes(app, backend, args):
     async def debug_request_logger(request: Request, call_next):
         client = request.client
         client_info = f"{client.host}:{client.port}" if client else "unknown"
-        logger.info(
+        logger.debug(
             f"[session-server] REQUEST ARRIVED: {request.method} {request.url.path} from={client_info} inflight_chat={_inflight_chat['count']}"
         )
         t0 = time.time()
         response = await call_next(request)
         elapsed = time.time() - t0
-        logger.info(
+        logger.debug(
             f"[session-server] REQUEST DONE: {request.method} {request.url.path} status={response.status_code} elapsed={elapsed:.3f}s from={client_info}"
         )
         return response
@@ -108,6 +108,8 @@ def setup_session_routes(app, backend, args):
     async def get_session(session_id: str):
         session = registry.sessions.get(session_id)
         if session is None:
+            if registry.is_deleted(session_id):
+                raise SessionNotFoundError(f"session not found: session_id={session_id}")
             return GetSessionResponse(session_id=session_id, records=[], metadata={})
         metadata = {}
         try:
@@ -181,8 +183,8 @@ def setup_session_routes(app, backend, args):
         _messages_len = len(_early_request_body.get("messages") or [])
 
         _stats["reqs_total"] += 1
-        logger.info(
-            "[session-server] chat_start worker_port=%s session_id=%s req_id=%s " "messages_len=%d inflight_before=%d",
+        logger.debug(
+            "[session-server] chat_start worker_port=%s session_id=%s req_id=%s messages_len=%d inflight_before=%d",
             worker_port,
             session_id,
             req_id,
@@ -389,14 +391,11 @@ def setup_session_routes(app, backend, args):
         finally:
             _inflight_chat["count"] -= 1
             t_handler_end = time.monotonic()
-            # One INFO log per request, irrespective of which path the handler
+            # One DEBUG log per request, irrespective of which path the handler
             # took (success, 404, upstream error). Spans that didn't run come
             # through as 0.0 ms — a valid signal ("we never got there").
-            logger.info(
-                "[session-server] chat_done worker_port=%s session_id=%s req_id=%s "
-                "lock_wait_ms=%.1f tokenize_in_ms=%.1f proxy_elapsed_ms=%.1f "
-                "tokenize_out_ms=%.1f total_ms=%.1f inflight_now=%d "
-                "prompt_tokens=%d completion_tokens=%d",
+            logger.debug(
+                "[session-server] chat_done worker_port=%s session_id=%s req_id=%s lock_wait_ms=%.1f tokenize_in_ms=%.1f proxy_elapsed_ms=%.1f tokenize_out_ms=%.1f total_ms=%.1f inflight_now=%d prompt_tokens=%d completion_tokens=%d",
                 worker_port,
                 session_id,
                 req_id,
