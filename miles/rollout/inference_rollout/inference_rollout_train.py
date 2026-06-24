@@ -104,6 +104,8 @@ async def generate_rollout_async(
     # default to group level submission for sync/one-step async rollout
     scheduler = make_submission_scheduler(args, default="group")
 
+    disable_oversampling = getattr(args, "disable_oversampling", False)
+    submitted = 0
     pendings = set()
     data = []
     all_data = []
@@ -111,14 +113,28 @@ async def generate_rollout_async(
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
         while scheduler.has_capacity(pending_groups=len(pendings), group_budget=target_data_size - len(data)):
-            # get samples from the buffer and submit the generation requests.
-            samples = data_source(args.over_sampling_batch_size)
+            if disable_oversampling and submitted >= target_data_size:
+                break
+            # With refilling disabled, count every submitted task group, including
+            # groups later rejected by the filter. Keep scheduler callbacks intact.
+            num_groups = target_data_size - submitted if disable_oversampling else args.over_sampling_batch_size
+            samples = data_source(num_groups)
+            if not samples:
+                break
+            submitted += len(samples)
             scheduler.on_submit(samples)
             pendings.update(submit_generate_tasks(state, samples, scheduler.sample_done_callback))
 
+        if not pendings:
+            break
+
         # wait for the generation to finish
         logger.debug(f"[rollout] Waiting on {len(pendings)} pending tasks, data={len(data)}/{target_data_size}")
-        done, pendings = await scheduler.wait_for_progress(pendings)
+        if disable_oversampling and submitted >= target_data_size:
+            # No refill is possible: sample wakeups cannot enable more work.
+            done, pendings = await asyncio.wait(pendings, return_when=asyncio.FIRST_COMPLETED)
+        else:
+            done, pendings = await scheduler.wait_for_progress(pendings)
         logger.debug(f"[rollout] asyncio.wait returned: {len(done)} done, {len(pendings)} pending")
         for task in done:
             try:
@@ -151,18 +167,25 @@ async def generate_rollout_async(
                 pbar.update(args.n_samples_per_prompt)
 
     pbar.close()
-    sample = data[-1][0][0] if isinstance(data[-1][0], list) else data[-1][0]
-    logger.info(
-        "Finish rollout: text_preview=%s, label=%s, reward_summary=%s",
-        sample_text_preview(sample),
-        str(sample.label)[:100],
-        reward_log_summary(sample.reward),
-    )
+    if data:
+        sample = data[-1][0][0] if isinstance(data[-1][0], list) else data[-1][0]
+        logger.info(
+            "Finish rollout: text_preview=%s, label=%s, reward_summary=%s",
+            sample_text_preview(sample),
+            str(sample.label)[:100],
+            reward_log_summary(sample.reward),
+        )
 
     # there are still some unfinished requests, abort them
     aborted_samples = await abort(state, pendings, rollout_id)
 
-    assert len(data) == args.rollout_batch_size, f"Got {len(data)} samples, expected {args.rollout_batch_size}"
+    if disable_oversampling:
+        if len(data) < args.rollout_batch_size:
+            logger.warning(
+                f"[rollout] oversampling disabled: {len(data)}/{args.rollout_batch_size} groups survived the dynamic filter"
+            )
+    else:
+        assert len(data) == args.rollout_batch_size, f"Got {len(data)} samples, expected {args.rollout_batch_size}"
     data = sorted(data, key=lambda group: group[0][0].index if isinstance(group[0], list) else group[0].index)
     all_samples = sorted(
         all_data, key=lambda group: group[0][0].index if isinstance(group[0], list) else group[0].index
