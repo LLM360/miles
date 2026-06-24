@@ -20,6 +20,7 @@
 "rope"
 "--rotary-percent"
 "0.5"
+"--xllm-partial-rope-layout"
 "--rotary-base"
 "500000"
 "--swiglu"

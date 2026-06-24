@@ -20,6 +20,7 @@ def model_args() -> str:
         "--normalization RMSNorm "
         "--position-embedding-type rope "
         "--rotary-percent 0.5 "
+        "--xllm-partial-rope-layout "
         "--rotary-base 500000 "
         "--swiglu "
         "--untie-embeddings-and-output-weights "
