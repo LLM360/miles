@@ -39,6 +39,10 @@ def apply_reward_nonzero_std_filter(args, samples: list[Sample | list[Sample]], 
     # Preserve the legacy rejection reason for these missing-reward groups.
     if any(reward is None for reward in rewards):
         return FilterOutput(keep=False, reason="group_has_aborted")
+    if len(rewards) < 2:
+        raise ValueError(
+            f"expected at least 2 samples per group, got {len(rewards)} — set --n-samples-per-prompt >= 2 for GRPO"
+        )
     keep = torch.tensor(rewards, dtype=torch.float64).std() > 1e-8
     return FilterOutput(
         keep=keep,
