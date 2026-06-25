@@ -411,7 +411,10 @@ def validate_rollout_for_grpo_training_step(
 
         mask_sum = _sum_float(mask)
         if mask_sum <= 0:
-            _add_error(f"loss_masks[{i}] has no active tokens, sum={mask_sum}, response_len={resp}")
+            # Warning-only: zero loss masks are intentional when remove_sample=True (e.g. truncated
+            # or llm_judge_failed samples filtered by rollout_sample_filter). They contribute zero
+            # gradient and are safe to include in the batch.
+            _add_warning(f"loss_masks[{i}] has no active tokens, sum={mask_sum}, response_len={resp}")
         if mask_sum > resp:
             # Warning-only: float/weighted masks can legitimately have sum > resp.
             _add_warning(
