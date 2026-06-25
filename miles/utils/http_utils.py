@@ -307,9 +307,12 @@ async def post(url, payload, max_retries=60, action="post", headers=None):
     return await _post(_http_client, url, payload, max_retries, action=action, headers=headers)
 
 
-# TODO unify w/ `post` to add retries and remote-execution
-async def get(url):
-    response = await _http_client.get(url)
-    response.raise_for_status()
-    output = response.json()
-    return output
+# Previously no retry — a single transient ReadError on GET /workers in abort() would crash the job.
+# Now unified with _post() to get the same 60-retry / 1s-sleep resilience as post().
+# Original code:
+#   response = await _http_client.get(url)
+#   response.raise_for_status()
+#   output = response.json()
+#   return output
+async def get(url, max_retries=60):
+    return await _post(_http_client, url, payload=None, max_retries=max_retries, action="get")
