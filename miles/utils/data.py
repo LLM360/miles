@@ -112,6 +112,32 @@ def filter_long_prompt(origin_samples: list[Sample], tokenizer, processor, max_l
     return filtered_samples
 
 
+# Fields a chat template may read to satisfy a "thinking" requirement on
+# assistant turns (e.g. K2/IFM templates). Keep in sync with the template's
+# accepted keys.
+_THINKING_FIELDS = ("thinking", "think", "reasoning", "reasoning_content", "think_fast", "think_faster")
+
+
+def _ensure_assistant_thinking(messages):
+    """Inject a placeholder thinking field into assistant turns that lack one.
+
+    Some chat templates (K2/IFM) require every assistant message to carry a
+    thinking field. Multi-turn datasets (e.g. the nvidia multiturn-IF subset)
+    supply prior assistant turns without one, which makes apply_chat_template
+    raise a TemplateError. This is a no-op for messages that already include
+    any accepted thinking field, and for non-conversation prompts.
+    """
+    if not isinstance(messages, list):
+        return
+    for message in messages:
+        if (
+            isinstance(message, dict)
+            and message.get("role") == "assistant"
+            and not any(message.get(field) for field in _THINKING_FIELDS)
+        ):
+            message["reasoning_content"] = " "
+
+
 def _build_messages(data: dict, prompt_key: str, as_conversation: bool, multimodal_keys: dict = None):
     prompt = data.get(prompt_key)
 
@@ -200,6 +226,7 @@ class Dataset:
                 metadata["tools"] = tools
 
             if apply_chat_template:
+                _ensure_assistant_thinking(prompt)
                 output_prompt = tokenizer.apply_chat_template(
                     prompt,
                     tools=tools,
