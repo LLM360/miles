@@ -269,4 +269,18 @@ async def generate_rollout_async(
     if f := load_function(args.rollout_all_samples_process_path):
         f(args, all_samples, data_source)
 
-    return RolloutFnTrainOutput(samples=data, metrics=metric_gatherer.collect()), aborted_samples
+    metrics = metric_gatherer.collect()
+    flat_all = [
+        sample
+        for group in all_samples
+        for sample in (
+            group if not isinstance(group[0], list) else [sample for sub_group in group for sample in sub_group]
+        )
+    ]
+    scalar_rewards = [
+        reward for sample in flat_all if isinstance(reward := sample.get_reward_value(args), (int, float))
+    ]
+    if scalar_rewards:
+        metrics["rollout/reward/raw_reward_unfiltered"] = sum(scalar_rewards) / len(scalar_rewards)
+
+    return RolloutFnTrainOutput(samples=data, metrics=metrics), aborted_samples
