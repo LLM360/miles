@@ -55,9 +55,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "Number of GPUs for inference. Note that when using --colocate, "
-                    "i.e. the training and the inference engines are on the same gpus, this param will be ignored and will be set as "
-                    "actor_num_gpus_per_node * actor_num_nodes."
+                    "Number of GPUs for inference. Note that when using --colocate, i.e. the training and the inference engines are on the same gpus, this param will be ignored and will be set as actor_num_gpus_per_node * actor_num_nodes."
                 ),
             )
             parser.add_argument(
@@ -71,8 +69,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=8,
                 help=(
-                    "Number of gpus per node for rollout."
-                    "Notice: If you are going to use less than 8 gpus per node under colocate mode, you should set this number."
+                    "Number of gpus per node for rollout.Notice: If you are going to use less than 8 gpus per node under colocate mode, you should set this number."
                 ),
             )
             parser.add_argument(
@@ -80,8 +77,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to colocate the inference engines and the actor. "
-                    "Turning this on will also set --offload to true."
+                    "Whether to colocate the inference engines and the actor. Turning this on will also set --offload to true."
                 ),
             )
             parser.add_argument(
@@ -94,16 +90,14 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--offload-train",
                 action=argparse.BooleanOptionalAction,
                 help=(
-                    "Whether to offload the training actor to CPU during training. "
-                    "This will always be true when --colocate is set."
+                    "Whether to offload the training actor to CPU during training. This will always be true when --colocate is set."
                 ),
             )
             parser.add_argument(
                 "--offload-rollout",
                 action=argparse.BooleanOptionalAction,
                 help=(
-                    "Whether to offload the rollout generator to CPU during training. "
-                    "This will always be true when --colocate is set."
+                    "Whether to offload the rollout generator to CPU during training. This will always be true when --colocate is set."
                 ),
             )
 
@@ -113,9 +107,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 nargs="+",
                 default=["kv_cache", "weight"],
                 help=(
-                    "Specifies what to offload during rollout when offload-rollout is set. "
-                    "Possible values: 'kv_cache', 'weight'. Default: both 'kv_cache' and 'weight'. "
-                    "Example: --offload-rollout-level kv_cache weight"
+                    "Specifies what to offload during rollout when offload-rollout is set. Possible values: 'kv_cache', 'weight'. Default: both 'kv_cache' and 'weight'. Example: --offload-rollout-level kv_cache weight"
                 ),
             )
 
@@ -230,9 +222,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "The name of the model, this is used to convert the megatron weights into huggingface format. "
-                    "If not set, we will use `type(AutoConfig.from_pretrained(args.hf_checkpoint)).__name__.lower()` as model_name. "
-                    "Also, sometimes this will help alleviate the bug that transformers cannot find certain model."
+                    "The name of the model, this is used to convert the megatron weights into huggingface format. If not set, we will use `type(AutoConfig.from_pretrained(args.hf_checkpoint)).__name__.lower()` as model_name. Also, sometimes this will help alleviate the bug that transformers cannot find certain model."
                 ),
             )
             parser.add_argument(
@@ -270,8 +260,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "The maximum context size for the inference engine during rollout."
-                    "It should no exceed the `max_position_embeddinds` in Huggingface model's `config.json`"
+                    "The maximum context size for the inference engine during rollout.It should no exceed the `max_position_embeddinds` in Huggingface model's `config.json`"
                 ),
             )
             parser.add_argument(
@@ -279,9 +268,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "The maximum length of the prompt for the inference engine during rollout. "
-                    "If set, we will filter out the long prompts during initialization of the global dataset. "
-                    "This is not recommended if the dataset is large."
+                    "The maximum length of the prompt for the inference engine during rollout. If set, we will filter out the long prompts during initialization of the global dataset. This is not recommended if the dataset is large."
                 ),
             )
             parser.add_argument(
@@ -289,8 +276,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "The maximum length of the response for the inference engine during rollout. "
-                    "It is basically `max_tokens` in sglang."
+                    "The maximum length of the response for the inference engine during rollout. It is basically `max_tokens` in sglang."
                 ),
             )
             parser.add_argument(
@@ -298,8 +284,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to skip special tokens in the response during rollout. "
-                    "This is useful when you want to use the response as a prompt for the next rollout."
+                    "Whether to skip special tokens in the response during rollout. This is useful when you want to use the response as a prompt for the next rollout."
                 ),
             )
             parser.add_argument(
@@ -308,9 +293,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 nargs="+",
                 default=None,
                 help=(
-                    "The stop words for the inference engine during rollout. "
-                    "It can be a list of strings or a single string. "
-                    "It may be hard to pass special tokens in command line, in that case rollout_stop_token_ids can be used."
+                    "The stop words for the inference engine during rollout. It can be a list of strings or a single string. It may be hard to pass special tokens in command line, in that case rollout_stop_token_ids can be used."
                 ),
             )
             parser.add_argument(
@@ -319,8 +302,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 nargs="+",
                 default=None,
                 help=(
-                    "The stop token ids for the inference engine during rollout. "
-                    "It can be a list of integers or a single integer."
+                    "The stop token ids for the inference engine during rollout. It can be a list of integers or a single integer."
                 ),
             )
             parser.add_argument(
@@ -334,8 +316,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=42,
                 help=(
-                    "The seed for the random number generator during rollout. "
-                    "This is used to shuffle the prompts and also for the random sampling of the prompts."
+                    "The seed for the random number generator during rollout. This is used to shuffle the prompts and also for the random sampling of the prompts."
                 ),
             )
 
@@ -358,9 +339,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Submit exactly rollout_batch_size groups and keep whatever survives the dynamic "
-                    "filter, instead of oversampling to refill groups dropped by the filter. The batch "
-                    "may end short; pair with --use-dynamic-global-batch-size when many groups are dropped."
+                    "Submit exactly rollout_batch_size groups and keep whatever survives the dynamic filter, instead of oversampling to refill groups dropped by the filter. The batch may end short; pair with --use-dynamic-global-batch-size when many groups are dropped."
                 ),
             )
             parser.add_argument(
@@ -379,22 +358,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--dynamic-sampling-min-reward-std",
                 type=float,
                 default=1e-3,
-                help="Minimum reward std for a group to be kept during dynamic sampling. Groups with std below this threshold are dropped. "
-                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
+                help="Minimum reward std for a group to be kept during dynamic sampling. Groups with std below this threshold are dropped. This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
             )
             parser.add_argument(
                 "--dynamic-sampling-min-mean-reward",
                 type=float,
                 default=0.1,
-                help="Minimum mean reward for a group to be kept during dynamic sampling. Groups below this threshold are dropped. "
-                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
+                help="Minimum mean reward for a group to be kept during dynamic sampling. Groups below this threshold are dropped. This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
             )
             parser.add_argument(
                 "--dynamic-sampling-max-mean-reward",
                 type=float,
                 default=0.8,
-                help="Maximum mean reward for a group to be kept during dynamic sampling. Groups above this threshold are dropped. "
-                "This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
+                help="Maximum mean reward for a group to be kept during dynamic sampling. Groups above this threshold are dropped. This arg is only used for two dynamic sampling filters `drop_zero_std_groups_and_extreme_pass_rate` and `drop_truncated_or_extreme_pass_rate`.",
             )
 
             # partial rollout
@@ -403,9 +379,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to use partial rollout. "
-                    "If set, the unfinished samples during dynamic sampling will be recycled back to data buffer. "
-                    "This is useful for long responses."
+                    "Whether to use partial rollout. If set, the unfinished samples during dynamic sampling will be recycled back to data buffer. This is useful for long responses."
                 ),
             )
             parser.add_argument(
@@ -413,8 +387,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to mask previous generation in partial rollout. "
-                    "If set, only on-policy generated tokens will be used in training"
+                    "Whether to mask previous generation in partial rollout. If set, only on-policy generated tokens will be used in training"
                 ),
             )
             parser.add_argument(
@@ -422,10 +395,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "Maximum allowed gap between a group's oldest weight version and the current "
-                    "engine weight version. Groups exceeding this threshold are recycled back to "
-                    "the data buffer instead of being sent to training. Only effective in fully "
-                    "async mode. None (default) disables staleness filtering."
+                    "Maximum allowed gap between a group's oldest weight version and the current engine weight version. Groups exceeding this threshold are recycled back to the data buffer instead of being sent to training. Only effective in fully async mode. None (default) disables staleness filtering."
                 ),
             )
             parser.add_argument(
@@ -433,8 +403,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Only substitue the `def generate(args, sample, sampling_params)` function within the example rollout function. "
-                    "This should be useful if you need to implement some special rollout logic, e.g. multi-turn, function calling."
+                    "Only substitue the `def generate(args, sample, sampling_params)` function within the example rollout function. This should be useful if you need to implement some special rollout logic, e.g. multi-turn, function calling."
                 ),
             )
             parser.add_argument(
@@ -442,9 +411,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "The custom function for logging rollout data. The signature of the functions is: "
-                    "def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool. "
-                    "The return value indicates whether to skip the default logging. "
+                    "The custom function for logging rollout data. The signature of the functions is: def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time) -> bool. The return value indicates whether to skip the default logging. "
                 ),
             )
             parser.add_argument(
@@ -452,9 +419,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "The custom function for logging eval rollout data. "
-                    "def log_eval_rollout_data(rollout_id, args, data, extra_metrics) -> bool. "
-                    "The return value indicates whether to skip the default logging. "
+                    "The custom function for logging eval rollout data. def log_eval_rollout_data(rollout_id, args, data, extra_metrics) -> bool. The return value indicates whether to skip the default logging. "
                 ),
             )
 
@@ -463,9 +428,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Path to the buffer filter function. "
-                    "It should be able to select the samples in the buffer. "
-                    "The function should take list[list[Sample]] and return list[list[Sample]]."
+                    "Path to the buffer filter function. It should be able to select the samples in the buffer. The function should take list[list[Sample]] and return list[list[Sample]]."
                 ),
             )
             # update weight
@@ -474,8 +437,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=512 * 1024**2,
                 help=(
-                    "buffer size for update weight, in bytes. "
-                    "This is used for updating weights by chunk and should be useful for MoE models."
+                    "buffer size for update weight, in bytes. This is used for updating weights by chunk and should be useful for MoE models."
                 ),
             )
             parser.add_argument(
@@ -490,11 +452,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 choices=["abort", "retract", "in_place"],
                 default="retract",
                 help=(
-                    "How SGLang pauses in-flight requests during weight updates. "
-                    "'abort' immediately terminates all requests (previous default). "
-                    "'retract' moves running requests back to the waiting queue and "
-                    "recomputes KV cache after update. "
-                    "'in_place' freezes requests and resumes with existing KV cache."
+                    "How SGLang pauses in-flight requests during weight updates. 'abort' immediately terminates all requests (previous default). 'retract' moves running requests back to the waiting queue and recomputes KV cache after update. 'in_place' freezes requests and resumes with existing KV cache."
                 ),
             )
             parser.add_argument(
@@ -508,8 +466,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "The called after we have all the rollout data including log_probs. "
-                    "It may be helpful for updating loss mask."
+                    "The called after we have all the rollout data including log_probs. It may be helpful for updating loss mask."
                 ),
             )
             parser.add_argument(
@@ -517,9 +474,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Pin the RolloutManager (and its co-located router process) to the Ray head node. "
-                    "Useful in K8s where the head pod has a stable Service address so that "
-                    "external agent environments can reliably reach the router."
+                    "Pin the RolloutManager (and its co-located router process) to the Ray head node. Useful in K8s where the head pod has a stable Service address so that external agent environments can reliably reach the router."
                 ),
             )
             parser.add_argument(
@@ -673,8 +628,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "The starting rollout step, if not set, will try to load the step from --load when doing continue training, "
-                    "otherwise will be set to 0, meaning training from start."
+                    "The starting rollout step, if not set, will try to load the step from --load when doing continue training, otherwise will be set to 0, meaning training from start."
                 ),
             )
 
@@ -684,8 +638,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 required=True,
                 help=(
-                    "The number of prompts in each rollout step. "
-                    "The total data returned should be rollout_batch_size * n_samples_per_prompt. "
+                    "The number of prompts in each rollout step. The total data returned should be rollout_batch_size * n_samples_per_prompt. "
                 ),
             )
             parser.add_argument(
@@ -701,8 +654,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "Number of steps per rollout, e.g. It is equivalent to setting gbs as "
-                    "`rollout_batch_size * n_samples_per_prompt // num_steps_per_rollout`."
+                    "Number of steps per rollout, e.g. It is equivalent to setting gbs as `rollout_batch_size * n_samples_per_prompt // num_steps_per_rollout`."
                 ),
             )
             # mbs for the training, will be ignored if `use_dynamic_batch_size` is set.
@@ -712,8 +664,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Repartition each rollout batch so each data-parallel rank gets a similar total token count via Karmarkar-Karp method. "
-                    "It may be beneficial for training speed but changes per-rank sample grouping and adds a small CPU scheduling overhead."
+                    "Repartition each rollout batch so each data-parallel rank gets a similar total token count via Karmarkar-Karp method. It may be beneficial for training speed but changes per-rank sample grouping and adds a small CPU scheduling overhead."
                 ),
             )
 
@@ -746,9 +697,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "The maximum number of tokens per GPU for dynamic batch size. "
-                    "Note that when enabling context parallel (CP), the max tokens per gpu should be around "
-                    "`max_response_len // cp_size` instead of `max_response_len`."
+                    "The maximum number of tokens per GPU for dynamic batch size. Note that when enabling context parallel (CP), the max tokens per gpu should be around `max_response_len // cp_size` instead of `max_response_len`."
                 ),
             )
             parser.add_argument(
@@ -756,9 +705,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=None,
                 help=(
-                    "The maximum number of tokens per GPU for calculating log probs. "
-                    "This is used to calculate the log probs of the responses during rollout, "
-                    "and should be set to a larger value than `max_tokens_per_gpu` if you want better performance. "
+                    "The maximum number of tokens per GPU for calculating log probs. This is used to calculate the log probs of the responses during rollout, and should be set to a larger value than `max_tokens_per_gpu` if you want better performance. "
                 ),
             )
             return parser
@@ -769,8 +716,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Path to the eval generation function."
-                    "If not set, we will use rollout_function_path as the default. "
+                    "Path to the eval generation function.If not set, we will use rollout_function_path as the default. "
                 ),
             )
 
@@ -783,9 +729,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=None,
                 nargs="+",
                 help=(
-                    "Path to the evaluation prompt data, "
-                    "should first input the name of the eval dataset and then the path, e.g. "
-                    "aime /path/to/aime.jsonl"
+                    "Path to the evaluation prompt data, should first input the name of the eval dataset and then the path, e.g. aime /path/to/aime.jsonl"
                 ),
             )
             parser.add_argument(
@@ -793,8 +737,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Path to an OmegaConf YAML/JSON file describing evaluation datasets. "
-                    "When provided, this overrides --eval-prompt-data."
+                    "Path to an OmegaConf YAML/JSON file describing evaluation datasets. When provided, this overrides --eval-prompt-data."
                 ),
             )
             parser.add_argument(
@@ -830,8 +773,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "The checkpoint for reference model. "
-                    "When --load is not set, this will be used as the initial checkpoint for training. "
+                    "The checkpoint for reference model. When --load is not set, this will be used as the initial checkpoint for training. "
                 ),
             )
             parser.add_argument(
@@ -847,8 +789,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "If set, do not save the optimizer state when saving checkpoints. "
-                    "This reduces checkpoint size but disables training resumption from the saved checkpoint."
+                    "If set, do not save the optimizer state when saving checkpoints. This reduces checkpoint size but disables training resumption from the saved checkpoint."
                 ),
             )
             parser.add_argument(
@@ -856,8 +797,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Path to save the model in HuggingFace format when using Megatron backend. "
-                    "The model will be saved to `save_hf.format(rollout_id)`. "
+                    "Path to save the model in HuggingFace format when using Megatron backend. The model will be saved to `save_hf.format(rollout_id)`. "
                 ),
             )
             reset_arg(parser, "--seed", type=int, default=1234)
@@ -912,8 +852,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 choices=["policy_loss", "sft_loss", "custom_loss"],
                 default="policy_loss",
                 help=(
-                    "Choose loss type, currently support ppo policy_loss or sft_loss, "
-                    "if custom_loss is set, we will use the function path from `--custom-loss-function-path`."
+                    "Choose loss type, currently support ppo policy_loss or sft_loss, if custom_loss is set, we will use the function path from `--custom-loss-function-path`."
                 ),
             )
             parser.add_argument(
@@ -921,8 +860,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Path to the custom loss function, if the loss_type is `custom_loss`, "
-                    "we will use this function to calculate the loss. "
+                    "Path to the custom loss function, if the loss_type is `custom_loss`, we will use this function to calculate the loss. "
                 ),
             )
             parser.add_argument(
@@ -950,9 +888,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_false",
                 dest="compute_advantages_and_returns",
                 help=(
-                    "Whether to disable computing advantages and returns. "
-                    "If set, we will not compute the advantages and returns, "
-                    "This is useful for sft or custom loss function."
+                    "Whether to disable computing advantages and returns. If set, we will not compute the advantages and returns, This is useful for sft or custom loss function."
                 ),
             )
             parser.add_argument(
@@ -997,8 +933,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to calculate the entropy when calculating the logprobs from actor and reference model. "
-                    "This is useful for doing special loss mask."
+                    "Whether to calculate the entropy when calculating the logprobs from actor and reference model. This is useful for doing special loss mask."
                 ),
             )
             parser.add_argument(
@@ -1012,8 +947,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to reset optimizer states after each rollout. "
-                    "If enabled, the optimizer's history will be cleared at the end of each rollout, which can sometimes help with training stability or fulfill specific experiment requirements."
+                    "Whether to reset optimizer states after each rollout. If enabled, the optimizer's history will be cleared at the end of each rollout, which can sometimes help with training stability or fulfill specific experiment requirements."
                 ),
             )
             parser.add_argument(
@@ -1021,8 +955,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to use the rollout logprobs when calculating the importance sampling ratios. "
-                    "If not set, we will use the logprobs from the actor model."
+                    "Whether to use the rollout logprobs when calculating the importance sampling ratios. If not set, we will use the logprobs from the actor model."
                 ),
             )
             # Off-Policy Correction using Importance Sampling: https://fengyao.notion.site/off-policy-rl
@@ -1114,8 +1047,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--target-modules",
                 type=str,
                 default=None,
-                help="Target modules for LoRA. Use 'all-linear' or comma-separated module names "
-                "(e.g., 'q_proj,k_proj,v_proj,o_proj' for HF naming or 'linear_qkv,linear_proj' for Megatron naming)",
+                help="Target modules for LoRA. Use 'all-linear' or comma-separated module names (e.g., 'q_proj,k_proj,v_proj,o_proj' for HF naming or 'linear_qkv,linear_proj' for Megatron naming)",
             )
             parser.add_argument(
                 "--exclude-modules",
@@ -1199,8 +1131,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 dest="wandb_random_suffix",
                 default=True,
                 help=(
-                    "Whether to add a random suffix to the wandb run name. "
-                    "By default, we will add a random 6 length string with characters to the run name."
+                    "Whether to add a random suffix to the wandb run name. By default, we will add a random 6 length string with characters to the run name."
                 ),
             )
             parser.add_argument(
@@ -1208,9 +1139,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to always use train step as the step metric in wandb. "
-                    "If set, we will always use the train steps for wandb logging, "
-                    "otherwise, will use rollout step for most info other than train/*. "
+                    "Whether to always use train step as the step metric in wandb. If set, we will always use the train steps for wandb logging, otherwise, will use rollout step for most info other than train/*. "
                 ),
             )
             parser.add_argument(
@@ -1230,8 +1159,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Log statistics of the category of reward, such as why the reward function considers it as failed. "
-                    "Specify the key in the reward dict using this argument.",
+                    "Log statistics of the category of reward, such as why the reward function considers it as failed. Specify the key in the reward dict using this argument.",
                 ),
             )
             parser.add_argument(
@@ -1264,17 +1192,13 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--prometheus-port",
                 type=int,
                 default=int(os.environ.get("PROMETHEUS_PORT", "9090")),
-                help="Port for the Prometheus metrics HTTP server. "
-                "Prometheus scrapes /metrics on this port. "
-                "Defaults to PROMETHEUS_PORT env var or 9090.",
+                help="Port for the Prometheus metrics HTTP server. Prometheus scrapes /metrics on this port. Defaults to PROMETHEUS_PORT env var or 9090.",
             )
             parser.add_argument(
                 "--prometheus-run-name",
                 type=str,
                 default=None,
-                help="Human-readable run name attached as a 'run_name' label to all "
-                "Prometheus metrics. Used to distinguish runs in Grafana. "
-                "Defaults to --wandb-group if set.",
+                help="Human-readable run name attached as a 'run_name' label to all Prometheus metrics. Used to distinguish runs in Grafana. Defaults to --wandb-group if set.",
             )
             return parser
 
@@ -1285,8 +1209,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Save the rollout data to this path for debugging. "
-                    "The file will be saved to `save_debug_rollout_data.format(rollout_id)`."
+                    "Save the rollout data to this path for debugging. The file will be saved to `save_debug_rollout_data.format(rollout_id)`."
                 ),
             )
             parser.add_argument(
@@ -1294,9 +1217,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Load the rollout data from this path for debugging. "
-                    "The file will be loaded from `load_debug_rollout_data.format(rollout_id)`. "
-                    "When this is enabled, miles will not instantiate sglang servers."
+                    "Load the rollout data from this path for debugging. The file will be loaded from `load_debug_rollout_data.format(rollout_id)`. When this is enabled, miles will not instantiate sglang servers."
                 ),
             )
             parser.add_argument(
@@ -1323,8 +1244,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to only run the rollout generation without training. "
-                    "This is useful for debugging the rollout generation function."
+                    "Whether to only run the rollout generation without training. This is useful for debugging the rollout generation function."
                 ),
             )
             parser.add_argument(
@@ -1332,8 +1252,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Whether to only run the training without sglang servers. "
-                    "This is useful for debugging the rollout generation function."
+                    "Whether to only run the training without sglang servers. This is useful for debugging the rollout generation function."
                 ),
             )
             parser.add_argument(
@@ -1341,8 +1260,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Save the train data to this path for debugging. "
-                    "The file will be saved to `save_debug_train_data.format(rollout_id)`."
+                    "Save the train data to this path for debugging. The file will be saved to `save_debug_train_data.format(rollout_id)`."
                 ),
             )
             parser.add_argument(
@@ -1355,23 +1273,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--dumper-enable",
                 action="store_true",
                 default=False,
-                help="Enable sglang dumper for all three phases (sglang inference, "
-                "megatron forward-only, megatron forward-backward). "
-                "Per-phase --dumper-inference/--dumper-fwd-only/--dumper-fwd-bwd can override.",
+                help="Enable sglang dumper for all three phases (sglang inference, megatron forward-only, megatron forward-backward). Per-phase --dumper-inference/--dumper-fwd-only/--dumper-fwd-bwd can override.",
             )
             parser.add_argument(
                 "--dumper-dir",
                 type=str,
                 default="/tmp/dumper",
-                help="Base output directory for sglang dumper. Three subdirs are created: "
-                "inference/, fwd_only/, fwd_bwd/.",
+                help="Base output directory for sglang dumper. Three subdirs are created: inference/, fwd_only/, fwd_bwd/.",
             )
             parser.add_argument(
                 "--dumper-inference",
                 nargs="*",
                 default=None,
-                help="SGLang inference phase dumper config as key=value pairs. "
-                "Keys map to DumperConfig fields (e.g. enable=true filter=whatever).",
+                help="SGLang inference phase dumper config as key=value pairs. Keys map to DumperConfig fields (e.g. enable=true filter=whatever).",
             )
             parser.add_argument(
                 "--dumper-fwd-only",
@@ -1447,8 +1361,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Some reward model may return a dict instead of a value, "
-                    "this is the key to extract the reward value from the dict. "
+                    "Some reward model may return a dict instead of a value, this is the key to extract the reward value from the dict. "
                 ),
             )
             parser.add_argument(
@@ -1471,9 +1384,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Path to the custom reward model function. "
-                    "If set, we will use this function to calculate the reward instead of the default one. "
-                    "The function should have the signature `def custom_rm(args, sample) -> float`."
+                    "Path to the custom reward model function. If set, we will use this function to calculate the reward instead of the default one. The function should have the signature `def custom_rm(args, sample) -> float`."
                 ),
             )
             parser.add_argument(
@@ -1489,9 +1400,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Path to a custom function that converts samples to training data. "
-                    "If set, this function will replace the default _convert_samples_to_train_data. "
-                    "The function should have the signature `def convert_samples_to_train_data(args, samples) -> dict`."
+                    "Path to a custom function that converts samples to training data. If set, this function will replace the default _convert_samples_to_train_data. The function should have the signature `def convert_samples_to_train_data(args, samples) -> dict`."
                 ),
             )
             return parser
@@ -1551,8 +1460,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=str,
                 default=None,
                 help=(
-                    "Path to the rollout all samples process function that "
-                    "can process all samples including filtered ones."
+                    "Path to the rollout all samples process function that can process all samples including filtered ones."
                 ),
             )
             parser.add_argument(
@@ -1662,8 +1570,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--use-session-server",
                 action="store_true",
                 default=False,
-                help="Start a standalone session server for TITO/session support. "
-                "Requires --hf-checkpoint and --chat-template-path to also be set.",
+                help="Start a standalone session server for TITO/session support. Requires --hf-checkpoint and --chat-template-path to also be set.",
             )
             parser.add_argument(
                 "--session-server-ip",
@@ -1681,30 +1588,21 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--session-server-count",
                 type=int,
                 default=1,
-                help="Number of independent vanilla session-server processes to launch "
-                "on the SGLang gateway node. Each MSA call is bound to a randomly-picked "
-                "backend at session creation. Use >1 to relieve the per-process GIL when "
-                "many concurrent sessions saturate a single process.",
+                help="Number of independent vanilla session-server processes to launch on the SGLang gateway node. Each MSA call is bound to a randomly-picked backend at session creation. Use >1 to relieve the per-process GIL when many concurrent sessions saturate a single process.",
             )
             parser.add_argument(
                 "--tito-model",
                 type=str,
                 default="default",
                 choices=[t.value for t in TITOTokenizerType],
-                help="TITO tokenizer type for pretokenized prefix reuse. "
-                "Controls how token IDs are computed for messages appended after "
-                "the pretokenized prefix in multi-turn agentic sessions.",
+                help="TITO tokenizer type for pretokenized prefix reuse. Controls how token IDs are computed for messages appended after the pretokenized prefix in multi-turn agentic sessions.",
             )
             parser.add_argument(
                 "--tito-allowed-append-roles",
                 nargs="+",
                 default=["tool"],
                 choices=["tool", "user", "system", "assistant"],
-                help="Message roles allowed to be appended after the pretokenized "
-                "assistant prefix in TITO sessions (default: tool). Include "
-                "'assistant' for multi-turn agents (e.g. terminus-2) that "
-                "append their own planning/self-reflection turns before the "
-                "next tool or user message.",
+                help="Message roles allowed to be appended after the pretokenized assistant prefix in TITO sessions (default: tool). Include 'assistant' for multi-turn agents (e.g. terminus-2) that append their own planning/self-reflection turns before the next tool or user message.",
             )
             # Agentic rollout abort
             parser.add_argument(
@@ -1785,6 +1683,25 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
     return add_miles_arguments
 
 
+def dump_args_to_file(args, main_log_dir=None):
+    """Dump final parsed Miles args to <main_log_dir>/arguments.txt."""
+    main_log_dir = main_log_dir or os.environ.get("MAIN_LOG_DIR")
+    if not main_log_dir:
+        return
+
+    path = os.path.join(main_log_dir, "arguments.txt")
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("------------------------ arguments ------------------------\n")
+        str_list = []
+        for arg in vars(args):
+            dots = "." * (48 - len(arg))
+            str_list.append(f"  {arg} {dots} {getattr(args, arg)}")
+        for arg in sorted(str_list, key=lambda x: x.lower()):
+            f.write(arg + "\n")
+        f.write("-------------------- end of arguments ---------------------\n")
+
+
 def parse_args(add_custom_arguments=None):
     # Users may call `parse_args` very early, thus we ensure logger is configured here
     configure_logger()
@@ -1816,9 +1733,7 @@ def parse_args(add_custom_arguments=None):
 
         if not args.ci_test:
             raise ValueError(
-                "The FSDP backend has known issues with SGLang v0.5.10 and is not actively maintained in the current version. "
-                "It has been moved to miles.backends.experimental. "
-                "Contributions are welcome if you are interested in improving it."
+                "The FSDP backend has known issues with SGLang v0.5.10 and is not actively maintained in the current version. It has been moved to miles.backends.experimental. Contributions are welcome if you are interested in improving it."
             )
 
     miles_validate_args(args)
@@ -1830,18 +1745,17 @@ def parse_args(add_custom_arguments=None):
         args.variable_seq_lengths = True
         if getattr(args, "moe_token_dispatcher_type", None) == "allgather":
             logger.info(
-                "--moe-token-dispatcher-type allgather does not support variable sequence length, "
-                "please use alltoall dispatcher instead."
+                "--moe-token-dispatcher-type allgather does not support variable sequence length, please use alltoall dispatcher instead."
             )
             args.moe_token_dispatcher_type = "alltoall"
 
         if args.pipeline_model_parallel_size == 1:
-            assert args.decoder_first_pipeline_num_layers is None and args.decoder_last_pipeline_num_layers is None, (
-                "decoder_first_pipeline_num_layers and decoder_last_pipeline_num_layers should be None when "
-                "pipeline_model_parallel_size is 1."
-            )
+            assert (
+                args.decoder_first_pipeline_num_layers is None and args.decoder_last_pipeline_num_layers is None
+            ), "decoder_first_pipeline_num_layers and decoder_last_pipeline_num_layers should be None when pipeline_model_parallel_size is 1."
 
     sglang_validate_args(args)
+    dump_args_to_file(args)
 
     return args
 
@@ -1937,8 +1851,7 @@ def miles_validate_args(args):
 
         if not os.path.exists(os.path.join(args.ref_load, "latest_checkpointed_iteration.txt")):
             logger.info(
-                f"ref_load {args.ref_load} does not have latest_checkpointed_iteration.txt, "
-                "please make sure it is a valid megatron checkpoint directory."
+                f"ref_load {args.ref_load} does not have latest_checkpointed_iteration.txt, please make sure it is a valid megatron checkpoint directory."
             )
 
     # TODO: During loading, we need to set the start_rollout_id here.
@@ -1990,10 +1903,9 @@ def miles_validate_args(args):
     assert not (args.kl_coef != 0 and args.kl_loss_coef != 0), "Only one of kl_coef and kl_loss_coef can be set"
 
     if args.advantage_estimator in ["reinforce_plus_plus", "reinforce_plus_plus_baseline"]:
-        assert args.normalize_advantages, (
-            "The 'reinforce_plus_plus' and 'reinforce_plus_plus_baseline' advantage estimators "
-            "require advantage normalization. Please add `--normalize-advantages` to your command."
-        )
+        assert (
+            args.normalize_advantages
+        ), "The 'reinforce_plus_plus' and 'reinforce_plus_plus_baseline' advantage estimators require advantage normalization. Please add `--normalize-advantages` to your command."
 
     if args.use_rollout_logprobs:
         assert not args.use_tis, "use_rollout_logprobs and use_tis cannot be set at the same time."
@@ -2028,8 +1940,7 @@ def miles_validate_args(args):
 
     if args.load_debug_rollout_data is not None:
         logger.info(
-            f"load_debug_rollout_data {args.load_debug_rollout_data} is set, "
-            "will not instantiate sglang servers and will only run the training process."
+            f"load_debug_rollout_data {args.load_debug_rollout_data} is set, will not instantiate sglang servers and will only run the training process."
         )
         args.debug_train_only = True
 
@@ -2060,16 +1971,15 @@ def miles_validate_args(args):
             logger.warning("Force train_memory_margin_bytes=0 since debug_rollout_only does not support it")
             args.train_memory_margin_bytes = 0
 
-    assert not (args.debug_rollout_only and args.debug_train_only), (
-        "debug_rollout_only and debug_train_only cannot be set at the same time, " "please set only one of them."
-    )
+    assert not (
+        args.debug_rollout_only and args.debug_train_only
+    ), "debug_rollout_only and debug_train_only cannot be set at the same time, please set only one of them."
 
     # always true on offload for colocate at the moment.
     if args.update_weight_transfer_mode == "p2p":
-        assert not args.colocate, (
-            "P2P weight transfer mode is not compatible with --colocate. "
-            "Please use broadcast mode or disable colocate."
-        )
+        assert (
+            not args.colocate
+        ), "P2P weight transfer mode is not compatible with --colocate. Please use broadcast mode or disable colocate."
         assert (
             getattr(args, "prefill_num_servers", None) is None
         ), "P2P weight transfer mode has not been tested when PD is enabled."
@@ -2084,13 +1994,11 @@ def miles_validate_args(args):
         if not args.sglang_disable_piecewise_cuda_graph:
             args.sglang_disable_piecewise_cuda_graph = True
             logger.info(
-                "Colocate mode: defaulting --sglang-disable-piecewise-cuda-graph to avoid NVLS OOM. "
-                "Use --sglang-enforce-piecewise-cuda-graph to override."
+                "Colocate mode: defaulting --sglang-disable-piecewise-cuda-graph to avoid NVLS OOM. Use --sglang-enforce-piecewise-cuda-graph to override."
             )
         if args.rollout_num_gpus != args.actor_num_gpus_per_node * args.actor_num_nodes:
             logger.info(
-                f"rollout_num_gpus {args.rollout_num_gpus} != actor_num_gpus_per_node {args.actor_num_gpus_per_node} "
-                f"* actor_num_nodes {args.actor_num_nodes}, overriding rollout_num_gpus to match actor_num_gpus_per_node * actor_num_nodes."
+                f"rollout_num_gpus {args.rollout_num_gpus} != actor_num_gpus_per_node {args.actor_num_gpus_per_node} * actor_num_nodes {args.actor_num_nodes}, overriding rollout_num_gpus to match actor_num_gpus_per_node * actor_num_nodes."
             )
             args.rollout_num_gpus = args.actor_num_gpus_per_node * args.actor_num_nodes
             if args.use_critic:
@@ -2111,11 +2019,9 @@ def miles_validate_args(args):
     if args.num_steps_per_rollout is not None:
         global_batch_size = args.rollout_batch_size * args.n_samples_per_prompt // args.num_steps_per_rollout
         if args.global_batch_size is not None:
-            assert args.global_batch_size == global_batch_size, (
-                f"global_batch_size {args.global_batch_size} is not equal to "
-                f"rollout_batch_size {args.rollout_batch_size} * n_samples_per_prompt {args.n_samples_per_prompt} "
-                f"// num_steps_per_rollout {args.num_steps_per_rollout}"
-            )
+            assert (
+                args.global_batch_size == global_batch_size
+            ), f"global_batch_size {args.global_batch_size} is not equal to rollout_batch_size {args.rollout_batch_size} * n_samples_per_prompt {args.n_samples_per_prompt} // num_steps_per_rollout {args.num_steps_per_rollout}"
         args.global_batch_size = global_batch_size
 
     if args.n_samples_per_prompt == 1:
@@ -2125,24 +2031,22 @@ def miles_validate_args(args):
     if args.over_sampling_batch_size is None:
         args.over_sampling_batch_size = args.rollout_batch_size
 
-    assert args.over_sampling_batch_size >= args.rollout_batch_size, (
-        f"over_sampling_batch_size {args.over_sampling_batch_size} should be greater than or equal to "
-        f"rollout_batch_size {args.rollout_batch_size}"
-    )
+    assert (
+        args.over_sampling_batch_size >= args.rollout_batch_size
+    ), f"over_sampling_batch_size {args.over_sampling_batch_size} should be greater than or equal to rollout_batch_size {args.rollout_batch_size}"
 
     if args.num_epoch is not None:
         if args.num_rollout is not None:
             logger.info("Both num_epoch and num_rollout are set, num_epoch will be ignored.")
         else:
-            assert args.rollout_global_dataset, (
-                "num_epoch is set, but rollout_global_dataset is not set, "
-                "please remove --disable-rollout-global-dataset to use num_epoch"
-            )
+            assert (
+                args.rollout_global_dataset
+            ), "num_epoch is set, but rollout_global_dataset is not set, please remove --disable-rollout-global-dataset to use num_epoch"
     else:
         # if num_epoch is not set, we should set num_rollout
-        assert args.num_rollout is not None, (
-            "num_epoch is not set, but num_rollout is not set, " "please set --num-rollout or --num-epoch"
-        )
+        assert (
+            args.num_rollout is not None
+        ), "num_epoch is not set, but num_rollout is not set, please set --num-rollout or --num-epoch"
 
     if args.enable_mtp_training:
         assert args.mtp_num_layers, "mtp_num_layers must be set when enable_mtp_training is set"
@@ -2246,8 +2150,7 @@ def hf_validate_args(args, hf_config):
         if hasattr(hf_config, hf_config_name):
             if not compare_fn(getattr(hf_config, hf_config_name), getattr(args, megatron_config_name)):
                 errors.append(
-                    f"{hf_config_name} in hf config {getattr(hf_config, hf_config_name)} is not equal to "
-                    f"{megatron_config_name} {getattr(args, megatron_config_name)}, please check the config."
+                    f"{hf_config_name} in hf config {getattr(hf_config, hf_config_name)} is not equal to {megatron_config_name} {getattr(args, megatron_config_name)}, please check the config."
                 )
 
     if len(errors) > 0:
