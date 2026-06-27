@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from miles.ray.placement_group import create_placement_groups, create_rollout_manager, create_training_models
 from miles.utils.arguments import parse_args
@@ -6,6 +7,8 @@ from miles.utils.async_utils import eager_create_task
 from miles.utils.logging_utils import configure_logger
 from miles.utils.misc import should_run_periodic_action
 from miles.utils.tracking_utils import init_tracking
+
+logger = logging.getLogger(__name__)
 
 
 # The framework supports other asynchronous approaches such as fully async (which is shown in examples/full_async).
@@ -35,6 +38,12 @@ async def train(args):
         # Sync the last generation
         if rollout_data_next_future is not None:
             rollout_data_curr_ref = await rollout_data_next_future
+            if rollout_data_curr_ref is None:
+                logger.info(
+                    "Stopping training before rollout_id=%s because rollout manager returned stop signal.",
+                    rollout_id,
+                )
+                break
 
         # Start the next rollout early.
         if rollout_id + 1 < args.num_rollout:
@@ -63,8 +72,15 @@ async def train(args):
 
         if (rollout_id + 1) % args.update_weights_interval == 0:
             # sync generate before update weights to prevent update weight in the middle of generation
-            rollout_data_curr_ref = (await x) if (x := rollout_data_next_future) is not None else None
-            rollout_data_next_future = None
+            if (x := rollout_data_next_future) is not None:
+                rollout_data_curr_ref = await x
+                rollout_data_next_future = None
+                if rollout_data_curr_ref is None:
+                    logger.info(
+                        "Stopping training after rollout_id=%s because prefetched rollout returned stop signal.",
+                        rollout_id,
+                    )
+                    break
             await actor_model.update_weights()
 
         if should_run_periodic_action(rollout_id, args.eval_interval, num_rollout_per_epoch):

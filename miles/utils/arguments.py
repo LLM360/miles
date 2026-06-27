@@ -603,6 +603,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                     "If both `--num-epoch` and `--num-rollout` are set, `--num-epoch` will be ignored."
                 ),
             )
+            parser.add_argument(
+                "--stop-after-consumed-prompt-epochs",
+                type=float,
+                default=None,
+                help=(
+                    "Opt-in prompt consumption budget. If set, rollout data source will stop handing out new "
+                    "prompt groups after this many dataset passes, counting groups that are later dropped by "
+                    "dynamic filtering. A final short rollout is discarded and training terminates cleanly."
+                ),
+            )
 
             parser.add_argument(
                 "--disable-rollout-global-dataset",
@@ -2142,6 +2152,13 @@ def miles_validate_args(args):
         # if num_epoch is not set, we should set num_rollout
         assert args.num_rollout is not None, (
             "num_epoch is not set, but num_rollout is not set, " "please set --num-rollout or --num-epoch"
+        )
+
+    if args.stop_after_consumed_prompt_epochs is not None:
+        assert args.stop_after_consumed_prompt_epochs > 0, "--stop-after-consumed-prompt-epochs must be > 0"
+        assert args.rollout_global_dataset, (
+            "--stop-after-consumed-prompt-epochs requires rollout_global_dataset; "
+            "please remove --disable-rollout-global-dataset"
         )
 
     if args.enable_mtp_training:

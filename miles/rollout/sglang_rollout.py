@@ -407,15 +407,33 @@ async def generate_rollout_async(
 
     data = []
     all_data = []
+    source_exhausted = False
     do_print = True
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
-        while state.remaining_batch_size < target_data_size:
+        while state.remaining_batch_size < target_data_size and not source_exhausted:
             # get samples from the buffer and submit the generation requests.
-            samples = data_source(args.over_sampling_batch_size)
+            requested = args.over_sampling_batch_size
+            samples = data_source(requested)
+            if len(samples) < requested:
+                source_exhausted = True
+                logger.info(
+                    "[rollout] prompt source exhausted during rollout_id=%s: requested=%s received=%s "
+                    "accepted=%s pending=%s target=%s",
+                    rollout_id,
+                    requested,
+                    len(samples),
+                    len(data),
+                    len(state.pendings),
+                    target_data_size,
+                )
+            if not samples:
+                break
             state.submit_generate_tasks(samples)
 
         # wait for the generation to finish
+        if not state.pendings:
+            break
         done, state.pendings = await asyncio.wait(state.pendings, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
             group: list[Sample] = task.result()
@@ -442,15 +460,26 @@ async def generate_rollout_async(
                 pbar.update(args.n_samples_per_prompt)
 
     pbar.close()
-    sample = data[-1][0][0] if isinstance(data[-1][0], list) else data[-1][0]
-    logger.info(
-        f"Finish rollout: {[str(sample.prompt) + sample.response]}, label: {str(sample.label)[:100]}, reward: {sample.reward}",
-    )
+    if data:
+        sample = data[-1][0][0] if isinstance(data[-1][0], list) else data[-1][0]
+        logger.info(
+            f"Finish rollout: {[str(sample.prompt) + sample.response]}, label: {str(sample.label)[:100]}, reward: {sample.reward}",
+        )
 
     # there are still some unfinished requests, abort them
     aborted_samples = await abort(args, rollout_id)
 
-    assert len(data) == args.rollout_batch_size, f"Got {len(data)} samples, expected {args.rollout_batch_size}"
+    stop_training = source_exhausted and len(data) < args.rollout_batch_size
+    stop_reason = None
+    if stop_training:
+        stop_reason = "consumed_prompt_budget_exhausted"
+        logger.info(
+            "[rollout] terminating training after partial final rollout: accepted=%s/%s",
+            len(data),
+            args.rollout_batch_size,
+        )
+    else:
+        assert len(data) == args.rollout_batch_size, f"Got {len(data)} samples, expected {args.rollout_batch_size}"
     data = sorted(data, key=lambda group: group[0][0].index if isinstance(group[0], list) else group[0].index)
     all_samples = sorted(
         all_data, key=lambda group: group[0][0].index if isinstance(group[0], list) else group[0].index
@@ -472,7 +501,16 @@ async def generate_rollout_async(
     scalar_rewards = [r for s in flat_all if isinstance(r := s.get_reward_value(args), (int, float))]
     if scalar_rewards:
         metrics["rollout/reward/raw_reward_unfiltered"] = sum(scalar_rewards) / len(scalar_rewards)
-    return RolloutFnTrainOutput(samples=data, metrics=metrics), aborted_samples
+    return (
+        RolloutFnTrainOutput(
+            samples=data,
+            metrics=metrics,
+            all_samples=all_samples,
+            stop_training=stop_training,
+            stop_reason=stop_reason,
+        ),
+        aborted_samples,
+    )
 
 
 EVAL_PROMPT_DATASET = {}

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 from argparse import Namespace
 from collections.abc import Callable
 
@@ -159,8 +160,34 @@ def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
     ]
 
 
+def _estimate_adaptive_submission_n(
+    *,
+    accepted: int,
+    pending: int,
+    target: int,
+    keep_rate: float | None,
+    max_n: int,
+    factor: float = 1.0,
+) -> int:
+    if keep_rate is None:
+        keep_rate = 1.0
+    keep_rate = max(0.25, min(1.0, keep_rate))
+
+    expected_pending_accepts = pending * keep_rate
+    needed_accepts = target - accepted - expected_pending_accepts
+    if needed_accepts <= 0:
+        return 0
+
+    expected_needed_expects = int(max(1, math.ceil(needed_accepts / keep_rate)) * factor)
+    return min(max_n, expected_needed_expects)
+
+
 async def generate_rollout_async(
-    state: GenerateState, rollout_id: int, data_source: Callable[[int], list[list[Sample]]]
+    state: GenerateState,
+    rollout_id: int,
+    data_source: Callable[[int], list[list[Sample]]],
+    keep_rate_getter: Callable[[], float | None] | None = None,
+    keep_rate_updater: Callable[[float], float] | None = None,
 ) -> tuple[RolloutFnTrainOutput, list[list[Sample]]]:
     args = state.args
     assert args.rollout_global_dataset
@@ -189,17 +216,45 @@ async def generate_rollout_async(
     data = []
     all_data = []
     submitted = 0
+    completed_groups = 0
+    kept_groups = 0
     source_exhausted = False
     do_print = True
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
-        while len(data) + len(pendings) < target_data_size and not source_exhausted:
-            if args.disable_oversampling and submitted >= target_data_size:
-                break
+        n = 0
+        if source_exhausted:
+            n = 0
+        elif args.disable_oversampling:
+            if submitted >= target_data_size:
+                n = 0
+            elif len(data) + len(pendings) < target_data_size:
+                n = max(0, target_data_size - submitted)
+        else:
+            keep_rate = keep_rate_getter() if keep_rate_getter else None
 
-            # get samples from the buffer and submit the generation requests.
-            remaining = target_data_size - submitted
-            n = remaining if args.disable_oversampling else args.over_sampling_batch_size
+            # Original fixed oversampling behavior:
+            # n = args.over_sampling_batch_size
+            n = _estimate_adaptive_submission_n(
+                accepted=len(data),
+                pending=len(pendings),
+                target=target_data_size,
+                keep_rate=keep_rate,
+                max_n=args.over_sampling_batch_size,
+                factor=1.1,
+            )
+
+        if n > 0:
+            logger.info(
+                "[adaptive_oversampling] rollout_id=%s submit_n=%s accepted=%s pending=%s "
+                "target=%s keep_rate_ema=%s",
+                rollout_id,
+                n,
+                len(data),
+                len(pendings),
+                target_data_size,
+                keep_rate_getter() if keep_rate_getter else None,
+            )
             samples = data_source(n)
             if len(samples) < n:
                 source_exhausted = True
@@ -214,7 +269,9 @@ async def generate_rollout_async(
                     target_data_size,
                 )
             if not samples:
-                break
+                n = 0
+            else:
+                n = len(samples)
             stamp_rollout_id(samples, rollout_id)
             submitted += len(samples)
             pendings.update(submit_generate_tasks(state, samples))
@@ -242,11 +299,13 @@ async def generate_rollout_async(
 
             assert len(group) == args.n_samples_per_prompt
             all_data.append(group)
+            completed_groups += 1
             dynamic_filter_output = call_dynamic_filter(dynamic_filter, args, group)
             if not dynamic_filter_output.keep:
                 metric_gatherer.on_dynamic_filter_drop(reason=dynamic_filter_output.reason)
                 continue
 
+            kept_groups += 1
             # add the samples to the data
             # NOTE: here we have not stored all the unused samples back to the data buffer.
             if len(data) < target_data_size:
@@ -301,6 +360,15 @@ async def generate_rollout_async(
         f(args, all_samples, data_source)
 
     metrics = metric_gatherer.collect()
+    observed_keep_rate = kept_groups / completed_groups if completed_groups else None
+    updated_keep_rate = keep_rate_updater(observed_keep_rate) if observed_keep_rate is not None and keep_rate_updater else None
+    metrics["rollout/adaptive_oversampling/submitted_groups"] = submitted
+    metrics["rollout/adaptive_oversampling/completed_groups"] = completed_groups
+    metrics["rollout/adaptive_oversampling/kept_groups"] = kept_groups
+    if observed_keep_rate is not None:
+        metrics["rollout/adaptive_oversampling/observed_keep_rate"] = observed_keep_rate
+    if updated_keep_rate is not None:
+        metrics["rollout/adaptive_oversampling/keep_rate_ema"] = updated_keep_rate
     flat_all = [
         sample
         for group in all_samples

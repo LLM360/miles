@@ -47,6 +47,10 @@ class RolloutFnEvalInput(RolloutFnBaseInput):
 class RolloutFnTrainOutput:
     samples: list[list[Sample]]
     metrics: dict[str, Any] = None
+    # Completed generated samples before dynamic filtering. Used for raw rollout perf metrics.
+    all_samples: list[list[Sample]] | None = None
+    stop_training: bool = False
+    stop_reason: str | None = None
 
 
 # TODO make it frozen

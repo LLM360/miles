@@ -463,11 +463,52 @@ class RolloutManager:
         self.health_monitoring_resume()
         if self.args.ci_test and self.args.use_fault_tolerance and rollout_id >= 2:
             self._try_ci_fault_injection()
-        data, metrics = self._get_rollout_data(rollout_id=rollout_id)
+        data, metrics, all_generated_samples, stop_training, stop_reason = self._get_rollout_data(
+            rollout_id=rollout_id
+        )
+        metrics = dict(metrics or {})
+        metrics.update(self._consumed_prompt_metrics())
+        if stop_training:
+            logger.info(
+                "Rollout requested training stop at rollout_id=%s reason=%s accepted_samples=%s "
+                "all_generated_samples=%s",
+                rollout_id,
+                stop_reason,
+                len(data),
+                len(all_generated_samples) if all_generated_samples is not None else None,
+            )
+            if data:
+                _log_rollout_data(
+                    rollout_id,
+                    self.args,
+                    data,
+                    metrics,
+                    time.time() - start_time,
+                    all_generated_samples=all_generated_samples,
+                )
+            return None
         self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=False)
-        _log_rollout_data(rollout_id, self.args, data, metrics, time.time() - start_time)
+        _log_rollout_data(
+            rollout_id,
+            self.args,
+            data,
+            metrics,
+            time.time() - start_time,
+            all_generated_samples=all_generated_samples,
+        )
         data = self._convert_samples_to_train_data(data)
         return self._split_train_data_by_dp(data, self.train_parallel_config["dp_size"])
+
+    def _consumed_prompt_metrics(self) -> dict:
+        ds = self.data_source
+        consumed = ds.consumed_prompt_groups
+        metrics = {"rollout/data_source/consumed_prompts": consumed}
+        if ds.dataset is not None and len(ds.dataset) > 0:
+            metrics["rollout/data_source/consumed_prompt_epochs"] = consumed / len(ds.dataset)
+        remaining = ds.remaining_prompt_budget
+        if remaining is not None:
+            metrics["rollout/data_source/remaining_prompt_budget"] = remaining
+        return metrics
 
     def eval(self, rollout_id):
         if self.args.debug_train_only:
@@ -558,6 +599,13 @@ class RolloutManager:
         return ray.get([engine.check_weights.remote(action=action) for engine in self.rollout_engines])
 
     def _get_rollout_data(self, rollout_id):
+        def flatten_nested_samples(samples):
+            if samples is None:
+                return None
+            while samples and isinstance(samples[0], list):
+                samples = list(itertools.chain.from_iterable(samples))
+            return samples
+
         if self.args.load_debug_rollout_data:
             path = Path(self.args.load_debug_rollout_data.format(rollout_id=rollout_id))
             if path.suffix == ".parquet":
@@ -575,20 +623,30 @@ class RolloutManager:
                     f"Subsample loaded debug rollout data using {ratio=} and change num rows {original_num_rows} -> {len(data)}"
                 )
             metrics = None
+            all_generated_samples = None
+            stop_training = False
+            stop_reason = None
         else:
             if self.use_experimental_refactor:
-                data = call_rollout_function(self.generate_rollout, RolloutFnTrainInput(rollout_id=rollout_id))
+                output = call_rollout_function(self.generate_rollout, RolloutFnTrainInput(rollout_id=rollout_id))
             else:
-                data = call_rollout_fn(
+                output = call_rollout_fn(
                     self.generate_rollout, self.args, rollout_id, self.data_source, evaluation=False
                 )
-            metrics = data.metrics
-            data = data.samples
+            metrics = output.metrics
+            all_generated_samples = flatten_nested_samples(output.all_samples)
+            stop_training = output.stop_training
+            stop_reason = output.stop_reason
+            data = output.samples
             # flatten the data if it is a list of lists
-            while isinstance(data[0], list):
-                data = list(itertools.chain.from_iterable(data))
+            data = flatten_nested_samples(data)
 
-            if not self.args.disable_rollout_trim_samples:
+            if stop_training:
+                metrics = metrics or {}
+                metrics["rollout/stop_training"] = 1
+                if stop_reason:
+                    metrics[f"rollout/stop_reason/{stop_reason}"] = 1
+            elif not self.args.disable_rollout_trim_samples:
                 global_batch_size = self.args.global_batch_size
                 if self.args.use_dynamic_global_batch_size:
                     logger.info(f"Collected {len(data)} samples from rollout to train with dynamic global batch size")
@@ -605,7 +663,7 @@ class RolloutManager:
                     logger.info(f"trim number of samples from {origin_data_length} to {trim_len}")
                 logger.info(f"Final collected {len(data)} samples from rollout to train")
 
-        return data, metrics
+        return data, metrics, all_generated_samples, stop_training, stop_reason
 
     def _compute_dynamic_global_batch_size(self, num_samples: int) -> int:
         """Calculate dynamic global_batch_size to ensure only one training step.
@@ -1412,7 +1470,7 @@ def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any]
     return log_dict
 
 
-def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time):
+def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_time, all_generated_samples=None):
     if args.custom_rollout_log_function_path is not None:
         custom_log_func = load_function(args.custom_rollout_log_function_path)
         if custom_log_func(rollout_id, args, samples, rollout_extra_metrics, rollout_time):
@@ -1423,7 +1481,15 @@ def _log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_
 
     log_dict = {**(rollout_extra_metrics or {})}
     log_dict |= dict_add_prefix(compute_metrics_from_samples(args, samples), "rollout/")
-    log_dict |= dict_add_prefix(compute_perf_metrics_from_samples(args, samples, rollout_time), "perf/")
+    log_dict |= dict_add_prefix(
+        compute_perf_metrics_from_samples(
+            args,
+            samples,
+            rollout_time,
+            all_generated_samples=all_generated_samples,
+        ),
+        "perf/",
+    )
     # Mirror reward/* and response_stats/* as top-level wandb panels.
     for full_key, val in list(log_dict.items()):
         if full_key.startswith(("rollout/reward/", "rollout/response_stats/")):
@@ -1507,8 +1573,10 @@ def compute_metrics_from_samples(args, samples):
     return log_dict
 
 
-def compute_perf_metrics_from_samples(args, samples, rollout_time):
+def compute_perf_metrics_from_samples(args, samples, rollout_time, all_generated_samples=None):
     non_generation_time = [sample.non_generation_time for sample in samples]
+    accepted_response_lengths = [sample.response_length for sample in samples]
+    accepted_effective_response_lengths = [sample.effective_response_length for sample in samples]
 
     log_dict = {}
     log_dict["rollout_time"] = rollout_time
@@ -1516,6 +1584,8 @@ def compute_perf_metrics_from_samples(args, samples, rollout_time):
         log_dict |= dict_add_prefix(compute_statistics(non_generation_time), "non_generation_time/")
 
     def token_perf(response_lengths, non_generation_time, key=""):
+        if not response_lengths:
+            return
         max_response_length = max(response_lengths)
         if args.rollout_num_gpus:
             log_dict[f"{key}tokens_per_gpu_per_sec"] = sum(response_lengths) / rollout_time / args.rollout_num_gpus
@@ -1534,8 +1604,30 @@ def compute_perf_metrics_from_samples(args, samples, rollout_time):
             rollout_time - mean_non_generation_time
         )
 
-    token_perf([sample.response_length for sample in samples], non_generation_time, key="")
-    token_perf([sample.effective_response_length for sample in samples], non_generation_time, key="effective_")
+    token_perf(accepted_response_lengths, non_generation_time, key="")
+    token_perf(accepted_effective_response_lengths, non_generation_time, key="effective_")
+
+    if all_generated_samples:
+        all_generated_non_generation_time = [sample.non_generation_time for sample in all_generated_samples]
+        all_generated_response_lengths = [sample.response_length for sample in all_generated_samples]
+        all_generated_effective_response_lengths = [
+            sample.effective_response_length for sample in all_generated_samples
+        ]
+        all_generated_token_count = sum(all_generated_response_lengths)
+        all_generated_effective_token_count = sum(all_generated_effective_response_lengths)
+
+        log_dict["accepted_sample_frac_of_all_generated"] = len(samples) / len(all_generated_samples)
+        if all_generated_effective_token_count:
+            log_dict["accepted_effective_token_frac_of_all_generated"] = (
+                sum(accepted_effective_response_lengths) / all_generated_effective_token_count
+            )
+
+        token_perf(all_generated_response_lengths, all_generated_non_generation_time, key="all_generated_")
+        token_perf(
+            all_generated_effective_response_lengths,
+            all_generated_non_generation_time,
+            key="all_generated_effective_",
+        )
 
     return log_dict
 

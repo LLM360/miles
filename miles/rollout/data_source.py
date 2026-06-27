@@ -49,6 +49,8 @@ class RolloutDataSource(DataSource):
         self.sample_group_index = 0
         self.sample_index = 0
         self.sample_offset = 0
+        self.consumed_prompt_groups = 0
+        self.max_consumed_prompt_groups = None
         # TODO remove this
         self.metadata = {}
 
@@ -80,12 +82,51 @@ class RolloutDataSource(DataSource):
             )
             if self.args.rollout_shuffle:
                 self.dataset.shuffle(self.epoch_id)
+            if self.args.stop_after_consumed_prompt_epochs is not None:
+                self.max_consumed_prompt_groups = int(
+                    len(self.dataset) * self.args.stop_after_consumed_prompt_epochs
+                )
+                if self.max_consumed_prompt_groups <= 0:
+                    raise ValueError(
+                        "--stop-after-consumed-prompt-epochs produced a zero prompt budget; "
+                        f"dataset_size={len(self.dataset)} value={self.args.stop_after_consumed_prompt_epochs}"
+                    )
+                logger.info(
+                    "Prompt consumption budget enabled: max_consumed_prompt_groups=%d "
+                    "dataset_size=%d stop_after_consumed_prompt_epochs=%s",
+                    self.max_consumed_prompt_groups,
+                    len(self.dataset),
+                    self.args.stop_after_consumed_prompt_epochs,
+                )
         else:
             self.dataset = None
+
+    @property
+    def remaining_prompt_budget(self) -> int | None:
+        if self.max_consumed_prompt_groups is None:
+            return None
+        return max(0, self.max_consumed_prompt_groups - self.consumed_prompt_groups)
+
+    @property
+    def consumed_prompt_budget_exhausted(self) -> bool:
+        remaining = self.remaining_prompt_budget
+        return remaining is not None and remaining <= 0
 
     def get_samples(self, num_samples):
         # TODO further improve code
         if self.dataset is not None:
+            remaining_budget = self.remaining_prompt_budget
+            if remaining_budget is not None:
+                if remaining_budget <= 0:
+                    logger.info(
+                        "Prompt consumption budget exhausted: consumed_prompt_groups=%d "
+                        "max_consumed_prompt_groups=%d",
+                        self.consumed_prompt_groups,
+                        self.max_consumed_prompt_groups,
+                    )
+                    return []
+                num_samples = min(num_samples, remaining_budget)
+
             if self.sample_offset + num_samples <= len(self.dataset):
                 prompt_samples = self.dataset.samples[self.sample_offset : self.sample_offset + num_samples]
                 self.sample_offset += num_samples
@@ -97,6 +138,7 @@ class RolloutDataSource(DataSource):
                     self.dataset.shuffle(self.epoch_id)
                 prompt_samples += self.dataset.samples[:num_samples]
                 self.sample_offset = num_samples
+            self.consumed_prompt_groups += len(prompt_samples)
         else:
             prompt_samples = [Sample() for _ in range(num_samples)]
 
@@ -125,6 +167,7 @@ class RolloutDataSource(DataSource):
             "epoch_id": self.epoch_id,
             "sample_group_index": self.sample_group_index,
             "sample_index": self.sample_index,
+            "consumed_prompt_groups": self.consumed_prompt_groups,
             "metadata": self.metadata,
         }
         path = os.path.join(self.args.save, f"rollout/global_dataset_state_dict_{rollout_id}.pt")
@@ -150,6 +193,7 @@ class RolloutDataSource(DataSource):
         self.epoch_id = state_dict.get("epoch_id", 0)
         self.sample_group_index = state_dict.get("sample_group_index", 0)
         self.sample_index = state_dict.get("sample_index", 0)
+        self.consumed_prompt_groups = state_dict.get("consumed_prompt_groups", 0)
         self.metadata = state_dict.get("metadata", {})
 
         if self.args.rollout_global_dataset and self.args.rollout_shuffle:
