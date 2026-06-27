@@ -2807,6 +2807,28 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
     return add_miles_arguments
 
 
+def dump_args_to_file(args, main_log_dir=None):
+    """Dump final parsed Miles args to <main_log_dir>/arguments.txt."""
+    main_log_dir = main_log_dir or os.environ.get("SNAP_DIR")
+    if not main_log_dir:
+        return
+
+    if not os.path.isdir(main_log_dir):
+        return
+
+    path = os.path.join(main_log_dir, "arguments.txt")
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("------------------------ arguments ------------------------\n")
+        str_list = []
+        for arg in vars(args):
+            dots = "." * (48 - len(arg))
+            str_list.append(f"  {arg} {dots} {getattr(args, arg)}")
+        for arg in sorted(str_list, key=lambda x: x.lower()):
+            f.write(arg + "\n")
+        f.write("-------------------- end of arguments ---------------------\n")
+
+
 def parse_args(add_custom_arguments=None):
     # Users may call `parse_args` very early, thus we ensure logger is configured here
     configure_logger_raw("main")
@@ -2876,6 +2898,8 @@ def parse_args(add_custom_arguments=None):
         validate_hybrid_shard_args(args)
 
     sglang_validate_args(args)
+
+    dump_args_to_file(args)
 
     return args
 
