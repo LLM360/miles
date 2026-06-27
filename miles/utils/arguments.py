@@ -1685,8 +1685,11 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
 
 def dump_args_to_file(args, main_log_dir=None):
     """Dump final parsed Miles args to <main_log_dir>/arguments.txt."""
-    main_log_dir = main_log_dir or os.environ.get("MAIN_LOG_DIR")
+    main_log_dir = main_log_dir or os.environ.get("SNAP_DIR")
     if not main_log_dir:
+        return
+
+    if not os.path.isdir(main_log_dir):
         return
 
     path = os.path.join(main_log_dir, "arguments.txt")
