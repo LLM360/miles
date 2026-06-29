@@ -488,7 +488,35 @@ def train_one_step(
         # creates optimizer state on first step, so release inactive blocks here
         # before tiny state allocations fail with reserved-but-free memory.
         clear_memory()
+        # === ESS-guided LR scaling (no-op / bit-exact unless --use-ess-lr) ===
+        # The scale is computed on the last PP stage (where log-probs live), so
+        # broadcast it across the PP group, temporarily scale the param-group LRs
+        # for this step, and restore them before opt_param_scheduler advances.
+        # Only the policy/actor optimizer is scaled; the critic (loss_type ==
+        # "value_loss") must not inherit the policy's off-policy ESS scale.
+        _ess_saved_lrs = None
+        if getattr(args, "use_ess_lr", False) and getattr(args, "loss_type", "policy_loss") == "policy_loss":
+            from ..training_utils.ess_lr import _ESS_LR_STATE
+
+            _ess_buf = torch.tensor(
+                [float(_ESS_LR_STATE.get("scale", 1.0)), float(_ESS_LR_STATE.get("rho_ess", 1.0))],
+                device=torch.cuda.current_device(),
+            )
+            torch.distributed.broadcast(
+                _ess_buf,
+                src=mpu.get_pipeline_model_parallel_last_rank(),
+                group=mpu.get_pipeline_model_parallel_group(),
+            )
+            _ESS_LR_STATE["scale"] = float(_ess_buf[0].item())
+            _ESS_LR_STATE["rho_ess"] = float(_ess_buf[1].item())
+            if _ESS_LR_STATE["scale"] != 1.0:
+                _ess_saved_lrs = [g["lr"] for g in optimizer.param_groups]
+                for g in optimizer.param_groups:
+                    g["lr"] = g["lr"] * _ESS_LR_STATE["scale"]
         update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+        if _ess_saved_lrs is not None:
+            for g, _saved_lr in zip(optimizer.param_groups, _ess_saved_lrs, strict=False):
+                g["lr"] = _saved_lr
 
         # Update learning rate.
         assert update_successful
@@ -658,6 +686,14 @@ def train(
             extra_metrics = {}
             if args.enable_mtp_training:
                 extra_metrics["mtp_loss"] = mtp_losses
+
+            if getattr(args, "use_ess_lr", False) and getattr(args, "loss_type", "policy_loss") == "policy_loss":
+                from ..training_utils.ess_lr import _ESS_LR_STATE
+
+                # _ESS_LR_STATE was just synced across the PP group in the
+                # optimizer.step() block above, so this rank holds the value.
+                extra_metrics["lr_scale"] = float(_ESS_LR_STATE.get("scale", 1.0))
+                extra_metrics["rho_ess"] = float(_ESS_LR_STATE.get("rho_ess", 1.0))
 
             for param_group_id, param_group in enumerate(optimizer.param_groups):
                 extra_metrics[f"lr-pg_{param_group_id}"] = opt_param_scheduler.get_lr(param_group)

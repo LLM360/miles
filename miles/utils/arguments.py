@@ -138,6 +138,22 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Whether to enable true-on-policy mode.",
             )
             parser.add_argument(
+                "--use-ess-lr",
+                action="store_true",
+                default=False,
+                help=(
+                    "Enable ESS-guided learning-rate scaling (VCPO-style, arXiv:2602.17616). "
+                    "Shrinks the effective LR by sqrt(ESS/B) when off-policy importance weights "
+                    "are heavy-tailed (low effective sample size). Default off (bit-exact legacy)."
+                ),
+            )
+            parser.add_argument(
+                "--ess-lr-floor",
+                type=float,
+                default=0.1,
+                help="Lower clamp for the ESS LR scale; only used when --use-ess-lr.",
+            )
+            parser.add_argument(
                 "--train-env-vars",
                 type=json.loads,
                 default="{}",
@@ -2098,6 +2114,12 @@ def miles_validate_args(args):
         assert (
             args.use_dynamic_batch_size is False
         ), "Dynamic batch size is not supported for bshd format. Please specify --micro-batch-size instead."
+
+    if getattr(args, "use_ess_lr", False):
+        # ESS-LR scales the optimizer LR inside the megatron train step; the FSDP
+        # backend never consumes the scale, so enabling it there would silently
+        # no-op. Fail loudly instead.
+        assert args.train_backend == "megatron", "--use-ess-lr is only supported for the megatron backend."
 
     _maybe_apply_dumper_overrides(args)
 

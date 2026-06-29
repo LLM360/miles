@@ -26,6 +26,7 @@ from .cp_utils import (
     get_logits_and_tokens_offset_with_cp,
     get_sum_of_sample_mean,
 )
+from .ess_lr import ess_lr_compute
 from .parallel import get_parallel_state
 
 
@@ -443,6 +444,8 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
             )
             chunk_lengths = [chunk.size(0) for chunk in advantages]
             advantages = list(torch.split(whitened_advs_flat, chunk_lengths))
+
+    ess_lr_compute(args, parallel_state, rollout_data)
 
     rollout_data["advantages"] = advantages
     rollout_data["returns"] = returns
