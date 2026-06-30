@@ -359,6 +359,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Seconds to wait between rolling-start waves (see --rolling-start-size).",
             )
             parser.add_argument(
+                "--tail-cancel-groups",
+                type=int,
+                default=0,
+                help=(
+                    "Long-tail cut for --disable-oversampling: once only this many task groups remain "
+                    "in flight (0 < pending groups <= this value), cancel the stragglers and proceed to "
+                    "the next step with whatever survived. 0 disables the cut."
+                ),
+            )
+            parser.add_argument(
                 "--dynamic-sampling-filter-path",
                 type=str,
                 default=None,
