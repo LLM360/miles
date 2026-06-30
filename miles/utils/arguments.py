@@ -343,6 +343,22 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--rolling-start-size",
+                type=int,
+                default=0,
+                help=(
+                    "Rolling start: launch at most this many rollouts per wave instead of submitting "
+                    "the whole batch at once, sleeping --rolling-start-interval between waves until the "
+                    "batch is full. Spreads the session-creation burst. 0 disables (submit all at once)."
+                ),
+            )
+            parser.add_argument(
+                "--rolling-start-interval",
+                type=float,
+                default=5.0,
+                help="Seconds to wait between rolling-start waves (see --rolling-start-size).",
+            )
+            parser.add_argument(
                 "--tail-cancel-groups",
                 type=int,
                 default=0,

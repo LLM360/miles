@@ -199,10 +199,16 @@ async def generate_rollout_async(
             # get samples from the buffer and submit the generation requests.
             remaining = target_data_size - submitted
             n = remaining if args.disable_oversampling else args.over_sampling_batch_size
+            if args.rolling_start_size:
+                # Cap each wave to ~rolling_start_size rollouts (a group is
+                # n_samples_per_prompt rollouts) so we don't open every session at once.
+                n = min(n, max(1, args.rolling_start_size // args.n_samples_per_prompt))
             samples = data_source(n)
             stamp_rollout_id(samples, rollout_id)
             submitted += len(samples)
             pendings.update(submit_generate_tasks(state, samples))
+            if args.rolling_start_size and len(data) + len(pendings) < target_data_size:
+                await asyncio.sleep(args.rolling_start_interval)
 
         if not pendings:
             break
