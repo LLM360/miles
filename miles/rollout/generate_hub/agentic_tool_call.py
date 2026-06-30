@@ -61,6 +61,8 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     max_seq_len = getattr(input.args, "max_seq_len", None)
 
     metadata = input.sample.metadata
+    metadata = {**metadata, "sample_idx": input.sample.index}
+
     if max_seq_len is not None:
         metadata = {**metadata, "max_seq_len": max_seq_len}
     if tracer.session_server_instance_id:
