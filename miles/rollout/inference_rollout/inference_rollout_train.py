@@ -207,6 +207,7 @@ async def generate_rollout_async(
 
     disable_oversampling = getattr(args, "disable_oversampling", False)
     submitted = 0
+    rolling_start_size = getattr(args, "rolling_start_size", 0)
     pendings = set()
     data = []
     all_data = []
@@ -219,6 +220,9 @@ async def generate_rollout_async(
             # With refilling disabled, count every submitted task group, including
             # groups later rejected by the filter. Keep scheduler callbacks intact.
             num_groups = target_data_size - submitted if disable_oversampling else args.over_sampling_batch_size
+            if rolling_start_size:
+                # The setting counts rollouts; submit only whole task groups.
+                num_groups = min(num_groups, max(1, rolling_start_size // args.n_samples_per_prompt))
             samples = data_source(num_groups)
             if not samples:
                 break
@@ -226,6 +230,8 @@ async def generate_rollout_async(
             submitted += len(samples)
             scheduler.on_submit(samples)
             pendings.update(submit_generate_tasks(state, samples, scheduler.sample_done_callback))
+            if rolling_start_size and len(data) + len(pendings) < target_data_size:
+                await asyncio.sleep(args.rolling_start_interval)
 
         if not pendings:
             break

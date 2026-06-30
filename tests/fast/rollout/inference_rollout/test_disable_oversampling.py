@@ -54,3 +54,42 @@ async def test_tail_cut_requires_disabled_refill_and_positive_threshold(monkeypa
         harness.finish_group(1)
     output, _ = await asyncio.wait_for(task, 2)
     assert len(output.samples) == (1 if should_cut else 2)
+
+
+@pytest.mark.parametrize("granularity", ["group", "sample"])
+@pytest.mark.parametrize("wave_rollouts", [0, 6])
+async def test_rolling_start_uses_whole_groups_and_spaces_waves(monkeypatch, granularity, wave_rollouts):
+    harness = Harness(
+        monkeypatch,
+        make_args(
+            disable_oversampling=True,
+            rollout_batch_size=3,
+            rollout_submission_granularity=granularity,
+            rolling_start_size=wave_rollouts,
+            rolling_start_interval=0.0123,
+        ),
+    )
+    sleeps, requests = [], []
+    original_sleep, original_source = asyncio.sleep, harness.data_source
+
+    async def sleep(delay):
+        sleeps.append(delay)
+        await original_sleep(0)
+
+    def source(n):
+        requests.append(n)
+        return original_source(n)
+
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    harness.data_source = source
+    task = harness.run()
+    for _ in range(10):
+        await original_sleep(0)
+        if len(harness.submitted_groups) == 3:
+            break
+    assert requests == ([1, 1, 1] if wave_rollouts else [3])
+    assert sleeps == ([0.0123, 0.0123] if wave_rollouts else [])
+    for i in range(3):
+        harness.finish_group(i)
+    output, _ = await asyncio.wait_for(task, 2)
+    assert len(output.samples) == 3
