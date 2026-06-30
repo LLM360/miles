@@ -38,3 +38,19 @@ async def test_empty_source_returns_short_disabled_batch(monkeypatch):
     output, _ = await asyncio.wait_for(harness.run(), 2)
     assert output.samples == []
     assert harness.submitted_group_indices == []
+
+
+@pytest.mark.parametrize("disabled", [False, True])
+@pytest.mark.parametrize("tail_groups", [0, 1])
+async def test_tail_cut_requires_disabled_refill_and_positive_threshold(monkeypatch, disabled, tail_groups):
+    harness = Harness(monkeypatch, make_args(disable_oversampling=disabled, tail_cancel_groups=tail_groups))
+    task = harness.run()
+    await asyncio.sleep(0)
+    harness.finish_group(0)
+    await asyncio.sleep(0.01)
+    should_cut = disabled and tail_groups == 1
+    if not should_cut:
+        assert not task.done()
+        harness.finish_group(1)
+    output, _ = await asyncio.wait_for(task, 2)
+    assert len(output.samples) == (1 if should_cut else 2)
