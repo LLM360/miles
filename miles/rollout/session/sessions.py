@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 import uuid
+import zlib
 
 import orjson
 from fastapi import Request
@@ -112,13 +113,20 @@ def setup_session_routes(app, backend, args):
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
             return GetSessionResponse(session_id=session_id, records=[], metadata={})
         metadata = {}
-        try:
-            mismatch = registry.compute_session_mismatch(session)
-        except TokenizationError:
-            logger.exception("Failed to compute tito_session_mismatch for session %s", session_id)
-            mismatch = None
-        if mismatch is not None:
-            metadata["tito_session_mismatch"] = mismatch
+        # Re-tokenizing the full trajectory to check tito_session_mismatch is a
+        # diagnostic canary, not a training-correctness guard (train tokens come
+        # from the inference response). It runs synchronously here, so at long
+        # context it blocks the event loop and starves record retrieval. Sample
+        # a deterministic fraction by session_id to keep the signal cheap.
+        sample_rate = getattr(args, "tito_session_mismatch_sample_rate", 0.0)
+        if sample_rate > 0.0 and (zlib.crc32(session_id.encode()) % 10000) < sample_rate * 10000:
+            try:
+                mismatch = registry.compute_session_mismatch(session)
+            except TokenizationError:
+                logger.exception("Failed to compute tito_session_mismatch for session %s", session_id)
+                mismatch = None
+            if mismatch is not None:
+                metadata["tito_session_mismatch"] = mismatch
         metadata["accumulated_token_ids"] = session.token_ids
         metadata["max_trim_tokens"] = registry.tito_tokenizer.max_trim_tokens
         return GetSessionResponse(
