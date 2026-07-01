@@ -60,7 +60,11 @@ def _wandb_init_with_retry(init_kwargs: dict, *, role: str):
         wait = WANDB_INIT_RETRY_BACKOFF_SECS * (2 ** (attempt - 1))
         logger.warning(
             "wandb.init (%s) attempt %d/%d failed: %s. Retrying in %.1fs.",
-            role, attempt, WANDB_INIT_RETRY_ATTEMPTS, last_exc, wait,
+            role,
+            attempt,
+            WANDB_INIT_RETRY_ATTEMPTS,
+            last_exc,
+            wait,
         )
         time.sleep(wait)
     logger.error("wandb.init (%s) exhausted %d retries; giving up", role, WANDB_INIT_RETRY_ATTEMPTS)
