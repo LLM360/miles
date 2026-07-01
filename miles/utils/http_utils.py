@@ -9,6 +9,7 @@ import socket
 import time
 
 import httpx
+import orjson
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +197,16 @@ async def _post(client, url, payload, max_retries=60, action="post", headers=Non
                 response = await getattr(client, action)(url, json=payload or {}, headers=headers)
             response.raise_for_status()
             try:
-                output = response.json()
-            except json.JSONDecodeError:
-                output = response.text
+                # orjson is ~10x faster than stdlib json on the multi-MB
+                # token-id payloads from session-record GETs; at rollout scale
+                # stdlib parse time alone saturates the single-threaded event
+                # loop. Fall back to stdlib for JSON orjson rejects (NaN/Inf).
+                output = orjson.loads(response.content)
+            except orjson.JSONDecodeError:
+                try:
+                    output = response.json()
+                except json.JSONDecodeError:
+                    output = response.text
         except Exception as e:
             retry_count += 1
 
