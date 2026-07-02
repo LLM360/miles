@@ -32,6 +32,7 @@ _DELETE_RETRIES = 3
 
 _BACKOFF_INITIAL_SECONDS = 1.0
 _BACKOFF_MAX_SECONDS = 10.0
+_BACKOFF_JITTER_FRACTION = 0.2
 
 
 class OpenAIEndpointTracer:
@@ -66,8 +67,14 @@ class OpenAIEndpointTracer:
     @staticmethod
     def _backoff_seconds(attempt: int) -> float:
         # attempt is 1-indexed.
-        delay = _BACKOFF_INITIAL_SECONDS * (2 ** (attempt - 1))
-        return min(delay, _BACKOFF_MAX_SECONDS)
+        base_delay = _BACKOFF_INITIAL_SECONDS * (2 ** (attempt - 1))
+        base_delay = min(base_delay, _BACKOFF_MAX_SECONDS)
+
+        jitter = random.uniform(
+            1.0 - _BACKOFF_JITTER_FRACTION,
+            1.0 + _BACKOFF_JITTER_FRACTION,
+        )
+        return min(base_delay * jitter, _BACKOFF_MAX_SECONDS)
 
     @classmethod
     async def _request(
@@ -84,18 +91,18 @@ class OpenAIEndpointTracer:
         method = method.upper()
         last_exc: BaseException | None = None
 
-        for attempt in range(1, max_retries + 1):
-            try:
-                logger.info(
-                    "[session-client] request_start phase=%s method=%s url=%s attempt=%d/%d",
-                    phase,
-                    method,
-                    url,
-                    attempt,
-                    max_retries,
-                )
+        async with httpx.AsyncClient(timeout=cls._timeout()) as client:
+            for attempt in range(1, max_retries + 1):
+                try:
+                    logger.info(
+                        "[session-client] request_start phase=%s method=%s url=%s attempt=%d/%d",
+                        phase,
+                        method,
+                        url,
+                        attempt,
+                        max_retries,
+                    )
 
-                async with httpx.AsyncClient(timeout=cls._timeout()) as client:
                     if method in {"GET", "DELETE"}:
                         response = await client.request(method, url, headers=headers)
                     else:
@@ -106,138 +113,136 @@ class OpenAIEndpointTracer:
                             headers=headers,
                         )
 
-                body_bytes = cls._response_size(response)
-
-                logger.info(
-                    "[session-client] response_received phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
-                    phase,
-                    method,
-                    url,
-                    response.status_code,
-                    body_bytes,
-                    attempt,
-                    max_retries,
-                )
-
-                try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as exc:
-                    status = exc.response.status_code
-                    last_exc = exc
+                    body_bytes = cls._response_size(response)
 
                     logger.info(
-                        "[session-client] http_status_error phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
+                        "[session-client] response_received phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
                         phase,
                         method,
                         url,
-                        status,
+                        response.status_code,
                         body_bytes,
                         attempt,
                         max_retries,
                     )
 
-                    # Do not retry deterministic client errors.
-                    # Retry 429 and 5xx because they can be transient.
-                    if status != 429 and status < 500:
-                        raise
-
-                else:
-                    if response.status_code == 204 or not response.content:
-                        return None
-
-                    if not expect_json:
-                        return response.text
-
                     try:
-                        return response.json()
-                    except json.JSONDecodeError as exc:
+                        response.raise_for_status()
+                    except httpx.HTTPStatusError as exc:
+                        status = exc.response.status_code
+                        last_exc = exc
+
                         logger.info(
-                            "[session-client] json_decode_error phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
+                            "[session-client] http_status_error phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
                             phase,
                             method,
                             url,
-                            response.status_code,
+                            status,
                             body_bytes,
                             attempt,
                             max_retries,
                         )
-                        raise exc
 
-            except asyncio.CancelledError:
-                logger.info(
-                    "[session-client] request_cancelled phase=%s method=%s url=%s attempt=%d/%d",
-                    phase,
-                    method,
-                    url,
-                    attempt,
-                    max_retries,
-                )
-                raise
+                        if status != 429 and status < 500:
+                            raise
 
-            except httpx.RemoteProtocolError as exc:
-                last_exc = exc
-                logger.info(
-                    "[session-client] remote_protocol_error phase=%s method=%s url=%s attempt=%d/%d error_type=%s error=%r",
-                    phase,
-                    method,
-                    url,
-                    attempt,
-                    max_retries,
-                    type(exc).__name__,
-                    exc,
-                )
+                    else:
+                        if response.status_code == 204 or not response.content:
+                            return None
 
-            except httpx.TimeoutException as exc:
-                last_exc = exc
-                logger.info(
-                    "[session-client] timeout phase=%s method=%s url=%s attempt=%d/%d error_type=%s error=%r",
-                    phase,
-                    method,
-                    url,
-                    attempt,
-                    max_retries,
-                    type(exc).__name__,
-                    exc,
-                )
+                        if not expect_json:
+                            return response.text
 
-            except httpx.TransportError as exc:
-                last_exc = exc
-                logger.info(
-                    "[session-client] transport_error phase=%s method=%s url=%s attempt=%d/%d error_type=%s error=%r",
-                    phase,
-                    method,
-                    url,
-                    attempt,
-                    max_retries,
-                    type(exc).__name__,
-                    exc,
-                )
+                        try:
+                            return response.json()
+                        except json.JSONDecodeError as exc:
+                            logger.info(
+                                "[session-client] json_decode_error phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
+                                phase,
+                                method,
+                                url,
+                                response.status_code,
+                                body_bytes,
+                                attempt,
+                                max_retries,
+                            )
+                            raise exc
 
-            except Exception as exc:
-                logger.info(
-                    "[session-client] unexpected_error phase=%s method=%s url=%s attempt=%d/%d error_type=%s error=%r",
-                    phase,
-                    method,
-                    url,
-                    attempt,
-                    max_retries,
-                    type(exc).__name__,
-                    exc,
-                )
-                raise
+                except asyncio.CancelledError:
+                    logger.info(
+                        "[session-client] request_cancelled phase=%s method=%s url=%s attempt=%d/%d",
+                        phase,
+                        method,
+                        url,
+                        attempt,
+                        max_retries,
+                    )
+                    raise
 
-            if attempt < max_retries:
-                delay = cls._backoff_seconds(attempt)
-                logger.info(
-                    "[session-client] request_retry_sleep phase=%s method=%s url=%s attempt=%d/%d sleep_s=%.1f",
-                    phase,
-                    method,
-                    url,
-                    attempt,
-                    max_retries,
-                    delay,
-                )
-                await asyncio.sleep(delay)
+                except httpx.RemoteProtocolError as exc:
+                    last_exc = exc
+                    logger.info(
+                        "[session-client] remote_protocol_error phase=%s method=%s url=%s attempt=%d/%d error_type=%s error=%r",
+                        phase,
+                        method,
+                        url,
+                        attempt,
+                        max_retries,
+                        type(exc).__name__,
+                        exc,
+                    )
+
+                except httpx.TimeoutException as exc:
+                    last_exc = exc
+                    logger.info(
+                        "[session-client] timeout phase=%s method=%s url=%s attempt=%d/%d error_type=%s error=%r",
+                        phase,
+                        method,
+                        url,
+                        attempt,
+                        max_retries,
+                        type(exc).__name__,
+                        exc,
+                    )
+
+                except httpx.TransportError as exc:
+                    last_exc = exc
+                    logger.info(
+                        "[session-client] transport_error phase=%s method=%s url=%s attempt=%d/%d error_type=%s error=%r",
+                        phase,
+                        method,
+                        url,
+                        attempt,
+                        max_retries,
+                        type(exc).__name__,
+                        exc,
+                    )
+
+                except Exception as exc:
+                    logger.info(
+                        "[session-client] unexpected_error phase=%s method=%s url=%s attempt=%d/%d error_type=%s error=%r",
+                        phase,
+                        method,
+                        url,
+                        attempt,
+                        max_retries,
+                        type(exc).__name__,
+                        exc,
+                    )
+                    raise
+
+                if attempt < max_retries:
+                    delay = cls._backoff_seconds(attempt)
+                    logger.info(
+                        "[session-client] request_retry_sleep phase=%s method=%s url=%s attempt=%d/%d sleep_s=%.3f",
+                        phase,
+                        method,
+                        url,
+                        attempt,
+                        max_retries,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
 
         logger.info(
             "[session-client] request_failed phase=%s method=%s url=%s attempts=%d last_error_type=%s last_error=%r",
@@ -326,9 +331,6 @@ class OpenAIEndpointTracer:
         )
 
     async def collect_records(self) -> tuple[list[SessionRecord], dict]:
-        records: list[SessionRecord] = []
-        metadata: dict = {}
-
         logger.info(
             "[session-client] collect_start session_id=%s url=%s",
             self.session_id,
