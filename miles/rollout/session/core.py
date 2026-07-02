@@ -149,23 +149,14 @@ def _chat_client_response(result: dict, response: dict, client_stream: bool) -> 
 
 
 def proxy_result_to_response(result: dict) -> Response:
-    """Build the client response from a proxy result.
-
-    Mirrors the previous ``SessionServer.build_proxy_response``: re-emit JSON
-    bodies as compact JSON (application/json), pass non-JSON bodies through
-    unchanged, and drop wire-level framing headers from upstream.
-    """
-    content = result["response_body"]
-    status_code = result["status_code"]
+    """Forward untouched proxy bytes and rebuild transport framing headers."""
     headers = {k: v for k, v in result["headers"].items() if k.lower() not in _DROP_RESPONSE_HEADERS}
-    content_type = headers.get("content-type", "")
-    try:
-        data = orjson.loads(content)
-    except (orjson.JSONDecodeError, UnicodeDecodeError):
-        # Match the old Response(media_type=content_type): pass it through verbatim
-        # (incl. "" when upstream sent no content-type) so the wire bytes are identical.
-        return Response(content=content, status_code=status_code, headers=headers, media_type=content_type)
-    return Response(content=_render_json(data), status_code=status_code, headers=headers, media_type=JSON_MEDIA_TYPE)
+    return Response(
+        content=result["response_body"],
+        status_code=result["status_code"],
+        headers=headers,
+        media_type=headers.get("content-type"),
+    )
 
 
 def prepare_chat_request(body: bytes, args, tito_tokenizer) -> tuple:
@@ -476,7 +467,7 @@ class SessionCore:
             )
 
         if session.closing:
-            return closed_chat_response(result, client_stream)
+            return await run_session_worker(closed_chat_response, result, client_stream)
 
         # Stable's backend can recover a prefix-cache rollback failure by
         # rendering the messages again. Keep the retry narrowly scoped.
@@ -493,13 +484,15 @@ class SessionCore:
                 )
 
         if session.closing:
-            return closed_chat_response(result, client_stream)
+            return await run_session_worker(closed_chat_response, result, client_stream)
 
         # Other errors, including a failed retry, pass through unrecorded.
         if result["status_code"] != 200:
             return proxy_result_to_response(result)
 
-        response, choice, assistant_message, completion_token_ids = extract_completion(result)
+        response, choice, assistant_message, completion_token_ids = await run_session_worker(
+            extract_completion, result
+        )
         if retried_without_prefix:
             # The backend re-rendered the prompt. Use its actual IDs rather
             # than recording the IDs from the rejected request as training data.

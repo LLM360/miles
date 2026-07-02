@@ -192,14 +192,16 @@ class SessionCoreV2(SessionCore):
             )
 
         if session.closing:
-            return closed_chat_response(result, client_stream)
+            return await run_session_worker(closed_chat_response, result, client_stream)
 
         # Non-200 (e.g. 400 context too long) passes through unrecorded so the
         # agent can retry or handle the error.
         if result["status_code"] != 200:
             return proxy_result_to_response(result)
 
-        response, choice, assistant_message, completion_token_ids = extract_completion(result)
+        response, choice, assistant_message, completion_token_ids = await run_session_worker(
+            extract_completion, result
+        )
         assistant_message = tito_tokenizer.postprocess_completion(
             choice=choice,
             assistant_message=assistant_message,
