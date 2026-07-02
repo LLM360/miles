@@ -147,7 +147,10 @@ def save_tensors(args, model_name, state_dict, output_dir, chunk_size, vocab_siz
 
 def copy_assets(origin_hf_dir, output_dir):
     for filename in os.listdir(origin_hf_dir):
-        if filename == "model.safetensors.index.json" or filename.endswith(".safetensors"):
+        if filename in {
+            "model.safetensors.index.json",
+            "pytorch_model.bin.index.json",
+        } or filename.endswith((".safetensors", ".bin")):
             continue
         origin_filename = os.path.join(origin_hf_dir, filename)
         if not os.path.isfile(origin_filename):
@@ -167,7 +170,7 @@ if __name__ == "__main__":
         "--origin-hf-dir",
         type=str,
         default=None,
-        help="use the origin hf dir to copy files like tokenizer, config.json, etc.",
+        help="Origin HF dir for tokenizer/config assets. If omitted with no --model-name, defaults to common.pt hf_checkpoint/tokenizer_model.",
     )
     parser.add_argument(
         "-f", "--force", action="store_true", help="Force overwrite the output directory if it exists."
@@ -176,7 +179,7 @@ if __name__ == "__main__":
         "--chunk-size",
         type=int,
         default=5 * 1024**3,
-        help="Chunk size for saving tensors, default is 2GB.",
+        help="Chunk size for saving tensors, default is 5GB.",
     )
     parser.add_argument(
         "--vocab-size",
@@ -186,22 +189,49 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if os.path.exists(args.output_dir) and not args.force:
-        raise ValueError(f"Output directory {args.output_dir} already exists. Use --force to overwrite it.")
+    common_path = os.path.join(args.input_dir, "common.pt")
+
+    if os.path.exists(args.output_dir):
+        if os.path.samefile(args.input_dir, args.output_dir):
+            raise ValueError(f"Output directory must be different from input directory: {args.output_dir}")
+        if not args.force:
+            raise ValueError(f"Output directory {args.output_dir} already exists. Use --force to overwrite it.")
+
+    print(f"loading args from {common_path}")
+    megatron_args = torch.load(common_path, weights_only=False)["args"]
+
+    if args.model_name is None and args.origin_hf_dir is None:
+        args.origin_hf_dir = (
+            getattr(megatron_args, "hf_checkpoint", None)
+            or getattr(megatron_args, "tokenizer_model", None)
+        )
 
     if args.model_name is None and args.origin_hf_dir is None:
         raise ValueError(
-            "Either --model-name or --origin-hf-dir must be provided, so that we can know the name of the params."
+            "Either --model-name or --origin-hf-dir must be provided, or common.pt must contain hf_checkpoint/tokenizer_model."
         )
+
+    if (
+        args.origin_hf_dir
+        and os.path.exists(args.output_dir)
+        and os.path.exists(args.origin_hf_dir)
+        and os.path.samefile(args.origin_hf_dir, args.output_dir)
+    ):
+        raise ValueError(f"Origin HF directory must be different from output directory: {args.output_dir}")
 
     if args.model_name is None:
         hf_config = AutoConfig.from_pretrained(args.origin_hf_dir, trust_remote_code=True)
         args.model_name = type(hf_config).__name__.lower()
 
+    if args.force and os.path.exists(args.output_dir):
+        if os.path.isdir(args.output_dir) and not os.path.islink(args.output_dir):
+            shutil.rmtree(args.output_dir)
+        else:
+            os.remove(args.output_dir)
+
     state_dict = {}
     print(f"loading model from {args.input_dir}")
     t = time.time()
-    megatron_args = torch.load(os.path.join(args.input_dir, "common.pt"), weights_only=False)["args"]
     dist_cp.state_dict_loader._load_state_dict(
         state_dict,
         storage_reader=WrappedStorageReader(args.input_dir),
