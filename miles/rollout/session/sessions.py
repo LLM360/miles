@@ -2,7 +2,6 @@ import asyncio
 import logging
 import time
 import uuid
-import zlib
 
 import orjson
 from fastapi import Request
@@ -10,12 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
 from miles.rollout.session.linear_trajectory import SessionRegistry
-from miles.rollout.session.session_errors import (
-    SessionError,
-    SessionNotFoundError,
-    TokenizationError,
-    UpstreamResponseError,
-)
+from miles.rollout.session.session_errors import SessionError, SessionNotFoundError, UpstreamResponseError
 from miles.rollout.session.session_types import GetSessionResponse, SessionRecord
 from miles.utils.chat_template_utils import get_tito_tokenizer
 from miles.utils.processing_utils import load_tokenizer
@@ -112,6 +106,78 @@ def setup_session_routes(app, backend, args):
         session_id = registry.create_session()
         return {"session_id": session_id}
 
+    def _compact_output_token_logprobs(output_token_logprobs):
+        """Keep only the fields consumed by the sample builder.
+
+        Consumer uses:
+          output_log_probs = [item[0] for item in output_token_logprobs]
+          output_token_ids = [item[1] for item in output_token_logprobs]
+
+        Some backends may include extra per-token fields; do not return them.
+        """
+        if not output_token_logprobs:
+            return []
+
+        compact = []
+        for item in output_token_logprobs:
+            compact.append([item[0], item[1]])
+        return compact
+
+    def _compact_session_record(record: SessionRecord) -> SessionRecord:
+        """Return only the record fields required by compute_samples_from_openai_records."""
+        choice = record.response.get("choices", [{}])[0]
+        meta_info = choice.get("meta_info") or {}
+
+        compact_meta_info = {
+            "output_token_logprobs": _compact_output_token_logprobs(meta_info.get("output_token_logprobs")),
+        }
+
+        # Used by _compute_sample_from_openai_record.
+        if "weight_version" in meta_info:
+            compact_meta_info["weight_version"] = meta_info["weight_version"]
+
+        # Preserve prefix-cache metadata if present. The consumer does:
+        # sample.prefix_cache_info.add(choice.get("meta_info", {}))
+        for key in (
+            "cached_tokens",
+            "prefix_cache_hit",
+            "prefix_cache_len",
+            "prefix_cache_tokens",
+            "prefix_cache_start_len",
+            "prefix_cache_end_len",
+        ):
+            if key in meta_info:
+                compact_meta_info[key] = meta_info[key]
+
+        # Preserve routed experts if present. get_rollout_topk_from_response()
+        # may read this from choice or meta_info depending on implementation.
+        if "routed_experts" in meta_info:
+            compact_meta_info["routed_experts"] = meta_info["routed_experts"]
+
+        compact_choice = {
+            "prompt_token_ids": choice.get("prompt_token_ids", []),
+            "finish_reason": choice.get("finish_reason"),
+            "meta_info": compact_meta_info,
+        }
+
+        if "routed_experts" in choice:
+            compact_choice["routed_experts"] = choice["routed_experts"]
+
+        return SessionRecord(
+            timestamp=record.timestamp,
+            method=record.method,
+            path=record.path,
+            status_code=record.status_code,
+            request={
+                # Only used for this assertion:
+                # request_input_ids == prompt_token_ids
+                "input_ids": record.request.get("input_ids"),
+            },
+            response={
+                "choices": [compact_choice],
+            },
+        )
+
     @app.get("/sessions/{session_id}")
     async def get_session(session_id: str):
         session = registry.sessions.get(session_id)
@@ -119,26 +185,15 @@ def setup_session_routes(app, backend, args):
             if registry.is_deleted(session_id):
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
             return GetSessionResponse(session_id=session_id, records=[], metadata={})
-        metadata = {}
-        # Re-tokenizing the full trajectory to check tito_session_mismatch is a
-        # diagnostic canary, not a training-correctness guard (train tokens come
-        # from the inference response). It runs synchronously here, so at long
-        # context it blocks the event loop and starves record retrieval. Sample
-        # a deterministic fraction by session_id to keep the signal cheap.
-        sample_rate = getattr(args, "tito_session_mismatch_sample_rate", 0.0)
-        if sample_rate > 0.0 and (zlib.crc32(session_id.encode()) % 10000) < sample_rate * 10000:
-            try:
-                mismatch = registry.compute_session_mismatch(session)
-            except TokenizationError:
-                logger.exception("Failed to compute tito_session_mismatch for session %s", session_id)
-                mismatch = None
-            if mismatch is not None:
-                metadata["tito_session_mismatch"] = mismatch
-        metadata["accumulated_token_ids"] = session.token_ids
-        metadata["max_trim_tokens"] = registry.tito_tokenizer.max_trim_tokens
+
+        metadata = {
+            "accumulated_token_ids": session.token_ids,
+            "max_trim_tokens": registry.tito_tokenizer.max_trim_tokens,
+        }
+
         return GetSessionResponse(
             session_id=session_id,
-            records=session.records,
+            records=[_compact_session_record(record) for record in session.records],
             metadata=metadata,
         )
 
