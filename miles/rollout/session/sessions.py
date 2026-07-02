@@ -85,14 +85,21 @@ def setup_session_routes(app, backend, args):
     async def debug_request_logger(request: Request, call_next):
         client = request.client
         client_info = f"{client.host}:{client.port}" if client else "unknown"
-        logger.debug(
-            f"[session-server] REQUEST ARRIVED: {request.method} {request.url.path} from={client_info} inflight_chat={_inflight_chat['count']}"
+        # Session lifecycle requests (create/get/delete, ~2 per trajectory) log
+        # at INFO so per-request latency is visible without enabling DEBUG;
+        # per-turn chat traffic and health probes stay at DEBUG for volume.
+        path = request.url.path
+        level = logging.DEBUG if path.endswith("/chat/completions") or path == "/health" else logging.INFO
+        logger.log(
+            level,
+            f"[session-server] REQUEST ARRIVED: {request.method} {path} from={client_info} inflight_chat={_inflight_chat['count']}",
         )
         t0 = time.time()
         response = await call_next(request)
         elapsed = time.time() - t0
-        logger.debug(
-            f"[session-server] REQUEST DONE: {request.method} {request.url.path} status={response.status_code} elapsed={elapsed:.3f}s from={client_info}"
+        logger.log(
+            level,
+            f"[session-server] REQUEST DONE: {request.method} {path} status={response.status_code} elapsed={elapsed:.3f}s from={client_info}",
         )
         return response
 

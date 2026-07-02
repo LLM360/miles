@@ -18,10 +18,10 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
-_SESSION_REQUEST_TIMEOUT = 120.0
+_SESSION_REQUEST_TIMEOUT = 24 * 60 * 60.0
 
 _HTTP_CONNECT_TIMEOUT = 10.0
-_HTTP_READ_TIMEOUT = 120.0
+_HTTP_READ_TIMEOUT = 24 * 60 * 60.0
 _HTTP_WRITE_TIMEOUT = 30.0
 _HTTP_POOL_TIMEOUT = 10.0
 

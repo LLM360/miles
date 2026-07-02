@@ -131,7 +131,7 @@ async def _stats_logger_loop(worker_port, interval_seconds: float = 30.0):
             stats = get_worker_stats(worker_port)
             if stats is None:
                 # Routes not wired yet (very early startup) — emit a sparse log.
-                logger.debug(
+                logger.info(
                     "[session-server] stats worker_port=%s reqs_total=0 reqs_since_last=0 "
                     "inflight_now=0 turns_completed=0",
                     worker_port,
@@ -145,7 +145,7 @@ async def _stats_logger_loop(worker_port, interval_seconds: float = 30.0):
                 mi = _proc.memory_info()
                 rss_mb = mi.rss / 1024.0 / 1024.0
                 vms_mb = mi.vms / 1024.0 / 1024.0
-                logger.debug(
+                logger.info(
                     "[session-server] stats worker_port=%s reqs_total=%d reqs_since_last=%d "
                     "inflight_now=%d turns_completed=%d rss_mb=%.0f vms_mb=%.0f",
                     worker_port,
