@@ -296,7 +296,7 @@ def setup_session_routes(app, backend, args):
                 else:
                     return backend.build_proxy_response(result)
 
-            response = orjson.loads(result["response_body"])
+            response = await asyncio.to_thread(orjson.loads, result["response_body"])
 
             choice = response.get("choices", [{}])[0]
 
