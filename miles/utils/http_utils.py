@@ -208,7 +208,7 @@ async def _post(client, url, payload, max_retries=60, action="post", headers=Non
                 response_text = None
 
             logger.info(
-                f"Error: {e}, retrying... (attempt {retry_count}/{max_retries}, url={url}, response={response_text})"
+                f"Error: {type(e).__name__}: {e}, retrying... (attempt {retry_count}/{max_retries}, url={url}, response={response_text})"
             )
             if retry_count >= max_retries:
                 logger.info(f"Max retries ({max_retries}) reached, failing... (url={url})")
