@@ -1,4 +1,5 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from miles.ray.placement_group import create_placement_groups, create_rollout_manager, create_training_models
 from miles.utils.arguments import parse_args
@@ -10,6 +11,11 @@ from miles.utils.tracking_utils import init_tracking
 
 # The framework supports other asynchronous approaches such as fully async (which is shown in examples/full_async).
 async def train(args):
+    loop = asyncio.get_running_loop()
+
+    # Raise the default threadpool size used by asyncio.to_thread()
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=256))
+
     assert not args.colocate, "Colocation is not supported for async training."
     configure_logger()
     # allocate the GPUs
