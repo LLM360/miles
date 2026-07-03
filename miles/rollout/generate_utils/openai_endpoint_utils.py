@@ -6,7 +6,7 @@ import asyncio
 import logging
 import random
 from argparse import Namespace
-from copy import copy, deepcopy
+from copy import copy
 from typing import Any
 
 import httpx
@@ -563,7 +563,7 @@ def _compute_sample_from_openai_record(
     sample = copy(input_sample)
     sample.metadata = dict(input_sample.metadata)
     sample.weight_versions = list(input_sample.weight_versions)
-    sample.prefix_cache_info = deepcopy(input_sample.prefix_cache_info)
+    sample.prefix_cache_info = copy(input_sample.prefix_cache_info)
     request_input_ids = record.request.get("input_ids")
     if request_input_ids is not None:
         assert (
