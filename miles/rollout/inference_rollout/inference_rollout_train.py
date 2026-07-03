@@ -244,10 +244,6 @@ async def generate_rollout_async(
                 data.append(group)
                 pbar.update(args.n_samples_per_prompt)
 
-        # Remaining work is unsubmitted groups plus in-flight tasks (one task ==
-        # one group); with oversampling off, drop the slow tail once at most
-        # tail_cancel_groups remain. Counting only in-flight tasks would fire at
-        # the start of a rolling-start rollout, when few groups are submitted.
         groups_left = (target_data_size - submitted) + len(pendings)
         if args.disable_oversampling and 0 < groups_left <= args.tail_cancel_groups:
             logger.info(
