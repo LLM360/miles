@@ -24,6 +24,7 @@ Agent function contract:
 """
 
 import argparse
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -104,7 +105,8 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         return GenerateFnOutput(samples=sample)
 
     logger.debug(f"{log_prefix} Computing samples from {len(records)} records...")
-    samples = compute_samples_from_openai_records(
+    samples = await asyncio.to_thread(
+        compute_samples_from_openai_records,
         input.args,
         input.sample,
         records,
