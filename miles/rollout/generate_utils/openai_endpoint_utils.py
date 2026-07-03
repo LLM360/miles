@@ -94,7 +94,7 @@ class OpenAIEndpointTracer:
         method = method.upper()
         last_exc: BaseException | None = None
 
-        async with httpx.AsyncClient(timeout=cls._timeout()) as client:
+        async with httpx.AsyncClient(timeout=cls._timeout(), verify=False) as client:
             for attempt in range(1, max_retries + 1):
                 try:
                     logger.info(
@@ -157,7 +157,7 @@ class OpenAIEndpointTracer:
                             return response.text
 
                         try:
-                            return orjson.loads(response.content)
+                            return await asyncio.to_thread(orjson.loads, response.content)
                         except orjson.JSONDecodeError as exc:
                             logger.info(
                                 "[session-client] json_decode_error phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
