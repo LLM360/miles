@@ -6,7 +6,7 @@ import asyncio
 import logging
 import random
 from argparse import Namespace
-from copy import deepcopy
+from copy import copy, deepcopy
 
 from miles.rollout.generate_utils.generate_endpoint_utils import get_rollout_topk_from_response
 from miles.rollout.session.session_types import GetSessionResponse, SessionRecord
@@ -184,7 +184,10 @@ def _compute_sample_from_openai_record(
     output_token_ids = [item[1] for item in choice["meta_info"]["output_token_logprobs"]]
     output_log_probs = [item[0] for item in choice["meta_info"]["output_token_logprobs"]]
 
-    sample = deepcopy(input_sample)
+    sample = copy(input_sample)
+    sample.metadata = dict(input_sample.metadata)
+    sample.weight_versions = list(input_sample.weight_versions)
+    sample.prefix_cache_info = deepcopy(input_sample.prefix_cache_info)
     request_input_ids = record.request.get("input_ids")
     if request_input_ids is not None:
         assert (
