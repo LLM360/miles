@@ -24,6 +24,7 @@ Agent function contract:
 """
 
 import argparse
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -104,7 +105,8 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         return GenerateFnOutput(samples=sample)
 
     logger.debug(f"{log_prefix} Computing samples from {len(records)} records...")
-    samples = compute_samples_from_openai_records(
+    samples = await asyncio.to_thread(
+        compute_samples_from_openai_records,
         input.args,
         input.sample,
         records,
@@ -140,7 +142,11 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         return GenerateFnOutput(samples=sample)
 
     if not input.args.generate_multi_samples:
-        samples = merge_samples(samples, input.state.tokenizer)
+        samples = await asyncio.to_thread(
+            merge_samples,
+            samples,
+            input.state.tokenizer,
+        )
         samples.metadata.update(session_metadata)
     else:
         samples[-1].metadata.update(session_metadata)
