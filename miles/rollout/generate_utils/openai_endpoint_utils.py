@@ -511,10 +511,8 @@ def compute_samples_from_openai_records(
 
         trim_count = 0
         if accumulated_token_ids is not None:
-            # Step 1: position cursor right after this turn's prompt
             cursor = len(prompt_ids)
 
-            # Step 2: greedily match output_ids against accumulated[cursor:]
             matched = 0
             for j in range(len(output_ids)):
                 idx = cursor + j
@@ -523,23 +521,18 @@ def compute_samples_from_openai_records(
                 else:
                     break
 
-            # Step 3: unmatched trailing tokens were consumed by the next
-            # turn's template rendering (e.g. stop tokens that double as
-            # the next message delimiter) — strip them from the sample.
             trim_count = len(output_ids) - matched
             allowed = 0 if is_last else max_trim_tokens
             assert (
                 trim_count <= allowed
             ), f"trim_count {trim_count} exceeds allowed={allowed} (is_last={is_last}, max_trim_tokens={max_trim_tokens}); output_ids[-3:]={output_ids[-3:]}, accumulated[cursor:cursor+3]={accumulated_token_ids[cursor : cursor + 3]}"
 
-            # Step 4: advance cursor past matched output to the next turn
             cursor += matched
 
         sample = _compute_sample_from_openai_record(args, input_sample, record, tokenizer, trim_count)
         samples.append(sample)
 
     if accumulated_token_ids is not None:
-        # Step 5: verify the entire accumulated sequence was consumed
         assert cursor == len(
             accumulated_token_ids
         ), f"cursor {cursor} != len(accumulated_token_ids) {len(accumulated_token_ids)} after processing all {len(records)} records"
@@ -572,13 +565,17 @@ def _compute_sample_from_openai_record(
 
     sample.tokens = prompt_token_ids + output_token_ids
     sample.rollout_log_probs = output_log_probs
-    sample.response = tokenizer.decode(output_token_ids)
+    sample.response = ""
     sample.response_length = len(output_token_ids)
     sample.loss_mask = [1] * len(output_token_ids)
     sample.rollout_routed_experts = get_rollout_topk_from_response(args, choice, sample, "routed_experts")
 
+    if not hasattr(sample, "metadata") or sample.metadata is None:
+        sample.metadata = {}
+    sample.metadata["response_decoded"] = False
+
     if trim_count > 0:
-        sample.strip_last_output_tokens(trim_count, tokenizer)
+        _strip_last_output_tokens_without_decode(sample, trim_count)
 
     # TODO unify with Sample.update_from_meta_info
     match choice["finish_reason"]:
@@ -594,6 +591,29 @@ def _compute_sample_from_openai_record(
         sample.weight_versions.append(choice["meta_info"]["weight_version"])
 
     return sample
+
+
+def _strip_last_output_tokens_without_decode(sample: Sample, trim_count: int) -> None:
+    """Strip trailing output tokens without decoding sample.response."""
+    if trim_count <= 0:
+        return
+
+    assert (
+        trim_count <= sample.response_length
+    ), f"trim_count {trim_count} exceeds response_length {sample.response_length}"
+
+    prompt_len = len(sample.tokens) - sample.response_length
+    keep_tokens = sample.response_length - trim_count
+
+    sample.tokens = sample.tokens[: prompt_len + keep_tokens]
+    sample.response_length = keep_tokens
+
+    if sample.rollout_log_probs is not None:
+        sample.rollout_log_probs = sample.rollout_log_probs[:keep_tokens]
+    if sample.loss_mask is not None:
+        sample.loss_mask = sample.loss_mask[:keep_tokens]
+    if sample.rollout_routed_experts is not None:
+        sample.rollout_routed_experts = sample.rollout_routed_experts[: len(sample.tokens) - 1]
 
 
 def truncate_samples_by_total_tokens(
@@ -630,8 +650,13 @@ def _truncate_sample_output(sample: Sample, keep_tokens: int, tokenizer) -> None
     kept_ids = sample.tokens[prompt_len : prompt_len + keep_tokens]
 
     sample.tokens = sample.tokens[:prompt_len] + kept_ids
-    sample.response = tokenizer.decode(kept_ids)
+    sample.response = ""
     sample.response_length = keep_tokens
+
+    if not hasattr(sample, "metadata") or sample.metadata is None:
+        sample.metadata = {}
+    sample.metadata["response_decoded"] = False
+
     if sample.rollout_log_probs is not None:
         sample.rollout_log_probs = sample.rollout_log_probs[:keep_tokens]
     if sample.loss_mask is not None:
