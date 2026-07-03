@@ -34,6 +34,9 @@ _BACKOFF_INITIAL_SECONDS = 1.0
 _BACKOFF_MAX_SECONDS = 10.0
 _BACKOFF_JITTER_FRACTION = 0.2
 
+_COLLECT_RECORDS_CONCURRENCY = 256
+_COLLECT_RECORDS_SEMAPHORE = asyncio.Semaphore(_COLLECT_RECORDS_CONCURRENCY)
+
 
 class OpenAIEndpointTracer:
     def __init__(
@@ -332,75 +335,98 @@ class OpenAIEndpointTracer:
 
     async def collect_records(self) -> tuple[list[SessionRecord], dict]:
         logger.info(
-            "[session-client] collect_start session_id=%s url=%s",
+            "[session-client] collect_wait session_id=%s url=%s concurrency_limit=%d",
             self.session_id,
             self.base_url,
+            _COLLECT_RECORDS_CONCURRENCY,
         )
 
-        try:
-            response = await self._request(
-                "GET",
-                self.base_url,
-                phase="collect_records",
-                max_retries=_COLLECT_RETRIES,
-            )
-
-            parsed = GetSessionResponse.model_validate(response)
-            records = parsed.records or []
-            metadata = parsed.metadata or {}
-
+        async with _COLLECT_RECORDS_SEMAPHORE:
             logger.info(
-                "[session-client] collect_done session_id=%s records=%d metadata_keys=%s",
-                self.session_id,
-                len(records),
-                sorted(metadata.keys()),
-            )
-
-            return records, metadata
-
-        except httpx.RemoteProtocolError as exc:
-            logger.info(
-                "[session-client] collect_failed_remote_protocol session_id=%s url=%s error_type=%s error=%r returning_empty_records=True",
+                "[session-client] collect_start session_id=%s url=%s",
                 self.session_id,
                 self.base_url,
-                type(exc).__name__,
-                exc,
             )
-            return [], {}
 
-        except httpx.TimeoutException as exc:
-            logger.info(
-                "[session-client] collect_failed_timeout session_id=%s url=%s timeout_s=%.1f error_type=%s error=%r returning_empty_records=True",
-                self.session_id,
-                self.base_url,
-                _SESSION_REQUEST_TIMEOUT,
-                type(exc).__name__,
-                exc,
-            )
-            return [], {}
+            try:
+                response = await self._request(
+                    "GET",
+                    self.base_url,
+                    phase="collect_records",
+                    max_retries=_COLLECT_RETRIES,
+                )
 
-        except httpx.TransportError as exc:
-            logger.info(
-                "[session-client] collect_failed_transport session_id=%s url=%s error_type=%s error=%r returning_empty_records=True",
-                self.session_id,
-                self.base_url,
-                type(exc).__name__,
-                exc,
-            )
-            return [], {}
+                parsed = GetSessionResponse.model_validate(response)
+                records = parsed.records or []
+                metadata = parsed.metadata or {}
 
-        except Exception as exc:
-            logger.info(
-                "[session-client] collect_failed_unexpected session_id=%s url=%s error_type=%s error=%r returning_empty_records=True",
-                self.session_id,
-                self.base_url,
-                type(exc).__name__,
-                exc,
-            )
-            return [], {}
+                logger.info(
+                    "[session-client] collect_done session_id=%s records=%d metadata_keys=%s",
+                    self.session_id,
+                    len(records),
+                    sorted(metadata.keys()),
+                )
 
-        finally:
-            await self.delete_session()
+                return records, metadata
+
+            except httpx.ConnectTimeout as exc:
+                logger.info(
+                    "[session-client] collect_failed_connect_timeout session_id=%s url=%s "
+                    "connect_timeout_s=%.1f error_type=%s error=%r returning_empty_records=True",
+                    self.session_id,
+                    self.base_url,
+                    _HTTP_CONNECT_TIMEOUT,
+                    type(exc).__name__,
+                    exc,
+                )
+                return [], {}
+
+            except httpx.RemoteProtocolError as exc:
+                logger.info(
+                    "[session-client] collect_failed_remote_protocol session_id=%s url=%s "
+                    "error_type=%s error=%r returning_empty_records=True",
+                    self.session_id,
+                    self.base_url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return [], {}
+
+            except httpx.TimeoutException as exc:
+                logger.info(
+                    "[session-client] collect_failed_timeout session_id=%s url=%s "
+                    "error_type=%s error=%r returning_empty_records=True",
+                    self.session_id,
+                    self.base_url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return [], {}
+
+            except httpx.TransportError as exc:
+                logger.info(
+                    "[session-client] collect_failed_transport session_id=%s url=%s "
+                    "error_type=%s error=%r returning_empty_records=True",
+                    self.session_id,
+                    self.base_url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return [], {}
+
+            except Exception as exc:
+                logger.info(
+                    "[session-client] collect_failed_unexpected session_id=%s url=%s "
+                    "error_type=%s error=%r returning_empty_records=True",
+                    self.session_id,
+                    self.base_url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return [], {}
+
+            finally:
+                await self.delete_session()
 
     async def delete_session(self) -> None:
         logger.info(
