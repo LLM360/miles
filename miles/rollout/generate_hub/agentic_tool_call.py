@@ -142,7 +142,11 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         return GenerateFnOutput(samples=sample)
 
     if not input.args.generate_multi_samples:
-        samples = merge_samples(samples, input.state.tokenizer)
+        samples = await asyncio.to_thread(
+            merge_samples,
+            samples,
+            input.state.tokenizer,
+        )
         samples.metadata.update(session_metadata)
     else:
         samples[-1].metadata.update(session_metadata)
