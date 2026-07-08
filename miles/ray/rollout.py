@@ -354,24 +354,49 @@ class SessionServerActor:
         from miles.rollout.session.session_server import run_session_server
 
         ip = _wrap_ipv6(get_host_info()[1])
-        port = find_available_port(random.randint(5000, 6000))
+        base_port = 20000 + (self.index % 100) * 100
+        last_exc = None
 
-        self.args.session_server_ip = ip
-        self.args.session_server_port = port
-        self.args.session_server_instance_id = f"{uuid.uuid4().hex}-{self.index}"
+        for attempt in range(10):
+            port = find_available_port(base_port + attempt * 100)
 
-        self.process = multiprocessing.Process(
-            target=run_session_server,
-            args=(self.args, self.router_url),
-        )
-        self.process.daemon = True
-        self.process.start()
+            self.args.session_server_ip = ip
+            self.args.session_server_port = port
+            self.args.session_server_instance_id = f"{uuid.uuid4().hex}-{self.index}"
 
-        wait_for_server_ready(ip, port, self.process, timeout=30)
+            self.process = multiprocessing.Process(
+                target=run_session_server,
+                args=(self.args, self.router_url),
+            )
+            self.process.daemon = True
+            self.process.start()
 
-        addr = f"{ip}:{port}"
-        logger.info("Started session server actor %s at %s", self.index, addr)
-        return addr
+            try:
+                wait_for_server_ready(ip, port, self.process, timeout=60)
+                addr = f"{ip}:{port}"
+                logger.info("Started session server actor %s at %s", self.index, addr)
+                return addr
+            except RuntimeError as exc:
+                last_exc = exc
+                logger.warning(
+                    "Session server actor %s failed to start on %s:%s " "(attempt %s/10); retrying",
+                    self.index,
+                    ip,
+                    port,
+                    attempt + 1,
+                    exc_info=True,
+                )
+
+                if self.process is not None:
+                    if self.process.is_alive():
+                        self.process.terminate()
+                    self.process.join(timeout=5)
+                    if self.process.is_alive():
+                        self.process.kill()
+                        self.process.join(timeout=5)
+                    self.process = None
+
+        raise RuntimeError(f"Failed to start session server actor {self.index} after 10 attempts") from last_exc
 
     def stop(self):
         if self.process is not None and self.process.is_alive():
