@@ -13,10 +13,35 @@ from typing import Any
 import httpx
 
 from miles.rollout.generate_utils.generate_endpoint_utils import get_rollout_topk_from_response
-from miles.rollout.session.session_types import GetSessionResponse, SessionRecord
+from miles.rollout.session.session_types import (
+    GetMergedSessionResponse,
+    GetSessionResponse,
+    MergedSessionSample,
+    SessionRecord,
+)
 from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
+
+
+def _encoded_routed_experts_bytes(routed_experts) -> int:
+    if routed_experts is None:
+        return 0
+    if isinstance(routed_experts, str):
+        return len(routed_experts.encode("ascii"))
+    try:
+        return len(routed_experts)
+    except TypeError:
+        return -1
+
+
+def _expected_routed_experts_bytes(args: Namespace, num_tokens: int) -> int | None:
+    num_layers = getattr(args, "num_layers", None)
+    moe_router_topk = getattr(args, "moe_router_topk", None)
+    if num_layers is None or moe_router_topk is None:
+        return None
+    return max(num_tokens - 1, 0) * int(num_layers) * int(moe_router_topk) * 4
+
 
 _SESSION_REQUEST_TIMEOUT = 120.0
 
@@ -333,6 +358,118 @@ class OpenAIEndpointTracer:
             session_server_instance_id=session_server_instance_id,
         )
 
+    async def collect_merged_sample(self) -> tuple[MergedSessionSample | None, dict]:
+        merged_url = f"{self.base_url}/merged"
+        logger.info(
+            "[session-client] collect_merged_wait session_id=%s url=%s concurrency_limit=%d",
+            self.session_id,
+            merged_url,
+            _COLLECT_RECORDS_CONCURRENCY,
+        )
+
+        async with _COLLECT_RECORDS_SEMAPHORE:
+            logger.info(
+                "[session-client] collect_merged_start session_id=%s url=%s",
+                self.session_id,
+                merged_url,
+            )
+
+            try:
+                response = await self._request(
+                    "GET",
+                    merged_url,
+                    phase="collect_merged_sample",
+                    max_retries=_COLLECT_RETRIES,
+                )
+
+                parsed = GetMergedSessionResponse.model_validate(response)
+                sample = parsed.sample
+                metadata = parsed.metadata or {}
+
+                if sample is None:
+                    logger.info(
+                        "[session-client] collect_merged_done session_id=%s empty=True metadata_keys=%s",
+                        self.session_id,
+                        sorted(metadata.keys()),
+                    )
+                else:
+                    logger.info(
+                        "[session-client] collect_merged_done session_id=%s empty=False tokens=%d "
+                        "response_length=%d loss_mask=%d rollout_log_probs=%d weight_versions=%d "
+                        "prefix_cache_meta_infos=%d routed_experts_encoded_bytes=%d status=%s metadata_keys=%s",
+                        self.session_id,
+                        len(sample.tokens),
+                        sample.response_length,
+                        len(sample.loss_mask),
+                        len(sample.rollout_log_probs),
+                        len(sample.weight_versions),
+                        len(sample.prefix_cache_meta_infos),
+                        _encoded_routed_experts_bytes(sample.rollout_routed_experts),
+                        sample.status,
+                        sorted(metadata.keys()),
+                    )
+
+                return sample, metadata
+
+            except httpx.ConnectTimeout as exc:
+                logger.info(
+                    "[session-client] collect_merged_failed_connect_timeout session_id=%s url=%s "
+                    "connect_timeout_s=%.1f error_type=%s error=%r returning_empty_sample=True",
+                    self.session_id,
+                    merged_url,
+                    _HTTP_CONNECT_TIMEOUT,
+                    type(exc).__name__,
+                    exc,
+                )
+                return None, {}
+
+            except httpx.RemoteProtocolError as exc:
+                logger.info(
+                    "[session-client] collect_merged_failed_remote_protocol session_id=%s url=%s "
+                    "error_type=%s error=%r returning_empty_sample=True",
+                    self.session_id,
+                    merged_url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return None, {}
+
+            except httpx.TimeoutException as exc:
+                logger.info(
+                    "[session-client] collect_merged_failed_timeout session_id=%s url=%s "
+                    "error_type=%s error=%r returning_empty_sample=True",
+                    self.session_id,
+                    merged_url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return None, {}
+
+            except httpx.TransportError as exc:
+                logger.info(
+                    "[session-client] collect_merged_failed_transport session_id=%s url=%s "
+                    "error_type=%s error=%r returning_empty_sample=True",
+                    self.session_id,
+                    merged_url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return None, {}
+
+            except Exception as exc:
+                logger.info(
+                    "[session-client] collect_merged_failed_unexpected session_id=%s url=%s "
+                    "error_type=%s error=%r returning_empty_sample=True",
+                    self.session_id,
+                    merged_url,
+                    type(exc).__name__,
+                    exc,
+                )
+                return None, {}
+
+            finally:
+                await self.delete_session()
+
     async def collect_records(self) -> tuple[list[SessionRecord], dict]:
         logger.info(
             "[session-client] collect_wait session_id=%s url=%s concurrency_limit=%d",
@@ -478,6 +615,59 @@ class OpenAIEndpointTracer:
                 type(exc).__name__,
                 exc,
             )
+
+
+def apply_merged_session_sample(
+    args: Namespace,
+    input_sample: Sample,
+    merged: MergedSessionSample,
+) -> Sample:
+    """Materialize one server-merged session payload into a local Sample."""
+    sample = deepcopy(input_sample)
+    sample.tokens = merged.tokens
+    sample.response = merged.response
+    sample.response_length = merged.response_length
+    sample.loss_mask = merged.loss_mask
+    sample.rollout_log_probs = merged.rollout_log_probs
+    sample.metadata = {**(sample.metadata or {}), **(merged.metadata or {})}
+    sample.status = Sample.Status(merged.status)
+    sample.weight_versions.extend(merged.weight_versions)
+
+    for meta_info in merged.prefix_cache_meta_infos:
+        sample.prefix_cache_info.add(meta_info)
+
+    if merged.rollout_routed_experts is not None:
+        choice = {"meta_info": {"routed_experts": merged.rollout_routed_experts}}
+        sample.rollout_routed_experts = get_rollout_topk_from_response(args, choice, sample, "routed_experts")
+
+    routed_experts_shape = None
+    routed_experts_decoded_bytes = 0
+    if sample.rollout_routed_experts is not None:
+        routed_experts_shape = tuple(sample.rollout_routed_experts.shape)
+        routed_experts_decoded_bytes = int(sample.rollout_routed_experts.nbytes)
+
+    expected_routed_experts_bytes = _expected_routed_experts_bytes(args, len(sample.tokens))
+
+    logger.info(
+        "[session-client] apply_merged_sample tokens=%d response_length=%d loss_mask=%d "
+        "rollout_log_probs=%d weight_versions=%d prefix_cache_meta_infos=%d "
+        "routed_experts_encoded_bytes=%d routed_experts_decoded_bytes=%d "
+        "expected_routed_experts_bytes=%s routed_experts_shape=%s status=%s",
+        len(sample.tokens),
+        sample.response_length,
+        len(sample.loss_mask or []),
+        len(sample.rollout_log_probs or []),
+        len(sample.weight_versions),
+        len(merged.prefix_cache_meta_infos),
+        _encoded_routed_experts_bytes(merged.rollout_routed_experts),
+        routed_experts_decoded_bytes,
+        expected_routed_experts_bytes,
+        routed_experts_shape,
+        sample.status.value,
+    )
+
+    sample.validate()
+    return sample
 
 
 def compute_samples_from_openai_records(
