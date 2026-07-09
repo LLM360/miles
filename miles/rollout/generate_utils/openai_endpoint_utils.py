@@ -3,14 +3,15 @@ Utilities for the OpenAI endpoint
 """
 
 import asyncio
-import json
 import logging
 import random
+import time
 from argparse import Namespace
 from copy import deepcopy
 from typing import Any
 
 import httpx
+import orjson
 
 from miles.rollout.generate_utils.generate_endpoint_utils import get_rollout_topk_from_response
 from miles.rollout.session.session_types import GetSessionResponse, SessionRecord
@@ -62,9 +63,12 @@ class OpenAIEndpointTracer:
 
     @staticmethod
     def _response_size(response: httpx.Response) -> int:
+        value = response.headers.get("content-length")
+        if value is None:
+            return -1
         try:
-            return len(response.content)
-        except Exception:
+            return int(value)
+        except ValueError:
             return -1
 
     @staticmethod
@@ -106,25 +110,33 @@ class OpenAIEndpointTracer:
                         max_retries,
                     )
 
+                    request_headers = {"Accept-Encoding": "gzip", **(headers or {})}
+                    request_t0 = time.monotonic()
+
                     if method in {"GET", "DELETE"}:
-                        response = await client.request(method, url, headers=headers)
+                        response = await client.request(method, url, headers=request_headers)
                     else:
                         response = await client.request(
                             method,
                             url,
                             json=payload or {},
-                            headers=headers,
+                            headers=request_headers,
                         )
 
                     body_bytes = cls._response_size(response)
+                    decoded_bytes = len(response.content)
 
                     logger.info(
-                        "[session-client] response_received phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
+                        "[session-client] response_received phase=%s method=%s url=%s status=%d "
+                        "wire_bytes=%d decoded_bytes=%d content_encoding=%s request_s=%.3f attempt=%d/%d",
                         phase,
                         method,
                         url,
                         response.status_code,
                         body_bytes,
+                        decoded_bytes,
+                        response.headers.get("content-encoding", "identity"),
+                        time.monotonic() - request_t0,
                         attempt,
                         max_retries,
                     )
@@ -156,20 +168,36 @@ class OpenAIEndpointTracer:
                         if not expect_json:
                             return response.text
 
+                        parse_t0 = time.monotonic()
                         try:
-                            return response.json()
-                        except json.JSONDecodeError as exc:
+                            parsed_json = await asyncio.to_thread(orjson.loads, response.content)
+                        except orjson.JSONDecodeError as exc:
                             logger.info(
-                                "[session-client] json_decode_error phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
+                                "[session-client] json_decode_error phase=%s method=%s url=%s status=%d "
+                                "wire_bytes=%d decoded_bytes=%d attempt=%d/%d",
                                 phase,
                                 method,
                                 url,
                                 response.status_code,
                                 body_bytes,
+                                decoded_bytes,
                                 attempt,
                                 max_retries,
                             )
                             raise exc
+
+                        logger.info(
+                            "[session-client] json_parse_done phase=%s method=%s url=%s decoded_bytes=%d "
+                            "json_parse_s=%.3f attempt=%d/%d",
+                            phase,
+                            method,
+                            url,
+                            decoded_bytes,
+                            time.monotonic() - parse_t0,
+                            attempt,
+                            max_retries,
+                        )
+                        return parsed_json
 
                 except asyncio.CancelledError:
                     logger.info(
@@ -356,7 +384,14 @@ class OpenAIEndpointTracer:
                     max_retries=_COLLECT_RETRIES,
                 )
 
-                parsed = GetSessionResponse.model_validate(response)
+                validate_t0 = time.monotonic()
+                parsed = await asyncio.to_thread(GetSessionResponse.model_validate, response)
+                logger.info(
+                    "[session-client] collect_validate_done session_id=%s validate_s=%.3f",
+                    self.session_id,
+                    time.monotonic() - validate_t0,
+                )
+
                 records = parsed.records or []
                 metadata = parsed.metadata or {}
 
