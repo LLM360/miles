@@ -112,7 +112,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         logger.warning("No model calls recorded for sample")
         sample = deepcopy(input.sample)
         sample.status = Sample.Status.ABORTED
-        return GenerateFnOutput(samples=[sample])
+        return GenerateFnOutput(samples=sample)
 
     sample = apply_merged_session_sample(input.args, input.sample, merged_sample)
     sample.metadata.update(agent_metadata or {})
@@ -126,14 +126,15 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         logger.warning("All samples truncated (prompt already exceeds max_seq_len)")
         sample = deepcopy(input.sample)
         sample.status = Sample.Status.ABORTED
-        return GenerateFnOutput(samples=[sample])
+        return GenerateFnOutput(samples=sample)
 
+    sample = samples[0]
     logger.debug(
-        f"{log_prefix} server-merged sample ready: samples={len(samples)} "
-        f"tokens={len(samples[0].tokens)} response_length={samples[0].response_length} "
+        f"{log_prefix} server-merged sample ready: "
+        f"tokens={len(sample.tokens)} response_length={sample.response_length} "
         f"total_time={time.monotonic()-t_start:.1f}s"
     )
-    return GenerateFnOutput(samples=samples)
+    return GenerateFnOutput(samples=sample)
 
 
 def build_agent_function_kwargs(
