@@ -1,5 +1,4 @@
 import asyncio
-import gzip
 import logging
 import time
 import uuid
@@ -173,57 +172,23 @@ def setup_session_routes(app, backend, args):
         )
 
     @app.get("/sessions/{session_id}")
-    async def get_session(request: Request, session_id: str):
-        t0 = time.monotonic()
-
+    async def get_session(session_id: str):
         session = registry.sessions.get(session_id)
         if session is None:
             if registry.is_deleted(session_id):
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
-            payload = GetSessionResponse(session_id=session_id, records=[], metadata={})
-        else:
-            metadata = {
-                "accumulated_token_ids": session.token_ids,
-                "max_trim_tokens": registry.tito_tokenizer.max_trim_tokens,
-            }
-            payload = GetSessionResponse(
-                session_id=session_id,
-                records=[_compact_session_record(record) for record in session.records],
-                metadata=metadata,
-            )
+            return GetSessionResponse(session_id=session_id, records=[], metadata={})
 
-        dump_t0 = time.monotonic()
-        body = await asyncio.to_thread(orjson.dumps, payload.model_dump(mode="json"))
-        dump_s = time.monotonic() - dump_t0
+        metadata = {
+            "accumulated_token_ids": session.token_ids,
+            "max_trim_tokens": registry.tito_tokenizer.max_trim_tokens,
+        }
 
-        uncompressed_bytes = len(body)
-        headers = {"Vary": "Accept-Encoding"}
-        content_encoding = "identity"
-
-        gzip_t0 = time.monotonic()
-        if "gzip" in request.headers.get("accept-encoding", "").lower():
-            body = await asyncio.to_thread(gzip.compress, body, compresslevel=6)
-            headers["Content-Encoding"] = "gzip"
-            content_encoding = "gzip"
-        gzip_s = time.monotonic() - gzip_t0
-
-        wire_bytes = len(body)
-        headers["Content-Length"] = str(wire_bytes)
-
-        logger.info(
-            "[session-server] get_session_response session_id=%s records=%d "
-            "uncompressed_bytes=%d wire_bytes=%d content_encoding=%s "
-            "json_dump_s=%.3f compress_s=%.3f total_s=%.3f",
-            session_id,
-            len(payload.records or []),
-            uncompressed_bytes,
-            wire_bytes,
-            content_encoding,
-            dump_s,
-            gzip_s,
-            time.monotonic() - t0,
+        return GetSessionResponse(
+            session_id=session_id,
+            records=[_compact_session_record(record) for record in session.records],
+            metadata=metadata,
         )
-        return Response(content=body, media_type="application/json", headers=headers)
 
     @app.delete("/sessions/{session_id}")
     async def delete_session(session_id: str):
