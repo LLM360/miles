@@ -1,3 +1,5 @@
+import logging
+import sys
 from argparse import Namespace
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -28,6 +30,95 @@ from .cp_utils import (
     get_sum_of_sample_mean,
 )
 from .parallel import get_parallel_state
+
+logger = logging.getLogger(__name__)
+
+
+def _nan_dbg_flush_logs() -> None:
+    """Flush logger/stdout/stderr so crash diagnostics survive abrupt failures."""
+    for handler in logging.getLogger().handlers + logger.handlers:
+        try:
+            handler.flush()
+        except Exception:
+            pass
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+    try:
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _nan_dbg_rank() -> int:
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+    return -1
+
+
+def _nan_dbg_scalar(value: float | int, device: torch.device) -> torch.Tensor:
+    return torch.tensor(value, device=device, dtype=torch.float32)
+
+
+def _nan_dbg_finite_stats(x: torch.Tensor) -> tuple[float, float, float, int]:
+    x = x.detach()
+    finite = torch.isfinite(x)
+    bad = int((~finite).sum().item())
+    if x.numel() == 0 or not bool(finite.any().item()):
+        return float("nan"), float("nan"), float("nan"), bad
+    xf = x[finite].float()
+    return float(xf.min().item()), float(xf.max().item()), float(xf.abs().max().item()), bad
+
+
+def _nan_dbg_batch_stats(batch: RolloutBatch) -> tuple[int, int, int, int]:
+    response_len_max = max((int(x) for x in batch.get("response_lengths", [])), default=0)
+    response_len_sum = sum(int(x) for x in batch.get("response_lengths", []))
+    loss_tokens = [int(m.sum().item()) for m in batch.get("loss_masks", [])]
+    loss_tokens_max = max(loss_tokens, default=0)
+    loss_tokens_sum = sum(loss_tokens)
+    return response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum
+
+
+def _nan_dbg_warn_bad_tensor(name: str, x: torch.Tensor, *, batch: RolloutBatch, extra: str = "") -> None:
+    x = x.detach()
+    bad = int((~torch.isfinite(x)).sum().item())
+    if bad == 0:
+        return
+    response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum = _nan_dbg_batch_stats(batch)
+    logger.error(
+        "NANDBG_BAD_TENSOR "
+        f"rank={_nan_dbg_rank()} "
+        f"name={name} "
+        f"shape={tuple(x.shape)} "
+        f"dtype={x.dtype} "
+        f"nonfinite={bad} "
+        f"response_len_max={response_len_max} "
+        f"response_len_sum={response_len_sum} "
+        f"loss_tokens_max={loss_tokens_max} "
+        f"loss_tokens_sum={loss_tokens_sum} "
+        f"{extra}"
+    )
+    _nan_dbg_flush_logs()
+
+
+def _nan_dbg_warn_long_batch(args: Namespace, batch: RolloutBatch) -> None:
+    response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum = _nan_dbg_batch_stats(batch)
+    if response_len_max <= 65536 and loss_tokens_max <= 65536:
+        return
+    logger.warning(
+        "NANDBG_LONG_BATCH "
+        f"rank={_nan_dbg_rank()} "
+        f"num_samples={len(batch.get('response_lengths', []))} "
+        f"response_len_max={response_len_max} "
+        f"response_len_sum={response_len_sum} "
+        f"loss_tokens_max={loss_tokens_max} "
+        f"loss_tokens_sum={loss_tokens_sum} "
+        f"calculate_per_token_loss={args.calculate_per_token_loss} "
+        f"loss_agg_mode={getattr(args, 'loss_agg_mode', None)} "
+        f"use_dynamic_global_batch_size={args.use_dynamic_global_batch_size}"
+    )
+    _nan_dbg_flush_logs()
 
 
 def get_responses(
@@ -460,14 +551,30 @@ def vanilla_tis_function(
 ) -> tuple[torch.Tensor, list[torch.Tensor], dict[str, torch.Tensor]]:
     rollout_log_probs = torch.cat(rollout_log_probs, dim=0)
     old_log_probs = torch.cat(train_log_probs, dim=0)
-    tis = torch.exp(old_log_probs - rollout_log_probs)
-    tis_abs = (torch.exp(old_log_probs - rollout_log_probs) - 1).abs()
+    tis_delta = old_log_probs - rollout_log_probs
+    tis = torch.exp(tis_delta)
+    tis_abs = (tis - 1).abs()
     tis_weights = torch.clamp(tis, min=args.tis_clip_low, max=args.tis_clip)
     tis_clipfrac = (tis_weights != tis).float()
+    _, _, _, tis_bad = _nan_dbg_finite_stats(tis)
+    if tis_bad:
+        logger.error(
+            "NANDBG_BAD_TIS "
+            f"rank={_nan_dbg_rank()} "
+            f"nonfinite={tis_bad} "
+            f"tis_delta_min={_nan_dbg_finite_stats(tis_delta)[0]} "
+            f"tis_delta_max={_nan_dbg_finite_stats(tis_delta)[1]} "
+            f"tis_clip_low={args.tis_clip_low} "
+            f"tis_clip={args.tis_clip}"
+        )
+        _nan_dbg_flush_logs()
     metrics = {
         "tis": tis.clone().detach(),
         "tis_clipfrac": tis_clipfrac.clone().detach(),
         "tis_abs": tis_abs.clone().detach(),
+        "nan_dbg/tis_delta_min": tis_delta.detach().float().min(),
+        "nan_dbg/tis_delta_max": tis_delta.detach().float().max(),
+        "nan_dbg/tis_nonfinite_count": torch.tensor(tis_bad, device=tis.device, dtype=torch.float32),
     }
     pg_loss = pg_loss * tis_weights
     return pg_loss, loss_masks, metrics
@@ -593,6 +700,22 @@ def policy_loss_function(
         log_probs = torch.cat(log_probs, dim=0)
         ppo_kl = old_log_probs - log_probs
 
+    _nan_dbg_warn_bad_tensor("logits", logits, batch=batch)
+    _nan_dbg_warn_bad_tensor("log_probs", log_probs, batch=batch)
+    _nan_dbg_warn_bad_tensor("old_log_probs", old_log_probs, batch=batch)
+    _nan_dbg_warn_bad_tensor("advantages", advantages, batch=batch)
+    _nan_dbg_warn_bad_tensor("ppo_kl", ppo_kl, batch=batch)
+
+    ratio_delta = -ppo_kl
+    ratio = ratio_delta.exp()
+    ratio_delta_min, ratio_delta_max, _, _ = _nan_dbg_finite_stats(ratio_delta)
+    _nan_dbg_warn_bad_tensor(
+        "ratio_exp_current_minus_old",
+        ratio,
+        batch=batch,
+        extra=f"ratio_delta_min={ratio_delta_min} ratio_delta_max={ratio_delta_max}",
+    )
+
     pg_loss, pg_clipfrac = compute_policy_loss(ppo_kl, advantages, args.eps_clip, args.eps_clip_high)
 
     if args.use_opsm:
@@ -659,6 +782,13 @@ def policy_loss_function(
     _pg_clipfrac_per_token = pg_clipfrac
     _ppo_kl_per_token = ppo_kl
 
+    log_probs_min, log_probs_max, _, log_probs_bad = _nan_dbg_finite_stats(log_probs)
+    old_log_probs_min, old_log_probs_max, _, old_log_probs_bad = _nan_dbg_finite_stats(old_log_probs)
+    _, _, advantage_absmax, advantages_bad = _nan_dbg_finite_stats(advantages)
+    ppo_kl_min, ppo_kl_max, _, ppo_kl_bad = _nan_dbg_finite_stats(ppo_kl)
+    _, ratio_max, _, ratio_bad = _nan_dbg_finite_stats(ratio)
+    response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum = _nan_dbg_batch_stats(batch)
+
     pg_loss = pg_loss_reducer(pg_loss)
     pg_clipfrac = sum_of_sample_mean(pg_clipfrac)
     ppo_kl = sum_of_sample_mean(ppo_kl)
@@ -724,6 +854,22 @@ def policy_loss_function(
         "ppo_kl": ppo_kl.clone().detach(),
         "log_probs": log_probs_metric,
         "old_log_probs": old_log_probs_metric,
+        "nan_dbg/log_probs_min": _nan_dbg_scalar(log_probs_min, loss.device),
+        "nan_dbg/log_probs_max": _nan_dbg_scalar(log_probs_max, loss.device),
+        "nan_dbg/old_log_probs_min": _nan_dbg_scalar(old_log_probs_min, loss.device),
+        "nan_dbg/old_log_probs_max": _nan_dbg_scalar(old_log_probs_max, loss.device),
+        "nan_dbg/advantage_absmax": _nan_dbg_scalar(advantage_absmax, loss.device),
+        "nan_dbg/ppo_kl_min": _nan_dbg_scalar(ppo_kl_min, loss.device),
+        "nan_dbg/ppo_kl_max": _nan_dbg_scalar(ppo_kl_max, loss.device),
+        "nan_dbg/ratio_max": _nan_dbg_scalar(ratio_max, loss.device),
+        "nan_dbg/response_len_max": _nan_dbg_scalar(response_len_max, loss.device),
+        "nan_dbg/response_len_sum": _nan_dbg_scalar(response_len_sum, loss.device),
+        "nan_dbg/loss_tokens_max": _nan_dbg_scalar(loss_tokens_max, loss.device),
+        "nan_dbg/loss_tokens_sum": _nan_dbg_scalar(loss_tokens_sum, loss.device),
+        "nan_dbg/nonfinite_count": _nan_dbg_scalar(
+            log_probs_bad + old_log_probs_bad + advantages_bad + ppo_kl_bad + ratio_bad,
+            loss.device,
+        ),
     }
 
     if train_rollout_logprob_abs_diff is not None:
@@ -935,6 +1081,9 @@ def loss_function(
     parallel_state = get_parallel_state()
     num_tokens = sum([torch.clamp_min(loss_mask.sum(), 1) for loss_mask in batch["loss_masks"]])
     num_samples = len(batch["response_lengths"])
+
+    if args.loss_type == "policy_loss":
+        _nan_dbg_warn_long_batch(args, batch)
 
     sum_of_sample_mean = get_sum_of_sample_mean(
         batch["total_lengths"],
