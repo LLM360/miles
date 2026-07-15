@@ -379,14 +379,24 @@ def setup_session_routes(app, backend, args):
                 raise SessionNotFoundError(f"session not found: session_id={session_id}")
             return GetSessionResponse(session_id=session_id, records=[], metadata={})
 
+        # Snapshot records and their matching token checkpoint atomically. During
+        # a chat request's Phase-3 commit, update_pretokenized_state publishes the
+        # new checkpoint in a worker thread before the event loop can append the
+        # corresponding record. An unlocked GET in that window would return N
+        # records with N+1 turns of accumulated tokens.
+        async with session.lock:
+            records = [_compact_session_record(record) for record in session.records]
+            accumulated_token_ids = list(session.token_ids)
+            max_trim_tokens = registry.tito_tokenizer.max_trim_tokens
+
         metadata = {
-            "accumulated_token_ids": session.token_ids,
-            "max_trim_tokens": registry.tito_tokenizer.max_trim_tokens,
+            "accumulated_token_ids": accumulated_token_ids,
+            "max_trim_tokens": max_trim_tokens,
         }
 
         return GetSessionResponse(
             session_id=session_id,
-            records=[_compact_session_record(record) for record in session.records],
+            records=records,
             metadata=metadata,
         )
 
