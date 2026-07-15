@@ -668,6 +668,21 @@ class TestAgentMetadata:
             assert s.metadata.get("instance_id") == "test-123"
             assert "reward" not in s.metadata
 
+    @pytest.mark.parametrize(
+        "generation_env",
+        [{"args_kwargs": {"agentic_return_metadata": {"exit_status": "LimitsExceeded"}}}],
+        indirect=True,
+    )
+    def test_limits_exceeded_marks_final_sample_truncated(self, variant, generation_env):
+        generation_env.mock_server.process_fn = TwoTurnStub.process_fn
+
+        result = _run_generate(variant, generation_env, make_sample(prompt=TwoTurnStub.PROMPT))
+
+        samples = listify(result.sample)
+        assert all(sample.status == Sample.Status.COMPLETED for sample in samples[:-1])
+        assert samples[-1].status == Sample.Status.TRUNCATED
+        assert samples[-1].metadata["exit_status"] == "LimitsExceeded"
+
     def test_session_server_identity_forwarded_to_agent_metadata(self, variant, generation_env):
         from miles.utils.test_utils import mock_tools
 
