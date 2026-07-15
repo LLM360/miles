@@ -8,6 +8,7 @@ import random
 from argparse import Namespace
 
 import httpx
+import orjson
 
 from miles.rollout.session.config import normalize_session_server_urls
 from miles.rollout.session.samples.codec import (
@@ -129,7 +130,7 @@ class OpenAIEndpointTracer:
                         return None
                     if return_bytes:
                         return response.content
-                    return response.json() if expect_json else response.text
+                    return await asyncio.to_thread(orjson.loads, response.content) if expect_json else response.text
                 except httpx.HTTPStatusError as exc:
                     if exc.response.status_code != 429 and exc.response.status_code < 500:
                         raise
@@ -224,7 +225,9 @@ class OpenAIEndpointTracer:
                     max_retries=1 if use_v2 else _COLLECT_RETRIES,
                     return_bytes=True,
                 )
-                return decode_samples_and_merge_input_sample(payload, input_sample, fields=self.samples_wire_fields)
+                return await asyncio.to_thread(
+                    decode_samples_and_merge_input_sample, payload, input_sample, fields=self.samples_wire_fields
+                )
             except Exception as exc:
                 if use_v2:
                     raise
