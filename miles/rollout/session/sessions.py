@@ -726,6 +726,18 @@ def setup_session_routes(app, backend, args):
                     completion_tokens_emit = -1
                 _stats["turns_completed"] += 1
 
+            # Strip routed_experts/token-id blobs (in meta_info + prompt_token_ids)
+            # from the agent's copy only; the trainer reads them from the recorded
+            # SessionRecord. Returning them every turn made harbor RSS grow unbounded.
+            result["response_body"] = orjson.dumps(
+                {
+                    **response,
+                    "choices": [
+                        {key: value for key, value in choice.items() if key not in ("meta_info", "prompt_token_ids")}
+                        for choice in response.get("choices", [])
+                    ],
+                }
+            )
             return backend.build_proxy_response(result)
         finally:
             _inflight_chat["count"] -= 1
