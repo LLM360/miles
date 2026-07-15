@@ -196,6 +196,19 @@ def setup_session_routes(app, backend, args):
             case _:
                 return "completed"
 
+    def _keep_records_until_first_non_completed(records: list[SessionRecord]) -> tuple[list[SessionRecord], int]:
+        """Match sample_utils.drop_samples_after_first_non_completed semantics.
+
+        Keep records through the first non-completed turn and drop any later
+        records, because later turns were conditioned on incomplete output.
+        """
+        for i, record in enumerate(records[:-1]):
+            choice = record.response.get("choices", [{}])[0]
+            status = _status_from_finish_reason(choice.get("finish_reason"))
+            if status != "completed":
+                return records[: i + 1], len(records) - i - 1
+        return records, 0
+
     def _routed_experts_encoded_bytes(routed_experts) -> int:
         if routed_experts is None:
             return 0
@@ -394,17 +407,28 @@ def setup_session_routes(app, backend, args):
 
         async with session.lock:
             records = [_compact_session_record(record) for record in session.records]
-            accumulated_token_ids = list(session.token_ids)
+            records_to_merge, dropped_records = _keep_records_until_first_non_completed(records)
+            if records_to_merge:
+                # Records and trajectory_token_ids are kept in lockstep by
+                # LinearTrajectory.append_record/update_pretokenized_state and
+                # rollback truncates both together.  If we drop trailing records,
+                # use the checkpoint for the last kept record so the merged
+                # tokens match the old rollout-manager merge result.
+                accumulated_token_ids = list(session.trajectory_token_ids[len(records_to_merge) - 1])
+            else:
+                accumulated_token_ids = []
             max_trim_tokens = registry.tito_tokenizer.max_trim_tokens
 
         sample = await asyncio.to_thread(
             _merge_session_records_to_sample,
-            records,
+            records_to_merge,
             accumulated_token_ids,
             max_trim_tokens,
         )
         metadata = {
-            "records_merged": len(records),
+            "records_total": len(records),
+            "records_merged": len(records_to_merge),
+            "records_dropped_after_first_non_completed": dropped_records,
             "accumulated_token_count": len(accumulated_token_ids),
             "max_trim_tokens": max_trim_tokens,
         }
@@ -413,7 +437,7 @@ def setup_session_routes(app, backend, args):
             logger.info(
                 "[session-server] merged_collect_empty session_id=%s records=%d accumulated_tokens=%d",
                 session_id,
-                len(records),
+                len(records_to_merge),
                 len(accumulated_token_ids),
             )
         else:
@@ -424,7 +448,7 @@ def setup_session_routes(app, backend, args):
                 "routed_experts_encoded_bytes=%d routed_experts_decoded_bytes=%d "
                 "expected_routed_experts_bytes=%s status=%s",
                 session_id,
-                len(records),
+                len(records_to_merge),
                 len(sample.tokens),
                 sample.response_length,
                 len(sample.loss_mask),
