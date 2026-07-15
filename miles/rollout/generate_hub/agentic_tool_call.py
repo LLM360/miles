@@ -43,6 +43,22 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
+_HARBOR_EXIT_STATUSES_TO_TRUNCATE = frozenset(
+    {
+        "BadRequestError",
+        "VerifierTimeout",
+        "OutputLengthExceededError",
+        "AgentTimeout",
+    }
+)
+
+
+def _apply_harbor_exit_status_override(samples: list[Sample], agent_metadata: dict[str, Any] | None) -> None:
+    if not samples or not agent_metadata:
+        return
+    if agent_metadata.get("exit_status") in _HARBOR_EXIT_STATUSES_TO_TRUNCATE:
+        samples[-1].status = Sample.Status.TRUNCATED
+
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     assert getattr(input.args, "session_server_ip", None) and getattr(input.args, "session_server_port", None), (
@@ -118,6 +134,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     sample.metadata.update(agent_metadata or {})
     sample.metadata.update(session_metadata)
     samples = [sample]
+    _apply_harbor_exit_status_override(samples, agent_metadata)
 
     if max_seq_len is not None:
         samples = truncate_samples_by_total_tokens(samples, max_seq_len, input.state.tokenizer)
