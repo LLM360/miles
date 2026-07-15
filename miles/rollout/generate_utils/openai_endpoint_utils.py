@@ -5,6 +5,7 @@ Utilities for the OpenAI endpoint
 import asyncio
 import json
 import logging
+import os
 import random
 from argparse import Namespace
 from copy import deepcopy
@@ -43,12 +44,28 @@ def _expected_routed_experts_bytes(args: Namespace, num_tokens: int) -> int | No
     return max(num_tokens - 1, 0) * int(num_layers) * int(moe_router_topk) * 4
 
 
-_SESSION_REQUEST_TIMEOUT = 120.0
+def _positive_float_env(name: str, default: float) -> float:
+    raw_value = os.environ.get(name)
+    value = default if raw_value is None else float(raw_value)
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than zero, got {value}")
+    return value
 
-_HTTP_CONNECT_TIMEOUT = 10.0
-_HTTP_READ_TIMEOUT = 120.0
-_HTTP_WRITE_TIMEOUT = 30.0
-_HTTP_POOL_TIMEOUT = 10.0
+
+def _positive_int_env(name: str, default: int) -> int:
+    raw_value = os.environ.get(name)
+    value = default if raw_value is None else int(raw_value)
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than zero, got {value}")
+    return value
+
+
+_SESSION_REQUEST_TIMEOUT = _positive_float_env("MILES_SESSION_REQUEST_TIMEOUT_SECONDS", 24 * 60 * 60.0)
+
+_HTTP_CONNECT_TIMEOUT = _positive_float_env("MILES_SESSION_HTTP_CONNECT_TIMEOUT_SECONDS", 600.0)
+_HTTP_READ_TIMEOUT = _positive_float_env("MILES_SESSION_HTTP_READ_TIMEOUT_SECONDS", 24 * 60 * 60.0)
+_HTTP_WRITE_TIMEOUT = _positive_float_env("MILES_SESSION_HTTP_WRITE_TIMEOUT_SECONDS", 600.0)
+_HTTP_POOL_TIMEOUT = _positive_float_env("MILES_SESSION_HTTP_POOL_TIMEOUT_SECONDS", 600.0)
 
 _HEALTH_RETRIES = 2
 _CREATE_RETRIES = 10
@@ -59,7 +76,7 @@ _BACKOFF_INITIAL_SECONDS = 1.0
 _BACKOFF_MAX_SECONDS = 10.0
 _BACKOFF_JITTER_FRACTION = 0.2
 
-_COLLECT_RECORDS_CONCURRENCY = 256
+_COLLECT_RECORDS_CONCURRENCY = _positive_int_env("MILES_SESSION_COLLECT_CONCURRENCY", 8192)
 _COLLECT_RECORDS_SEMAPHORE = asyncio.Semaphore(_COLLECT_RECORDS_CONCURRENCY)
 
 
