@@ -1,6 +1,7 @@
 """Integration tests for session HTTP routes (create / get / delete / proxy)."""
 
 import re
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -194,4 +195,49 @@ class TestTokenizationOffload:
         assert elapsed < sleep_seconds / 2, (
             f"/health blocked for {elapsed:.2f}s during tokenization; "
             "event loop was not free (tokenization not offloaded)"
+        )
+
+
+class TestGetSessionSnapshotAtomicity:
+    """GET /sessions/{id} returns records and token IDs from one commit."""
+
+    def test_get_during_phase3_commit_returns_consistent_snapshot(self, router_env):
+        session_id = requests.post(f"{router_env.url}/sessions", timeout=5.0).json()["session_id"]
+
+        real_update = LinearTrajectory.update_pretokenized_state
+        commit_entered = threading.Event()
+
+        def stalled_update(self, *args, **kwargs):
+            # The checkpoint becomes visible here. The matching record is
+            # appended only after this worker returns and the handler resumes.
+            real_update(self, *args, **kwargs)
+            commit_entered.set()
+            time.sleep(1.5)
+
+        payload = {
+            "messages": [{"role": "user", "content": "What is 1+2?"}],
+            "return_logprob": True,
+        }
+
+        with patch.object(LinearTrajectory, "update_pretokenized_state", stalled_update):
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                chat_future = executor.submit(
+                    requests.post,
+                    f"{router_env.url}/sessions/{session_id}/v1/chat/completions",
+                    json=payload,
+                    timeout=15.0,
+                )
+                assert commit_entered.wait(timeout=10.0), "chat never reached Phase 3"
+                snapshot = requests.get(f"{router_env.url}/sessions/{session_id}", timeout=10.0).json()
+                assert chat_future.result().status_code == 200
+
+        records = snapshot["records"]
+        accumulated = snapshot["metadata"].get("accumulated_token_ids") or []
+        assert accumulated, "expected GET to observe the committed turn"
+        assert records, "torn snapshot: accumulated tokens have no matching record"
+        last_choice = records[-1]["response"]["choices"][0]
+        expected_len = len(last_choice["prompt_token_ids"]) + len(last_choice["meta_info"]["output_token_logprobs"])
+        assert len(accumulated) == expected_len, (
+            f"torn snapshot: accumulated has {len(accumulated)} tokens but the last record "
+            f"accounts for {expected_len} (records={len(records)})"
         )
