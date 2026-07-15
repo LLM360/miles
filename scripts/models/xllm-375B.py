@@ -21,7 +21,7 @@ def model_args() -> str:
         "--position-embedding-type rope "
         "--rotary-percent 0.5 "
         "--xllm-partial-rope-layout "
-        "--rotary-base 500000 "
+        "--rotary-base 10000000 "
         "--swiglu "
         "--untie-embeddings-and-output-weights "
         "--vocab-size 250624 "

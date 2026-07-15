@@ -22,7 +22,7 @@
 "0.5"
 "--xllm-partial-rope-layout"
 "--rotary-base"
-"500000"
+"10000000"
 "--swiglu"
 "--untie-embeddings-and-output-weights"
 "--vocab-size"
