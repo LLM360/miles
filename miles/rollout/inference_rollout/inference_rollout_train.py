@@ -87,9 +87,13 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     assert not state.aborted
     state.aborted = True
 
-    # How many rollout tasks are still in flight when the abort fires. The
-    # specific instances harbor cancels are reported by /abort_all below.
-    logger.info(f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks")
+    # How many rollout tasks are still in flight when the abort fires, and which
+    # groups they are. The specific instances harbor cancels are reported by
+    # /abort_all below.
+    cancelled_names = sorted(task.get_name() for task in pendings)
+    logger.info(
+        f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks: {cancelled_names}"
+    )
 
     is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
     if is_agentic:
@@ -145,18 +149,22 @@ def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:
 
 
 def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
-    return [
-        asyncio.create_task(
-            # submit a group of samples as a single task.
-            generate_and_rm_group(
-                state,
-                group,
-                sampling_params=state.sampling_params.copy(),
-                evaluation=False,
+    tasks = []
+    for group in samples:
+        first = group[0][0] if isinstance(group[0], list) else group[0]
+        tasks.append(
+            asyncio.create_task(
+                # submit a group of samples as a single task.
+                generate_and_rm_group(
+                    state,
+                    group,
+                    sampling_params=state.sampling_params.copy(),
+                    evaluation=False,
+                ),
+                name=f"group-{first.index}",
             )
         )
-        for group in samples
-    ]
+    return tasks
 
 
 async def generate_rollout_async(
