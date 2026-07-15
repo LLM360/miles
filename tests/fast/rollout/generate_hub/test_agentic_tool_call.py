@@ -192,3 +192,35 @@ def test_harbor_exit_status_with_zero_active_tokens_is_aborted(variant, generati
     assert samples[-1].status == Sample.Status.ABORTED
     assert samples[-1].effective_response_length == 0
     assert all(s.metadata["exit_status"] == exit_status for s in samples)
+
+
+@pytest.mark.parametrize(
+    "generation_env", [{"args_kwargs": {"extra_argv": ["--use-session-server", "v1"]}}], indirect=True
+)
+def test_compact_agent_response_keeps_worker_training_tokens(variant, generation_env):
+    import httpx
+
+    seen = {}
+
+    async def agent(base_url, prompt, request_kwargs, **kwargs):
+        async with httpx.AsyncClient() as client:
+            reply = await client.post(
+                f"{base_url}/v1/chat/completions", json={**request_kwargs, "model": "default", "messages": prompt}
+            )
+        reply.raise_for_status()
+        choice = reply.json()["choices"][0]
+        seen["choice"] = choice
+        return {"reward": 1.0}
+
+    generation_env.mock_server.process_fn = lambda _: ProcessResult(text=RESPONSE, finish_reason="stop")
+    generation_env.args.custom_agent_function_path = "test:compact-response"
+    with function_registry.temporary("test:compact-response", agent):
+        output = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
+    choice = seen["choice"]
+    assert "meta_info" not in choice and "prompt_token_ids" not in choice
+    assert choice["message"]["content"] == RESPONSE
+    sample = listify(output.sample)[0]
+    assert sample.effective_response_length > 0
+    assert len(sample.rollout_log_probs) == len(sample.loss_mask) == sample.response_length
+    assert len(sample.tokens) > sample.response_length
+    assert sample.status == Sample.Status.COMPLETED

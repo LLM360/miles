@@ -2,10 +2,10 @@
 
 HTTP-agnostic: the FastAPI adapter (``sessions.py`` + ``server.py``) turns each request into primitives and calls these methods. Owns one ``SessionRegistry`` (per-session TITO/trajectory state) and one proxy ``backend``.
 
-- ``chat_completions`` strips the R3 replay payloads (``routed_experts`` / ``indexer_topk``) from the client reply copy-on-write; the ``SessionRecord`` keeps the full response for the training path (``GET /sessions/{id}``).
+- ``chat_completions`` omits ``meta_info`` and ``prompt_token_ids`` from v1 replies. The shared v2 renderer strips the R3 replay payloads (``routed_experts`` / ``indexer_topk``) from the client reply copy-on-write; the ``SessionRecord`` keeps the full response for the training path (``GET /sessions/{id}``).
 - ``chat_completions`` holds the per-session lock for prep and state update but not across the proxy call; ``closing`` re-checks and the ``num_assistant`` check gate concurrent DELETE/chat.
 - ``stream: true`` is served as fake streaming: the backend call stays non-streaming (TITO needs the complete message + meta_info) and the full response is re-rendered as a single SSE chunk plus ``data: [DONE]``. Errors all happen before the SSE body is built, so they keep their real status codes as JSON.
-- ``collect_samples`` assembles training Samples from the session's records on the server (compute -> truncate -> merge, synchronously on the loop under the session lock); deterministic assembly failures return 422 with the assertion text.
+- ``collect_samples`` assembles training Samples from the session's records on the server (compute -> truncate -> merge, in a worker while holding the session lock); deterministic assembly failures return 422 with the assertion text.
 """
 
 import json
@@ -87,9 +87,12 @@ def _samples_response(payload: bytes) -> Response:
 _CLIENT_STRIPPED_META_KEYS = ("routed_experts", "indexer_topk")
 
 
-def _strip_replay_payloads(response: dict) -> dict:
+def _strip_replay_payloads(response: dict, *, compact: bool = False) -> dict:
     stripped_choices = []
     for choice in response.get("choices", []):
+        if compact:
+            stripped_choices.append({k: v for k, v in choice.items() if k not in ("meta_info", "prompt_token_ids")})
+            continue
         meta = choice.get("meta_info")
         if isinstance(meta, dict) and any(k in meta for k in _CLIENT_STRIPPED_META_KEYS):
             meta = {k: v for k, v in meta.items() if k not in _CLIENT_STRIPPED_META_KEYS}
@@ -128,7 +131,7 @@ def _response_to_stream_chunk(response: dict) -> dict:
     return chunk
 
 
-def _chat_client_response(result: dict, response: dict, client_stream: bool) -> Response:
+def _chat_client_response(result: dict, response: dict, client_stream: bool, *, compact: bool = False) -> Response:
     if client_stream:
         sse = b"data: " + _render_json(_response_to_stream_chunk(response)) + b"\n\ndata: [DONE]\n\n"
         # Fresh headers: upstream's headers describe its JSON body, not this SSE body.
@@ -141,7 +144,7 @@ def _chat_client_response(result: dict, response: dict, client_stream: bool) -> 
         )
     headers = {k: v for k, v in result["headers"].items() if k.lower() not in _DROP_RESPONSE_HEADERS}
     return Response(
-        content=_render_json(_strip_replay_payloads(response)),
+        content=_render_json(_strip_replay_payloads(response, compact=compact)),
         status_code=result["status_code"],
         headers=headers,
         media_type=JSON_MEDIA_TYPE,
@@ -245,12 +248,12 @@ def extract_completion(result: dict) -> tuple:
     return response, choice, assistant_message, completion_token_ids
 
 
-def closed_chat_response(result: dict, client_stream: bool) -> Response:
+def closed_chat_response(result: dict, client_stream: bool, *, compact: bool = False) -> Response:
     """Forward a closed session's completion without validating or recording it."""
     if result["status_code"] == 200:
         try:
             response = orjson.loads(result["response_body"])
-            return _chat_client_response(result, response, client_stream)
+            return _chat_client_response(result, response, client_stream, compact=compact)
         except (orjson.JSONDecodeError, KeyError, TypeError, AttributeError):
             pass
     return proxy_result_to_response(result)
@@ -481,7 +484,7 @@ class SessionCore:
             )
 
         if session.closing:
-            return await run_session_worker(closed_chat_response, result, client_stream)
+            return await run_session_worker(closed_chat_response, result, client_stream, compact=True)
 
         # Stable's backend can recover a prefix-cache rollback failure by
         # rendering the messages again. Keep the retry narrowly scoped.
@@ -498,7 +501,7 @@ class SessionCore:
                 )
 
         if session.closing:
-            return await run_session_worker(closed_chat_response, result, client_stream)
+            return await run_session_worker(closed_chat_response, result, client_stream, compact=True)
 
         # Other errors, including a failed retry, pass through unrecorded.
         if result["status_code"] != 200:
@@ -557,7 +560,7 @@ class SessionCore:
                 )
         # --- lock released ---
 
-        return _chat_client_response(result, response, client_stream)
+        return _chat_client_response(result, response, client_stream, compact=True)
 
     async def proxy(
         self, session_id: str, path: str, *, method: str, query: str, headers: dict, body: bytes

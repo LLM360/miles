@@ -51,6 +51,7 @@ def router_env():
     def patched_chat_response(self, payload: dict) -> dict:
         response = original_chat_response(self, payload)
         choice = response["choices"][0]
+        choice["prompt_token_ids"] = list(payload["input_ids"])
         logprobs_content = choice["logprobs"]["content"]
         output_token_logprobs = [
             (item["logprob"], self.tokenizer.convert_tokens_to_ids(item["token"])) for item in logprobs_content
@@ -295,14 +296,14 @@ class TestSessionProxy:
             timeout=10.0,
         )
         assert resp.status_code == 200
-        client_meta = resp.json()["choices"][0]["meta_info"]
-        assert "routed_experts" not in client_meta
-        assert "indexer_topk" not in client_meta
-        # Stripping must not swallow the rest of meta_info.
-        assert "output_token_logprobs" in client_meta
+        client_choice = resp.json()["choices"][0]
+        assert "meta_info" not in client_choice
+        assert "prompt_token_ids" not in client_choice
 
         record = requests.get(f"{router_env.url}/sessions/{session_id}", timeout=5.0).json()["records"][0]
         record_meta = record["response"]["choices"][0]["meta_info"]
+        assert record_meta["output_token_logprobs"]
+        assert record["response"]["choices"][0]["prompt_token_ids"]
         assert record_meta["routed_experts"] == [[0, 1], [2, 3]]
         assert record_meta["indexer_topk"] == [[4], [5]]
 
