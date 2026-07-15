@@ -43,6 +43,23 @@ from miles.utils.types import Sample
 logger = logging.getLogger(__name__)
 
 
+_HARBOR_EXIT_STATUSES_TO_TRUNCATE = frozenset(
+    {
+        "BadRequestError",
+        "VerifierTimeout",
+        "OutputLengthExceededError",
+        "AgentTimeout",
+    }
+)
+
+
+def _apply_harbor_exit_status_override(samples: list[Sample], agent_metadata: dict[str, Any] | None) -> None:
+    if not samples or not agent_metadata:
+        return
+    if agent_metadata.get("exit_status") in _HARBOR_EXIT_STATUSES_TO_TRUNCATE:
+        samples[-1].status = Sample.Status.TRUNCATED
+
+
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     assert not input.args.partial_rollout, "Partial rollout is not supported"
     assert getattr(input.args, "session_server_addrs", None), (
@@ -149,6 +166,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
 
     (sample,) = samples
     sample.metadata.update(result.session_metadata)
+    _apply_harbor_exit_status_override(samples, agent_metadata)
     return GenerateFnOutput(samples=sample)
 
 
