@@ -3,6 +3,7 @@ import ipaddress
 import json
 import logging
 import multiprocessing
+import orjson
 import os
 import random
 import socket
@@ -196,7 +197,7 @@ async def _post(client, url, payload, max_retries=60, action="post", headers=Non
                 response = await getattr(client, action)(url, json=payload or {}, headers=headers)
             response.raise_for_status()
             try:
-                output = response.json()
+                output = await asyncio.to_thread(orjson.loads, response.content)
             except json.JSONDecodeError:
                 output = response.text
         except Exception as e:

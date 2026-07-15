@@ -172,12 +172,8 @@ class MilesRouter:
         status_code = result["status_code"]
         headers = result["headers"]
         headers = {k: v for k, v in headers.items() if k.lower() not in ("content-length", "transfer-encoding")}
-        content_type = headers.get("content-type", "")
-        try:
-            data = json.loads(content)
-            return JSONResponse(content=data, status_code=status_code, headers=headers)
-        except Exception:
-            return Response(content=content, status_code=status_code, headers=headers, media_type=content_type)
+        content_type = headers.get("content-type")
+        return Response(content=content, status_code=status_code, headers=headers, media_type=content_type)
 
     async def add_worker(self, request: Request):
         """Add a new worker to the router.
