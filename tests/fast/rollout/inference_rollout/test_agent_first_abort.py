@@ -79,3 +79,28 @@ def test_nested_dispatch_metadata_preserves_origin():
     sample = Sample(metadata={"start_rollout_id": 2, "rollout_id": 3})
     train.stamp_rollout_id([[[sample]]], 4)
     assert sample.metadata == {"start_rollout_id": 2, "rollout_id": 4}
+
+
+@pytest.mark.parametrize("nested", [False, True])
+async def test_submission_names_keep_sample_completion_callback(monkeypatch, nested):
+    from miles.rollout.inference_rollout import inference_rollout_train as train
+
+    callback = lambda: None
+    state = SimpleNamespace(sampling_params={"temperature": 0.7})
+    sample = Sample(index=27)
+    group = [[sample]] if nested else [sample]
+    seen = []
+
+    async def generate(actual_state, actual_group, **kwargs):
+        seen.append((actual_state, actual_group, kwargs))
+        return actual_group
+
+    monkeypatch.setattr(train, "generate_and_rm_group", generate)
+    tasks = train.submit_generate_tasks(state, [group], callback)
+    assert [task.get_name() for task in tasks] == ["group-27"]
+    assert await tasks[0] is group
+    actual_state, actual_group, kwargs = seen[0]
+    assert actual_state is state and actual_group is group
+    assert kwargs["sample_done_callback"] is callback and kwargs["evaluation"] is False
+    assert kwargs["sampling_params"] == state.sampling_params
+    assert kwargs["sampling_params"] is not state.sampling_params
