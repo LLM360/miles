@@ -15,7 +15,7 @@ async def test_transient_request_failure_retries_on_same_url(monkeypatch, first)
 
     def handler(request):
         calls.append(request)
-        assert request.extensions["timeout"] == dict(connect=10.0, read=120.0, write=30.0, pool=10.0)
+        assert request.extensions["timeout"] == dict(connect=600.0, read=86400.0, write=600.0, pool=600.0)
         if len(calls) == 1:
             if first == "transport":
                 raise httpx.ConnectError("temporary", request=request)
