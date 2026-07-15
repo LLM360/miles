@@ -29,16 +29,25 @@ async def train(args):
     if args.check_weight_update_equal:
         await rollout_manager.check_weights.remote(action="compare")
 
-    # async train loop.
-    rollout_data_next_future = rollout_manager.generate.remote(args.start_rollout_id)
+    # async train loop. With --disable-async-rollout the next generation is not
+    # pre-launched; each rollout is generated in-line below for synchronous,
+    # on-policy training.
+    rollout_data_next_future = (
+        None if args.disable_async_rollout else rollout_manager.generate.remote(args.start_rollout_id)
+    )
     for rollout_id in range(args.start_rollout_id, args.num_rollout):
-        # Sync the last generation
-        if rollout_data_next_future is not None:
-            rollout_data_curr_ref = await rollout_data_next_future
+        if args.disable_async_rollout:
+            # Synchronous: generate with the current weights, then train and
+            # update below, so the trainer always consumes on-policy data.
+            rollout_data_curr_ref = await rollout_manager.generate.remote(rollout_id)
+        else:
+            # Sync the last generation
+            if rollout_data_next_future is not None:
+                rollout_data_curr_ref = await rollout_data_next_future
 
-        # Start the next rollout early.
-        if rollout_id + 1 < args.num_rollout:
-            rollout_data_next_future = rollout_manager.generate.remote(rollout_id + 1)
+            # Start the next rollout early.
+            if rollout_id + 1 < args.num_rollout:
+                rollout_data_next_future = rollout_manager.generate.remote(rollout_id + 1)
 
         if args.use_critic:
             critic_task = await eager_create_task(critic_model.train(rollout_id, rollout_data_curr_ref))
@@ -61,7 +70,11 @@ async def train(args):
             if args.rollout_global_dataset:
                 await rollout_manager.save.remote(rollout_id)
 
-        if (rollout_id + 1) % args.update_weights_interval == 0:
+        if args.disable_async_rollout:
+            # On-policy: refresh weights every step so the next in-line
+            # generation uses the just-trained policy.
+            await actor_model.update_weights()
+        elif (rollout_id + 1) % args.update_weights_interval == 0:
             # sync generate before update weights to prevent update weight in the middle of generation
             rollout_data_curr_ref = (await x) if (x := rollout_data_next_future) is not None else None
             rollout_data_next_future = None

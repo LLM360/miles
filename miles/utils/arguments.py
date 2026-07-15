@@ -488,6 +488,19 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
 
             parser.add_argument(
+                "--disable-async-rollout",
+                action="store_true",
+                default=False,
+                help=(
+                    "Disable the one-step-async overlap in train_async. When set, each "
+                    "rollout_id is generated in-line and weights are refreshed every step "
+                    "instead of pre-launching generate(rollout_id + 1) before training, "
+                    "making training synchronous / on-policy at the cost of "
+                    "generation-train overlap. update_weights_interval is ignored here."
+                ),
+            )
+
+            parser.add_argument(
                 "--rollout-data-postprocess-path",
                 type=str,
                 default=None,
