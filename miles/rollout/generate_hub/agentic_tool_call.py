@@ -45,6 +45,22 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
+_HARBOR_EXIT_STATUSES_TO_TRUNCATE = frozenset(
+    {
+        "BadRequestError",
+        "VerifierTimeout",
+        "OutputLengthExceededError",
+        "AgentTimeout",
+    }
+)
+
+
+def _apply_harbor_exit_status_override(samples: list[Sample], agent_metadata: dict[str, Any] | None) -> None:
+    if not samples or not agent_metadata:
+        return
+    if agent_metadata.get("exit_status") in _HARBOR_EXIT_STATUSES_TO_TRUNCATE:
+        samples[-1].status = Sample.Status.TRUNCATED
+
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     assert getattr(input.args, "session_server_ip", None) and getattr(input.args, "session_server_port", None), (
@@ -118,6 +134,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     )
     for s in samples:
         s.metadata.update(agent_metadata or {})
+    _apply_harbor_exit_status_override(samples, agent_metadata)
 
     # An aborted/length-limited turn invalidates everything generated after
     # it; the agent may have kept going on truncated output (e.g. when the

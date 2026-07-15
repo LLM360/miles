@@ -1,7 +1,7 @@
 import argparse
 
 import pytest
-from tests.fast.fixtures.generation_fixtures import generation_env, make_sample, run_generate
+from tests.fast.fixtures.generation_fixtures import generation_env, listify, make_sample, run_generate
 
 from miles.rollout.generate_hub.agentic_tool_call import generate
 from miles.utils.misc import function_registry
@@ -13,6 +13,13 @@ _ = generation_env
 
 PROMPT = [{"role": "user", "content": "What is 1+1?"}]
 RESPONSE = "The answer is 2."
+AGENTIC_VARIANTS = ["agentic_tool_call_single_sample", "agentic_tool_call_multi_samples"]
+HARBOR_EXIT_STATUSES_TO_TRUNCATE = [
+    "BadRequestError",
+    "VerifierTimeout",
+    "OutputLengthExceededError",
+    "AgentTimeout",
+]
 
 
 @pytest.fixture
@@ -108,3 +115,54 @@ def test_absent_custom_agent_config_json_does_not_add_agent_config_kwarg(variant
 
     assert seen["called"] is True
     assert result.sample.status == Sample.Status.COMPLETED
+
+
+@pytest.mark.parametrize("variant", AGENTIC_VARIANTS)
+@pytest.mark.parametrize("exit_status", HARBOR_EXIT_STATUSES_TO_TRUNCATE)
+def test_harbor_exit_status_with_records_is_truncated(variant, generation_env, exit_status):
+    generation_env.mock_server.process_fn = lambda _: ProcessResult(text=RESPONSE, finish_reason="stop")
+    mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": exit_status, "reward": 0.0}
+
+    result = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
+
+    samples = listify(result.sample)
+    assert samples[-1].status == Sample.Status.TRUNCATED
+    assert all(s.metadata["exit_status"] == exit_status for s in samples)
+
+
+@pytest.mark.parametrize("variant", AGENTIC_VARIANTS)
+def test_k8s_internal_infra_error_is_not_forced_truncated(variant, generation_env):
+    generation_env.mock_server.process_fn = lambda _: ProcessResult(text=RESPONSE, finish_reason="stop")
+    mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": "_K8sInternalInfraError", "reward": 0.0}
+
+    result = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
+
+    samples = listify(result.sample)
+    assert samples[-1].status == Sample.Status.COMPLETED
+    assert all(s.metadata["exit_status"] == "_K8sInternalInfraError" for s in samples)
+
+
+@pytest.mark.parametrize("variant", ["agentic_tool_call_multi_samples"])
+def test_harbor_exit_status_truncates_only_final_turn(variant, generation_env):
+    generation_env.mock_server.process_fn = mock_tools.TwoTurnStub.process_fn
+    mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": "VerifierTimeout", "reward": 0.0}
+
+    result = run_generate(generation_env, make_sample(prompt=mock_tools.TwoTurnStub.PROMPT), variant=variant)
+
+    samples = listify(result.sample)
+    assert [s.status for s in samples] == [Sample.Status.COMPLETED, Sample.Status.TRUNCATED]
+
+
+@pytest.mark.parametrize("variant", AGENTIC_VARIANTS)
+def test_harbor_exit_status_without_records_stays_aborted(variant, generation_env):
+    async def agent_returns_bad_request_without_model_calls(**kwargs):
+        return {"exit_status": "BadRequestError", "reward": 0.0}
+
+    generation_env.args.custom_agent_function_path = "test:bad-request-no-records"
+
+    with function_registry.temporary("test:bad-request-no-records", agent_returns_bad_request_without_model_calls):
+        result = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
+
+    samples = listify(result.sample)
+    assert len(samples) == 1
+    assert samples[0].status == Sample.Status.ABORTED
