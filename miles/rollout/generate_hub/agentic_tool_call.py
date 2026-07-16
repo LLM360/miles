@@ -49,15 +49,23 @@ _HARBOR_EXIT_STATUSES_TO_TRUNCATE = frozenset(
         "VerifierTimeout",
         "OutputLengthExceededError",
         "AgentTimeout",
+        "Cancelled",
     }
 )
+
+
+def _samples_have_active_response_tokens(samples: list[Sample]) -> bool:
+    return any(sample.effective_response_length > 0 for sample in samples)
 
 
 def _apply_harbor_exit_status_override(samples: list[Sample], agent_metadata: dict[str, Any] | None) -> None:
     if not samples or not agent_metadata:
         return
     if agent_metadata.get("exit_status") in _HARBOR_EXIT_STATUSES_TO_TRUNCATE:
-        samples[-1].status = Sample.Status.TRUNCATED
+        if _samples_have_active_response_tokens(samples):
+            samples[-1].status = Sample.Status.TRUNCATED
+        else:
+            samples[-1].status = Sample.Status.ABORTED
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
@@ -136,6 +144,12 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         else:
             logger.warning("No model calls recorded for sample")
         sample = deepcopy(input.sample)
+        if not use_v2:
+            sample.metadata.update(agent_metadata or {})
+            if result.empty_reason != "all_truncated":
+                agent_metrics = sample.metadata.setdefault("agent_metrics", {})
+                if isinstance(agent_metrics, dict):
+                    agent_metrics["empty_records_count"] = 1
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=[sample] if use_v2 else sample)
 
