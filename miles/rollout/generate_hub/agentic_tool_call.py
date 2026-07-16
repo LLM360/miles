@@ -49,15 +49,23 @@ _HARBOR_EXIT_STATUSES_TO_TRUNCATE = frozenset(
         "VerifierTimeout",
         "OutputLengthExceededError",
         "AgentTimeout",
+        "Cancelled",
     }
 )
+
+
+def _samples_have_active_response_tokens(samples: list[Sample]) -> bool:
+    return any(sample.effective_response_length > 0 for sample in samples)
 
 
 def _apply_harbor_exit_status_override(samples: list[Sample], agent_metadata: dict[str, Any] | None) -> None:
     if not samples or not agent_metadata:
         return
     if agent_metadata.get("exit_status") in _HARBOR_EXIT_STATUSES_TO_TRUNCATE:
-        samples[-1].status = Sample.Status.TRUNCATED
+        if _samples_have_active_response_tokens(samples):
+            samples[-1].status = Sample.Status.TRUNCATED
+        else:
+            samples[-1].status = Sample.Status.ABORTED
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
@@ -127,6 +135,10 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     if merged_sample is None:
         logger.warning("No model calls recorded for sample")
         sample = deepcopy(input.sample)
+        sample.metadata.update(agent_metadata or {})
+        agent_metrics = sample.metadata.setdefault("agent_metrics", {})
+        if isinstance(agent_metrics, dict):
+            agent_metrics["empty_records_count"] = 1
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
 
@@ -134,7 +146,6 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     sample.metadata.update(agent_metadata or {})
     sample.metadata.update(session_metadata)
     samples = [sample]
-    _apply_harbor_exit_status_override(samples, agent_metadata)
 
     if max_seq_len is not None:
         samples = truncate_samples_by_total_tokens(samples, max_seq_len, input.state.tokenizer)
@@ -144,6 +155,8 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         sample = deepcopy(input.sample)
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
+
+    _apply_harbor_exit_status_override(samples, agent_metadata)
 
     sample = samples[0]
     logger.debug(
