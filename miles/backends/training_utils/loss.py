@@ -572,9 +572,6 @@ def vanilla_tis_function(
         "tis": tis.clone().detach(),
         "tis_clipfrac": tis_clipfrac.clone().detach(),
         "tis_abs": tis_abs.clone().detach(),
-        "nan_dbg/tis_delta_min": tis_delta.detach().float().min(),
-        "nan_dbg/tis_delta_max": tis_delta.detach().float().max(),
-        "nan_dbg/tis_nonfinite_count": torch.tensor(tis_bad, device=tis.device, dtype=torch.float32),
     }
     pg_loss = pg_loss * tis_weights
     return pg_loss, loss_masks, metrics
@@ -788,6 +785,15 @@ def policy_loss_function(
     ppo_kl_min, ppo_kl_max, _, ppo_kl_bad = _nan_dbg_finite_stats(ppo_kl)
     _, ratio_max, _, ratio_bad = _nan_dbg_finite_stats(ratio)
     response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum = _nan_dbg_batch_stats(batch)
+    tis_delta_min = float("nan")
+    tis_delta_max = float("nan")
+    tis_nonfinite_count = 0
+    if args.get_mismatch_metrics or args.use_tis:
+        rollout_log_probs_cat = torch.cat(batch["rollout_log_probs"], dim=0)
+        train_rollout_tis_delta = old_log_probs - rollout_log_probs_cat
+        tis_for_dbg = torch.exp(train_rollout_tis_delta)
+        tis_delta_min, tis_delta_max, _, _ = _nan_dbg_finite_stats(train_rollout_tis_delta)
+        _, _, _, tis_nonfinite_count = _nan_dbg_finite_stats(tis_for_dbg)
 
     pg_loss = pg_loss_reducer(pg_loss)
     pg_clipfrac = sum_of_sample_mean(pg_clipfrac)
@@ -870,6 +876,9 @@ def policy_loss_function(
             log_probs_bad + old_log_probs_bad + advantages_bad + ppo_kl_bad + ratio_bad,
             loss.device,
         ),
+        "nan_dbg/tis_delta_min": _nan_dbg_scalar(tis_delta_min, loss.device),
+        "nan_dbg/tis_delta_max": _nan_dbg_scalar(tis_delta_max, loss.device),
+        "nan_dbg/tis_nonfinite_count": _nan_dbg_scalar(tis_nonfinite_count, loss.device),
     }
 
     if train_rollout_logprob_abs_diff is not None:
