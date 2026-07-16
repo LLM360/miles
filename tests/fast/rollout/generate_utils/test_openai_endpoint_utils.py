@@ -96,16 +96,20 @@ def _make_record(
 async def test_create_fetches_session_server_instance_id(monkeypatch):
     calls: list[tuple[str, str]] = []
 
-    async def fake_post(url: str, payload: dict, action: str = "post"):
+    async def fake_request(method: str, url: str, *, phase: str, payload: dict | None = None, **kwargs):
+        action = method.lower()
         calls.append((action, url))
         if action == "get":
+            assert phase == "health"
             assert url == "http://127.0.0.1:12345/health"
             return {"status": "ok", "session_server_instance_id": "server-instance-123"}
         assert action == "post"
+        assert phase == "create_session"
         assert url == "http://127.0.0.1:12345/sessions"
+        assert payload == {}
         return {"session_id": "session-123"}
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+    monkeypatch.setattr(OpenAIEndpointTracer, "_request", fake_request)
 
     args = SimpleNamespace(session_server_ip="127.0.0.1", session_server_port=12345)
     tracer = await OpenAIEndpointTracer.create(args)
