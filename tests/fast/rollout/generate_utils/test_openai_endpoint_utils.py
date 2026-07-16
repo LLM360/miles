@@ -338,3 +338,34 @@ async def test_create_selects_wire_fields_by_session_server_version(monkeypatch)
 
     assert (await OpenAIEndpointTracer.create(args(True))).samples_wire_fields == COMPUTED_FIELDS
     assert (await OpenAIEndpointTracer.create(args("v2"))).samples_wire_fields == COMPUTED_FIELDS_V2
+
+
+@pytest.mark.asyncio
+async def test_create_fetches_session_server_instance_id(monkeypatch):
+    calls: list[tuple[str, str]] = []
+
+    async def fake_request(method: str, url: str, *, phase: str, payload: dict | None = None, **kwargs):
+        action = method.lower()
+        calls.append((action, url))
+        if action == "get":
+            assert phase == "health"
+            assert url == "http://127.0.0.1:12345/health"
+            return {"status": "ok", "session_server_instance_id": "server-instance-123"}
+        assert action == "post"
+        assert phase == "create_session"
+        assert url == "http://127.0.0.1:12345/sessions"
+        assert payload is None  # _request normalizes the omitted body to {} on the wire.
+        return {"session_id": "session-123"}
+
+    monkeypatch.setattr(OpenAIEndpointTracer, "_request", fake_request)
+
+    args = SimpleNamespace(session_server_ip="127.0.0.1", session_server_port=12345)
+    tracer = await OpenAIEndpointTracer.create(args)
+
+    assert tracer.base_url == "http://127.0.0.1:12345/sessions/session-123"
+    assert tracer.session_server_instance_id == "server-instance-123"
+    assert args.session_server_instance_id == "server-instance-123"
+    assert calls == [
+        ("get", "http://127.0.0.1:12345/health"),
+        ("post", "http://127.0.0.1:12345/sessions"),
+    ]
