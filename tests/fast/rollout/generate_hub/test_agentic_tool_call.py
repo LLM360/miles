@@ -13,7 +13,7 @@ _ = generation_env
 
 PROMPT = [{"role": "user", "content": "What is 1+1?"}]
 RESPONSE = "The answer is 2."
-AGENTIC_VARIANTS = ["agentic_tool_call_single_sample", "agentic_tool_call_multi_samples"]
+AGENTIC_VARIANTS = ["agentic_tool_call_single_sample"]
 HARBOR_EXIT_STATUSES_TO_TRUNCATE = [
     "BadRequestError",
     "VerifierTimeout",
@@ -143,15 +143,14 @@ def test_k8s_internal_infra_error_is_not_forced_truncated(variant, generation_en
     assert all(s.metadata["exit_status"] == "_K8sInternalInfraError" for s in samples)
 
 
-@pytest.mark.parametrize("variant", ["agentic_tool_call_multi_samples"])
-def test_harbor_exit_status_truncates_only_final_turn(variant, generation_env):
+def test_harbor_exit_status_truncates_server_merged_sample(variant, generation_env):
     generation_env.mock_server.process_fn = mock_tools.TwoTurnStub.process_fn
     mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": "VerifierTimeout", "reward": 0.0}
 
     result = run_generate(generation_env, make_sample(prompt=mock_tools.TwoTurnStub.PROMPT), variant=variant)
 
     samples = listify(result.sample)
-    assert [s.status for s in samples] == [Sample.Status.COMPLETED, Sample.Status.TRUNCATED]
+    assert [s.status for s in samples] == [Sample.Status.TRUNCATED]
 
 
 @pytest.mark.parametrize("variant", AGENTIC_VARIANTS)

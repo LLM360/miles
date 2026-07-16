@@ -49,8 +49,11 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
 
     obs_len = len(b.tokens) - len(a.tokens) - b.response_length
     obs_tokens = b.tokens[len(a.tokens) : len(a.tokens) + obs_len]
-    # TODO: is this acceptable?
-    obs_text = tokenizer.decode(obs_tokens)
+
+    response_decoded = _sample_response_decoded(a) and _sample_response_decoded(b)
+    obs_text = tokenizer.decode(obs_tokens) if response_decoded else ""
+    response = a.response + obs_text + b.response if response_decoded else ""
+    metadata = _merge_metadata(a.metadata, b.metadata, response_decoded=response_decoded)
 
     try:
         a.validate()
@@ -70,7 +73,7 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
             tokens=b.tokens,
             multimodal_inputs=_merge_equal_value("multimodal_inputs"),
             multimodal_train_inputs=_merge_equal_value("multimodal_train_inputs"),
-            response=a.response + obs_text + b.response,
+            response=response,
             response_length=a.response_length + obs_len + b.response_length,
             label=_merge_equal_value("label"),
             reward=_merge_equal_value("reward"),
@@ -80,7 +83,7 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
             rollout_routed_experts=b.rollout_routed_experts,
             remove_sample=_merge_equal_value("remove_sample"),
             status=b.status,
-            metadata=_merge_equal_value("metadata"),
+            metadata=metadata,
             generate_function_path=_merge_equal_value("generate_function_path"),
             train_metadata=_merge_equal_value("train_metadata"),
             session_id=_merge_equal_value("session_id"),
@@ -91,6 +94,37 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
     except AssertionError as e:
         e.add_note(f"{a=} {b=}")
         raise
+
+
+def _sample_response_decoded(sample: Sample) -> bool:
+    """Old samples without the metadata flag are treated as decoded."""
+    metadata = getattr(sample, "metadata", None)
+    if metadata is None:
+        return True
+    return metadata.get("response_decoded", True)
+
+
+def _merge_metadata(
+    a: dict | None,
+    b: dict | None,
+    *,
+    response_decoded: bool,
+) -> dict:
+    a = {} if a is None else dict(a)
+    b = {} if b is None else dict(b)
+
+    a_without_response_decoded = dict(a)
+    b_without_response_decoded = dict(b)
+    a_without_response_decoded.pop("response_decoded", None)
+    b_without_response_decoded.pop("response_decoded", None)
+
+    assert (
+        a_without_response_decoded == b_without_response_decoded
+    ), f"metadata mismatch: a.metadata={a}, b.metadata={b}"
+
+    merged = dict(a_without_response_decoded)
+    merged["response_decoded"] = response_decoded
+    return merged
 
 
 def _merge_spec_info(a: Sample.SpecInfo, b: Sample.SpecInfo) -> Sample.SpecInfo:
