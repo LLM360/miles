@@ -19,6 +19,7 @@ HARBOR_EXIT_STATUSES_TO_TRUNCATE = [
     "VerifierTimeout",
     "OutputLengthExceededError",
     "AgentTimeout",
+    "Cancelled",
 ]
 
 
@@ -154,15 +155,39 @@ def test_harbor_exit_status_truncates_only_final_turn(variant, generation_env):
 
 
 @pytest.mark.parametrize("variant", AGENTIC_VARIANTS)
-def test_harbor_exit_status_without_records_stays_aborted(variant, generation_env):
-    async def agent_returns_bad_request_without_model_calls(**kwargs):
-        return {"exit_status": "BadRequestError", "reward": 0.0}
+@pytest.mark.parametrize("exit_status", ["BadRequestError", "Cancelled"])
+def test_harbor_exit_status_without_records_stays_aborted(variant, generation_env, exit_status):
+    async def agent_returns_failure_without_model_calls(**kwargs):
+        return {
+            "exit_status": exit_status,
+            "reward": 0.0,
+            "agent_metrics": {"agent_timeout_count": 1},
+        }
 
-    generation_env.args.custom_agent_function_path = "test:bad-request-no-records"
+    generation_env.args.custom_agent_function_path = "test:failure-no-records"
 
-    with function_registry.temporary("test:bad-request-no-records", agent_returns_bad_request_without_model_calls):
+    with function_registry.temporary("test:failure-no-records", agent_returns_failure_without_model_calls):
         result = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
 
     samples = listify(result.sample)
     assert len(samples) == 1
     assert samples[0].status == Sample.Status.ABORTED
+    assert samples[0].metadata["exit_status"] == exit_status
+    assert samples[0].metadata["agent_metrics"] == {
+        "agent_timeout_count": 1,
+        "empty_records_count": 1,
+    }
+
+
+@pytest.mark.parametrize("variant", AGENTIC_VARIANTS)
+@pytest.mark.parametrize("exit_status", ["BadRequestError", "Cancelled"])
+def test_harbor_exit_status_with_zero_active_tokens_is_aborted(variant, generation_env, exit_status):
+    generation_env.mock_server.process_fn = lambda _: ProcessResult(text="", finish_reason="stop")
+    mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": exit_status, "reward": 0.0}
+
+    result = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
+
+    samples = listify(result.sample)
+    assert samples[-1].status == Sample.Status.ABORTED
+    assert samples[-1].effective_response_length == 0
+    assert all(s.metadata["exit_status"] == exit_status for s in samples)
