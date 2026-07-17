@@ -48,6 +48,7 @@ def router_env():
                 chat_template_path=None,
                 trajectory_manager="linear_trajectory",
                 session_server_instance_id=uuid.uuid4().hex,
+                use_rollout_routing_replay=False,
             )
             server_obj = SessionServer(args, backend_url=backend.url)
 
@@ -58,7 +59,7 @@ def router_env():
             url = f"http://127.0.0.1:{port}"
 
             try:
-                yield SimpleNamespace(url=url)
+                yield SimpleNamespace(url=url, args=args, backend=backend)
             finally:
                 server.stop()
 
@@ -132,6 +133,8 @@ class TestSessionProxy:
         payload = {
             "messages": [{"role": "user", "content": "What is 1+2?"}],
             "return_logprob": True,
+            # A stale agent-side value must not override Miles when R3 is off.
+            "return_routed_experts": True,
         }
         resp = requests.post(
             f"{router_env.url}/sessions/{session_id}/v1/chat/completions",
@@ -145,6 +148,8 @@ class TestSessionProxy:
         agent_choice = body["choices"][0]
         assert "meta_info" not in agent_choice
         assert "prompt_token_ids" not in agent_choice
+        assert "routed_experts" not in agent_choice
+        assert "return_routed_experts" not in router_env.backend.request_log[-1]
 
         get_resp = requests.get(f"{router_env.url}/sessions/{session_id}", timeout=5.0)
         records = get_resp.json()["records"]
@@ -157,6 +162,8 @@ class TestSessionProxy:
         recorded_choice = record["response"]["choices"][0]
         assert recorded_choice["prompt_token_ids"]
         assert recorded_choice["meta_info"]["output_token_logprobs"]
+        assert "routed_experts" not in recorded_choice
+        assert "routed_experts" not in recorded_choice["meta_info"]
 
         merged_resp = requests.get(f"{router_env.url}/sessions/{session_id}/merged", timeout=5.0)
         assert merged_resp.status_code == 200
@@ -164,6 +171,25 @@ class TestSessionProxy:
         assert sample is not None
         assert sample["response_length"] > 0
         assert len(sample["rollout_log_probs"]) == sample["response_length"]
+        assert sample["rollout_routed_experts"] is None
+
+    def test_r3_rejects_response_without_routed_experts(self, router_env):
+        session_id = requests.post(f"{router_env.url}/sessions", timeout=5.0).json()["session_id"]
+        router_env.args.use_rollout_routing_replay = True
+        try:
+            response = requests.post(
+                f"{router_env.url}/sessions/{session_id}/v1/chat/completions",
+                json={"messages": [{"role": "user", "content": "What is 2+2?"}]},
+                timeout=10.0,
+            )
+        finally:
+            router_env.args.use_rollout_routing_replay = False
+
+        assert router_env.backend.request_log[-1]["return_routed_experts"] is True
+        assert response.status_code == 502
+        assert "routed_experts must be in choice or choice.meta_info" in response.json()["error"]
+        records = requests.get(f"{router_env.url}/sessions/{session_id}", timeout=5.0).json()["records"]
+        assert records == []
 
 
 class TestTokenizationOffload:
