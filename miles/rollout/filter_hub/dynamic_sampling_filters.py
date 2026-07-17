@@ -1,38 +1,18 @@
 import torch
 
+from miles.rollout._agentic_outcomes import classify_exit_status, rejects_group
 from miles.rollout.filter_hub.base_types import DynamicFilterOutput
 from miles.utils.types import Sample
 
 __all__ = [
     "check_reward_nonzero_std",
     "check_no_aborted",
+    "check_no_invalid_outcomes",
+    "check_no_invalid_outcomes_then_nonzero_std",
     "check_no_infra_failures",
     "drop_zero_std_groups_and_extreme_pass_rate",
     "drop_truncated_or_extreme_pass_rate",
 ]
-
-# Harbor exit_status values (from _extract_exit_status, after _TIMEOUT_EXCEPTION_MAP)
-# for infra / non-policy failures: the rollout was severed by the environment,
-# engine, or verifier rather than the policy, so it isn't valid training signal.
-INFRA_FAILURE_EXIT_STATUSES = frozenset(
-    {
-        "AgentTimeout",
-        "AgentTimeoutError",
-        "HealthcheckError",
-        "_K8sInternalInfraError",
-        "Cancelled",
-        "RewardFileNotFoundError",
-        "AgentSetupTimeout",
-        "AgentSetupTimeoutError",
-        "SqsConsumerError",
-        "VerifierTimeout",
-        "VerifierTimeoutError",
-        "EnvStartTimeout",
-        "EnvironmentStartTimeoutError",
-        "TimeoutError",
-        "AddTestsDirError",
-    }
-)
 
 
 def check_reward_nonzero_std(args, samples: list[Sample], **kwargs):
@@ -70,27 +50,36 @@ def check_no_aborted(args, samples: list[Sample], **kwargs):
     return DynamicFilterOutput(keep=True)
 
 
-def check_no_infra_failures(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
-    """Reject the group if any rollout aborted or failed for an infra reason,
-    or if the group has zero reward std (all-correct / all-incorrect).
-
-    Superset of ``check_no_aborted``: also drops samples whose Harbor
-    ``exit_status`` is an infra / non-policy failure. Keyed on ``exit_status``
-    because such rollouts may still record COMPLETED turns; aborted samples
-    (zero records, no exit_status) are caught by the status check. Groups that
-    survive the infra checks are then passed through ``check_reward_nonzero_std``
-    so all-same-reward groups (advantage 0, no gradient) are dropped too.
-
-        --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_infra_failures
-    """
+def check_no_invalid_outcomes(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
+    """Reject groups containing unusable statuses or non-comparable exits."""
     flat_samples = list(_flatten_samples(samples))
     for sample in flat_samples:
         if sample.status == Sample.Status.ABORTED:
             return DynamicFilterOutput(keep=False, reason="group_has_aborted")
+        if sample.status == Sample.Status.FAILED:
+            return DynamicFilterOutput(keep=False, reason="group_has_failed")
+        if sample.status == Sample.Status.PENDING:
+            return DynamicFilterOutput(keep=False, reason="group_has_pending")
         exit_status = (sample.metadata or {}).get("exit_status", "")
-        if exit_status in INFRA_FAILURE_EXIT_STATUSES:
+        if rejects_group(classify_exit_status(exit_status)):
             return DynamicFilterOutput(keep=False, reason=f"group_has_{exit_status}")
+    return DynamicFilterOutput(keep=True)
+
+
+def check_no_invalid_outcomes_then_nonzero_std(
+    args, samples: list[Sample], **kwargs
+) -> DynamicFilterOutput:
+    """Reject invalid outcomes first, then groups with zero reward variance."""
+    flat_samples = list(_flatten_samples(samples))
+    outcome = check_no_invalid_outcomes(args, flat_samples, **kwargs)
+    if not outcome.keep:
+        return outcome
     return check_reward_nonzero_std(args, flat_samples, **kwargs)
+
+
+def check_no_infra_failures(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
+    """Compatibility wrapper for the former infra-plus-zero-variance filter."""
+    return check_no_invalid_outcomes_then_nonzero_std(args, samples, **kwargs)
 
 
 def drop_zero_std_groups_and_extreme_pass_rate(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:

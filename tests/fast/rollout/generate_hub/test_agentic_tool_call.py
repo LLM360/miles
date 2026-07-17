@@ -16,10 +16,19 @@ RESPONSE = "The answer is 2."
 AGENTIC_VARIANTS = ["agentic_tool_call_single_sample"]
 HARBOR_EXIT_STATUSES_TO_TRUNCATE = [
     "BadRequestError",
-    "VerifierTimeout",
+    "ContextWindowExceededError",
     "OutputLengthExceededError",
+    "LimitsExceeded",
     "AgentTimeout",
+    "AgentTimeoutError",
+    "VerifierTimeout",
+    "VerifierTimeoutError",
+]
+HARBOR_EXIT_STATUSES_TO_ABORT = [
+    "_K8sInternalInfraError",
     "Cancelled",
+    "RewardFileNotFoundError",
+    "Unknown",
 ]
 
 
@@ -132,15 +141,16 @@ def test_harbor_exit_status_with_records_is_truncated(variant, generation_env, e
 
 
 @pytest.mark.parametrize("variant", AGENTIC_VARIANTS)
-def test_k8s_internal_infra_error_is_not_forced_truncated(variant, generation_env):
+@pytest.mark.parametrize("exit_status", HARBOR_EXIT_STATUSES_TO_ABORT)
+def test_fatal_harbor_exit_with_records_is_aborted(variant, generation_env, exit_status):
     generation_env.mock_server.process_fn = lambda _: ProcessResult(text=RESPONSE, finish_reason="stop")
-    mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": "_K8sInternalInfraError", "reward": 0.0}
+    mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": exit_status, "reward": 0.0}
 
     result = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
 
     samples = listify(result.sample)
-    assert samples[-1].status == Sample.Status.COMPLETED
-    assert all(s.metadata["exit_status"] == "_K8sInternalInfraError" for s in samples)
+    assert samples[-1].status == Sample.Status.ABORTED
+    assert all(s.metadata["exit_status"] == exit_status for s in samples)
 
 
 def test_harbor_exit_status_truncates_server_merged_sample(variant, generation_env):
@@ -179,7 +189,10 @@ def test_harbor_exit_status_without_records_stays_aborted(variant, generation_en
 
 
 @pytest.mark.parametrize("variant", AGENTIC_VARIANTS)
-@pytest.mark.parametrize("exit_status", ["BadRequestError", "Cancelled"])
+@pytest.mark.parametrize(
+    "exit_status",
+    ["BadRequestError", "LimitsExceeded", "AgentTimeout", "VerifierTimeout", "Cancelled", "Unknown"],
+)
 def test_harbor_exit_status_with_zero_active_tokens_is_aborted(variant, generation_env, exit_status):
     generation_env.mock_server.process_fn = lambda _: ProcessResult(text="", finish_reason="stop")
     mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": exit_status, "reward": 0.0}
@@ -190,3 +203,24 @@ def test_harbor_exit_status_with_zero_active_tokens_is_aborted(variant, generati
     assert samples[-1].status == Sample.Status.ABORTED
     assert samples[-1].effective_response_length == 0
     assert all(s.metadata["exit_status"] == exit_status for s in samples)
+
+
+def test_custom_agent_exception_with_partial_records_is_aborted(variant, generation_env):
+    async def agent_raises_after_model_call(base_url, prompt, request_kwargs=None, metadata=None):
+        await mock_tools.run_agentic_tool_call(
+            base_url=base_url,
+            prompt=prompt,
+            request_kwargs=request_kwargs,
+            metadata=metadata,
+        )
+        raise RuntimeError("agent exploded")
+
+    generation_env.args.custom_agent_function_path = "test:agent-function-error"
+    generation_env.mock_server.process_fn = lambda _: ProcessResult(text=RESPONSE, finish_reason="stop")
+
+    with function_registry.temporary("test:agent-function-error", agent_raises_after_model_call):
+        result = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
+
+    assert result.sample.status == Sample.Status.ABORTED
+    assert result.sample.metadata["exit_status"] == "AgentFunctionError"
+    assert result.sample.metadata["agent_metrics"]["agent_function_error_type"] == "RuntimeError"

@@ -32,6 +32,7 @@ from typing import Any
 import orjson
 from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
 
+from miles.rollout._agentic_outcomes import classify_exit_status, resolve_sample_status
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
 from miles.rollout.generate_utils.openai_endpoint_utils import (
     OpenAIEndpointTracer,
@@ -43,29 +44,16 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
-_HARBOR_EXIT_STATUSES_TO_TRUNCATE = frozenset(
-    {
-        "BadRequestError",
-        "VerifierTimeout",
-        "OutputLengthExceededError",
-        "AgentTimeout",
-        "Cancelled",
-    }
-)
-
-
-def _samples_have_active_response_tokens(samples: list[Sample]) -> bool:
-    return any(sample.effective_response_length > 0 for sample in samples)
-
-
-def _apply_harbor_exit_status_override(samples: list[Sample], agent_metadata: dict[str, Any] | None) -> None:
+def _apply_agentic_outcome_status(samples: list[Sample], agent_metadata: dict[str, Any] | None) -> None:
     if not samples or not agent_metadata:
         return
-    if agent_metadata.get("exit_status") in _HARBOR_EXIT_STATUSES_TO_TRUNCATE:
-        if _samples_have_active_response_tokens(samples):
-            samples[-1].status = Sample.Status.TRUNCATED
-        else:
-            samples[-1].status = Sample.Status.ABORTED
+    final_sample = samples[-1]
+    outcome = classify_exit_status(agent_metadata.get("exit_status", ""))
+    final_sample.status = resolve_sample_status(
+        final_sample.status,
+        final_sample.effective_response_length,
+        outcome,
+    )
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
@@ -117,6 +105,13 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         logger.debug(f"{log_prefix} Agent function returned in {time.monotonic()-t_start:.1f}s")
     except Exception as e:
         logger.warning(f"{log_prefix} Agent function failed: {e}", exc_info=True)
+        agent_metadata = {
+            "exit_status": "AgentFunctionError",
+            "agent_metrics": {
+                "agent_function_error_count": 1,
+                "agent_function_error_type": type(e).__name__,
+            },
+        }
 
     finally:
         logger.debug(f"{log_prefix} Calling collect_merged_sample...")
@@ -156,8 +151,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
 
-    _apply_harbor_exit_status_override(samples, agent_metadata)
-    _mark_limits_exceeded_truncated(samples, agent_metadata)
+    _apply_agentic_outcome_status(samples, agent_metadata)
 
     sample = samples[0]
     logger.debug(
@@ -166,16 +160,6 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         f"total_time={time.monotonic()-t_start:.1f}s"
     )
     return GenerateFnOutput(samples=sample)
-
-
-def _mark_limits_exceeded_truncated(
-    samples: Sample | list[Sample],
-    agent_metadata: dict[str, Any] | None,
-) -> None:
-    """Record turn-budget exhaustion even when the final model turn completed."""
-    if (agent_metadata or {}).get("exit_status") == "LimitsExceeded":
-        final_sample = samples if isinstance(samples, Sample) else samples[-1]
-        final_sample.status = Sample.Status.TRUNCATED
 
 
 def build_agent_function_kwargs(
