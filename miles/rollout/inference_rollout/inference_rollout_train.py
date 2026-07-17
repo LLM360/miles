@@ -197,6 +197,13 @@ async def generate_rollout_async(
     data = []
     all_data = []
     submitted = 0
+    submission_waves = 0
+    refill_waves = 0
+    groups_filter_kept = 0
+    groups_filter_rejected = 0
+    groups_failed = 0
+    groups_unused_completed = 0
+    queued_trajectories_peak = 0
     do_print = True
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
@@ -211,10 +218,27 @@ async def generate_rollout_async(
                 # Cap each wave to ~rolling_start_size rollouts (a group is
                 # n_samples_per_prompt rollouts) so we don't open every session at once.
                 n = min(n, max(1, args.rolling_start_size // args.n_samples_per_prompt))
+            is_refill = submitted >= target_data_size
             samples = data_source(n)
             stamp_rollout_id(samples, rollout_id)
+            submission_waves += 1
+            if is_refill:
+                refill_waves += 1
             submitted += len(samples)
             pendings.update(submit_generate_tasks(state, samples))
+            queued_trajectories = len(pendings) * args.n_samples_per_prompt
+            queued_trajectories_peak = max(
+                queued_trajectories_peak, queued_trajectories
+            )
+            logger.debug(
+                "[rollout] submission wave=%s refill=%s submitted_groups=%s "
+                "queued_trajectories=%s queued_trajectories_peak=%s",
+                submission_waves,
+                is_refill,
+                submitted,
+                queued_trajectories,
+                queued_trajectories_peak,
+            )
             if args.rolling_start_size and len(data) + len(pendings) < target_data_size:
                 await asyncio.sleep(args.rolling_start_interval)
 
@@ -229,6 +253,7 @@ async def generate_rollout_async(
             try:
                 group: list[Sample] = task.result()
             except Exception as e:
+                groups_failed += 1
                 logger.error(f"[rollout] Task raised exception: {e!r}", exc_info=True)
                 continue
 
@@ -243,14 +268,18 @@ async def generate_rollout_async(
             all_data.append(group)
             dynamic_filter_output = call_dynamic_filter(dynamic_filter, args, group)
             if not dynamic_filter_output.keep:
+                groups_filter_rejected += 1
                 metric_gatherer.on_dynamic_filter_drop(reason=dynamic_filter_output.reason)
                 continue
 
             # add the samples to the data
             # NOTE: here we have not stored all the unused samples back to the data buffer.
+            groups_filter_kept += 1
             if len(data) < target_data_size:
                 data.append(group)
                 pbar.update(args.n_samples_per_prompt)
+            else:
+                groups_unused_completed += 1
 
         groups_left = (target_data_size - submitted) + len(pendings)
         if args.disable_oversampling and 0 < groups_left <= args.tail_cancel_groups:
@@ -269,8 +298,12 @@ async def generate_rollout_async(
             f"Finish rollout: {[str(sample.prompt) + sample.response]}, label: {sample.label}, reward: {sample.reward}",
         )
 
+    pending_groups_at_abort = len(pendings)
+    pending_trajectories_at_abort = pending_groups_at_abort * args.n_samples_per_prompt
+
     # there are still some unfinished requests, abort them
     aborted_samples = await abort(state, pendings, rollout_id)
+    partial_trajectories_recovered = sum(len(group) for group in aborted_samples)
 
     if args.disable_oversampling:
         if len(data) < args.rollout_batch_size:
@@ -293,4 +326,28 @@ async def generate_rollout_async(
     if f := load_function(args.rollout_all_samples_process_path):
         f(args, all_samples, data_source)
 
-    return RolloutFnTrainOutput(samples=data, metrics=metric_gatherer.collect()), aborted_samples
+    metrics = metric_gatherer.collect()
+    metrics.update(
+        {
+            "rollout/groups_submitted": submitted,
+            "rollout/groups_filter_kept": groups_filter_kept,
+            "rollout/groups_filter_rejected": groups_filter_rejected,
+            "rollout/groups_failed": groups_failed,
+            "rollout/groups_selected": len(data),
+            "rollout/groups_unused_completed": groups_unused_completed,
+            "rollout/submission_waves": submission_waves,
+            "rollout/refill_waves": refill_waves,
+            "rollout/pending_groups_at_abort": pending_groups_at_abort,
+            "rollout/pending_trajectories_at_abort": pending_trajectories_at_abort,
+            "rollout/partial_trajectories_recovered": partial_trajectories_recovered,
+            "rollout/queued_trajectories_peak": queued_trajectories_peak,
+        }
+    )
+    assert groups_filter_kept == len(data) + groups_unused_completed
+    assert submitted == (
+        groups_filter_kept
+        + groups_filter_rejected
+        + groups_failed
+        + pending_groups_at_abort
+    )
+    return RolloutFnTrainOutput(samples=data, metrics=metrics), aborted_samples
