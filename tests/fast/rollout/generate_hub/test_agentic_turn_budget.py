@@ -1,28 +1,30 @@
-import pytest
-
-from miles.rollout.generate_hub.agentic_tool_call import _mark_limits_exceeded_truncated
+from miles.rollout.generate_hub.agentic_tool_call import _apply_agentic_outcome_status
 from miles.utils.types import Sample
 
 
-@pytest.mark.parametrize("as_list", [False, True], ids=["merged", "multi-sample"])
-def test_limits_exceeded_marks_only_final_sample_truncated(as_list: bool) -> None:
-    samples = [
-        Sample(status=Sample.Status.COMPLETED),
-        Sample(status=Sample.Status.COMPLETED),
-    ]
-    value = samples if as_list else samples[-1]
+def test_limits_exceeded_with_active_tokens_is_truncated() -> None:
+    sample = Sample(
+        status=Sample.Status.COMPLETED,
+        response_length=2,
+        loss_mask=[1, 1],
+    )
 
-    _mark_limits_exceeded_truncated(value, {"exit_status": "LimitsExceeded"})
+    _apply_agentic_outcome_status([sample], {"exit_status": "LimitsExceeded"})
 
-    assert samples[-1].status == Sample.Status.TRUNCATED
-    if as_list:
-        assert samples[0].status == Sample.Status.COMPLETED
+    assert sample.status is Sample.Status.TRUNCATED
 
 
-@pytest.mark.parametrize("agent_metadata", [None, {}, {"exit_status": "Submitted"}])
-def test_other_exit_statuses_remain_completed(agent_metadata: dict | None) -> None:
+def test_limits_exceeded_without_active_tokens_is_aborted() -> None:
+    sample = Sample(status=Sample.Status.COMPLETED, response_length=2, loss_mask=[0, 0])
+
+    _apply_agentic_outcome_status([sample], {"exit_status": "LimitsExceeded"})
+
+    assert sample.status is Sample.Status.ABORTED
+
+
+def test_submitted_preserves_completed_status() -> None:
     sample = Sample(status=Sample.Status.COMPLETED)
 
-    _mark_limits_exceeded_truncated(sample, agent_metadata)
+    _apply_agentic_outcome_status([sample], {"exit_status": "Submitted"})
 
-    assert sample.status == Sample.Status.COMPLETED
+    assert sample.status is Sample.Status.COMPLETED
