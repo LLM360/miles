@@ -12,7 +12,7 @@ import httpx
 import pytest
 import requests
 from fastapi.responses import JSONResponse
-from tests.fast.fixtures.session_fixtures import make_session_server_config
+from tests.fast.fixtures.session_fixtures import make_session_server_config, mock_requested_routing
 
 from miles.rollout.session.server import SessionServer
 from miles.utils.chat_template_utils import strict_message_matches
@@ -304,7 +304,7 @@ class TestSessionProxy:
         record_meta = record["response"]["choices"][0]["meta_info"]
         assert record_meta["output_token_logprobs"]
         assert record["response"]["choices"][0]["prompt_token_ids"]
-        assert record_meta["routed_experts"] == [[0, 1], [2, 3]]
+        assert "routed_experts" not in record_meta
         assert record_meta["indexer_topk"] == [[4], [5]]
 
 
@@ -619,7 +619,7 @@ def _serve_router(extra_args: dict | None = None):
     def process_fn(prompt: str) -> ProcessResult:
         return ProcessResult(text="ok", finish_reason="stop")
 
-    with with_mock_server(process_fn=process_fn) as backend:
+    with mock_requested_routing(), with_mock_server(process_fn=process_fn) as backend:
         config = make_session_server_config(
             backend_url=backend.url,
             timeout=30,

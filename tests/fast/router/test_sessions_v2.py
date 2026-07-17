@@ -18,6 +18,7 @@ import pytest
 import requests
 import safetensors.numpy
 from fastapi.responses import JSONResponse
+from tests.fast.fixtures.session_fixtures import mock_requested_routing
 from tests.fast.router.test_sessions import _create_session, _post_chat
 
 from miles.rollout.session.config import compute_session_server_config
@@ -38,7 +39,7 @@ def _serve_router(extra_args: dict | None = None):
     def process_fn(prompt: str) -> ProcessResult:
         return ProcessResult(text=f"echo: {prompt}", finish_reason="stop")
 
-    with with_mock_server(process_fn=process_fn) as backend:
+    with mock_requested_routing(), with_mock_server(process_fn=process_fn) as backend:
         args_values = {
             "miles_router_timeout": 30,
             "hf_checkpoint": "Qwen/Qwen3-0.6B",

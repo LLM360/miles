@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import base64
+from contextlib import contextmanager
 from typing import Any
+from unittest.mock import patch
+
+import numpy as np
 
 from miles.rollout.session.config import SessionServerConfig
+from miles.utils.test_utils.mock_sglang_server import MockSGLangServer
 
 
 def make_session_server_config(**overrides: Any) -> SessionServerConfig:
@@ -32,3 +38,21 @@ def make_session_server_config(**overrides: Any) -> SessionServerConfig:
     )
     defaults.update(overrides)
     return SessionServerConfig(**defaults)
+
+
+@contextmanager
+def mock_requested_routing():
+    """Supply one-layer/top-one routing for precisely the requested token rows."""
+    original = MockSGLangServer._compute_chat_completions_response
+
+    def response(server, payload):
+        result = original(server, payload)
+        if payload.get("return_routed_experts"):
+            meta = result["choices"][0]["meta_info"]
+            rows = len(payload["input_ids"]) + len(meta["output_token_logprobs"]) - 1
+            rows -= payload.get("routed_experts_start_len", 0)
+            meta["routed_experts"] = base64.b64encode(np.zeros((rows, 1, 1), dtype=np.int32).tobytes()).decode()
+        return result
+
+    with patch.object(MockSGLangServer, "_compute_chat_completions_response", new=response):
+        yield

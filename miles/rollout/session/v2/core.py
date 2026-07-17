@@ -14,6 +14,7 @@ from miles.rollout.session.core import (
     _samples_response,
     closed_chat_response,
     extract_completion,
+    gate_routed_experts,
     prepare_chat_request,
     proxy_result_to_response,
 )
@@ -204,6 +205,12 @@ class SessionCoreV2(SessionCore):
 
         response, choice, assistant_message, completion_token_ids = await run_session_worker(
             extract_completion, result
+        )
+        gate_routed_experts(
+            choice,
+            request_body,
+            enabled=self.config.use_rollout_routing_replay,
+            use_addition_r3=self.use_addition_r3,
         )
         assistant_message = tito_tokenizer.postprocess_completion(
             choice=choice,

@@ -188,6 +188,9 @@ def prepare_chat_request(body: bytes, args, tito_tokenizer) -> tuple:
     request_body["return_meta_info"] = True
     if getattr(args, "use_rollout_routing_replay", False):
         request_body["return_routed_experts"] = True
+    else:
+        request_body.pop("return_routed_experts", None)
+        request_body.pop("routed_experts_start_len", None)
     if getattr(args, "use_rollout_indexer_replay", False):
         request_body["return_indexer_topk"] = True
     # Must be False so stop-token text is trimmed from assistant content;
@@ -246,6 +249,27 @@ def extract_completion(result: dict) -> tuple:
 
     completion_token_ids = [t[1] for t in output_token_logprobs]
     return response, choice, assistant_message, completion_token_ids
+
+
+def gate_routed_experts(choice: dict, request_body: dict, *, enabled: bool, use_addition_r3: bool) -> None:
+    """Keep routing payloads only when Miles requests them; normalize legacy location."""
+    meta = choice["meta_info"]
+    if not enabled:
+        meta.pop("routed_experts", None)
+        choice.pop("routed_experts", None)
+        return
+    info = meta.get("routed_experts")
+    if info is None:
+        info = choice.get("routed_experts")
+    expected_rows = max(0, len(request_body["input_ids"]) + len(meta["output_token_logprobs"]) - 1)
+    empty_addition = use_addition_r3 and request_body.get("routed_experts_start_len") == expected_rows
+    if info is None and not empty_addition:
+        raise UpstreamResponseError(
+            "routed_experts must be in choice or choice.meta_info when use_rollout_routing_replay is enabled"
+        )
+    if info is not None:
+        meta["routed_experts"] = info
+    choice.pop("routed_experts", None)
 
 
 def closed_chat_response(result: dict, client_stream: bool, *, compact: bool = False) -> Response:
@@ -517,6 +541,12 @@ class SessionCore:
             if not isinstance(prompt_token_ids, list) or not all(type(t) is int for t in prompt_token_ids):
                 raise UpstreamResponseError("prefix retry requires backend prompt_token_ids for token tracking")
             request_body = {**request_body, "input_ids": prompt_token_ids}
+        gate_routed_experts(
+            choice,
+            request_body,
+            enabled=self.config.use_rollout_routing_replay,
+            use_addition_r3=self.use_addition_r3,
+        )
         assistant_message = tito_tokenizer.postprocess_completion(
             choice=choice,
             assistant_message=assistant_message,
