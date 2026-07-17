@@ -557,8 +557,16 @@ def setup_session_routes(app, backend, args):
                 request_body["logprobs"] = True
                 request_body["return_prompt_token_ids"] = True
                 request_body["return_meta_info"] = True
-                if getattr(args, "use_rollout_routing_replay", False):
+                use_rollout_routing_replay = bool(
+                    getattr(args, "use_rollout_routing_replay", False)
+                )
+                if use_rollout_routing_replay:
                     request_body["return_routed_experts"] = True
+                else:
+                    # Miles is the sole owner of this switch. Remove stale or
+                    # agent-supplied values so non-R3 runs do not collect the
+                    # large per-token routing payload.
+                    request_body.pop("return_routed_experts", None)
                 # Must be False so stop tokens are trimmed from output: otherwise the
                 # agent sees stop-token text in content, and the accumulated checkpoint
                 # would duplicate structural delimiters that the chat template also emits.
@@ -644,6 +652,17 @@ def setup_session_routes(app, backend, args):
                 raise UpstreamResponseError(
                     "meta_info and output_token_logprobs must be in choice (requires logprobs=True)"
                 )
+            routed_experts = meta_info.get("routed_experts", choice.get("routed_experts"))
+            if use_rollout_routing_replay and routed_experts is None:
+                raise UpstreamResponseError(
+                    "routed_experts must be in choice or choice.meta_info when "
+                    "use_rollout_routing_replay is enabled"
+                )
+            if not use_rollout_routing_replay:
+                # Defensively discard unsolicited routing data before it can
+                # inflate the in-memory SessionRecord or the agent response.
+                meta_info.pop("routed_experts", None)
+                choice.pop("routed_experts", None)
             assistant_message = choice.get("message", {})
             if assistant_message.get("content") is None:
                 raise UpstreamResponseError(
