@@ -85,7 +85,9 @@ def test_nested_dispatch_metadata_preserves_origin():
 async def test_submission_names_keep_sample_completion_callback(monkeypatch, nested):
     from miles.rollout.inference_rollout import inference_rollout_train as train
 
-    callback = lambda: None
+    def callback():
+        return None
+
     state = SimpleNamespace(sampling_params={"temperature": 0.7})
     sample = Sample(index=27)
     group = [[sample]] if nested else [sample]

@@ -3071,6 +3071,10 @@ def _resolve_mini_ft_controller_enable(args: argparse.Namespace) -> bool:
     return bool(args.ft_components) and args.api_server_port != 0
 
 
+def _validate_over_sampling_batch_size(value: int) -> None:
+    assert value > 0, f"over_sampling_batch_size {value} should be positive"
+
+
 def miles_validate_args(args):
     if args.custom_config_path:
         data = yaml.safe_load(resolve_file_arg(args.custom_config_path)) or {}
@@ -3713,10 +3717,7 @@ def miles_validate_args(args):
     if args.over_sampling_batch_size is None:
         args.over_sampling_batch_size = args.rollout_batch_size
 
-    assert args.over_sampling_batch_size >= args.rollout_batch_size, (
-        f"over_sampling_batch_size {args.over_sampling_batch_size} should be greater than or equal to "
-        f"rollout_batch_size {args.rollout_batch_size}"
-    )
+    _validate_over_sampling_batch_size(args.over_sampling_batch_size)
 
     if args.num_epoch is not None:
         if args.num_rollout is not None:
