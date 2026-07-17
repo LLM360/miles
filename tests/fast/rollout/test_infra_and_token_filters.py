@@ -2,9 +2,31 @@ from argparse import Namespace
 
 import pytest
 
-from miles.rollout.filter_hub.dynamic_sampling_filters import INFRA_FAILURE_EXIT_STATUSES, check_no_infra_failures
-from miles.rollout.filter_hub.rollout_filters import TRUNCATION_EXIT_STATUSES, mask_token_truncated
+from miles.rollout._agentic_outcomes import _TOKEN_TRUNCATION_EXIT_STATUSES as TRUNCATION_EXIT_STATUSES
+from miles.rollout.filter_hub.dynamic_sampling_filters import check_no_infra_failures
+from miles.rollout.filter_hub.rollout_filters import mask_token_truncated
 from miles.utils.types import Sample
+
+# Preserve coverage of the historical infrastructure statuses.
+INFRA_FAILURE_EXIT_STATUSES = frozenset(
+    {
+        "AgentTimeout",
+        "AgentTimeoutError",
+        "HealthcheckError",
+        "_K8sInternalInfraError",
+        "Cancelled",
+        "RewardFileNotFoundError",
+        "AgentSetupTimeout",
+        "AgentSetupTimeoutError",
+        "SqsConsumerError",
+        "VerifierTimeout",
+        "VerifierTimeoutError",
+        "EnvStartTimeout",
+        "EnvironmentStartTimeoutError",
+        "TimeoutError",
+        "AddTestsDirError",
+    }
+)
 
 
 @pytest.mark.parametrize("exit_status", sorted(INFRA_FAILURE_EXIT_STATUSES))
