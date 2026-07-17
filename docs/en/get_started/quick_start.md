@@ -353,7 +353,7 @@ miles supports more complex sampling strategies, such as dynamic sampling used i
      miles.rollout.filter_hub.dynamic_sampling_filters.check_reward_nonzero_std
 ```
 
-Here `over_sampling_batch_size` needs to be greater than `rollout_batch_size`, for example, configured as:
+`over_sampling_batch_size` must be positive and controls the number of prompts in each submission wave. For example:
 
 ```bash
    --rollout-batch-size 32 \

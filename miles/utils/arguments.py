@@ -1842,6 +1842,10 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
+def _validate_over_sampling_batch_size(value: int) -> None:
+    assert value > 0, f"over_sampling_batch_size {value} should be positive"
+
+
 def miles_validate_args(args):
     args.eval_datasets = _resolve_eval_datasets(args)
 
@@ -2060,9 +2064,7 @@ def miles_validate_args(args):
     if args.over_sampling_batch_size is None:
         args.over_sampling_batch_size = args.rollout_batch_size
 
-    assert (
-        args.over_sampling_batch_size >= args.rollout_batch_size
-    ), f"over_sampling_batch_size {args.over_sampling_batch_size} should be greater than or equal to rollout_batch_size {args.rollout_batch_size}"
+    _validate_over_sampling_batch_size(args.over_sampling_batch_size)
 
     if args.num_epoch is not None:
         if args.num_rollout is not None:
