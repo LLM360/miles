@@ -42,6 +42,7 @@ def make_state(generate_function):
         args=args,
         generate_fn_semaphore=asyncio.Semaphore(2),
         aborted=False,
+        abort_event=asyncio.Event(),
         generate_function=generate_function,
     )
 

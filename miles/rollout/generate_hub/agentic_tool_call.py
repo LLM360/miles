@@ -25,6 +25,7 @@ Agent function contract:
 """
 
 import argparse
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -87,6 +88,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
 
     agent_metadata = None
     collect_failed = False
+    cancelled = False
     t_start = time.monotonic()
     try:
         logger.debug(f"{log_prefix} Starting agent function call")
@@ -100,6 +102,15 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
             )
         )
         logger.debug(f"{log_prefix} Agent function returned in {time.monotonic()-t_start:.1f}s")
+    except asyncio.CancelledError:
+        if not input.state.aborted:
+            raise
+        # Abort leaves the session available for bounded collection and deletion.
+        cancelled = True
+        agent_metadata = {
+            "exit_status": "Cancelled",
+            "agent_metrics": {"rollout_abort_cancelled_count": 1},
+        }
     except Exception as e:
         logger.warning(f"{log_prefix} Agent function failed: {e}", exc_info=True)
         if not use_v2:
@@ -118,7 +129,12 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         if use_v2:
             collect_kwargs["agent_metadata"] = agent_metadata
         try:
-            result = await tracer.collect_samples(input.sample, **collect_kwargs)
+            collect = tracer.collect_samples(input.sample, **collect_kwargs)
+            if cancelled:
+                timeout = float(getattr(input.args, "rollout_abort_session_collect_timeout", 30.0))
+                result = await asyncio.wait_for(collect, timeout=timeout)
+            else:
+                result = await collect
         # Costs this sample, not the run; a non-2xx still raises RuntimeError.
         except (TimeoutError, httpx.TransportError) as e:
             collect_failed = True

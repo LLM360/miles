@@ -54,6 +54,30 @@ class GenerateState:
 
     def reset(self) -> None:
         self.aborted = False
+        self.abort_event = asyncio.Event()
+
+
+async def _acquire_or_abort(state: GenerateState) -> bool:
+    """Wake queued generation on abort and return any permit lost to a race."""
+    acquire = asyncio.create_task(state.generate_fn_semaphore.acquire())
+    abort = asyncio.create_task(state.abort_event.wait())
+    granted = False
+    try:
+        await asyncio.wait({acquire, abort}, return_when=asyncio.FIRST_COMPLETED)
+        granted = not (abort.done() or state.aborted)
+    finally:
+        for task in (acquire, abort):
+            if not task.done():
+                task.cancel()
+        try:
+            await asyncio.gather(acquire, abort, return_exceptions=True)
+        except BaseException:
+            granted = False
+            raise
+        finally:
+            if not granted and acquire.done() and not acquire.cancelled() and acquire.exception() is None:
+                state.generate_fn_semaphore.release()
+    return granted
 
 
 async def generate_and_rm(
@@ -84,7 +108,10 @@ async def generate_and_rm(
     log_prefix = f"[sample={getattr(sample, 'index', '?')}]"
     logger.debug(f"{log_prefix} Waiting for semaphore...")
     try:
-        async with state.generate_fn_semaphore:
+        if not await _acquire_or_abort(state):
+            sample.status = Sample.Status.ABORTED
+            return sample
+        try:
             if state.aborted:
                 sample.status = Sample.Status.ABORTED
                 return sample
@@ -104,6 +131,8 @@ async def generate_and_rm(
             )
             sample = output.samples
             logger.debug(f"{log_prefix} generate_function returned")
+        finally:
+            state.generate_fn_semaphore.release()
     finally:
         if sink is not None:
             sink.attempt_end(sample)
