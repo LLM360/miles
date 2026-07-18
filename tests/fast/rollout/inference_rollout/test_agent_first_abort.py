@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -78,7 +79,15 @@ def test_only_prefix_through_first_incomplete_turn_is_kept(status):
 def test_nested_dispatch_metadata_preserves_origin():
     sample = Sample(metadata={"start_rollout_id": 2, "rollout_id": 3})
     train.stamp_rollout_id([[[sample]]], 4)
-    assert sample.metadata == {"start_rollout_id": 2, "rollout_id": 4}
+    first_request = sample.metadata["request_id"]
+    assert uuid.UUID(first_request).hex == first_request
+    assert sample.metadata == {"start_rollout_id": 2, "rollout_id": 4, "request_id": first_request}
+    other = Sample(metadata={})
+    train.stamp_rollout_id([[[sample], [other]]], 5)
+    assert sample.metadata["request_id"] != first_request
+    assert sample.metadata["request_id"] != other.metadata["request_id"]
+    assert sample.metadata["start_rollout_id"] == 2
+    assert sample.metadata["rollout_id"] == other.metadata["rollout_id"] == 5
 
 
 @pytest.mark.parametrize("nested", [False, True])
