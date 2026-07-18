@@ -64,6 +64,46 @@ def test_over_sampling_rounds(rollout_env, expected_rounds):
     assert metrics["rollout/pending_groups_at_abort"] == 0
 
 
+@pytest.mark.parametrize(
+    "rollout_env",
+    [
+        pytest.param(
+            integration_env_config(
+                [
+                    "--rollout-batch-size",
+                    "8",
+                    "--n-samples-per-prompt",
+                    "1",
+                    "--over-sampling-batch-size",
+                    "2",
+                    "--initial-oversampling-groups",
+                    "2",
+                ],
+                data_rows=[
+                    {"input": f"accepted-{index}", "label": "valid"}
+                    for index in range(10)
+                ],
+            ),
+            id="one_extra_initial_wave",
+        )
+    ],
+    indirect=["rollout_env"],
+)
+def test_initial_oversampling_submits_one_extra_wave(rollout_env):
+    out = load_and_call_train(rollout_env.args, rollout_env.data_source)
+
+    assert len(out.samples) == 8
+    assert out.metrics["rollout/groups_submitted"] == 10
+    assert out.metrics["rollout/groups_selected"] == 8
+    assert out.metrics["rollout/submission_waves"] == 5
+    assert out.metrics["rollout/refill_waves"] == 0
+    assert (
+        out.metrics["rollout/groups_unused_completed"]
+        + out.metrics["rollout/pending_groups_at_abort"]
+        == 2
+    )
+
+
 def _install_controlled_completion(monkeypatch, *, hold_accepted=False):
     task_ids = itertools.count()
     submitted = 0

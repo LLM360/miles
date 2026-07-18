@@ -404,16 +404,22 @@ async def generate_rollout_async(
 
     # target_data_size is the total number of valid samples to get
     target_data_size = args.rollout_batch_size
+    initial_submission_target = target_data_size + getattr(args, "initial_oversampling_groups", 0)
+    initial_submission_complete = False
 
     data = []
     all_data = []
     do_print = True
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
-        while state.remaining_batch_size < target_data_size:
+        while state.remaining_batch_size < (
+            target_data_size if initial_submission_complete else initial_submission_target
+        ):
             # get samples from the buffer and submit the generation requests.
             samples = data_source(args.over_sampling_batch_size)
             state.submit_generate_tasks(samples)
+            if state.remaining_batch_size >= initial_submission_target:
+                initial_submission_complete = True
 
         # wait for the generation to finish
         done, state.pendings = await asyncio.wait(state.pendings, return_when=asyncio.FIRST_COMPLETED)
