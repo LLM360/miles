@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from argparse import Namespace
 from collections.abc import Callable
 
@@ -146,6 +147,8 @@ def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:
     for group in samples:
         for sample in group:
             sample.metadata["rollout_id"] = rollout_id
+            # One stable cross-hop identifier for this concrete sample dispatch.
+            sample.metadata["request_id"] = uuid.uuid4().hex
 
 
 def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
