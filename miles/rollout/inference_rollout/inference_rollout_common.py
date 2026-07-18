@@ -49,6 +49,28 @@ class GenerateState:
 
     def reset(self) -> None:
         self.aborted = False
+        self.abort_event = asyncio.Event()
+
+
+async def _acquire_or_abort(state: GenerateState) -> bool:
+    """Acquire one generation permit, but let rollout abort wake queued work."""
+    acquire = asyncio.create_task(state.generate_fn_semaphore.acquire())
+    abort = asyncio.create_task(state.abort_event.wait())
+    try:
+        await asyncio.wait({acquire, abort}, return_when=asyncio.FIRST_COMPLETED)
+        if abort.done() or state.aborted:
+            if acquire.done() and not acquire.cancelled():
+                state.generate_fn_semaphore.release()
+            else:
+                acquire.cancel()
+            return False
+        abort.cancel()
+        return True
+    finally:
+        for task in (acquire, abort):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(acquire, abort, return_exceptions=True)
 
 
 async def generate_and_rm(
@@ -73,7 +95,10 @@ async def generate_and_rm(
     # generate
     log_prefix = f"[sample={getattr(sample, 'index', '?')}]"
     logger.debug(f"{log_prefix} Waiting for semaphore...")
-    async with state.generate_fn_semaphore:
+    if not await _acquire_or_abort(state):
+        sample.status = Sample.Status.ABORTED
+        return sample
+    try:
         if state.aborted:
             sample.status = Sample.Status.ABORTED
             return sample
@@ -89,6 +114,8 @@ async def generate_and_rm(
         )
         sample = output.samples
         logger.debug(f"{log_prefix} generate_function returned")
+    finally:
+        state.generate_fn_semaphore.release()
 
     # TODO change to `if not args.group_rm: do reward model` for more clarity after the refactor below
     # for the rm that need the whole group, we will not do the rm here

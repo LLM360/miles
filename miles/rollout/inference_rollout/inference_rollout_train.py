@@ -3,7 +3,9 @@ import logging
 import uuid
 from argparse import Namespace
 from collections.abc import Callable
+from contextlib import suppress
 
+import httpx
 import sglang_router
 from packaging.version import parse
 from tqdm import tqdm
@@ -12,7 +14,7 @@ from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
 from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
 from miles.utils import dumper_utils
-from miles.utils.http_utils import get, post
+from miles.utils.http_utils import get
 from miles.utils.misc import load_function
 from miles.utils.types import Sample
 
@@ -49,13 +51,26 @@ def _summarize_abort_response(response: object) -> tuple[int, int, list[str], li
     return aborted_trials, already_done, aborted_instances, already_done_instances
 
 
-async def _signal_harbor(harbor_url: str, rollout_id: int) -> None:
-    """Tell the harbor server to cancel every in-flight trial and close its session.
+async def _signal_harbor(
+    client: httpx.AsyncClient, harbor_url: str, rollout_id: int, timeout: float
+) -> None:
+    """Tell Harbor to cancel trials while preserving their sessions for collection.
     Raises on failure -- an abort we could not signal must not be silently dropped.
 
     Collects the /abort_all response and logs how many trials harbor cancelled and
     their instance ids, tagged with the rollout step that triggered the abort."""
-    response = await post(f"{harbor_url}/abort_all", {})
+    response = await client.post(
+        f"{harbor_url}/abort_all",
+        json={
+            "close_sessions": False,
+            "rollout_generation": rollout_id,
+            "timeout_seconds": timeout,
+        },
+    )
+    response.raise_for_status()
+    response = response.json()
+    if not isinstance(response, dict) or response.get("status") == "containment_failed":
+        raise RuntimeError(f"Harbor abort was not confirmed: {response!r}")
     aborted_trials, already_done, aborted_instances, already_done_instances = _summarize_abort_response(response)
     logger.info(
         f"[abort] rollout_id={rollout_id} harbor abort_all: aborted_trials={aborted_trials} "
@@ -64,29 +79,51 @@ async def _signal_harbor(harbor_url: str, rollout_id: int) -> None:
     )
 
 
-async def _abort_all_engines(args: Namespace) -> None:
-    urls = await get_worker_urls(args)
+async def _abort_all_engines(client: httpx.AsyncClient, args: Namespace) -> None:
+    if parse(sglang_router.__version__) <= parse("0.2.1") or args.use_miles_router:
+        path = "/list_workers"
+    else:
+        path = "/workers"
+    response = await client.get(
+        f"http://{args.sglang_router_ip}:{args.sglang_router_port}{path}"
+    )
+    response.raise_for_status()
+    body = response.json()
+    urls = (
+        body["urls"]
+        if path == "/list_workers"
+        else [worker["url"] for worker in body["workers"]]
+    )
     logger.info(f"[abort] abort_all -> {urls}")
     results = await asyncio.gather(
-        *[post(f"{url}/abort_request", {"abort_all": True}) for url in urls],
+        *[
+            client.post(f"{url}/abort_request", json={"abort_all": True})
+            for url in urls
+        ],
         return_exceptions=True,
     )
+    failures = []
     for url, r in zip(urls, results, strict=True):
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException) or r.status_code >= 400:
             logger.warning(f"[abort] abort_all failed for {url}: {r!r}")
+            failures.append(url)
+    if failures:
+        raise RuntimeError(f"engine abort was not confirmed for {len(failures)} workers")
 
 
 async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[list[Sample]]:
     """End-of-step rollout abort.
 
-    Agentic rollouts first signal the harbor server, which cancels each trial and
-    closes its session. Every rollout then broadcasts abort_all to the engines to
-    clear any in-flight decode, and the trainer drains the pending tasks.
-    Partial-sample collection is preserved.
+    Agentic rollouts first cancel Harbor trials without deleting their sessions,
+    so pending generation tasks can collect them. Engine abort and local draining
+    share one deadline; any unconfirmed task fails closed instead of hanging.
     """
     args = state.args
     assert not state.aborted
     state.aborted = True
+    state.abort_event.set()
+    total_timeout = float(getattr(args, "rollout_abort_timeout_seconds", 120.0))
+    deadline = asyncio.get_running_loop().time() + max(1.0, total_timeout)
 
     # How many rollout tasks are still in flight when the abort fires, and which
     # groups they are. The specific instances harbor cancels are reported by
@@ -96,30 +133,93 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
         f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks: {cancelled_names}"
     )
 
-    is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
-    if is_agentic:
-        harbor_url = getattr(args, "agent_server_url", None)
-        if not harbor_url:
-            raise RuntimeError("agentic rollout abort requires --agent-server-url")
-        await _signal_harbor(harbor_url, rollout_id)
-
-    await _abort_all_engines(args)
+    is_agentic = bool(
+        getattr(args, "use_session_server", False)
+        and getattr(args, "custom_agent_function_path", None)
+    )
+    signal_timeout = min(
+        30.0,
+        max(1.0, deadline - asyncio.get_running_loop().time()),
+    )
+    limits = httpx.Limits(max_connections=512, max_keepalive_connections=0)
+    signal_failures: list[BaseException] = []
+    async with httpx.AsyncClient(timeout=signal_timeout, limits=limits) as client:
+        signals = [_abort_all_engines(client, args)]
+        if is_agentic:
+            harbor_url = getattr(args, "agent_server_url", None)
+            if not harbor_url:
+                raise RuntimeError("agentic rollout abort requires --agent-server-url")
+            signals.append(
+                _signal_harbor(
+                    client,
+                    harbor_url,
+                    rollout_id,
+                    max(0.1, signal_timeout - 4.0),
+                )
+            )
+        try:
+            signal_results = await asyncio.wait_for(
+                asyncio.gather(*signals, return_exceptions=True),
+                timeout=signal_timeout,
+            )
+        except Exception as exc:
+            signal_failures = [exc]
+        else:
+            signal_failures = [
+                result
+                for result in signal_results
+                if isinstance(result, BaseException)
+            ]
 
     # Drain the still-pending tasks. For partial rollout, keep each drained group
     # that has a response, stamping its origin step if not already set.
     aborted_samples: list[list[Sample]] = []
-    for task in asyncio.as_completed(pendings):
-        try:
-            group = await task
-        except Exception as exc:  # a failed pending task must not abort the drain
-            logger.error(f"[abort] pending rollout task raised: {exc!r}", exc_info=exc)
-            continue
+    cancel_grace = min(30.0, max(5.0, total_timeout / 4))
+
+    def keep_partial_group(group: list[Sample] | None) -> None:
         if not args.partial_rollout or group is None:
-            continue
+            return
         for sample in group:
             if sample.response and "start_rollout_id" not in sample.metadata:
                 sample.metadata["start_rollout_id"] = rollout_id
         aborted_samples.append(group)
+
+    done, pending = (
+        await asyncio.wait(
+            pendings,
+            timeout=max(
+                0.0,
+                deadline - asyncio.get_running_loop().time() - cancel_grace,
+            ),
+        )
+        if pendings
+        else (set(), set())
+    )
+    for task in done:
+        try:
+            group = await task
+        except asyncio.CancelledError:
+            continue
+        except Exception as exc:  # a failed pending task must not abort the drain
+            logger.error(f"[abort] pending rollout task raised: {exc!r}", exc_info=exc)
+            continue
+        keep_partial_group(group)
+
+    for task in pending:
+        task.cancel()
+    if pending:
+        done_after_cancel, pending = await asyncio.wait(
+            pending,
+            timeout=max(0.0, deadline - asyncio.get_running_loop().time()),
+        )
+        for task in done_after_cancel:
+            with suppress(asyncio.CancelledError, Exception):
+                keep_partial_group(task.result())
+    if pending or signal_failures:
+        raise RuntimeError(
+            "rollout abort was not fully confirmed: "
+            f"pending_tasks={len(pending)} signal_failures={signal_failures!r}"
+        )
 
     if args.partial_rollout:
         logger.info(f"[abort] collected {sum(len(x) for x in aborted_samples)} partial samples")

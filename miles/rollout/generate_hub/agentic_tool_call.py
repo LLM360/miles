@@ -23,6 +23,7 @@ Agent function contract:
 """
 
 import argparse
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -90,6 +91,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         metadata = {**metadata, "session_server_id": f"{session_ip}:{session_port}"}
 
     agent_metadata = None
+    cancelled = False
     t_start = time.monotonic()
     try:
         logger.debug(f"{log_prefix} Starting agent function call")
@@ -103,6 +105,16 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
             )
         )
         logger.debug(f"{log_prefix} Agent function returned in {time.monotonic()-t_start:.1f}s")
+    except asyncio.CancelledError:
+        if not input.state.aborted:
+            raise
+        # Harbor keeps the session alive during rollout abort, so finish the
+        # normal collect/delete path and return the partial sample if available.
+        cancelled = True
+        agent_metadata = {
+            "exit_status": "Cancelled",
+            "agent_metrics": {"rollout_abort_cancelled_count": 1},
+        }
     except Exception as e:
         logger.warning(f"{log_prefix} Agent function failed: {e}", exc_info=True)
         agent_metadata = {
@@ -115,7 +127,20 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
 
     finally:
         logger.debug(f"{log_prefix} Calling collect_merged_sample...")
-        merged_sample, session_metadata = await tracer.collect_merged_sample()
+        collect = tracer.collect_merged_sample()
+        if cancelled:
+            timeout = float(
+                getattr(input.args, "rollout_abort_session_collect_timeout", 30.0)
+            )
+            try:
+                merged_sample, session_metadata = await asyncio.wait_for(
+                    collect, timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning("%s Session collection timed out during abort", log_prefix)
+                merged_sample, session_metadata = None, {}
+        else:
+            merged_sample, session_metadata = await collect
         if merged_sample is None:
             logger.debug(f"{log_prefix} collect_merged_sample done: empty sample")
         else:
