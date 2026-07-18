@@ -207,6 +207,7 @@ async def generate_rollout_async(
 
     # target_data_size is the total number of valid samples to get
     target_data_size = args.rollout_batch_size
+    initial_submission_target = target_data_size + getattr(args, "initial_oversampling_groups", 0)
 
     # default to group level submission for sync/one-step async rollout
     scheduler = make_submission_scheduler(args, default="group")
@@ -227,7 +228,11 @@ async def generate_rollout_async(
     do_print = True
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
-        while scheduler.has_capacity(pending_groups=len(pendings), group_budget=target_data_size - len(data)):
+        while scheduler.has_capacity(
+            pending_groups=len(pendings),
+            group_budget=(initial_submission_target if submitted < initial_submission_target else target_data_size)
+            - len(data),
+        ):
             if disable_oversampling and submitted >= target_data_size:
                 break
             # With refilling disabled, count every submitted task group, including
@@ -236,7 +241,7 @@ async def generate_rollout_async(
             if rolling_start_size:
                 # The setting counts rollouts; submit only whole task groups.
                 num_groups = min(num_groups, max(1, rolling_start_size // args.n_samples_per_prompt))
-            is_refill = submitted >= target_data_size
+            is_refill = submitted >= initial_submission_target
             samples = data_source(num_groups)
             if not samples:
                 break
@@ -258,7 +263,9 @@ async def generate_rollout_async(
                 queued_trajectories,
                 queued_trajectories_peak,
             )
-            if rolling_start_size and len(data) + len(pendings) < target_data_size:
+            if rolling_start_size and len(data) + len(pendings) < (
+                initial_submission_target if submitted < initial_submission_target else target_data_size
+            ):
                 await asyncio.sleep(args.rolling_start_interval)
 
         if not pendings:
