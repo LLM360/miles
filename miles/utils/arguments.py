@@ -335,6 +335,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--initial-oversampling-groups",
+                type=int,
+                default=0,
+                help=(
+                    "Number of extra prompt groups to submit during the initial rollout fill. "
+                    "After this initial speculative buffer is submitted, normal refill behavior "
+                    "continues against rollout_batch_size. Must be a nonnegative multiple of "
+                    "over_sampling_batch_size and cannot be used with --disable-oversampling."
+                ),
+            )
+            parser.add_argument(
                 "--disable-oversampling",
                 action="store_true",
                 default=False,
@@ -2065,6 +2076,16 @@ def miles_validate_args(args):
         args.over_sampling_batch_size = args.rollout_batch_size
 
     _validate_over_sampling_batch_size(args.over_sampling_batch_size)
+    assert args.initial_oversampling_groups >= 0, (
+        f"initial_oversampling_groups {args.initial_oversampling_groups} should be nonnegative"
+    )
+    assert args.initial_oversampling_groups % args.over_sampling_batch_size == 0, (
+        f"initial_oversampling_groups {args.initial_oversampling_groups} should be a multiple of "
+        f"over_sampling_batch_size {args.over_sampling_batch_size}"
+    )
+    assert not (args.disable_oversampling and args.initial_oversampling_groups), (
+        "initial_oversampling_groups cannot be used with disable_oversampling"
+    )
 
     if args.num_epoch is not None:
         if args.num_rollout is not None:

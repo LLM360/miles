@@ -192,6 +192,7 @@ async def generate_rollout_async(
 
     # target_data_size is the total number of valid samples to get
     target_data_size = args.rollout_batch_size
+    initial_submission_target = target_data_size + getattr(args, "initial_oversampling_groups", 0)
 
     pendings = set()
     data = []
@@ -207,7 +208,9 @@ async def generate_rollout_async(
     do_print = True
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
-        while len(data) + len(pendings) < target_data_size:
+        while len(data) + len(pendings) < (
+            initial_submission_target if submitted < initial_submission_target else target_data_size
+        ):
             if args.disable_oversampling and submitted >= target_data_size:
                 break
 
@@ -218,7 +221,7 @@ async def generate_rollout_async(
                 # Cap each wave to ~rolling_start_size rollouts (a group is
                 # n_samples_per_prompt rollouts) so we don't open every session at once.
                 n = min(n, max(1, args.rolling_start_size // args.n_samples_per_prompt))
-            is_refill = submitted >= target_data_size
+            is_refill = submitted >= initial_submission_target
             samples = data_source(n)
             stamp_rollout_id(samples, rollout_id)
             submission_waves += 1
@@ -239,7 +242,9 @@ async def generate_rollout_async(
                 queued_trajectories,
                 queued_trajectories_peak,
             )
-            if args.rolling_start_size and len(data) + len(pendings) < target_data_size:
+            if args.rolling_start_size and len(data) + len(pendings) < (
+                initial_submission_target if submitted < initial_submission_target else target_data_size
+            ):
                 await asyncio.sleep(args.rolling_start_interval)
 
         if not pendings:
