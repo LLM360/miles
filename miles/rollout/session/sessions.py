@@ -22,6 +22,11 @@ from miles.utils.processing_utils import load_tokenizer
 
 logger = logging.getLogger(__name__)
 
+_K2V3_FALLBACK_META_KEYS = (
+    "tool_parser_fallback_events",
+    "reasoning_parser_fallback_events",
+)
+
 
 # Per-process observability counters. Populated by ``setup_session_routes`` and
 # read by the background stats logger in ``session_server.run_session_server``.
@@ -38,6 +43,25 @@ def get_worker_stats(port):
     probe before first request handler initialisation).
     """
     return _worker_stats.get(port if port is not None else "default")
+
+
+def _compact_agent_choice(choice: dict) -> dict:
+    """Strip token metadata while forwarding only compact parser diagnostics."""
+    compact = {
+        key: value
+        for key, value in choice.items()
+        if key not in ("meta_info", "prompt_token_ids")
+    }
+    meta_info = choice.get("meta_info")
+    if isinstance(meta_info, dict):
+        fallback_meta = {
+            key: meta_info[key]
+            for key in _K2V3_FALLBACK_META_KEYS
+            if isinstance(meta_info.get(key), list) and meta_info[key]
+        }
+        if fallback_meta:
+            compact["meta_info"] = fallback_meta
+    return compact
 
 
 def setup_session_routes(app, backend, args):
@@ -738,13 +762,14 @@ def setup_session_routes(app, backend, args):
                 _stats["turns_completed"] += 1
 
             # append_record moved routed_experts into the session-level latest
-            # prefix slot. Strip the remaining token metadata from the agent's
-            # response; returning it every turn made Harbor RSS grow unbounded.
+            # prefix slot. Strip token metadata from the agent response, but
+            # retain the two small parser-event arrays long enough for FMP to
+            # turn them into counters.
             result["response_body"] = orjson.dumps(
                 {
                     **response,
                     "choices": [
-                        {key: value for key, value in choice.items() if key not in ("meta_info", "prompt_token_ids")}
+                        _compact_agent_choice(choice)
                         for choice in response.get("choices", [])
                     ],
                 }
