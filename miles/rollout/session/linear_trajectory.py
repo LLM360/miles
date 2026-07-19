@@ -6,6 +6,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+import pybase64
+
 from miles.rollout.session.session_errors import MessageValidationError, SessionNotFoundError, TokenizationError
 from miles.rollout.session.session_types import SessionRecord
 from miles.utils.chat_template_utils import (
@@ -54,6 +56,11 @@ class LinearTrajectory:
     records: list[SessionRecord] = field(default_factory=list)
     trajectory_token_ids: list[list[int]] = field(default_factory=list)
     num_assistant: int = 0
+    # R3 returns routing for the complete token prefix on every turn.  Only the
+    # newest prefix is consumed by the merged training sample, so keep that
+    # large blob once per session instead of once per SessionRecord.
+    latest_rollout_routed_experts: str | None = field(default=None, repr=False, compare=False)
+    latest_rollout_routed_experts_num_tokens: int = field(default=0, repr=False, compare=False)
 
     @property
     def token_ids(self) -> list[int]:
@@ -61,7 +68,67 @@ class LinearTrajectory:
         return self.trajectory_token_ids[-1] if self.trajectory_token_ids else []
 
     def append_record(self, record: SessionRecord) -> None:
+        choice = record.response.get("choices", [{}])[0]
+        meta_info = choice.get("meta_info")
+        routed_experts = meta_info.pop("routed_experts", None) if isinstance(meta_info, dict) else None
+        choice_routed_experts = choice.pop("routed_experts", None)
+        if routed_experts is None:
+            routed_experts = choice_routed_experts
+
+        if routed_experts is None:
+            self.latest_rollout_routed_experts = None
+            self.latest_rollout_routed_experts_num_tokens = 0
+        else:
+            if not isinstance(routed_experts, str):
+                raise TypeError(f"routed_experts must be a base64 string, got {type(routed_experts).__name__}")
+            if not self.token_ids:
+                raise ValueError("cannot store routed_experts without a token checkpoint")
+            self.latest_rollout_routed_experts = routed_experts
+            self.latest_rollout_routed_experts_num_tokens = len(self.token_ids)
+
         self.records.append(record)
+
+    def get_rollout_routed_experts(self, target_num_tokens: int | None = None) -> str | None:
+        """Return the retained R3 blob, optionally truncated to a checkpoint.
+
+        Routed experts are token-major with one row per token except the last.
+        Derive the row width from the encoded payload so this state object does
+        not need model topology arguments.
+        """
+        routed_experts = self.latest_rollout_routed_experts
+        if routed_experts is None:
+            return None
+
+        current_num_tokens = self.latest_rollout_routed_experts_num_tokens
+        if target_num_tokens is None:
+            target_num_tokens = current_num_tokens
+        if target_num_tokens == current_num_tokens:
+            return routed_experts
+        if target_num_tokens < 1 or target_num_tokens > current_num_tokens:
+            raise ValueError(
+                f"invalid routed_experts rollback target {target_num_tokens}; "
+                f"current token count is {current_num_tokens}"
+            )
+
+        decoded = pybase64.b64decode(routed_experts.encode("ascii"))
+        current_rows = current_num_tokens - 1
+        if current_rows == 0 or len(decoded) % current_rows != 0:
+            raise ValueError(
+                f"routed_experts byte length {len(decoded)} is not divisible by "
+                f"the current row count {current_rows}"
+            )
+
+        bytes_per_row = len(decoded) // current_rows
+        target_bytes = (target_num_tokens - 1) * bytes_per_row
+        return pybase64.b64encode(decoded[:target_bytes]).decode("ascii")
+
+    def _truncate_latest_rollout_routed_experts(self, target_num_tokens: int) -> None:
+        """Align the retained R3 blob in-place when a session rolls back."""
+        routed_experts = self.get_rollout_routed_experts(target_num_tokens)
+        if routed_experts is None:
+            return
+        self.latest_rollout_routed_experts = routed_experts
+        self.latest_rollout_routed_experts_num_tokens = target_num_tokens
 
     def prepare_pretokenized(
         self,
@@ -261,6 +328,8 @@ class LinearTrajectory:
                 self.trajectory_token_ids = []
                 self.records = []
                 self.num_assistant = 0
+                self.latest_rollout_routed_experts = None
+                self.latest_rollout_routed_experts_num_tokens = 0
                 return True
             raise MessageValidationError(
                 f"rollback failed: no assistant message found in the first "
@@ -291,6 +360,7 @@ class LinearTrajectory:
         self.trajectory_token_ids = self.trajectory_token_ids[: checkpoint_index + 1]
         self.records = self.records[: checkpoint_index + 1]
         self.num_assistant = checkpoint_index + 1
+        self._truncate_latest_rollout_routed_experts(len(self.token_ids))
         return False
 
 
