@@ -17,6 +17,7 @@ from dataclasses import dataclass
 import orjson
 from starlette.responses import Response
 
+from miles.rollout.generate_utils.generate_endpoint_utils import get_routed_experts_from_response
 from miles.rollout.generate_utils.sample_utils import drop_samples_after_first_non_completed, merge_samples
 from miles.rollout.session.concurrency import run_session_worker
 from miles.rollout.session.config import SessionServerConfig
@@ -186,11 +187,11 @@ def prepare_chat_request(body: bytes, args, tito_tokenizer) -> tuple:
     # setdefault) so agent-side overrides cannot break token accumulation.
     request_body["logprobs"] = True
     request_body["return_meta_info"] = True
+    request_body.pop("routed_experts_start_len", None)
     if getattr(args, "use_rollout_routing_replay", False):
         request_body["return_routed_experts"] = True
     else:
         request_body.pop("return_routed_experts", None)
-        request_body.pop("routed_experts_start_len", None)
     if getattr(args, "use_rollout_indexer_replay", False):
         request_body["return_indexer_topk"] = True
     # Must be False so stop-token text is trimmed from assistant content;
@@ -267,7 +268,11 @@ def gate_routed_experts(choice: dict, request_body: dict, *, enabled: bool, use_
         raise UpstreamResponseError(
             "routed_experts must be in choice or choice.meta_info when use_rollout_routing_replay is enabled"
         )
+    if info is None and empty_addition:
+        info = ""
     if info is not None:
+        if not isinstance(info, str):
+            raise UpstreamResponseError("routed_experts must be a base64 string")
         meta["routed_experts"] = info
     choice.pop("routed_experts", None)
 
@@ -299,6 +304,7 @@ def _commit_linear_response(
     completion_token_ids,
     max_trim_tokens,
     record_fields,
+    use_addition_r3=False,
 ):
     """Publish the checkpoint and its matching record under one worker lifetime."""
     session.update_pretokenized_state(
@@ -308,7 +314,7 @@ def _commit_linear_response(
         completion_token_ids=completion_token_ids,
         max_trim_tokens=max_trim_tokens,
     )
-    session.append_record(SessionRecord(timestamp=time.time(), **record_fields))
+    session.append_record(SessionRecord(timestamp=time.time(), **record_fields), use_addition_r3=use_addition_r3)
 
 
 class SessionCore:
@@ -375,6 +381,7 @@ class SessionCore:
             metadata["tito_session_mismatch"] = mismatch
         metadata["accumulated_token_ids"] = session.token_ids
         metadata["max_trim_tokens"] = self.registry.tito_tokenizer.max_trim_tokens
+        metadata["latest_rollout_routed_experts_num_tokens"] = session.latest_rollout_routed_experts_num_tokens
         return metadata
 
     async def get_session(self, session_id: str) -> Response:
@@ -429,6 +436,11 @@ class SessionCore:
                 samples = [merge_samples_with_addition_r3(self.config, samples, session.records, tokenizer)]
             else:
                 samples = [merge_samples(samples, tokenizer)]
+                routing = session.get_rollout_routed_experts(len(samples[0].tokens))
+                if routing is not None:
+                    samples[0].rollout_routed_experts = get_routed_experts_from_response(
+                        self.config, {"meta_info": {"routed_experts": routing}}, len(samples[0].tokens) - 1
+                    )
         except (AssertionError, ValueError) as exc:
             return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
         if not decode_response:
@@ -579,6 +591,7 @@ class SessionCore:
                     prompt_token_ids=prompt_token_ids,
                     completion_token_ids=completion_token_ids,
                     max_trim_tokens=self.registry.tito_tokenizer.max_trim_tokens,
+                    use_addition_r3=self.use_addition_r3,
                     record_fields={
                         "request_timestamp": request_timestamp,
                         "method": method,

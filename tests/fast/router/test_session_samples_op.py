@@ -147,9 +147,13 @@ async def _make_session(core, records, accumulated) -> str:
     sid = json.loads(response.body)["session_id"]
     session = core.registry.sessions[sid]
     for record in records:
-        session.append_record(record)
+        choice = record.response["choices"][0]
+        session.trajectory_token_ids.append(
+            record.request["input_ids"] + [x[1] for x in choice["meta_info"]["output_token_logprobs"]]
+        )
+        session.append_record(record, use_addition_r3=core.use_addition_r3)
     if accumulated is not None:
-        session.trajectory_token_ids.append(list(accumulated))
+        session.trajectory_token_ids[-1:] = [list(accumulated)]
     return sid
 
 

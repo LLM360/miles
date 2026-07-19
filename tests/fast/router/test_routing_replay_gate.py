@@ -50,7 +50,9 @@ def test_routing_ownership_and_atomic_rejection(version, enabled, location):
         else:
             recorded = records[0]["response"]["choices"][0]
             assert "routed_experts" not in recorded
-            assert ("routed_experts" in recorded["meta_info"]) is enabled
+            assert ("routed_experts" in recorded["meta_info"]) is (enabled and version == 2)
+            if version == 1:
+                assert (core.registry.get_session(sid).latest_rollout_routed_experts is not None) is enabled
 
     asyncio.run(scenario())
 
