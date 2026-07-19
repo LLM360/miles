@@ -64,6 +64,13 @@ def router_env():
             "routed_experts": [[0, 1], [2, 3]],
             "indexer_topk": [[4], [5]],
         }
+        if any(message.get("content") == "emit k2v3 fallback metadata" for message in payload.get("messages", [])):
+            choice["meta_info"].update(
+                {
+                    "tool_parser_fallback_events": [{"type": "json_loads_failed_ast_literal_eval"}],
+                    "reasoning_parser_fallback_events": [{"type": "tool_start_token_fallback"}],
+                }
+            )
         return response
 
     with patch.object(MockSGLangServer, "_compute_chat_completions_response", new=patched_chat_response):
@@ -141,6 +148,31 @@ class TestSessionRoutes:
 
 
 class TestSessionProxy:
+    def test_proxy_chat_selectively_forwards_k2v3_fallback_metadata(self, router_env):
+        session_id = requests.post(f"{router_env.url}/sessions", timeout=5.0).json()["session_id"]
+        response = requests.post(
+            f"{router_env.url}/sessions/{session_id}/v1/chat/completions",
+            json={
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "emit k2v3 fallback metadata",
+                    }
+                ],
+                "return_logprob": True,
+            },
+            timeout=10.0,
+        )
+
+        assert response.status_code == 200
+        choice = response.json()["choices"][0]
+        assert choice["meta_info"] == {
+            "tool_parser_fallback_events": [{"type": "json_loads_failed_ast_literal_eval"}],
+            "reasoning_parser_fallback_events": [{"type": "tool_start_token_fallback"}],
+        }
+        assert "output_token_logprobs" not in choice["meta_info"]
+        assert "prompt_token_ids" not in choice
+
     def test_proxy_chat_appends_record(self, router_env):
         session_id = requests.post(f"{router_env.url}/sessions", timeout=5.0).json()["session_id"]
 

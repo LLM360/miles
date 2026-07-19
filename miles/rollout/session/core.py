@@ -88,11 +88,36 @@ def _samples_response(payload: bytes) -> Response:
 _CLIENT_STRIPPED_META_KEYS = ("routed_experts", "indexer_topk")
 
 
+_K2V3_FALLBACK_META_KEYS = (
+    "tool_parser_fallback_events",
+    "reasoning_parser_fallback_events",
+)
+
+
+def _compact_agent_choice(choice: dict) -> dict:
+    """Strip token metadata while forwarding only compact parser diagnostics."""
+    compact = {
+        key: value
+        for key, value in choice.items()
+        if key not in ("meta_info", "prompt_token_ids", *_CLIENT_STRIPPED_META_KEYS)
+    }
+    meta_info = choice.get("meta_info")
+    if isinstance(meta_info, dict):
+        fallback_meta = {
+            key: meta_info[key]
+            for key in _K2V3_FALLBACK_META_KEYS
+            if isinstance(meta_info.get(key), list) and meta_info[key]
+        }
+        if fallback_meta:
+            compact["meta_info"] = fallback_meta
+    return compact
+
+
 def _strip_replay_payloads(response: dict, *, compact: bool = False) -> dict:
     stripped_choices = []
     for choice in response.get("choices", []):
         if compact:
-            stripped_choices.append({k: v for k, v in choice.items() if k not in ("meta_info", "prompt_token_ids")})
+            stripped_choices.append(_compact_agent_choice(choice))
             continue
         meta = choice.get("meta_info")
         if isinstance(meta, dict) and any(k in meta for k in _CLIENT_STRIPPED_META_KEYS):
@@ -569,13 +594,13 @@ class SessionCore:
         async with measured_session_lock(session.lock):
             if session.closing:
                 logger.warning(f"Session {session_id} closed during proxy, skipping state update")
-                return _chat_client_response(result, response, client_stream)
+                return _chat_client_response(result, response, client_stream, compact=True)
 
             if session.num_assistant != expected_num_assistant:
                 warn_state_change(
                     self.request_stats, session_id, expected_num_assistant, session.num_assistant, headers
                 )
-                return _chat_client_response(result, response, client_stream)
+                return _chat_client_response(result, response, client_stream, compact=True)
 
             stored_request_messages = tito_tokenizer.preserve_server_message_state(
                 session.messages,
