@@ -20,6 +20,22 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
+_MAX_ABORT_SIGNAL_SECONDS = 70.0
+_HARBOR_ABORT_ROUTER_HEADROOM_SECONDS = 4.0
+
+
+def _abort_signal_budgets(remaining_seconds: float) -> tuple[float, float]:
+    """Return the MILES signal envelope and its nested Harbor router budget."""
+    signal_timeout = min(
+        _MAX_ABORT_SIGNAL_SECONDS,
+        max(1.0, remaining_seconds),
+    )
+    harbor_timeout = max(
+        0.1,
+        signal_timeout - _HARBOR_ABORT_ROUTER_HEADROOM_SECONDS,
+    )
+    return signal_timeout, harbor_timeout
+
 
 def _summarize_abort_response(response: object) -> tuple[int, int, list[str], list[str]]:
     """Flatten a harbor /abort_all response into
@@ -137,9 +153,8 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
         getattr(args, "use_session_server", False)
         and getattr(args, "custom_agent_function_path", None)
     )
-    signal_timeout = min(
-        30.0,
-        max(1.0, deadline - asyncio.get_running_loop().time()),
+    signal_timeout, harbor_timeout = _abort_signal_budgets(
+        deadline - asyncio.get_running_loop().time()
     )
     limits = httpx.Limits(max_connections=512, max_keepalive_connections=0)
     signal_failures: list[BaseException] = []
@@ -154,7 +169,7 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
                     client,
                     harbor_url,
                     rollout_id,
-                    max(0.1, signal_timeout - 4.0),
+                    harbor_timeout,
                 )
             )
         try:
