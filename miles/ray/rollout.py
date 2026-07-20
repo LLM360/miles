@@ -815,6 +815,10 @@ class RolloutManager:
         # overwriting the raw reward
         if samples[0].metadata and "raw_reward" in samples[0].metadata:
             train_data["raw_reward"] = [sample.metadata["raw_reward"] for sample in samples]
+        if samples[0].metadata and "raw_reward_adjusted" in samples[0].metadata:
+            train_data["raw_reward_adjusted"] = [
+                sample.metadata["raw_reward_adjusted"] for sample in samples
+            ]
 
         # For rollout buffer
         if samples[0].metadata and "round_number" in samples[0].metadata:
@@ -966,6 +970,7 @@ class RolloutManager:
             # Keys intentionally copied whole and split later on train side.
             for key in [
                 "raw_reward",
+                "raw_reward_adjusted",
                 "total_lengths",
                 "dynamic_global_batch_size",
             ]:
@@ -1657,7 +1662,15 @@ def _compute_grouped_reward_metrics(
     result = {}
     # Skip raw_reward when reward is non-scalar (e.g. dict-valued OPD rewards).
     if group and isinstance(group[0].get_reward_value(args), (int, float)):
-        result[f"{prefix}/raw_reward"] = np.mean([s.get_reward_value(args) for s in group]).item()
+        rewards = [s.get_reward_value(args) for s in group]
+        raw_rewards = [
+            (sample.metadata or {}).get("raw_reward", value)
+            for sample, value in zip(group, rewards, strict=True)
+        ]
+        result[f"{prefix}/raw_reward"] = np.mean(raw_rewards).item()
+        adjusted = [(s.metadata or {}).get("raw_reward_adjusted") for s in group]
+        if all(isinstance(value, (int, float)) for value in adjusted):
+            result[f"{prefix}/raw_reward_adjusted"] = np.mean(adjusted).item()
     if include_count_frac:
         result[f"{prefix}/count_frac"] = len(group) / n_total
     return result
