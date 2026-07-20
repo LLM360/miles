@@ -57,6 +57,7 @@ class WandbBackend(TrackingBackend):
     def log(self, metrics: dict[str, Any], step: int | None = None, **kwargs) -> None:
         import wandb
 
+        # W&B history orders shared writers; define_metric supplies the logical step axes.
         wandb.log(metrics)
 
     def define_step_key_metric_group(self, prefix: str, step_key: str) -> None:
