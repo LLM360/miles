@@ -169,6 +169,8 @@ def _init_wandb_common():
     wandb.define_metric("passrate/*", step_metric="rollout/step")
     wandb.define_metric("eval/step")
     wandb.define_metric("eval/*", step_metric="eval/step")
+    wandb.define_metric("file_format/rollout/*", step_metric="rollout/step")
+    wandb.define_metric("file_format/eval/*", step_metric="eval/step")
     wandb.define_metric("perf/*", step_metric="rollout/step")
     # Top-level training panels use optimizer steps by default. The exact
     # rollout-produced metrics below override their wildcard's train axis.
