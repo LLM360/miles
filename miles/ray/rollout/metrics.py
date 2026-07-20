@@ -405,7 +405,13 @@ def _compute_grouped_reward_metrics(
     rewards = [s.get_reward_value(args) for s in group]
     result = {}
     if rewards and all(isinstance(reward, Real) for reward in rewards):
-        result[f"{prefix}/raw_reward"] = np.mean(rewards).item()
+        raw_rewards = [
+            (sample.metadata or {}).get("raw_reward", value) for sample, value in zip(group, rewards, strict=True)
+        ]
+        result[f"{prefix}/raw_reward"] = np.mean(raw_rewards).item()
+        adjusted = [(sample.metadata or {}).get("raw_reward_adjusted") for sample in group]
+        if all(isinstance(value, Real) for value in adjusted):
+            result[f"{prefix}/raw_reward_adjusted"] = np.mean(adjusted).item()
     if include_count_frac:
         result[f"{prefix}/count_frac"] = len(group) / n_total
     return result

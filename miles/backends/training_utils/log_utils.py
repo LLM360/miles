@@ -51,6 +51,7 @@ _ROLLOUT_DATA_METRIC_GROUPS: dict[str, str] = {
     "ref_log_probs": "policy_shift",  # reference model log probs
     "rewards": "reward",
     "raw_reward": "reward",
+    "raw_reward_adjusted": "reward",
     "advantages": "reward",
     "returns": "reward",
 }

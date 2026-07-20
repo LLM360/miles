@@ -45,6 +45,7 @@ ROLLOUT_DATA_VALUE_SPEC: dict[str, ValueSpec] = {
     "all_domains": ValueSpec(codec="auto"),
     "weight_versions": ValueSpec(codec="msgpack_ragged"),
     "raw_reward": ValueSpec(codec="auto"),
+    "raw_reward_adjusted": ValueSpec(codec="auto"),
     "total_lengths": ValueSpec(codec="auto"),
     "dynamic_global_batch_size": ValueSpec(codec="auto"),
     "num_microbatches": ValueSpec(codec="auto"),
@@ -109,6 +110,9 @@ def convert_samples_to_train_data(
     # overwriting the raw reward
     if samples[0].metadata and "raw_reward" in samples[0].metadata:
         train_data["raw_reward"] = [sample.metadata["raw_reward"] for sample in samples]
+
+    if samples[0].metadata and "raw_reward_adjusted" in samples[0].metadata:
+        train_data["raw_reward_adjusted"] = [sample.metadata["raw_reward_adjusted"] for sample in samples]
 
     # For rollout buffer
     if samples[0].metadata and "round_number" in samples[0].metadata:
@@ -428,6 +432,7 @@ def _package_shards(args, data: dict[str, Any], partitions) -> list[dict[str, An
         # keys that need to be splited at train side
         for key in [
             "raw_reward",
+            "raw_reward_adjusted",
             "total_lengths",
             "dynamic_global_batch_size",
             "step_slots",
