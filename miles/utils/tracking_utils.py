@@ -22,6 +22,8 @@ def init_tracking(args, primary: bool = True, **kwargs):
 # TODO further refactor, e.g. put TensorBoard init to the "init" part
 def log(args, metrics, step_key: str):
     if args.use_wandb:
+        # W&B's internal step orders history rows from multiple shared writers.
+        # Logical train/rollout/eval axes are registered via define_metric().
         wandb.log(metrics)
 
     if args.use_tensorboard:
