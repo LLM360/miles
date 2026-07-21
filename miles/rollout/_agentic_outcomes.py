@@ -27,7 +27,7 @@ _PRESERVE_EXIT_STATUSES = frozenset(
     }
 )
 
-_TOKEN_TRUNCATION_EXIT_STATUSES = frozenset(
+TOKEN_TRUNCATION_EXIT_STATUSES = frozenset(
     {
         "BadRequestError",
         "ContextWindowExceededError",
@@ -64,7 +64,7 @@ def classify_exit_status(exit_status: object) -> _Outcome:
         return _Outcome.PRESERVE
     if status in _PRESERVE_EXIT_STATUSES:
         return _Outcome.PRESERVE
-    if status in _TOKEN_TRUNCATION_EXIT_STATUSES:
+    if status in TOKEN_TRUNCATION_EXIT_STATUSES:
         return _Outcome.TOKEN_TRUNCATION
     if status in _PARTIAL_GROUP_FAILURE_EXIT_STATUSES:
         return _Outcome.PARTIAL_GROUP_FAILURE
