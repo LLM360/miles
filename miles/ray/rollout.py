@@ -2,6 +2,7 @@ import copy
 import dataclasses
 import itertools
 import logging
+import math
 import multiprocessing
 import os
 import random
@@ -18,6 +19,7 @@ from sglang.srt.constants import GPU_MEMORY_TYPE_CUDA_GRAPH, GPU_MEMORY_TYPE_KV_
 
 from miles.backends.sglang_utils.sglang_config import ModelConfig, ServerGroupConfig, SglangConfig
 from miles.backends.sglang_utils.sglang_engine import SGLangEngine
+from miles.rollout._agentic_outcomes import TOKEN_TRUNCATION_EXIT_STATUSES
 from miles.rollout.base_types import (
     RolloutFnConstructorInput,
     RolloutFnEvalInput,
@@ -1426,9 +1428,33 @@ def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any]
     log_dict = extra_metrics
     for key in data.keys():
         rewards = data[key]["rewards"]
+        if not rewards:
+            raise ValueError(f"Eval dataset {key!r} has no rewards")
+        invalid_rewards = [
+            reward
+            for reward in rewards
+            if isinstance(reward, bool)
+            or not isinstance(reward, (int, float))
+            or not math.isfinite(float(reward))
+        ]
+        if invalid_rewards:
+            samples = data[key].get("samples") or []
+            status_counts = {
+                status: sum(sample.metadata.get("exit_status") == status for sample in samples)
+                for status in {sample.metadata.get("exit_status") for sample in samples}
+                if status
+            }
+            raise ValueError(
+                f"Eval dataset {key!r} has {len(invalid_rewards)}/{len(rewards)} invalid rewards; "
+                f"exit_status_counts={status_counts}"
+            )
         log_dict[f"eval/{key}"] = sum(rewards) / len(rewards)
         if (samples := data[key].get("samples")) is not None:
             log_dict |= dict_add_prefix(compute_metrics_from_samples(args, samples), f"eval/{key}/")
+            for status in TOKEN_TRUNCATION_EXIT_STATUSES:
+                log_dict[f"eval/{key}/exit_status/{status}/count"] = sum(
+                    sample.metadata.get("exit_status") == status for sample in samples
+                )
         if "truncated" in data[key]:
             truncated = data[key]["truncated"]
             log_dict[f"eval/{key}-truncated_ratio"] = sum(truncated) / len(truncated)

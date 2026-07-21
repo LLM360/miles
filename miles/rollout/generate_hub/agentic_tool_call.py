@@ -33,7 +33,11 @@ from typing import Any
 import orjson
 from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
 
-from miles.rollout._agentic_outcomes import classify_exit_status, resolve_sample_status
+from miles.rollout._agentic_outcomes import (
+    TOKEN_TRUNCATION_EXIT_STATUSES,
+    classify_exit_status,
+    resolve_sample_status,
+)
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
 from miles.rollout.generate_utils.openai_endpoint_utils import (
     OpenAIEndpointTracer,
@@ -55,6 +59,17 @@ def _apply_agentic_outcome_status(samples: list[Sample], agent_metadata: dict[st
         final_sample.effective_response_length,
         outcome,
     )
+
+
+def _set_eval_token_truncation_reward(
+    samples: list[Sample], agent_metadata: dict[str, Any] | None, args: argparse.Namespace, evaluation: bool
+) -> None:
+    if evaluation and samples and agent_metadata:
+        if agent_metadata.get("exit_status") in TOKEN_TRUNCATION_EXIT_STATUSES:
+            reward_keys = {
+                key for key in (getattr(args, "reward_key", None), getattr(args, "eval_reward_key", None)) if key
+            }
+            samples[-1].reward = {key: 0.0 for key in reward_keys} if reward_keys else 0.0
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
@@ -160,6 +175,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         if isinstance(agent_metrics, dict):
             agent_metrics["empty_records_count"] = 1
         sample.status = Sample.Status.ABORTED
+        _set_eval_token_truncation_reward([sample], agent_metadata, input.args, input.evaluation)
         return GenerateFnOutput(samples=sample)
 
     sample = apply_merged_session_sample(input.args, input.sample, merged_sample)
@@ -177,6 +193,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         return GenerateFnOutput(samples=sample)
 
     _apply_agentic_outcome_status(samples, agent_metadata)
+    _set_eval_token_truncation_reward(samples, agent_metadata, input.args, input.evaluation)
 
     sample = samples[0]
     logger.debug(

@@ -114,6 +114,7 @@ def run_generate(
     sampling_params: dict[str, Any] | None = None,
     *,
     variant: str = "single_turn",
+    evaluation: bool = False,
 ) -> GenerateResult:
     env.mock_server.request_log.clear()
     result_sample = run(
@@ -122,6 +123,7 @@ def run_generate(
             sample,
             sampling_params or DEFAULT_SAMPLING_PARAMS,
             variant=variant,
+            evaluation=evaluation,
         )
     )
     return GenerateResult(sample=result_sample, requests=list(env.mock_server.request_log))
@@ -133,10 +135,11 @@ async def _call_generate(
     sampling_params: dict[str, Any],
     *,
     variant: str = "single_turn",
+    evaluation: bool = False,
 ) -> Sample:
     generate_fn = load_generate_function(VARIANT_TO_GENERATE_FN_PATH[variant])
     state = GenerateState(args)
-    input = GenerateFnInput(state=state, sample=sample, sampling_params=sampling_params.copy(), evaluation=False)
+    input = GenerateFnInput(state=state, sample=sample, sampling_params=sampling_params.copy(), evaluation=evaluation)
     output = await generate_fn(input)
     return output.samples
 

@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from miles.ray import rollout
+from miles.rollout._agentic_outcomes import TOKEN_TRUNCATION_EXIT_STATUSES
 from miles.utils import wandb_utils
 
 
@@ -61,6 +64,72 @@ def test_train_hook_adds_metrics_to_existing_tracking_call(monkeypatch):
 
     assert captured["file_format/rollout/docx/pass_at_1"] == 0.5
     assert captured["rollout/step"] == 3
+
+
+def test_eval_logs_dataset_scoped_token_truncation_counts(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(rollout, "compute_metrics_from_samples", lambda _args, _samples: {})
+    monkeypatch.setattr(
+        rollout.tracking_utils,
+        "log",
+        lambda _args, metrics, step_key: captured.update(metrics),
+    )
+    args = SimpleNamespace(
+        custom_eval_rollout_log_function_path=None,
+        log_passrate=False,
+        wandb_always_use_train_step=False,
+    )
+
+    def sample(status):
+        return SimpleNamespace(metadata={"exit_status": status})
+
+    data = {
+        "first": {
+            "rewards": [0.0, 0.0],
+            "samples": [sample("BadRequestError"), sample("LimitsExceeded")],
+        },
+        "second": {
+            "rewards": [0.0],
+            "samples": [sample("OutputLengthExceededError")],
+        },
+    }
+
+    rollout._log_eval_rollout_data(3, args, data)
+
+    for status in TOKEN_TRUNCATION_EXIT_STATUSES:
+        assert captured[f"eval/first/exit_status/{status}/count"] == int(
+            status in {"BadRequestError", "LimitsExceeded"}
+        )
+        assert captured[f"eval/second/exit_status/{status}/count"] == int(
+            status == "OutputLengthExceededError"
+        )
+
+
+def test_eval_rejects_invalid_rewards_with_status_summary():
+    args = SimpleNamespace(
+        custom_eval_rollout_log_function_path=None,
+        log_passrate=False,
+        wandb_always_use_train_step=False,
+    )
+    sample = SimpleNamespace(metadata={"exit_status": "Cancelled"})
+
+    with pytest.raises(ValueError, match="1/1 invalid rewards.*Cancelled"):
+        rollout._log_eval_rollout_data(
+            3,
+            args,
+            {"heldout": {"rewards": [None], "samples": [sample]}},
+        )
+
+
+def test_eval_rejects_empty_rewards():
+    args = SimpleNamespace(
+        custom_eval_rollout_log_function_path=None,
+        log_passrate=False,
+        wandb_always_use_train_step=False,
+    )
+
+    with pytest.raises(ValueError, match="has no rewards"):
+        rollout._log_eval_rollout_data(3, args, {"heldout": {"rewards": []}})
 
 
 def test_file_format_metrics_use_rollout_and_eval_axes(monkeypatch):
