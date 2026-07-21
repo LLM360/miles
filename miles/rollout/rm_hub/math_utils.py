@@ -4,11 +4,13 @@ Answer checker API that uses sympy to simplify expressions and check for equalit
 
 Call grade_answer(given_answer: str, ground_truth: str).
 """
+import random
 import re
 
 import sympy
 from pylatexenc import latex2text
 from sympy.parsing import sympy_parser
+from sympy.parsing.latex import parse_latex as _antlr_parse_latex
 
 
 # Dan Hendrycks' code
@@ -328,8 +330,19 @@ def count_unknown_letters_in_expr(expr: str):
 
 
 def should_allow_eval(expr: str):
-    # we don't want to try parsing unknown text or functions of more than two variables
-    if count_unknown_letters_in_expr(expr) > 2:
+    # Previously capped at >2 distinct variable letters, meant to keep sympy.simplify()
+    # away from pathological inputs. In practice this blocked sympy from ever being tried
+    # on almost every multi-symbol physics/engineering-style answer (audit of run_1874520's
+    # arxiv_math domain found >200 confirmed-correct answers misgraded by the LLM judge
+    # purely because grade_answer_sympy exited here before attempting simplify() at all --
+    # see docs/rewards/latex_parsing_judge_flakiness.md). The actual hang risk this guarded
+    # against is bounded by the caller's fork+timeout wrapper
+    # (prime_math_with_llm_judge._grade_with_prime_pipeline, @timeout_limit(30s)), so the
+    # letter-count cap was redundant defense-in-depth, not the only thing standing between
+    # this and a hung process. Raised generously rather than removed outright, as a cheap
+    # backstop against truly degenerate inputs (e.g. a garbled multi-hundred-symbol
+    # extraction) that have no business reaching sympy.simplify() regardless.
+    if count_unknown_letters_in_expr(expr) > 20:
         return False
 
     for bad_string in BAD_SUBSTRINGS:
@@ -458,6 +471,202 @@ def grade_answer_sympy(given_answer: str, ground_truth: str) -> bool:
                 break
 
     return is_correct
+
+
+def _rewrite_max_min_braces(expr: str) -> str:
+    """Rewrite \\max\\{...\\}/\\min\\{...\\} (set-builder notation) into
+    \\max(...)/\\min(...) (function-call notation). sympy's antlr4 grammar
+    understands the latter but not the former -- on the former it doesn't raise,
+    it silently degenerates to the bare `max`/`min` symbol with no arguments,
+    which turns a *failed* parse into a spurious "success" if both sides of a
+    comparison happen to hit this (see docs/rewards/latex_parsing_judge_flakiness.md
+    section 6). Depth-aware so nested braces in the argument list (e.g.
+    subscripts like K_{ij}) don't confuse it.
+    """
+    out = []
+    i = 0
+    while i < len(expr):
+        m = re.match(r"\\(max|min)\s*\\?\{", expr[i:])
+        if m:
+            name, start = m.group(1), i + m.end()
+            # depth-track both escaped (\{ / \}) and bare ({ / }) brace tokens,
+            # since either form can appear (opening already handled both above)
+            depth, j, inner_end = 1, start, None
+            while j < len(expr) and depth > 0:
+                if expr[j : j + 2] == "\\{":
+                    depth += 1
+                    j += 2
+                    continue
+                if expr[j : j + 2] == "\\}":
+                    depth -= 1
+                    j += 2
+                    if depth == 0:
+                        inner_end = j - 2
+                    continue
+                if expr[j] == "{":
+                    depth += 1
+                elif expr[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        inner_end = j
+                j += 1
+            if inner_end is None:
+                # unbalanced -- leave untouched rather than guess
+                out.append(expr[i])
+                i += 1
+                continue
+            out.append(f"\\{name}({expr[start:inner_end]})")
+            i = j
+        else:
+            out.append(expr[i])
+            i += 1
+    return "".join(out)
+
+
+def _substitute_max_min_functions(expr):
+    """sympy's antlr4 grammar parses \\max(...)/\\min(...) into a plain
+    *undefined* Function named "max"/"min" -- it has no idea these should be
+    the real, commutative sympy.Max/sympy.Min, so e.g. simplify() can't tell
+    max(a, b) and max(b, a) are equal. Swap in the real functions so it can."""
+    subs = {}
+    for f in expr.atoms(sympy.Function):
+        name = f.func.__name__
+        if name == "max":
+            subs[f] = sympy.Max(*f.args)
+        elif name == "min":
+            subs[f] = sympy.Min(*f.args)
+    return expr.xreplace(subs) if subs else expr
+
+
+def _looks_like_degenerate_parse(parsed, raw: str) -> bool:
+    """True if `parsed` is a bare atom (Symbol/Number/etc with no sub-structure)
+    but `raw` was clearly more than a single token -- a sign the parser silently
+    dropped content instead of actually parsing it, rather than a real proof."""
+    raw_is_complex = len(raw) > 15 and any(c in raw for c in "{}^_,")
+    return raw_is_complex and getattr(parsed, "is_Atom", False)
+
+
+def _antlr_parse_guarded(given_answer: str, ground_truth: str):
+    """Shared parse step for the grade_answer_sympy_antlr* family: real antlr4
+    LaTeX parse of both sides (with the \\max/\\min rewrite+substitution), then
+    the degenerate-parse guard. Returns (given_expr, truth_expr) or None if
+    parsing fails or either side looks degenerate (see
+    docs/rewards/latex_parsing_judge_flakiness.md section 6/7)."""
+    try:
+        given_expr = _substitute_max_min_functions(_antlr_parse_latex(_rewrite_max_min_braces(given_answer)))
+        truth_expr = _substitute_max_min_functions(_antlr_parse_latex(_rewrite_max_min_braces(ground_truth)))
+    except Exception:
+        return None
+
+    if _looks_like_degenerate_parse(given_expr, given_answer) or _looks_like_degenerate_parse(
+        truth_expr, ground_truth
+    ):
+        return None
+
+    return given_expr, truth_expr
+
+
+def grade_answer_sympy_antlr(given_answer: str, ground_truth: str) -> bool:
+    """Additive alternative to grade_answer_sympy(), parsing with sympy's real
+    antlr4-based LaTeX grammar (sympy.parsing.latex.parse_latex) instead of the
+    pylatexenc-based text conversion `_parse_latex`/`_normalize` use.
+
+    Kept as a separate function rather than changing `_parse_latex`/`_normalize`/
+    `grade_answer_sympy` in place: those are relied on by other datasets/call
+    sites today, and pylatexenc's lossy text conversion drops LaTeX's grouping
+    structure on non-trivial expressions in a large fraction of real cases (see
+    docs/rewards/latex_parsing_judge_flakiness.md section 6/7) -- this is a
+    strictly-additive path to try alongside them, not a replacement.
+
+    Requires antlr4-python3-runtime>=4.11 to actually parse anything (the image
+    currently pins ==4.9.*); returns False, not an exception, whenever that's
+    unavailable or parsing/simplification fails for any other reason, so it's
+    safe to call unconditionally regardless of which environment/dataset this
+    runs in.
+    """
+    parsed = _antlr_parse_guarded(given_answer, ground_truth)
+    if parsed is None:
+        return False
+    given_expr, truth_expr = parsed
+
+    try:
+        return sympy.simplify(given_expr - truth_expr) == 0
+    except Exception:
+        return False
+
+
+def grade_answer_sympy_antlr_positive(given_answer: str, ground_truth: str) -> bool:
+    """Like grade_answer_sympy_antlr(), but rebuilds every free symbol with
+    positive=True before simplifying. sympy's simplify()/powsimp()/radsimp()
+    deliberately refuse to combine radical/fractional-power terms (e.g.
+    sqrt(A*sqrt(B)) -> sqrt(A)*B**(1/4)) for symbols of unknown sign, since
+    that's only valid for non-negative reals -- every free symbol arising from
+    this dataset's LaTeX corresponds to a physical magnitude (frequency,
+    density, radius, ...), so the assumption is sound here. Still an EXACT
+    symbolic proof, not an approximation -- see
+    docs/rewards/latex_parsing_judge_flakiness.md section 8.
+
+    Tried before the (approximate) grade_answer_numeric() by callers: measured
+    empirically to be a strict subset of what numeric substitution catches, so
+    it adds no coverage on its own, but every case it resolves is one fewer
+    relying on a probabilistic check instead of an exact proof.
+    """
+    parsed = _antlr_parse_guarded(given_answer, ground_truth)
+    if parsed is None:
+        return False
+    given_expr, truth_expr = parsed
+
+    try:
+        free = sorted(given_expr.free_symbols | truth_expr.free_symbols, key=str)
+        pos_map = {s: sympy.Symbol(s.name, positive=True) for s in free}
+        return sympy.simplify(given_expr.subs(pos_map) - truth_expr.subs(pos_map)) == 0
+    except Exception:
+        return False
+
+
+def grade_answer_numeric(given_answer: str, ground_truth: str, trials: int = 10, tol: float = 1e-6) -> bool:
+    """Probabilistic fallback: evaluate both sides at several random rational
+    points and require agreement within tolerance at every trial, instead of
+    proving symbolic equality. Catches identities no simplify()-family call
+    resolves -- e.g. two decimal notations of the same float coefficient
+    (`30166000` vs `3.0166e7`) that differ by ~1e-9 relative error and will
+    never hit an exact `==0` -- see docs/rewards/latex_parsing_judge_flakiness.md
+    section 8.
+
+    NOT an exact proof: has real, if small and mitigated, false-positive risk
+    (unlucky agreement at sampled points, domain restrictions, branch-cut
+    selection during evaluation). Mitigated by requiring agreement across
+    several independent random trials at generic (non-special) values, and by
+    refusing to run at all past a free-symbol-count cutoff, where "agrees at N
+    random points" stops being meaningful evidence for two multivariate
+    expressions. Callers should tag a True from this distinctly from the exact
+    checks (e.g. a different `method` string) so it stays traceable later.
+    """
+    parsed = _antlr_parse_guarded(given_answer, ground_truth)
+    if parsed is None:
+        return False
+    given_expr, truth_expr = parsed
+
+    free = sorted(given_expr.free_symbols | truth_expr.free_symbols, key=str)
+    if len(free) > 8:
+        return False
+
+    try:
+        if not free:
+            va, vb = complex(given_expr.evalf()), complex(truth_expr.evalf())
+            return abs(va - vb) < tol
+        rng = random.Random(0)
+        for _ in range(trials):
+            subs = {s: sympy.nsimplify(rng.uniform(1.3, 5.7)) for s in free}
+            va = complex(given_expr.evalf(subs=subs))
+            vb = complex(truth_expr.evalf(subs=subs))
+            if abs(va) < 1e-9 and abs(vb) < 1e-9:
+                continue
+            if abs(va - vb) / max(abs(va), abs(vb), 1e-9) > tol:
+                return False
+    except Exception:
+        return False
+    return True
 
 
 def grade_answer_mathd(given_answer: str, ground_truth: str) -> bool:
