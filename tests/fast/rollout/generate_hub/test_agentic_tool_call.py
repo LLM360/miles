@@ -261,3 +261,94 @@ def test_compact_agent_response_keeps_worker_training_tokens(variant, generation
     assert len(sample.rollout_log_probs) == len(sample.loss_mask) == sample.response_length
     assert len(sample.tokens) > sample.response_length
     assert sample.status == Sample.Status.COMPLETED
+
+
+@pytest.mark.parametrize(
+    "generation_env", [{"args_kwargs": {"extra_argv": ["--use-session-server", "v1"]}}], indirect=True
+)
+@pytest.mark.parametrize("exit_status", HARBOR_EXIT_STATUSES_TO_TRUNCATE[:4])
+@pytest.mark.parametrize("with_records", [False, True])
+def test_eval_token_truncation_has_zero_reward(variant, generation_env, exit_status, with_records):
+    async def agent_returns_token_error(**kwargs):
+        if with_records:
+            await mock_tools.run_agentic_tool_call(**kwargs)
+        return {"exit_status": exit_status, "reward": 0.75}
+
+    generation_env.args.custom_agent_function_path = "test:eval-token-error"
+    generation_env.mock_server.process_fn = lambda _: ProcessResult(text=RESPONSE, finish_reason="stop")
+
+    with function_registry.temporary("test:eval-token-error", agent_returns_token_error):
+        result = run_generate(
+            generation_env,
+            make_sample(prompt=PROMPT),
+            variant=variant,
+            evaluation=True,
+        )
+
+    assert result.sample.reward == 0.0
+    expected_status = Sample.Status.TRUNCATED if with_records else Sample.Status.ABORTED
+    assert result.sample.status is expected_status
+
+
+@pytest.mark.parametrize(
+    "generation_env", [{"args_kwargs": {"extra_argv": ["--use-session-server", "v1"]}}], indirect=True
+)
+@pytest.mark.parametrize("with_records", [False, True])
+def test_training_token_truncation_reward_is_unchanged(variant, generation_env, with_records):
+    async def agent_returns_token_error(**kwargs):
+        if with_records:
+            await mock_tools.run_agentic_tool_call(**kwargs)
+        return {"exit_status": "BadRequestError", "reward": 0.75}
+
+    generation_env.args.custom_agent_function_path = "test:train-token-error"
+    generation_env.mock_server.process_fn = lambda _: ProcessResult(text=RESPONSE, finish_reason="stop")
+
+    with function_registry.temporary("test:train-token-error", agent_returns_token_error):
+        result = run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant)
+
+    assert result.sample.reward is None
+
+
+@pytest.mark.parametrize(
+    "generation_env", [{"args_kwargs": {"extra_argv": ["--use-session-server", "v1"]}}], indirect=True
+)
+def test_eval_token_truncation_respects_reward_key(variant, generation_env):
+    async def agent_returns_token_error(**_kwargs):
+        return {"exit_status": "BadRequestError", "reward": 0.75}
+
+    generation_env.args.custom_agent_function_path = "test:eval-keyed-token-error"
+    generation_env.args.reward_key = "train_score"
+    generation_env.args.eval_reward_key = "eval_score"
+
+    with function_registry.temporary("test:eval-keyed-token-error", agent_returns_token_error):
+        result = run_generate(
+            generation_env,
+            make_sample(prompt=PROMPT),
+            variant=variant,
+            evaluation=True,
+        )
+
+    assert result.sample.reward == {"train_score": 0.0, "eval_score": 0.0}
+    assert result.sample.get_reward_value(generation_env.args) == 0.0
+    assert result.sample.reward[generation_env.args.eval_reward_key] == 0.0
+
+
+@pytest.mark.parametrize(
+    "generation_env", [{"args_kwargs": {"extra_argv": ["--use-session-server", "v1"]}}], indirect=True
+)
+@pytest.mark.parametrize("exit_status", ["AgentTimeout", "Cancelled"])
+def test_eval_non_token_failure_reward_is_unchanged(variant, generation_env, exit_status):
+    async def agent_returns_failure(**_kwargs):
+        return {"exit_status": exit_status, "reward": 0.0}
+
+    generation_env.args.custom_agent_function_path = "test:eval-non-token-error"
+
+    with function_registry.temporary("test:eval-non-token-error", agent_returns_failure):
+        result = run_generate(
+            generation_env,
+            make_sample(prompt=PROMPT),
+            variant=variant,
+            evaluation=True,
+        )
+
+    assert result.sample.reward is None

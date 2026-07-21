@@ -36,7 +36,7 @@ import httpx
 import orjson
 from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
 
-from miles.rollout._agentic_outcomes import classify_exit_status, resolve_sample_status
+from miles.rollout._agentic_outcomes import TOKEN_TRUNCATION_EXIT_STATUSES, classify_exit_status, resolve_sample_status
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
 from miles.rollout.generate_utils.openai_endpoint_utils import OpenAIEndpointTracer
 from miles.utils.function_registry import load_function
@@ -55,6 +55,18 @@ def _apply_agentic_outcome_status(samples: list[Sample], agent_metadata: dict[st
         final_sample.effective_response_length,
         outcome,
     )
+
+
+def _set_eval_token_truncation_reward(
+    samples: list[Sample], agent_metadata: dict[str, Any] | None, args: argparse.Namespace, evaluation: bool
+) -> None:
+    if evaluation and samples and agent_metadata:
+        exit_status = agent_metadata.get("exit_status")
+        if isinstance(exit_status, str) and exit_status in TOKEN_TRUNCATION_EXIT_STATUSES:
+            reward_keys = {
+                key for key in (getattr(args, "reward_key", None), getattr(args, "eval_reward_key", None)) if key
+            }
+            samples[-1].reward = {key: 0.0 for key in reward_keys} if reward_keys else 0.0
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
@@ -148,6 +160,9 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     if collect_failed:
         sample = deepcopy(input.sample)
         sample.status = Sample.Status.ABORTED
+        if not use_v2:
+            sample.metadata.update(agent_metadata or {})
+            _set_eval_token_truncation_reward([sample], agent_metadata, input.args, input.evaluation)
         return GenerateFnOutput(samples=[sample] if use_v2 else sample)
 
     if not result.samples:
@@ -163,6 +178,9 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
                 if isinstance(agent_metrics, dict):
                     agent_metrics["empty_records_count"] = 1
         sample.status = Sample.Status.ABORTED
+        if not use_v2:
+            sample.metadata.update(agent_metadata or {})
+            _set_eval_token_truncation_reward([sample], agent_metadata, input.args, input.evaluation)
         return GenerateFnOutput(samples=[sample] if use_v2 else sample)
 
     samples = result.samples
@@ -193,6 +211,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     (sample,) = samples
     sample.metadata.update(result.session_metadata)
     _apply_agentic_outcome_status(samples, agent_metadata)
+    _set_eval_token_truncation_reward(samples, agent_metadata, input.args, input.evaluation)
     return GenerateFnOutput(samples=sample)
 
 

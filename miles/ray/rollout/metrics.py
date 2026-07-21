@@ -1,9 +1,12 @@
 import logging
+import math
+from collections import Counter
 from numbers import Number, Real
 from typing import Any
 
 import numpy as np
 
+from miles.rollout._agentic_outcomes import TOKEN_TRUNCATION_EXIT_STATUSES
 from miles.utils.function_registry import load_function
 from miles.utils.iter_utils import group_by
 from miles.utils.metric_utils import (
@@ -30,16 +33,27 @@ def log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] 
     log_dict = extra_metrics
     for key in data.keys():
         rewards = data[key]["rewards"]
-        num_none = sum(1 for r in rewards if r is None)
-        log_dict[f"eval/{key}-none_reward_ratio"] = num_none / len(rewards) if len(rewards) > 0 else 0.0
-        if num_none:
-            logger.warning(
-                f"eval/{key}: {num_none}/{len(rewards)} samples have reward=None (likely errored/aborted trials); treating as 0.0 for metrics."
+        if not rewards:
+            raise ValueError(f"Eval dataset {key!r} has no rewards")
+        invalid_rewards = [
+            reward
+            for reward in rewards
+            if isinstance(reward, bool) or not isinstance(reward, Real) or not math.isfinite(float(reward))
+        ]
+        if invalid_rewards:
+            statuses = [(sample.metadata or {}).get("exit_status") for sample in data[key].get("samples") or []]
+            status_counts = dict(Counter(status for status in statuses if isinstance(status, str) and status))
+            raise ValueError(
+                f"Eval dataset {key!r} has {len(invalid_rewards)}/{len(rewards)} invalid rewards; exit_status_counts={status_counts}"
             )
-            rewards = [0.0 if r is None else r for r in rewards]
-        log_dict[f"eval/{key}"] = sum(rewards) / len(rewards) if len(rewards) > 0 else 0.0
+        log_dict[f"eval/{key}-none_reward_ratio"] = 0.0
+        log_dict[f"eval/{key}"] = sum(rewards) / len(rewards)
         if (samples := data[key].get("samples")) is not None:
             log_dict |= dict_add_prefix(_compute_metrics_from_samples(args, samples), f"eval/{key}/")
+            for status in TOKEN_TRUNCATION_EXIT_STATUSES:
+                log_dict[f"eval/{key}/exit_status/{status}/count"] = sum(
+                    (sample.metadata or {}).get("exit_status") == status for sample in samples
+                )
         if "truncated" in data[key]:
             truncated = data[key]["truncated"]
             log_dict[f"eval/{key}-truncated_ratio"] = sum(truncated) / len(truncated)

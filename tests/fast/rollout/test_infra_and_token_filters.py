@@ -2,7 +2,7 @@ from argparse import Namespace
 
 import pytest
 
-from miles.rollout._agentic_outcomes import _TOKEN_TRUNCATION_EXIT_STATUSES as TRUNCATION_EXIT_STATUSES
+from miles.rollout._agentic_outcomes import TOKEN_TRUNCATION_EXIT_STATUSES as TRUNCATION_EXIT_STATUSES
 from miles.rollout.filter_hub.dynamic_sampling_filters import check_no_infra_failures
 from miles.rollout.filter_hub.rollout_filters import mask_token_truncated
 from miles.utils.types import Sample
