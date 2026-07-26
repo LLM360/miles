@@ -1266,6 +1266,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Keep only the N most recent rollout files in the save directory, deleting the one that aged out after each step. 0 (default) keeps all files.",
             )
             parser.add_argument(
+                "--save-rollout-interval",
+                type=int,
+                default=1,
+                help="Dump rollout debug data only every N training rollouts. Evaluation dumps are unaffected.",
+            )
+            parser.add_argument(
                 "--debug-rollout-only",
                 action="store_true",
                 default=False,
