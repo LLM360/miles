@@ -22,11 +22,13 @@ from miles.utils.processing_utils import load_tokenizer
 from miles.utils.ray_utils import Box
 from miles.utils.reloadable_process_group import destroy_process_groups, monkey_patch_torch_dist, reload_process_groups
 from miles.utils.replay_base import all_replay_managers
+from miles.utils.rollout_sharding import ROUTED_EXPERTS_SHARD_META_KEY
 from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
 
 from ...utils.profile_utils import TrainProfiler
+from ...utils.data import get_rollout_data_ref_fingerprint
 from ...utils.tensor_backper import TensorBackuper
 from ..training_utils.cp_utils import slice_with_cp
 from ..training_utils.data import DataIterator, get_data_iterator, get_rollout_data, sync_actor_critic_data
@@ -38,7 +40,7 @@ from .initialize import init, is_megatron_main_rank
 from .lora_utils import is_lora_enabled
 from .model import forward_only, initialize_model_and_optimizer, save, train
 from .parallel import verify_megatron_parallel_state
-from .replay_utils import get_register_replay_list_func
+from .replay_utils import get_register_replay_list_func, get_replay_layer_indices
 from .update_weight.common import named_params_and_buffers
 from .update_weight.update_weight_from_distributed.broadcast import UpdateWeightFromDistributed
 from .update_weight.update_weight_from_distributed.p2p import UpdateWeightP2P
@@ -600,6 +602,11 @@ class MegatronTrainRayActor(TrainRayActor):
                 )
 
         verify_megatron_parallel_state(self.model)
+        self._routing_replay_layer_indices = (
+            get_replay_layer_indices(self.model)
+            if role == "actor" and self.args.use_rollout_routing_replay
+            else None
+        )
 
         if role == "critic":
             if self.args.offload_train:
@@ -724,6 +731,29 @@ class MegatronTrainRayActor(TrainRayActor):
         tp_rank = parallel_state.tp.rank
         tp_size = parallel_state.tp.size
         qkv_format = self.args.qkv_format
+        shard_metadata = rollout_data.get(ROUTED_EXPERTS_SHARD_META_KEY)
+        is_destination_sharded = shard_metadata is not None
+        if is_destination_sharded:
+            if shard_metadata["pp_size"] != parallel_state.pp.size:
+                raise ValueError(
+                    f"routing replay PP size mismatch: shard={shard_metadata['pp_size']}, "
+                    f"actor={parallel_state.pp.size}"
+                )
+            if shard_metadata["cp_rank"] != parallel_state.cp.rank:
+                raise ValueError(
+                    f"routing replay CP rank mismatch: shard={shard_metadata['cp_rank']}, "
+                    f"actor={parallel_state.cp.rank}"
+                )
+            if shard_metadata["cp_size"] != parallel_state.cp.size:
+                raise ValueError(
+                    f"routing replay CP size mismatch: shard={shard_metadata['cp_size']}, "
+                    f"actor={parallel_state.cp.size}"
+                )
+            if shard_metadata["qkv_format"] != qkv_format:
+                raise ValueError(
+                    f"routing replay qkv_format mismatch: shard={shard_metadata['qkv_format']}, "
+                    f"actor={qkv_format}"
+                )
 
         def pad_func(data, pad):
             _, num_layers, topk = data.shape
@@ -740,23 +770,37 @@ class MegatronTrainRayActor(TrainRayActor):
             replay_data = batch[data_key]
             tokens = batch["tokens"]
             assert len(replay_data) == len(tokens)
-            for a, b in zip(replay_data, tokens, strict=False):
-                assert a.shape[0] == b.shape[0] - 1, f"{a.shape}, {b.shape}"
-
-            # We need to pad the experts to the last token. We won't calculate loss on this token so this should be fine.
-            # TODO: fuse this padding with the following slice_with_cp to reduce memory copy.
-            replay_data = [pad_func(r, 1) for r in replay_data]
-            # TODO: maybe extract a common process function for here and get_batch?
-
-            if qkv_format == "bshd":
-                max_seqlen = batch["max_seq_lens"][0]
-                replay_data = [slice_with_cp(r, pad_func, qkv_format, max_seqlen) for r in replay_data]
-                replay_data = torch.stack(replay_data, dim=0)
-                batch_size, seqlen, num_layers, topk = replay_data.shape
-                replay_data = replay_data.reshape(batch_size * seqlen, num_layers, topk)
+            if is_destination_sharded:
+                expected_layers = len(shard_metadata["layer_indices"])
+                if any(r.shape[1] != expected_layers for r in replay_data):
+                    raise ValueError(
+                        f"routing replay shard has unexpected layer dimension; expected {expected_layers}, "
+                        f"got {[r.shape for r in replay_data]}"
+                    )
+                if qkv_format == "bshd":
+                    replay_data = torch.stack(replay_data, dim=0)
+                    batch_size, seqlen, num_layers, topk = replay_data.shape
+                    replay_data = replay_data.reshape(batch_size * seqlen, num_layers, topk)
+                else:
+                    replay_data = torch.cat(replay_data, dim=0)
             else:
-                replay_data = [slice_with_cp(r, pad_func, qkv_format) for r in replay_data]
-                replay_data = torch.cat(replay_data, dim=0)
+                for a, b in zip(replay_data, tokens, strict=False):
+                    assert a.shape[0] == b.shape[0] - 1, f"{a.shape}, {b.shape}"
+
+                # Pad the omitted final token before legacy CP slicing.
+                replay_data = [pad_func(r, 1) for r in replay_data]
+
+                if qkv_format == "bshd":
+                    max_seqlen = batch["max_seq_lens"][0]
+                    replay_data = [slice_with_cp(r, pad_func, qkv_format, max_seqlen) for r in replay_data]
+                    replay_data = torch.stack(replay_data, dim=0)
+                    batch_size, seqlen, num_layers, topk = replay_data.shape
+                    replay_data = replay_data.reshape(batch_size * seqlen, num_layers, topk)
+                else:
+                    replay_data = [slice_with_cp(r, pad_func, qkv_format) for r in replay_data]
+                    replay_data = torch.cat(replay_data, dim=0)
+
+            if qkv_format == "thd":
                 pad_size = parallel_state.tp.size * self.args.data_pad_size_multiplier
                 pad = (pad_size - replay_data.size(0) % pad_size) % pad_size
                 if pad != 0:
@@ -768,9 +812,15 @@ class MegatronTrainRayActor(TrainRayActor):
                 start, end = seqlen // tp_size * tp_rank, seqlen // tp_size * (tp_rank + 1)
                 replay_data = replay_data[start:end]
 
-            register_replay_list_func(replay_list, replay_data, self.model)
+            register_replay_list_func(
+                replay_list,
+                replay_data,
+                self.model,
+                source_layer_indices=shard_metadata["layer_indices"] if is_destination_sharded else None,
+            )
 
         del rollout_data[data_key]
+        rollout_data.pop(ROUTED_EXPERTS_SHARD_META_KEY, None)
 
         for iterator in data_iterator:
             iterator.reset()
@@ -792,21 +842,82 @@ class MegatronTrainRayActor(TrainRayActor):
                 store_prefix=store_prefix,
             )
 
-    def train(self, rollout_id: int, rollout_data_ref: Box) -> None:
+    def _include_rollout_routed_experts(self) -> bool:
+        return self.role == "actor" and self.args.use_rollout_routing_replay
+
+    def _get_parallel_config(self):
+        parallel_state = get_parallel_state()
+        return {
+            "world_rank": dist.get_rank(),
+            "dp_rank": parallel_state.intra_dp.rank,
+            "dp_size": parallel_state.intra_dp.size,
+            "pp_rank": parallel_state.pp.rank,
+            "pp_size": parallel_state.pp.size,
+            "cp_rank": parallel_state.cp.rank,
+            "cp_size": parallel_state.cp.size,
+            "tp_size": parallel_state.tp.size,
+            "routing_replay_layer_indices": getattr(self, "_routing_replay_layer_indices", None),
+        }
+
+    def preload_rollout_data(self, rollout_id: int, rollout_data_ref: Box) -> dict:
         self._last_rollout_id = rollout_id
+        parallel_state = get_parallel_state()
+        include_routed_experts = self._include_rollout_routed_experts()
+        object_fingerprint = get_rollout_data_ref_fingerprint(
+            rollout_data_ref,
+            parallel_state.intra_dp.rank,
+            pp_rank=parallel_state.pp.rank,
+            cp_rank=parallel_state.cp.rank,
+            include_routed_experts=include_routed_experts,
+        )
+        cached = self._get_cached_rollout(rollout_id, object_fingerprint)
+        if cached is not None:
+            return {
+                "rank": dist.get_rank(),
+                "rollout_id": rollout_id,
+                "num_samples": len(cached["tokens"]),
+                "cached": True,
+            }
+
         if self.args.offload_train:
             self.wake_up()
 
         with timer("data_preprocess"):
-            rollout_data = get_rollout_data(self.args, rollout_data_ref)
-            if self.args.debug_rollout_only:
-                log_rollout_data(rollout_id, self.args, rollout_data)
-                return
+            rollout_data = get_rollout_data(
+                self.args,
+                rollout_data_ref,
+                include_routed_experts=include_routed_experts,
+            )
+            if include_routed_experts and ROUTED_EXPERTS_SHARD_META_KEY in rollout_data:
+                expected_layer_indices = self._routing_replay_layer_indices
+                actual_layer_indices = rollout_data[ROUTED_EXPERTS_SHARD_META_KEY]["layer_indices"]
+                if actual_layer_indices != expected_layer_indices:
+                    raise ValueError(
+                        f"routing replay layer shard {actual_layer_indices} does not match "
+                        f"local model layers {expected_layer_indices}"
+                    )
+        self._store_preloaded_rollout(rollout_id, object_fingerprint, rollout_data)
+        return {
+            "rank": dist.get_rank(),
+            "rollout_id": rollout_id,
+            "num_samples": len(rollout_data["tokens"]),
+            "cached": False,
+        }
+
+    def train_preloaded(self, rollout_id: int) -> None:
+        rollout_data = self._take_preloaded_rollout(rollout_id)
+        if self.args.debug_rollout_only:
+            log_rollout_data(rollout_id, self.args, rollout_data)
+            return
 
         if self.role == "critic":
             return self.train_critic(rollout_id, rollout_data)
         else:
             return self.train_actor(rollout_id, rollout_data)
+
+    def train(self, rollout_id: int, rollout_data_ref: Box) -> None:
+        self.preload_rollout_data(rollout_id, rollout_data_ref)
+        return self.train_preloaded(rollout_id)
 
     def train_critic(self, rollout_id: int, rollout_data: RolloutBatch) -> None:
         # Create data iterator for log_probs and train.

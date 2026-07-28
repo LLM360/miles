@@ -80,13 +80,23 @@ async def train(args):
                 offload_tags.append(GPU_MEMORY_TYPE_WEIGHTS)
             await rollout_manager.offload.remote(tags=offload_tags)
 
+        train_actor_this_step = not args.use_critic or rollout_id >= args.num_critic_only_steps
+        preload_groups = []
         if args.use_critic:
-            critic_task = await eager_create_task(critic_model.train(rollout_id, rollout_data_ref))
-            if rollout_id >= args.num_critic_only_steps:
-                await actor_model.train(rollout_id, rollout_data_ref)
+            preload_groups.append(critic_model)
+        if train_actor_this_step:
+            preload_groups.append(actor_model)
+        await asyncio.gather(
+            *(group.preload_rollout_data(rollout_id, rollout_data_ref) for group in preload_groups)
+        )
+
+        if args.use_critic:
+            critic_task = await eager_create_task(critic_model.train_preloaded(rollout_id))
+            if train_actor_this_step:
+                await actor_model.train_preloaded(rollout_id)
             await critic_task
         else:
-            await actor_model.train(rollout_id, rollout_data_ref)
+            await actor_model.train_preloaded(rollout_id)
 
         if should_run_periodic_action(rollout_id, args.save_interval, num_rollout_per_epoch, args.num_rollout):
             await save(rollout_id)

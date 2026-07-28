@@ -20,6 +20,7 @@ from miles.utils.ray_utils import Box
 from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 
+from ....utils.data import get_rollout_data_ref_fingerprint
 from ....utils.profile_utils import TrainProfiler
 from ...training_utils.ci_utils import check_grad_norm
 from ...training_utils.data import DataIterator, get_batch, get_data_iterator, get_rollout_data
@@ -391,24 +392,61 @@ class FSDPTrainRayActor(TrainRayActor):
                     self.model.cuda()
                     dist.barrier(group=get_gloo_group())
 
-    def train(self, rollout_id: int, rollout_data_ref: Box) -> None:
-        """Run one training update over a rollout batch.
+    def _get_parallel_config(self):
+        parallel_state = get_parallel_state()
+        return {
+            "world_rank": dist.get_rank(),
+            "dp_rank": parallel_state.intra_dp.rank,
+            "dp_size": parallel_state.intra_dp.size,
+            "pp_rank": parallel_state.pp.rank,
+            "pp_size": parallel_state.pp.size,
+            "cp_rank": parallel_state.cp.rank,
+            "cp_size": parallel_state.cp.size,
+            "tp_size": parallel_state.tp.size,
+            "routing_replay_layer_indices": None,
+        }
 
-        Parameters:
-            rollout_id: Monotonic id for logging.
-            rollout_data_ref: A Box handle wrapping a Ray object reference to a
-                dictionary with rollout tensors and metadata (e.g., `tokens`,
-                `loss_masks`, `rewards`, `response_lengths`, optional
-                `rollout_log_probs`, etc.). It will be fetched and partitioned
-                by `process_rollout_data` based on data-parallel rank/size.
-        """
+    def preload_rollout_data(self, rollout_id: int, rollout_data_ref: Box) -> dict:
+        parallel_state = get_parallel_state()
+        object_fingerprint = get_rollout_data_ref_fingerprint(
+            rollout_data_ref,
+            parallel_state.intra_dp.rank,
+            pp_rank=parallel_state.pp.rank,
+            cp_rank=parallel_state.cp.rank,
+            include_routed_experts=False,
+        )
+        cached = self._get_cached_rollout(rollout_id, object_fingerprint)
+        if cached is not None:
+            return {
+                "rank": dist.get_rank(),
+                "rollout_id": rollout_id,
+                "num_samples": len(cached["tokens"]),
+                "cached": True,
+            }
+
         if self.args.offload_train:
             self.wake_up()
 
+        with timer("data_preprocess"):
+            rollout_data = get_rollout_data(
+                self.args,
+                rollout_data_ref,
+                include_routed_experts=False,
+            )
+        self._store_preloaded_rollout(rollout_id, object_fingerprint, rollout_data)
+        return {
+            "rank": dist.get_rank(),
+            "rollout_id": rollout_id,
+            "num_samples": len(rollout_data["tokens"]),
+            "cached": False,
+        }
+
+    def train_preloaded(self, rollout_id: int) -> None:
+        rollout_data = self._take_preloaded_rollout(rollout_id)
+        if self.args.debug_rollout_only:
+            return
+
         with inverse_timer("train_wait"), timer("train"):
-            rollout_data = get_rollout_data(self.args, rollout_data_ref)
-            if self.args.debug_rollout_only:
-                return
             self._train_core(rollout_id=rollout_id, rollout_data=rollout_data)
 
         train_metric_utils.log_perf_data_raw(
@@ -417,6 +455,10 @@ class FSDPTrainRayActor(TrainRayActor):
             is_primary_rank=dist.get_rank() == 0,
             compute_total_fwd_flops=None,
         )
+
+    def train(self, rollout_id: int, rollout_data_ref: Box) -> None:
+        self.preload_rollout_data(rollout_id, rollout_data_ref)
+        return self.train_preloaded(rollout_id)
 
     def _train_core(self, rollout_id: int, rollout_data) -> None:
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, rollout_data)

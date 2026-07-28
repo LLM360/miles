@@ -47,6 +47,8 @@ class TrainRayActor(RayActor):
         # os.environ.pop("CUDA_VISIBLE_DEVICES", None)
         # os.environ["LOCAL_RANK"] = str(ray.get_gpu_ids()[0])
         os.environ["LOCAL_RANK"] = str(get_local_gpu_id())
+        self._preloaded_rollout_key = None
+        self._preloaded_rollout_data = None
 
     def init(self, args, role, with_ref=False):
         self.args = args
@@ -121,6 +123,14 @@ class TrainRayActor(RayActor):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def preload_rollout_data(self, rollout_id, rollout_data_ref):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def train_preloaded(self, rollout_id):
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def save_model(self, rollout_id, force_sync=False):
         raise NotImplementedError
 
@@ -136,7 +146,50 @@ class TrainRayActor(RayActor):
     def _get_parallel_config(self):
         raise NotImplementedError
 
+    def get_parallel_config(self):
+        return self._get_parallel_config()
+
     def set_rollout_manager(self, rollout_manager):
         self.rollout_manager = rollout_manager
-        if self.args.rank == 0:
-            ray.get(self.rollout_manager.set_train_parallel_config.remote(self.train_parallel_config))
+
+    def _get_cached_rollout(self, rollout_id, object_fingerprint):
+        requested_key = (rollout_id, object_fingerprint)
+        if self._preloaded_rollout_key is None:
+            return None
+        if self._preloaded_rollout_key != requested_key:
+            raise RuntimeError(
+                f"cannot preload rollout {requested_key}: unconsumed rollout "
+                f"{self._preloaded_rollout_key} is already cached"
+            )
+        return self._preloaded_rollout_data
+
+    def _store_preloaded_rollout(self, rollout_id, object_fingerprint, rollout_data):
+        requested_key = (rollout_id, object_fingerprint)
+        if self._preloaded_rollout_key is not None:
+            raise RuntimeError(
+                f"cannot store rollout {requested_key}: unconsumed rollout "
+                f"{self._preloaded_rollout_key} is already cached"
+            )
+        self._preloaded_rollout_key = requested_key
+        self._preloaded_rollout_data = rollout_data
+
+    def _take_preloaded_rollout(self, rollout_id):
+        if self._preloaded_rollout_key is None:
+            raise RuntimeError(f"rollout {rollout_id} was not preloaded")
+        cached_rollout_id, _ = self._preloaded_rollout_key
+        if cached_rollout_id != rollout_id:
+            raise RuntimeError(f"requested rollout {rollout_id}, but cached rollout is {cached_rollout_id}")
+        rollout_data = self._preloaded_rollout_data
+        self._preloaded_rollout_key = None
+        self._preloaded_rollout_data = None
+        return rollout_data
+
+    def discard_preloaded_rollout(self, rollout_id):
+        if self._preloaded_rollout_key is None:
+            return False
+        cached_rollout_id, _ = self._preloaded_rollout_key
+        if cached_rollout_id != rollout_id:
+            return False
+        self._preloaded_rollout_key = None
+        self._preloaded_rollout_data = None
+        return True
