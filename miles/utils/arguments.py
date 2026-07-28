@@ -2091,9 +2091,6 @@ def miles_validate_args(args):
     if args.enable_mtp_training:
         assert args.mtp_num_layers, "mtp_num_layers must be set when enable_mtp_training is set"
 
-    if args.use_rollout_routing_replay:
-        args.use_routing_replay = True
-
     if args.custom_config_path:
         with open(args.custom_config_path) as f:
             data = yaml.safe_load(f) or {}
@@ -2101,6 +2098,14 @@ def miles_validate_args(args):
             if hasattr(args, k):
                 logger.info(f"Warning: Argument {k} is already set to {getattr(args, k)}, will override with {v}.")
             setattr(args, k, v)
+
+    if args.use_rollout_routing_replay:
+        if args.allgather_cp:
+            raise ValueError(
+                "--use-rollout-routing-replay is incompatible with --allgather-cp: "
+                "routing replay uses per-sample zig-zag CP ordering"
+            )
+        args.use_routing_replay = True
 
     if args.eval_max_context_len is None:
         logger.info(

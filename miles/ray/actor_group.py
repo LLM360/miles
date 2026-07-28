@@ -8,6 +8,60 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 
 
+def merge_train_parallel_configs(configs: list[dict]) -> dict:
+    if not configs:
+        raise ValueError("at least one training-rank parallel config is required")
+
+    size_keys = ("dp_size", "pp_size", "cp_size", "tp_size")
+    merged = {key: configs[0][key] for key in size_keys}
+    for config in configs[1:]:
+        for key in size_keys:
+            if config[key] != merged[key]:
+                raise ValueError(
+                    f"inconsistent {key}: rank 0 reported {merged[key]}, "
+                    f"rank {config['world_rank']} reported {config[key]}"
+                )
+
+    routing_specs = {}
+    routing_enabled = any(config["routing_replay_layer_indices"] is not None for config in configs)
+    if routing_enabled:
+        layers_by_pp_rank = {}
+        for config in configs:
+            layer_indices = config["routing_replay_layer_indices"]
+            if layer_indices is None:
+                raise ValueError(
+                    f"rank {config['world_rank']} did not report routing-replay layers while other ranks did"
+                )
+            layer_indices = list(layer_indices)
+            previous_layers = layers_by_pp_rank.setdefault(config["pp_rank"], layer_indices)
+            if previous_layers != layer_indices:
+                raise ValueError(
+                    f"inconsistent routing-replay layers for PP rank {config['pp_rank']}: "
+                    f"{previous_layers} != {layer_indices} on world rank {config['world_rank']}"
+                )
+            destination = (config["dp_rank"], config["pp_rank"], config["cp_rank"])
+            spec = {
+                "dp_rank": config["dp_rank"],
+                "pp_rank": config["pp_rank"],
+                "cp_rank": config["cp_rank"],
+                "layer_indices": layer_indices,
+            }
+            previous = routing_specs.setdefault(destination, spec)
+            if previous != spec:
+                raise ValueError(f"inconsistent routing-replay shard spec for destination {destination}")
+
+        expected_destinations = merged["dp_size"] * merged["pp_size"] * merged["cp_size"]
+        if len(routing_specs) != expected_destinations:
+            raise ValueError(
+                f"expected {expected_destinations} routing-replay destinations, got {len(routing_specs)}"
+            )
+
+    merged["routing_replay_shard_specs"] = [
+        routing_specs[key] for key in sorted(routing_specs)
+    ]
+    return merged
+
+
 class RayTrainGroup:
     """
     A group of ray actors
@@ -113,7 +167,31 @@ class RayTrainGroup:
 
     async def train(self, rollout_id, rollout_data_ref):
         """Do one rollout training"""
-        await self._broadcast("train", rollout_id, rollout_data_ref)
+        await self.preload_rollout_data(rollout_id, rollout_data_ref)
+        await self.train_preloaded(rollout_id)
+
+    async def preload_rollout_data(self, rollout_id, rollout_data_ref):
+        """Materialize rollout data on every rank without entering collectives."""
+        refs = [
+            actor.preload_rollout_data.remote(rollout_id, rollout_data_ref)
+            for actor in self._actor_handles
+        ]
+        results = await asyncio.gather(*refs, return_exceptions=True)
+        errors = [(rank, result) for rank, result in enumerate(results) if isinstance(result, BaseException)]
+        if errors:
+            # Avoid distributed cleanup after a partial preload failure.
+            cleanup_refs = [
+                actor.discard_preloaded_rollout.remote(rollout_id)
+                for actor in self._actor_handles
+            ]
+            await asyncio.gather(*cleanup_refs, return_exceptions=True)
+            details = "; ".join(f"rank {rank}: {error!r}" for rank, error in errors)
+            raise RuntimeError(f"rollout {rollout_id} preload failed on {len(errors)} rank(s): {details}")
+        return results
+
+    async def train_preloaded(self, rollout_id):
+        """Start training only after all ranks have acknowledged preload."""
+        return await self._broadcast("train_preloaded", rollout_id)
 
     async def save_model(self, rollout_id, force_sync=False):
         """Save actor model"""
@@ -141,6 +219,9 @@ class RayTrainGroup:
 
     async def set_rollout_manager(self, rollout_manager):
         await self._broadcast("set_rollout_manager", rollout_manager)
+        configs = await self._broadcast("get_parallel_config")
+        merged_config = merge_train_parallel_configs(configs)
+        await rollout_manager.set_train_parallel_config.remote(merged_config)
 
     async def _broadcast(self, method_name: str, *args, **kwargs) -> list:
         refs = [getattr(actor, method_name).remote(*args, **kwargs) for actor in self._actor_handles]

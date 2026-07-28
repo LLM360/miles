@@ -15,6 +15,11 @@ except ImportError:
 
 from miles.utils.types import MultimodalTypes, Sample
 
+from .rollout_sharding import (
+    ROLLOUT_DATA_REF_FORMAT,
+    ROUTED_EXPERTS_SHARD_META_KEY,
+    rollout_destination_key,
+)
 from .timer import Timer
 
 __all__ = ["Dataset"]
@@ -269,9 +274,138 @@ def get_minimum_num_micro_batch_size(total_lengths, max_tokens_per_gpu):
     return len(batches)
 
 
-def process_rollout_data(args, rollout_data_ref, dp_rank, dp_size):
-    assert len(rollout_data_ref) == dp_size
-    rollout_data = ray.get(rollout_data_ref[dp_rank].inner)
+def get_rollout_data_ref_fingerprint(
+    rollout_data_ref,
+    dp_rank,
+    *,
+    pp_rank=0,
+    cp_rank=0,
+    include_routed_experts=True,
+):
+    """Identify exactly the local Ray objects backing one actor's preload."""
+    if isinstance(rollout_data_ref, dict) and rollout_data_ref.get("format") == ROLLOUT_DATA_REF_FORMAT:
+        refs = [rollout_data_ref["base"][dp_rank].inner]
+        if include_routed_experts:
+            destination = rollout_destination_key(dp_rank, pp_rank, cp_rank)
+            routed_experts_ref = rollout_data_ref.get("rollout_routed_experts", {}).get(destination)
+            if routed_experts_ref is None:
+                raise KeyError(f"missing rollout routing-replay shard for destination {destination}")
+            refs.append(routed_experts_ref.inner)
+    else:
+        refs = [rollout_data_ref[dp_rank].inner]
+
+    return ":".join(ref.hex() for ref in refs)
+
+
+def process_rollout_data(
+    args,
+    rollout_data_ref,
+    dp_rank,
+    dp_size,
+    *,
+    pp_rank=0,
+    pp_size=1,
+    cp_rank=0,
+    cp_size=1,
+    include_routed_experts=True,
+):
+    if isinstance(rollout_data_ref, dict) and rollout_data_ref.get("format") == ROLLOUT_DATA_REF_FORMAT:
+        base_refs = rollout_data_ref["base"]
+        assert len(base_refs) == dp_size
+        refs = [base_refs[dp_rank].inner]
+
+        routed_experts_ref = None
+        if include_routed_experts:
+            destination = rollout_destination_key(dp_rank, pp_rank, cp_rank)
+            routed_experts_ref = rollout_data_ref.get("rollout_routed_experts", {}).get(destination)
+            if routed_experts_ref is None:
+                raise KeyError(
+                    f"missing rollout routing-replay shard for destination {destination}; "
+                    f"available={sorted(rollout_data_ref.get('rollout_routed_experts', {}))}"
+                )
+            refs.append(routed_experts_ref.inner)
+
+        fetched = ray.get(refs)
+        rollout_data = fetched[0]
+        if routed_experts_ref is not None:
+            routed_experts = fetched[1]
+            shard_metadata = routed_experts[ROUTED_EXPERTS_SHARD_META_KEY]
+            if shard_metadata.get("version") != 1:
+                raise ValueError(
+                    f"unsupported routing-replay shard version {shard_metadata.get('version')}"
+                )
+            expected_destination = (dp_rank, pp_rank, cp_rank)
+            actual_destination = tuple(
+                shard_metadata[key] for key in ("dp_rank", "pp_rank", "cp_rank")
+            )
+            if actual_destination != expected_destination:
+                raise ValueError(
+                    f"routing-replay shard destination mismatch: expected {expected_destination}, "
+                    f"got {actual_destination}"
+                )
+            if shard_metadata["pp_size"] != pp_size or shard_metadata["cp_size"] != cp_size:
+                raise ValueError(
+                    "routing-replay shard parallel-size mismatch: "
+                    f"shard pp/cp=({shard_metadata['pp_size']}, {shard_metadata['cp_size']}), "
+                    f"actor pp/cp=({pp_size}, {cp_size})"
+                )
+            if shard_metadata["qkv_format"] != args.qkv_format:
+                raise ValueError(
+                    f"routing-replay qkv_format mismatch: shard={shard_metadata['qkv_format']}, "
+                    f"actor={args.qkv_format}"
+                )
+            if len(routed_experts["rollout_routed_experts"]) != len(rollout_data["tokens"]):
+                raise ValueError(
+                    "routing-replay shard sample count does not match base payload: "
+                    f"{len(routed_experts['rollout_routed_experts'])} != {len(rollout_data['tokens'])}"
+                )
+            num_local_layers = len(shard_metadata["layer_indices"])
+            topk = None
+            for sample_idx, (sample_routing, tokens) in enumerate(
+                zip(
+                    routed_experts["rollout_routed_experts"],
+                    rollout_data["tokens"],
+                    strict=True,
+                )
+            ):
+                num_tokens = len(tokens)
+                if shard_metadata["qkv_format"] == "thd":
+                    target_length = num_tokens
+                else:
+                    target_length = shard_metadata["max_seq_len"]
+                    if target_length is None or target_length < num_tokens:
+                        raise ValueError(
+                            f"invalid BSHD routing-replay max_seq_len {target_length} "
+                            f"for sample {sample_idx} with {num_tokens} tokens"
+                        )
+                if cp_size == 1:
+                    expected_rows = target_length
+                else:
+                    chunk_size = (target_length + 2 * cp_size - 1) // (2 * cp_size)
+                    expected_rows = 2 * chunk_size
+                shape = getattr(sample_routing, "shape", None)
+                if shape is None or len(shape) != 3:
+                    raise ValueError(
+                        f"routing-replay sample {sample_idx} must be rank 3, got shape={shape}"
+                    )
+                if shape[0] != expected_rows or shape[1] != num_local_layers:
+                    raise ValueError(
+                        f"routing-replay sample {sample_idx} shape mismatch: got {shape}, "
+                        f"expected ({expected_rows}, {num_local_layers}, topk)"
+                    )
+                if topk is None:
+                    topk = shape[2]
+                elif shape[2] != topk:
+                    raise ValueError(
+                        f"routing-replay topk mismatch in sample {sample_idx}: {shape[2]} != {topk}"
+                    )
+            rollout_data["rollout_routed_experts"] = routed_experts["rollout_routed_experts"]
+            rollout_data[ROUTED_EXPERTS_SHARD_META_KEY] = shard_metadata
+    else:
+        assert len(rollout_data_ref) == dp_size
+        rollout_data = ray.get(rollout_data_ref[dp_rank].inner)
+        if not include_routed_experts:
+            rollout_data.pop("rollout_routed_experts", None)
 
     partition = rollout_data.pop("partition")
     total_lengths = rollout_data["total_lengths"]

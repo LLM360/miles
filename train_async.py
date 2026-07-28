@@ -42,17 +42,27 @@ async def train(args):
         if rollout_data_next_future is not None:
             rollout_data_curr_ref = await rollout_data_next_future
 
-        # Start the next rollout early.
+        train_actor_this_step = not args.use_critic or rollout_id >= args.num_critic_only_steps
+        preload_groups = []
+        if args.use_critic:
+            preload_groups.append(critic_model)
+        if train_actor_this_step:
+            preload_groups.append(actor_model)
+        await asyncio.gather(
+            *(group.preload_rollout_data(rollout_id, rollout_data_curr_ref) for group in preload_groups)
+        )
+
+        # Preload before the next rollout competes for transfer bandwidth.
         if rollout_id + 1 < args.num_rollout:
             rollout_data_next_future = rollout_manager.generate.remote(rollout_id + 1)
 
         if args.use_critic:
-            critic_task = await eager_create_task(critic_model.train(rollout_id, rollout_data_curr_ref))
-            if rollout_id >= args.num_critic_only_steps:
-                await actor_model.train(rollout_id, rollout_data_curr_ref)
+            critic_task = await eager_create_task(critic_model.train_preloaded(rollout_id))
+            if train_actor_this_step:
+                await actor_model.train_preloaded(rollout_id)
             await critic_task
         else:
-            await actor_model.train(rollout_id, rollout_data_curr_ref)
+            await actor_model.train_preloaded(rollout_id)
 
         if should_run_periodic_action(rollout_id, args.save_interval, num_rollout_per_epoch, args.num_rollout):
             await actor_model.save_model(

@@ -49,6 +49,13 @@ from miles.utils.metric_utils import (
 )
 from miles.utils.misc import load_function
 from miles.utils.ray_utils import Box
+from miles.utils.rollout_sharding import (
+    ROLLOUT_DATA_REF_FORMAT,
+    ROUTED_EXPERTS_SHARD_META_KEY,
+    rollout_destination_key,
+    shard_routed_experts_for_destination,
+    validate_routed_experts,
+)
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import Sample
@@ -935,7 +942,10 @@ class RolloutManager:
         else:
             partitions = [range(i, len(total_lengths), dp_size) for i in range(dp_size)]
 
+        routing_shard_specs = self.train_parallel_config.get("routing_replay_shard_specs", [])
+        destination_shard_routing = "rollout_routed_experts" in data and bool(routing_shard_specs)
         rollout_data_refs = []
+        routed_expert_refs = {}
         dp_summaries = []
 
         for i in range(dp_size):
@@ -943,7 +953,7 @@ class RolloutManager:
             partition = list(partitions[i])
             rollout_data["partition"] = partition
 
-            for key in [
+            per_sample_keys = [
                 "tokens",
                 "multimodal_train_inputs",
                 "response_lengths",
@@ -953,12 +963,15 @@ class RolloutManager:
                 "round_number",
                 "sample_indices",
                 "rollout_log_probs",
-                "rollout_routed_experts",
                 "prompt",
                 "teacher_log_probs",
                 "weight_versions",
                 "domains",
-            ]:
+            ]
+            if not destination_shard_routing:
+                per_sample_keys.append("rollout_routed_experts")
+
+            for key in per_sample_keys:
                 if key not in data:
                     continue
                 rollout_data[key] = [data[key][j] for j in partition]
@@ -977,8 +990,77 @@ class RolloutManager:
             response_lens = [data["response_lengths"][j] for j in partition] if "response_lengths" in data else []
             loss_mask_lens = [_safe_len(data["loss_masks"][j]) for j in partition] if "loss_masks" in data else []
 
-            payload_bytes = _estimate_payload_bytes(rollout_data)
+            routed_experts = (
+                [data["rollout_routed_experts"][j] for j in partition] if destination_shard_routing else None
+            )
+            if routed_experts is not None:
+                validate_routed_experts(routed_experts, token_lens)
+            base_payload_bytes = _estimate_payload_bytes(rollout_data)
+            routed_payload_bytes = _estimate_payload_bytes(routed_experts) if routed_experts is not None else 0
+            payload_bytes = base_payload_bytes + routed_payload_bytes
             ref = ray.put(rollout_data)
+
+            routing_shard_payload_bytes = []
+            if routed_experts is not None:
+                max_seq_len = None
+                if self.args.qkv_format == "bshd":
+                    pad_size = (
+                        self.train_parallel_config["tp_size"] * self.args.data_pad_size_multiplier
+                    )
+                    max_seq_len = (max(token_lens) + pad_size - 1) // pad_size * pad_size
+
+                specs_for_dp = [spec for spec in routing_shard_specs if spec["dp_rank"] == i]
+                expected_specs = (
+                    self.train_parallel_config["pp_size"] * self.train_parallel_config["cp_size"]
+                )
+                if len(specs_for_dp) != expected_specs:
+                    raise ValueError(
+                        f"DP rank {i} expected {expected_specs} routing destinations, "
+                        f"got {len(specs_for_dp)}"
+                    )
+
+                for spec in specs_for_dp:
+                    local_routed_experts = shard_routed_experts_for_destination(
+                        routed_experts,
+                        layer_indices=spec["layer_indices"],
+                        cp_rank=spec["cp_rank"],
+                        cp_size=self.train_parallel_config["cp_size"],
+                        qkv_format=self.args.qkv_format,
+                        max_seq_len=max_seq_len,
+                    )
+                    shard_metadata = {
+                        "version": 1,
+                        "dp_rank": i,
+                        "pp_rank": spec["pp_rank"],
+                        "pp_size": self.train_parallel_config["pp_size"],
+                        "cp_rank": spec["cp_rank"],
+                        "cp_size": self.train_parallel_config["cp_size"],
+                        "qkv_format": self.args.qkv_format,
+                        "max_seq_len": max_seq_len,
+                        "layer_indices": list(spec["layer_indices"]),
+                    }
+                    routing_payload = {
+                        "rollout_routed_experts": local_routed_experts,
+                        ROUTED_EXPERTS_SHARD_META_KEY: shard_metadata,
+                    }
+                    routing_payload_bytes = _estimate_payload_bytes(routing_payload)
+                    routing_ref = ray.put(routing_payload)
+                    destination = rollout_destination_key(
+                        i,
+                        spec["pp_rank"],
+                        spec["cp_rank"],
+                    )
+                    routed_expert_refs[destination] = Box(routing_ref)
+                    routing_shard_payload_bytes.append(routing_payload_bytes)
+                    logger.warning(
+                        "ROLLOUT_ROUTING_SHARD destination=%s samples=%s layers=%s "
+                        "payload_mb_est=%.2f object_ref=%s",
+                        destination,
+                        len(partition),
+                        spec["layer_indices"],
+                        routing_payload_bytes / 1024 / 1024,
+                        routing_ref.hex(),
+                    )
 
             summary = {
                 "dp_rank": i,
@@ -988,12 +1070,17 @@ class RolloutManager:
                 "responses": _stat(response_lens),
                 "loss_masks": _stat(loss_mask_lens),
                 "payload_mb_est": round(payload_bytes / 1024 / 1024, 2),
+                "base_payload_mb_est": round(base_payload_bytes / 1024 / 1024, 2),
+                "max_routing_shard_mb_est": round(
+                    max(routing_shard_payload_bytes, default=0) / 1024 / 1024,
+                    2,
+                ),
                 "object_ref": ref.hex(),
             }
             dp_summaries.append(summary)
 
             logger.warning(
-                "ROLLOUT_DP_SHARD dp=%s samples=%s token_sum=%s token_min=%s token_max=%s token_avg=%s response_sum=%s response_min=%s response_max=%s response_avg=%s loss_mask_sum=%s payload_mb_est=%.2f object_ref=%s partition=%s",
+                "ROLLOUT_DP_SHARD dp=%s samples=%s token_sum=%s token_min=%s token_max=%s token_avg=%s response_sum=%s response_min=%s response_max=%s response_avg=%s loss_mask_sum=%s payload_mb_est=%.2f base_payload_mb_est=%.2f max_routing_shard_mb_est=%.2f object_ref=%s partition=%s",
                 summary["dp_rank"],
                 summary["num_samples"],
                 summary["tokens"]["sum"],
@@ -1006,6 +1093,8 @@ class RolloutManager:
                 summary["responses"]["avg"],
                 summary["loss_masks"]["sum"],
                 summary["payload_mb_est"],
+                summary["base_payload_mb_est"],
+                summary["max_routing_shard_mb_est"],
                 summary["object_ref"],
                 summary["partition"],
             )
@@ -1037,6 +1126,21 @@ class RolloutManager:
             _ratio(payload_mbs),
         )
 
+        if destination_shard_routing:
+            expected_routing_refs = (
+                dp_size
+                * self.train_parallel_config["pp_size"]
+                * self.train_parallel_config["cp_size"]
+            )
+            if len(routed_expert_refs) != expected_routing_refs:
+                raise ValueError(
+                    f"expected {expected_routing_refs} routing-replay refs, got {len(routed_expert_refs)}"
+                )
+            return {
+                "format": ROLLOUT_DATA_REF_FORMAT,
+                "base": rollout_data_refs,
+                "rollout_routed_experts": routed_expert_refs,
+            }
         return rollout_data_refs
 
 
