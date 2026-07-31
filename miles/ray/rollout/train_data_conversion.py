@@ -246,6 +246,46 @@ def _reward_group_segments(args: Any, samples: list[Sample], prompt_group_sizes:
     return [list(range(len(samples)))]
 
 
+def _normalize_group_rewards_excluding_truncated(
+    raw_rewards: list[float],
+    samples: list[Sample],
+    *,
+    group_size: int,
+    expected_group_count: int,
+    std_normalization: bool,
+) -> list[float]:
+    """Center rewards using only complete samples in each rollout group."""
+    if len(raw_rewards) != len(samples):
+        raise ValueError("raw_rewards and samples must have the same length")
+    if not raw_rewards:
+        return []
+
+    rewards = torch.tensor(raw_rewards, dtype=torch.float)
+    eligible = torch.tensor(
+        [sample.status != Sample.Status.TRUNCATED for sample in samples],
+        dtype=torch.bool,
+    )
+    if rewards.shape[-1] == group_size * expected_group_count:
+        rewards = rewards.reshape(-1, group_size)
+        eligible = eligible.reshape(-1, group_size)
+    else:
+        # Preserve the legacy fallback for uneven sample counts.
+        rewards = rewards.view(1, -1)
+        eligible = eligible.view(1, -1)
+
+    weights = eligible.to(rewards.dtype)
+    counts = weights.sum(dim=-1, keepdim=True)
+    means = torch.where(eligible, rewards, 0.0).sum(dim=-1, keepdim=True) / counts.clamp_min(1.0)
+    normalized = torch.where(eligible, rewards - means, 0.0)
+
+    if std_normalization:
+        variance = normalized.square().sum(dim=-1, keepdim=True) / (counts - 1.0).clamp_min(1.0)
+        normalized = normalized / (variance.sqrt() + 1e-6)
+        normalized *= weights
+
+    return normalized.flatten().tolist()
+
+
 def _normalize_rewards_by_rollout(
     args: Any,
     samples: list[Sample],
@@ -280,18 +320,26 @@ def _normalize_rewards_by_rollout(
                 )
             shared_rewards.append(sibling_rewards[0])
 
-        rollout_rewards = torch.tensor(shared_rewards, dtype=torch.float)
-        normalized_rollout_rewards = rollout_rewards - rollout_rewards.mean()
-        if args.advantage_estimator in ["grpo", "gspo"] and args.grpo_std_normalization and len(rollout_rewards) > 1:
-            rollout_std = rollout_rewards.std()
-            if rollout_std > 0:
-                normalized_rollout_rewards = normalized_rollout_rewards / (rollout_std + 1e-6)
-
+        # A rollout with at least one complete training sample participates once.
+        # Truncated siblings still receive zero; they never add baseline weight.
+        representatives = [
+            next((samples[i] for i in indices if samples[i].status != Sample.Status.TRUNCATED), samples[indices[0]])
+            for _, indices in rollout_segment_groups
+        ]
+        normalized_rollout_rewards = _normalize_group_rewards_excluding_truncated(
+            shared_rewards,
+            representatives,
+            group_size=len(shared_rewards),
+            expected_group_count=1,
+            std_normalization=args.advantage_estimator in ["grpo", "gspo"] and args.grpo_std_normalization,
+        )
         for (_, rollout_segments), normalized_reward in zip(
-            rollout_segment_groups, normalized_rollout_rewards.tolist(), strict=True
+            rollout_segment_groups, normalized_rollout_rewards, strict=True
         ):
             for segment_index in rollout_segments:
-                normalized_rewards[segment_index] = normalized_reward
+                normalized_rewards[segment_index] = (
+                    0.0 if samples[segment_index].status == Sample.Status.TRUNCATED else normalized_reward
+                )
 
     return normalized_rewards.tolist()
 

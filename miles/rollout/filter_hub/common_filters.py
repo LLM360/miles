@@ -34,15 +34,14 @@ def apply_missing_reward_filter(args: Namespace, samples: Group, **kwargs) -> Fi
 
 
 def apply_reward_nonzero_std_filter(args, samples: list[Sample | list[Sample]], **kwargs):
-    rewards = [sample.get_reward_value(args) for sample in iter_samples(samples)]
+    baseline_samples = [sample for sample in iter_samples(samples) if sample.status != Sample.Status.TRUNCATED]
+    if len(baseline_samples) < 2:
+        return FilterOutput(keep=False, reason="group_has_insufficient_complete_samples")
+    rewards = [sample.get_reward_value(args) for sample in baseline_samples]
     # Direct callers, including the legacy alias, can bypass the preput guard.
     # Preserve the legacy rejection reason for these missing-reward groups.
     if any(reward is None for reward in rewards):
         return FilterOutput(keep=False, reason="group_has_aborted")
-    if len(rewards) < 2:
-        raise ValueError(
-            f"expected at least 2 samples per group, got {len(rewards)} — set --n-samples-per-prompt >= 2 for GRPO"
-        )
     keep = torch.tensor(rewards, dtype=torch.float64).std() > 1e-8
     return FilterOutput(
         keep=keep,

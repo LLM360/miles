@@ -43,8 +43,12 @@ def test_thresholds_and_boundaries(rewards, reason):
 
 @pytest.mark.parametrize("function", [check_reward_nonzero_std, drop_zero_std_groups_and_extreme_pass_rate])
 def test_single_rollout_cannot_estimate_reward_std(function):
-    with pytest.raises(ValueError, match="at least 2"):
-        function(args(), [Sample(reward=1)])
+    if function is check_reward_nonzero_std:
+        result = function(args(), [Sample(reward=1)])
+        assert not result.keep and result.reason == "group_has_insufficient_complete_samples"
+    else:
+        with pytest.raises(ValueError, match="at least 2"):
+            function(args(), [Sample(reward=1)])
 
 
 def test_truncated_group_rejected_before_reward_statistics():
