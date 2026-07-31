@@ -102,6 +102,43 @@ def test_composed_filter_reports_invalid_outcome_before_zero_std() -> None:
     )
 
 
+def test_composed_filter_excludes_truncated_sample_from_reward_std() -> None:
+    output = check_no_invalid_outcomes_then_nonzero_std(
+        ARGS,
+        [
+            _sample(1),
+            _sample(1),
+            _sample(
+                100,
+                status=Sample.Status.TRUNCATED,
+                exit_status="LimitsExceeded",
+            ),
+        ],
+    )
+
+    assert not bool(output.keep)
+    assert output.reason == "zero_std_1"
+
+
+def test_composed_filter_rejects_when_truncation_leaves_one_complete_sample() -> None:
+    output = check_no_invalid_outcomes_then_nonzero_std(
+        ARGS,
+        [
+            _sample(1),
+            _sample(
+                0,
+                status=Sample.Status.TRUNCATED,
+                exit_status="LimitsExceeded",
+            ),
+        ],
+    )
+
+    assert output == DynamicFilterOutput(
+        keep=False,
+        reason="group_has_insufficient_complete_samples",
+    )
+
+
 def test_compatibility_filter_preserves_composed_behavior() -> None:
     output = check_no_infra_failures(ARGS, [_sample(0), _sample(1)])
 

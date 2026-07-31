@@ -64,6 +64,48 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
+def _normalize_group_rewards_excluding_truncated(
+    raw_rewards: list[float],
+    samples: list[Sample],
+    *,
+    group_size: int,
+    expected_group_count: int,
+    std_normalization: bool,
+) -> list[float]:
+    """Center rewards using only complete samples in each rollout group."""
+    if len(raw_rewards) != len(samples):
+        raise ValueError("raw_rewards and samples must have the same length")
+    if not raw_rewards:
+        return []
+
+    rewards = torch.tensor(raw_rewards, dtype=torch.float)
+    eligible = torch.tensor(
+        [sample.status != Sample.Status.TRUNCATED for sample in samples],
+        dtype=torch.bool,
+    )
+    if rewards.shape[-1] == group_size * expected_group_count:
+        rewards = rewards.reshape(-1, group_size)
+        eligible = eligible.reshape(-1, group_size)
+    else:
+        # Preserve the legacy fallback for uneven sample counts.
+        rewards = rewards.view(1, -1)
+        eligible = eligible.view(1, -1)
+
+    weights = eligible.to(rewards.dtype)
+    counts = weights.sum(dim=-1, keepdim=True)
+    means = (rewards * weights).sum(dim=-1, keepdim=True) / counts.clamp_min(1.0)
+    normalized = (rewards - means) * weights
+
+    if std_normalization:
+        variance = normalized.square().sum(dim=-1, keepdim=True) / (
+            counts - 1.0
+        ).clamp_min(1.0)
+        normalized = normalized / (variance.sqrt() + 1e-6)
+        normalized *= weights
+
+    return normalized.flatten().tolist()
+
+
 # ---------------------------------------------------------------------------
 # ServerGroup / RolloutServer abstractions
 # ---------------------------------------------------------------------------
@@ -757,21 +799,17 @@ class RolloutManager:
             self.args.advantage_estimator in ["grpo", "gspo", "reinforce_plus_plus_baseline"]
             and self.args.rewards_normalization
         ):
-            # group norm
-            rewards = torch.tensor(raw_rewards, dtype=torch.float)
-            if rewards.shape[-1] == self.args.n_samples_per_prompt * self.args.rollout_batch_size:
-                rewards = rewards.reshape(-1, self.args.n_samples_per_prompt)
-            else:
-                # when samples count are not equal in each group
-                rewards = rewards.view(-1, rewards.shape[-1])
-            mean = rewards.mean(dim=-1, keepdim=True)
-            rewards = rewards - mean
-
-            if self.args.advantage_estimator in ["grpo", "gspo"] and self.args.grpo_std_normalization:
-                std = rewards.std(dim=-1, keepdim=True)
-                rewards = rewards / (std + 1e-6)
-
-            return raw_rewards, rewards.flatten().tolist()
+            rewards = _normalize_group_rewards_excluding_truncated(
+                raw_rewards,
+                samples,
+                group_size=self.args.n_samples_per_prompt,
+                expected_group_count=self.args.rollout_batch_size,
+                std_normalization=(
+                    self.args.advantage_estimator in ["grpo", "gspo"]
+                    and self.args.grpo_std_normalization
+                ),
+            )
+            return raw_rewards, rewards
 
         return raw_rewards, raw_rewards
 
