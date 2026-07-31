@@ -24,6 +24,7 @@ PARTIAL_GROUP_FAILURE_EXIT_STATUSES = [
     "VerifierTimeoutError",
 ]
 FATAL_FAILURE_EXIT_STATUSES = [
+    "NonZeroVerifierExitCodeError",
     "AgentSetupTimeout",
     "AgentSetupTimeoutError",
     "EnvStartTimeout",

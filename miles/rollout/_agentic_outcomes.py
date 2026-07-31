@@ -47,6 +47,15 @@ _PARTIAL_GROUP_FAILURE_EXIT_STATUSES = frozenset(
     }
 )
 
+# Documented fatal statuses remain explicit even though unknown statuses also
+# fail closed. A nonzero verifier exit means grading did not produce a valid
+# training outcome, regardless of whether Harbor retained a diagnostic reward.
+_FATAL_FAILURE_EXIT_STATUSES = frozenset(
+    {
+        "NonZeroVerifierExitCodeError",
+    }
+)
+
 
 def classify_exit_status(exit_status: object) -> _Outcome:
     """Classify a raw Harbor exit status without rewriting it.
@@ -68,6 +77,8 @@ def classify_exit_status(exit_status: object) -> _Outcome:
         return _Outcome.TOKEN_TRUNCATION
     if status in _PARTIAL_GROUP_FAILURE_EXIT_STATUSES:
         return _Outcome.PARTIAL_GROUP_FAILURE
+    if status in _FATAL_FAILURE_EXIT_STATUSES:
+        return _Outcome.FATAL_FAILURE
     return _Outcome.FATAL_FAILURE
 
 

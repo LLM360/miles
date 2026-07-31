@@ -32,6 +32,7 @@ def _sample(
         "AgentTimeoutError",
         "VerifierTimeout",
         "VerifierTimeoutError",
+        "NonZeroVerifierExitCodeError",
         "_K8sInternalInfraError",
         "Cancelled",
         "RewardFileNotFoundError",
