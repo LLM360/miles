@@ -26,6 +26,7 @@ HARBOR_EXIT_STATUSES_TO_TRUNCATE = [
     "VerifierTimeoutError",
 ]
 HARBOR_EXIT_STATUSES_TO_ABORT = [
+    "NonZeroVerifierExitCodeError",
     "_K8sInternalInfraError",
     "Cancelled",
     "RewardFileNotFoundError",
