@@ -5,11 +5,157 @@ from unittest.mock import patch
 
 import pytest
 
-from miles.utils.arguments import _maybe_apply_dumper_overrides, get_miles_extra_args_provider
+from miles.utils.arguments import (
+    _maybe_apply_dumper_overrides,
+    get_miles_extra_args_provider,
+    validate_mova_args,
+)
 from miles.utils.misc import function_registry
 
 PATH_ARGS = ["--rollout-function-path", "--custom-generate-function-path"]
 REQUIRED_ARGS = ["--rollout-batch-size", "64"]
+
+
+class TestMoVAArguments:
+    def _parse(self, flags):
+        with patch.object(sys, "argv", ["test", *flags]):
+            parser = argparse.ArgumentParser()
+            get_miles_extra_args_provider()(parser)
+            return parser.parse_args(flags)
+
+    def test_defaults_match_native_megatron_entry_point(self):
+        args = self._parse(REQUIRED_ARGS)
+
+        assert args.mova_num_value_experts == 0
+        assert args.mova_router_topk == 1
+        assert args.mova_router_score_function == "sigmoid"
+        assert args.mova_router_topk_scaling_factor == 1.0
+        assert args.mova_router_enable_expert_bias is False
+        assert args.mova_router_bias_update_rate == 1.0e-3
+        assert args.mova_router_aux_loss_coeff == 0.0
+        assert args.mova_router_load_balancing_type == "none"
+        assert args.mova_num_dense_layers == 0
+        assert args.mova_norm_num_groups == 1
+        assert args.mova_attention_gate_function == "softplus"
+        assert args.mova_value_backend == "grouped_gemm"
+        assert args.mova_use_torch_rms_norm is False
+        assert args.xllm_router_compatibility is True
+        assert args.xllm_router_gemm_partitions == 1
+
+    def test_generated_k2mova_rl_flags_are_accepted(self):
+        args = self._parse(
+            REQUIRED_ARGS
+            + [
+                "--mova-num-value-experts",
+                "64",
+                "--mova-router-topk",
+                "4",
+                "--mova-router-score-function",
+                "sigmoid",
+                "--mova-router-topk-scaling-factor",
+                "2.5",
+                "--mova-router-enable-expert-bias",
+                "--mova-router-bias-update-rate",
+                "0.001",
+                "--mova-router-aux-loss-coeff",
+                "0",
+                "--mova-router-load-balancing-type",
+                "none",
+                "--mova-num-dense-layers",
+                "3",
+                "--mova-norm-num-groups",
+                "2",
+                "--mova-attention-gate-function",
+                "softplus",
+                "--mova-value-backend",
+                "grouped_gemm",
+                "--no-mova-use-torch-rms-norm",
+                "--xllm-router-compatibility",
+                "--xllm-router-gemm-partitions",
+                "1",
+            ]
+        )
+
+        assert args.mova_num_value_experts == 64
+        assert args.mova_router_topk == 4
+        assert args.mova_router_topk_scaling_factor == 2.5
+        assert args.mova_router_enable_expert_bias is True
+        assert args.mova_num_dense_layers == 3
+        assert args.mova_norm_num_groups == 2
+        assert args.mova_value_backend == "grouped_gemm"
+        assert args.mova_use_torch_rms_norm is False
+        assert args.xllm_router_compatibility is True
+
+    def test_registration_does_not_change_shared_transformer_defaults(self):
+        with patch.object(sys, "argv", ["test", *REQUIRED_ARGS]):
+            parser = argparse.ArgumentParser()
+            parser.add_argument("--attention-dropout", type=float, default=0.1)
+            parser.add_argument("--hidden-dropout", type=float, default=0.1)
+            get_miles_extra_args_provider()(parser)
+            args, _ = parser.parse_known_args(REQUIRED_ARGS)
+
+        assert args.attention_dropout == 0.1
+        assert args.hidden_dropout == 0.1
+
+    def test_native_validation_accepts_exact_k2mova_contract(self):
+        args = SimpleNamespace(
+            mova_num_value_experts=64,
+            train_backend="megatron",
+            megatron_to_hf_mode="raw",
+            custom_model_provider_path=None,
+            use_legacy_models=False,
+            yaml_cfg=None,
+            spec=None,
+            mtp_num_layers=None,
+            multi_latent_attention=False,
+            heterogeneous_layers_config_path=None,
+            attention_output_gate=True,
+            rotary_interleaved=True,
+            group_query_attention=True,
+            num_experts=100,
+            attention_dropout=0.0,
+            hidden_dropout=0.0,
+            tensor_model_parallel_size=8,
+            sequence_parallel=True,
+        )
+
+        validate_mova_args(args)
+
+    @pytest.mark.parametrize(
+        ("field", "value", "message"),
+        [
+            ("megatron_to_hf_mode", "bridge", "raw"),
+            ("attention_output_gate", False, "attention-output-gate"),
+            ("rotary_interleaved", False, "rotary-interleaved"),
+            ("attention_dropout", 0.1, "attention-dropout"),
+            ("sequence_parallel", False, "sequence-parallel"),
+        ],
+    )
+    def test_native_validation_rejects_incompatible_rl_flags(self, field, value, message):
+        args = SimpleNamespace(
+            mova_num_value_experts=64,
+            train_backend="megatron",
+            megatron_to_hf_mode="raw",
+            custom_model_provider_path=None,
+            use_legacy_models=False,
+            yaml_cfg=None,
+            spec=None,
+            mtp_num_layers=None,
+            multi_latent_attention=False,
+            heterogeneous_layers_config_path=None,
+            attention_output_gate=True,
+            rotary_interleaved=True,
+            group_query_attention=True,
+            num_experts=100,
+            attention_dropout=0.0,
+            hidden_dropout=0.0,
+            tensor_model_parallel_size=8,
+            sequence_parallel=True,
+        )
+        setattr(args, field, value)
+
+        with pytest.raises(ValueError, match=message):
+            validate_mova_args(args)
 
 
 def make_class_with_add_arguments():

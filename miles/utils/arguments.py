@@ -35,6 +35,115 @@ def reset_arg(parser, name, **kwargs):
         parser.add_argument(name, **kwargs)
 
 
+def add_mova_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    """Register the native Megatron MoVA architecture arguments.
+
+    These names and defaults intentionally mirror Megatron's ``pretrain_mova``
+    entry point.  Miles owns the registration because its train entry points do
+    not invoke that script's ``extra_args_provider``.
+
+    Unlike ``pretrain_mova``, this function must not change shared Transformer
+    defaults globally: the same Miles parser also serves every non-MoVA model.
+    Exact MoVA runs therefore pass the required zero-dropout/base-attention
+    flags explicitly and are checked by :func:`validate_mova_args`.
+    """
+
+    group = parser.add_argument_group(title="mixture-of-value attention")
+    group.add_argument("--mova-num-value-experts", type=int, default=0)
+    group.add_argument("--mova-router-topk", type=int, default=1)
+    group.add_argument(
+        "--mova-router-score-function",
+        choices=("softmax", "sigmoid"),
+        default="sigmoid",
+    )
+    group.add_argument("--mova-router-topk-scaling-factor", type=float, default=1.0)
+    group.add_argument("--mova-router-enable-expert-bias", action="store_true")
+    group.add_argument("--mova-router-bias-update-rate", type=float, default=1.0e-3)
+    group.add_argument("--mova-router-aux-loss-coeff", type=float, default=0.0)
+    group.add_argument(
+        "--mova-router-load-balancing-type",
+        choices=("none", "aux_loss"),
+        default="none",
+    )
+    group.add_argument("--mova-num-dense-layers", type=int, default=0)
+    group.add_argument("--mova-norm-num-groups", type=int, default=1)
+    group.add_argument(
+        "--mova-attention-gate-function",
+        choices=("softplus", "silu"),
+        default="softplus",
+    )
+    group.add_argument(
+        "--mova-value-backend",
+        choices=("sequential", "grouped_gemm"),
+        default="grouped_gemm",
+    )
+    group.add_argument(
+        "--mova-use-torch-rms-norm",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use PyTorch's native RMSNorm primitive for grouped normalization.",
+    )
+    group.add_argument(
+        "--xllm-router-compatibility",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Match xLLM's BF16 router GEMM followed by FP32 top-k scoring.",
+    )
+    group.add_argument(
+        "--xllm-router-gemm-partitions",
+        type=int,
+        default=1,
+        help="Original xLLM model-parallel partitions used by router GEMMs.",
+    )
+    return parser
+
+
+def validate_mova_args(args) -> None:
+    """Validate the Miles-specific boundary for native Megatron MoVA.
+
+    Shape/routing invariants remain owned by ``MoVATransformerConfig``.  The
+    checks here prevent selecting an incompatible Miles provider, conversion
+    path, or cache/model feature before distributed model construction starts.
+    """
+
+    if getattr(args, "mova_num_value_experts", 0) <= 0:
+        return
+
+    if args.train_backend != "megatron":
+        raise ValueError("MoVA training requires --train-backend megatron")
+    if args.megatron_to_hf_mode != "raw":
+        raise ValueError("Native MoVA requires --megatron-to-hf-mode raw")
+    if getattr(args, "custom_model_provider_path", None) is not None:
+        raise ValueError("Native MoVA owns its model provider; remove --custom-model-provider-path")
+    if getattr(args, "use_legacy_models", False):
+        raise ValueError("MoVA is supported only by Megatron Core models")
+    if getattr(args, "yaml_cfg", None) is not None:
+        raise ValueError("MoVA's initial Miles integration supports CLI configuration only")
+    if getattr(args, "spec", None) is not None:
+        raise ValueError("MoVA owns its heterogeneous layer spec; --spec is not supported")
+    if getattr(args, "mtp_num_layers", None) is not None:
+        raise ValueError("MoVA does not currently support MTP layers")
+    if getattr(args, "multi_latent_attention", False):
+        raise ValueError("MoVA cannot be combined with multi-latent attention")
+    if getattr(args, "heterogeneous_layers_config_path", None) is not None:
+        raise ValueError("MoVA owns its heterogeneous layer layout")
+    if not getattr(args, "attention_output_gate", False):
+        raise ValueError("MoVA requires --attention-output-gate")
+    if not getattr(args, "rotary_interleaved", False):
+        raise ValueError("xLLM MoVA requires --rotary-interleaved")
+    if not getattr(args, "group_query_attention", False):
+        raise ValueError("MoVA requires --group-query-attention")
+    if getattr(args, "num_experts", 0) <= 0:
+        raise ValueError("MoVA sparse layers require --num-experts")
+    if getattr(args, "attention_dropout", None) != 0.0 or getattr(args, "hidden_dropout", None) != 0.0:
+        raise ValueError("xLLM MoVA requires --attention-dropout 0 and --hidden-dropout 0")
+    if (
+        getattr(args, "tensor_model_parallel_size", 1) > 1
+        and not getattr(args, "sequence_parallel", False)
+    ):
+        raise ValueError("MoVA with tensor parallelism requires --sequence-parallel")
+
+
 def get_miles_extra_args_provider(add_custom_arguments=None):
     def add_miles_arguments(parser):
         # Ray
@@ -1363,6 +1472,14 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             parser.add_argument("--check-weight-update-equal", action="store_true")
             parser.add_argument(
+                "--check-all-engine-weight-versions",
+                action="store_true",
+                help=(
+                    "After every live-weight update, query every rollout engine "
+                    "and require its version to match the updater."
+                ),
+            )
+            parser.add_argument(
                 "--env-report",
                 type=str,
                 default=os.environ.get("MILES_SCRIPT_ENV_REPORT", ""),
@@ -1671,6 +1788,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
 
         parser = add_cluster_arguments(parser)
         parser = add_train_arguments(parser)
+        parser = add_mova_arguments(parser)
         parser = add_rollout_arguments(parser)
         parser = add_fault_tolerance_arguments(parser)
         parser = add_data_arguments(parser)
@@ -1843,6 +1961,7 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
 
 
 def miles_validate_args(args):
+    validate_mova_args(args)
     args.eval_datasets = _resolve_eval_datasets(args)
 
     # Normalize --tito-allowed-append-roles: lowercase + deduplicate.
