@@ -15,7 +15,7 @@ from miles.backends.training_utils.parallel import get_parallel_state
 from miles.utils.distributed_utils import get_gloo_group
 
 from ..sglang import FlattenedTensorBucket, MultiprocessingSerializer
-from .common import post_process_weights
+from .common import post_process_weights, validate_weight_update_cache_mode
 from .hf_weight_iterator_base import HfWeightIteratorBase
 from .update_weight_from_distributed.broadcast import (
     connect_rollout_engines_from_distributed,
@@ -172,6 +172,9 @@ class UpdateWeightFromTensor:
         """
         version++, flush caches, process buckets. Progress on rank 0.
         """
+        # Validate on every rank before any RPC or collective. MoVA caches
+        # routed values, so retaining KV state across a policy update is stale.
+        validate_weight_update_cache_mode(self.args)
         self.weight_version += 1
 
         rank = dist.get_rank()
