@@ -15,6 +15,7 @@ from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
 from miles.utils.logging_utils import configure_logger
 from miles.utils.misc import load_function
+from miles.utils.rollout_temperature import validate_rollout_temperature
 
 logger = logging.getLogger(__name__)
 
@@ -1973,6 +1974,7 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
 
 def miles_validate_args(args):
     validate_mova_args(args)
+    validate_rollout_temperature(args)
     args.eval_datasets = _resolve_eval_datasets(args)
 
     # Normalize --tito-allowed-append-roles: lowercase + deduplicate.
