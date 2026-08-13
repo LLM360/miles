@@ -377,6 +377,61 @@ def test_p2p_staging_contract_requires_all_value_expert_shards() -> None:
     assert updater._tensor_update_pending == {}
 
 
+@pytest.mark.parametrize(
+    ("runtime_dtype", "expected_dtype"),
+    [
+        ("bfloat16", torch.bfloat16),
+        ("auto", torch.float16),
+    ],
+)
+def test_p2p_cpu_replica_uses_runtime_rollout_dtype(runtime_dtype: str, expected_dtype: torch.dtype) -> None:
+    from contextlib import nullcontext
+
+    from sglang.srt.configs.model_config import _get_and_verify_dtype
+
+    from miles.backends.megatron_utils.update_weight.update_weight_from_distributed import p2p
+
+    updater = object.__new__(p2p.UpdateWeightP2P)
+    updater._shared_params_dict = {}
+    server_args = SimpleNamespace(dtype=runtime_dtype, rl_quant_profile=None)
+    observed = {}
+
+    def fake_model_config(model_path: str, dtype: str = "auto") -> SimpleNamespace:
+        # The MoVA HF artifact declares float32. SGLang resolves that to fp16
+        # for auto, but must honor an explicit bfloat16 rollout dtype.
+        hf_config = {"model_type": "xllm", "torch_dtype": "float32"}
+        observed["model_path"] = model_path
+        observed["requested_dtype"] = dtype
+        return SimpleNamespace(dtype=_get_and_verify_dtype(hf_config, dtype))
+
+    def fake_get_model(*, model_config, load_config, device_config) -> nn.Module:
+        observed["validation_dtype"] = model_config.dtype
+        return nn.Module()
+
+    with (
+        patch.object(p2p, "ModelConfig", side_effect=fake_model_config),
+        patch.object(p2p, "LoadConfig", return_value=object()),
+        patch.object(p2p, "DeviceConfig", return_value=object()),
+        patch.object(p2p, "ParallelismContext", side_effect=lambda _: nullcontext()),
+        patch.object(p2p, "get_model", side_effect=fake_get_model),
+        patch.object(p2p, "initialize_moe_config"),
+        patch.object(p2p, "initialize_fp8_gemm_config"),
+        patch.object(p2p, "initialize_fp4_gemm_config"),
+        patch.object(p2p.torch.cuda, "empty_cache"),
+    ):
+        updater.create_cpu_replica(
+            parallelism_config=object(),
+            model_path="/models/mova-float32-config",
+            server_args=server_args,
+        )
+
+    assert observed == {
+        "model_path": "/models/mova-float32-config",
+        "requested_dtype": runtime_dtype,
+        "validation_dtype": expected_dtype,
+    }
+
+
 def test_broadcast_path_preserves_all_converted_value_expert_metadata() -> None:
     from miles.backends.megatron_utils.update_weight.update_weight_from_distributed.broadcast import (
         update_weights_from_distributed,
