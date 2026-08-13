@@ -2,6 +2,7 @@ from argparse import Namespace
 
 import torch
 
+from miles.backends.training_utils.loss_hub.math_utils import compute_opd_reward
 from miles.utils.types import RolloutBatch
 
 
@@ -31,7 +32,12 @@ def apply_opd_kl_to_advantages(
         return
 
     precomputed_reverse_kls = rollout_data.get("opd_reverse_kl")
-    if precomputed_reverse_kls is not None:
+    reward_type = getattr(args, "opd_reward_type", "logr")
+    if reward_type not in {"logr", "k3"}:
+        raise ValueError(f"Unknown OPD reward type: {reward_type}")
+    if reward_type == "k3" and getattr(args, "opd_log_prob_top_k", 0) > 0:
+        raise ValueError("k3 OPD requires sampled teacher/student log-probs, not precomputed top-k rewards")
+    if precomputed_reverse_kls is not None and reward_type == "logr":
         if len(advantages) != len(precomputed_reverse_kls):
             raise ValueError(
                 f"OPD length mismatch: advantages={len(advantages)}, "
@@ -86,9 +92,36 @@ def apply_opd_kl_to_advantages(
                 "OPD expects per-token advantages; broadcast scalar advantages must be expanded before this call."
             )
         old_student_log_prob = student_log_probs[i].detach()
-        reverse_kl = old_student_log_prob - teacher_log_probs[i]
+        reverse_kl = (
+            -compute_opd_reward(old_student_log_prob, teacher_log_probs[i], "k3")
+            if reward_type == "k3"
+            else old_student_log_prob - teacher_log_probs[i]
+        )
         advantages[i] = adv - args.opd_kl_coef * reverse_kl
         reverse_kls.append(reverse_kl)
 
     # Store reverse KL for logging.
     rollout_data["opd_reverse_kl"] = reverse_kls
+
+
+def compute_legacy_opd_advantages(args, rollout_data, student_log_probs):
+    """Stable's OPD-only estimator on response/CP-aligned fixed scoring inputs.
+
+    It ignores scalar rewards and the additive OPD coefficient, exactly as the
+    original estimator did. Current rollout conversion aligns teacher scores.
+    """
+    teacher_log_probs = rollout_data.get("teacher_log_probs")
+    if student_log_probs is None or teacher_log_probs is None:
+        raise ValueError("on_policy_distillation requires student and teacher log-probs")
+    if len(student_log_probs) != len(teacher_log_probs):
+        raise ValueError("OPD student/teacher sample counts differ")
+    advantages = []
+    for student, teacher in zip(student_log_probs, teacher_log_probs, strict=True):
+        if student.shape != teacher.shape:
+            raise ValueError("Legacy OPD requires response-aligned teacher scores on each context-parallel rank")
+        advantages.append(
+            compute_opd_reward(
+                student.detach(), teacher.detach().to(device=student.device), getattr(args, "opd_reward_type", "logr")
+            )
+        )
+    return advantages

@@ -17,3 +17,6 @@ This directory contains runnable examples:
 - `run-qwen3-8B-opd-megatron.sh`: Megatron-loaded teacher OPD.
 
 Use `--opd-log-prob-top-k 0` to run the original sampled-token OPD path.
+
+For sampled-token scores, use `--opd-reward-type k3` for the negative k3 KL
+estimator. See the canonical OPD page for formulas and legacy estimator compatibility.

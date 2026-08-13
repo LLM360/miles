@@ -1546,11 +1546,23 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                     "reinforce_plus_plus",
                     "reinforce_plus_plus_baseline",
                     "ppo",
+                    "on_policy_distillation",
                 ],
                 default="grpo",
                 help=(
                     "Advantage estimator to use. Note: on-policy distillation (OPD) is now orthogonal "
                     "to the advantage estimator. Use --opd-kl-coef > 0 to enable OPD on top of any estimator."
+                ),
+            )
+            parser.add_argument(
+                "--opd-reward-type",
+                type=str,
+                choices=["logr", "k3"],
+                default="logr",
+                help=(
+                    "Token-level reward for on_policy_distillation. logr uses log(p_teacher/p_student); "
+                    "k3 uses its lower-variance negative-KL counterpart "
+                    "1 + log(p_teacher/p_student) - p_teacher/p_student."
                 ),
             )
             parser.add_argument(
@@ -3213,6 +3225,9 @@ def miles_validate_args(args):
             )
 
     # Validate on-policy distillation (OPD) arguments
+    if getattr(args, "opd_reward_type", "logr") == "k3" and getattr(args, "opd_log_prob_top_k", 0) > 0:
+        raise ValueError("--opd-reward-type k3 requires --opd-log-prob-top-k 0 (sampled-token scores).")
+
     if args.use_opd:
         if args.opd_type is None:
             raise ValueError("--opd-type must be specified when --use-opd is enabled. Choose 'sglang' or 'megatron'.")

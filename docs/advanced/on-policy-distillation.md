@@ -178,3 +178,21 @@ Using Qwen3-8B-Base model SFT-ed on part of the [OpenThoughts3-1.2M](https://hug
 
 - [Thinking Machines: On-Policy Distillation](https://thinkingmachines.ai/blog/on-policy-distillation/)
 - [Rethinking On-Policy Distillation](https://arxiv.org/abs/2604.13016)
+
+
+## Sampled-token reward estimator
+
+`--opd-reward-type logr` (default) uses `log(r)`, where
+`r = p_teacher / p_student`. `--opd-reward-type k3` uses
+`1 + log(r) - r`, computed as `log(r) - expm1(log(r))` for accuracy near one.
+The k3 option requires sampled-token scores (`--opd-log-prob-top-k 0`);
+a precomputed top-k average does not contain the individual ratios it needs.
+With `--use-opd`, the selected reward is weighted by `--opd-kl-coef` and added
+to the base advantages. Existing top-k OPD behavior remains available with `logr`.
+
+Stable's `--advantage-estimator on_policy_distillation` is also supported.
+This compatibility mode uses only the selected teacher/student token reward,
+ignores scalar task rewards, and assigns that reward to both advantages and
+returns. It does not apply a second additive OPD penalty. Teacher log-probs
+must be provided by the rollout or a configured teacher; legacy full-sequence
+scores are trimmed to the response before context-parallel distribution.

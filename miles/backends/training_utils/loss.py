@@ -12,7 +12,7 @@ from miles.backends.training_utils.loss_hub.advantages import compute_advantages
 from miles.backends.training_utils.loss_hub.logit_processors import get_log_probs_and_entropy, get_values  # noqa: F401
 from miles.backends.training_utils.loss_hub.losses import get_loss_function
 from miles.backends.training_utils.loss_hub.math_utils import compute_approx_kl
-from miles.backends.training_utils.loss_hub.opd import apply_opd_kl_to_advantages
+from miles.backends.training_utils.loss_hub.opd import apply_opd_kl_to_advantages, compute_legacy_opd_advantages
 from miles.backends.training_utils.parallel import get_parallel_state
 from miles.utils.audit_utils.event_logger.logger import get_event_logger, is_event_logger_initialized
 from miles.utils.audit_utils.event_logger.models import TrainAdvantageComputationEvent
@@ -100,26 +100,31 @@ def compute_advantages_and_returns(
             for i in range(len(log_probs))
         ]
 
-    advantages, returns = compute_advantages(
-        args=args,
-        kl=kl,
-        rewards=rewards,
-        log_probs=log_probs,
-        loss_masks=loss_masks,
-        total_lengths=total_lengths,
-        response_lengths=response_lengths,
-        max_seq_lens=max_seq_lens,
-        values=values,
-    )
-
-    # Apply on-policy distillation KL penalty to advantages (orthogonal to advantage estimator)
-    if args.use_opd:
-        apply_opd_kl_to_advantages(
+    legacy_opd = getattr(args, "advantage_estimator", None) == "on_policy_distillation"
+    if legacy_opd:
+        advantages = compute_legacy_opd_advantages(args, rollout_data, log_probs)
+        returns = advantages
+    else:
+        advantages, returns = compute_advantages(
             args=args,
-            rollout_data=rollout_data,
-            advantages=advantages,
-            student_log_probs=log_probs,
+            kl=kl,
+            rewards=rewards,
+            log_probs=log_probs,
+            loss_masks=loss_masks,
+            total_lengths=total_lengths,
+            response_lengths=response_lengths,
+            max_seq_lens=max_seq_lens,
+            values=values,
         )
+
+        # Apply on-policy distillation KL penalty to advantages (orthogonal to advantage estimator)
+        if args.use_opd:
+            apply_opd_kl_to_advantages(
+                args=args,
+                rollout_data=rollout_data,
+                advantages=advantages,
+                student_log_probs=log_probs,
+            )
 
     if args.normalize_advantages:
         advantages = normalize_advantages(args, advantages, loss_masks, total_lengths, response_lengths, max_seq_lens)

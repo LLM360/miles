@@ -160,6 +160,13 @@ def convert_samples_to_train_data(
 
     if samples[0].teacher_log_probs is not None:
         train_data["teacher_log_probs"] = [sample.teacher_log_probs for sample in samples]
+        if getattr(args, "advantage_estimator", None) == "on_policy_distillation":
+            # Legacy reward functions may return prompt + response scores.
+            # Select the response before current context-parallel slicing.
+            train_data["teacher_log_probs"] = [
+                values[-sample.response_length :] if sample.response_length else values[:0]
+                for values, sample in zip(train_data["teacher_log_probs"], samples, strict=True)
+            ]
 
     if any(sample.adapter is not None for sample in samples):
         assert all(sample.adapter is not None for sample in samples), "Cannot mix adapter and adapter-less samples"
