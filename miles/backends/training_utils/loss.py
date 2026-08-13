@@ -11,6 +11,7 @@ from miles.utils.ppo_utils import (
     calculate_log_probs_and_entropy,
     compute_approx_kl,
     compute_gspo_kl,
+    compute_opd_reward,
     compute_opsm_mask,
     compute_policy_loss,
     get_advantages_and_returns_batch,
@@ -380,7 +381,7 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
             for t_log_prob, response_length in zip(teacher_log_probs, response_lengths, strict=False)
         ]
         advantages = [
-            teacher_log_prob - student_log_prob
+            compute_opd_reward(student_log_prob, teacher_log_prob, getattr(args, "opd_reward_type", "logr"))
             for teacher_log_prob, student_log_prob in zip(teacher_log_probs, student_log_probs, strict=False)
         ]
         returns = advantages
