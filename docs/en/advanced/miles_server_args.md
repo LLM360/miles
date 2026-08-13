@@ -218,6 +218,7 @@ Arguments for reinforcement learning algorithms and loss calculation.
 | Argument | Description | Default | Options | Source |
 | :--- | :--- | :--- | :--- | :--- |
 | `--advantage-estimator` | Advantage estimator to use. | `"grpo"` | `grpo`, `gspo`, `ppo`, `reinforce_plus_plus`, `reinforce_plus_plus_baseline`, `on_policy_distillation` | Miles Native |
+| `--opd-reward-type` | Token-level reward for on-policy distillation. `logr` is `log(p_teacher/p_student)`; `k3` is the negative k3 KL estimator `1 + log(r) - r`. | `"logr"` | `logr`, `k3` | Miles Native |
 | `--loss-type` | Type of loss function to use. | `"policy_loss"` | `policy_loss`, `sft_loss`, `custom_loss` | Miles Native |
 | `--custom-loss-function-path` | Path to a custom loss calculation function (requires `--loss-type custom_loss`). [Ref](../get_started/customization.md#9-custom-loss-function---custom-loss-function-path) | `None` | Type: str | Miles Native |
 | `--critic-lr` | Learning rate for the Critic. Defaults to `--lr`. | `None` | Type: float | Miles Native |
