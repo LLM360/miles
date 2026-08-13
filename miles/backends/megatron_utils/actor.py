@@ -191,6 +191,13 @@ def validate_rollout_for_grpo_training_step(
             return float(sum(float(v) for v in x))
         return float(x)
 
+    def _all_zero(x):
+        if torch.is_tensor(x):
+            return bool(torch.all(x == 0).item())
+        if isinstance(x, (list, tuple)):
+            return all(float(v) == 0 for v in x)
+        return float(x) == 0
+
     def _summarize_vector_list(key, limit=3):
         if not _present(key):
             return f"{key}=MISSING"
@@ -228,6 +235,7 @@ def validate_rollout_for_grpo_training_step(
             "rewards",
             "response_lengths",
             "total_lengths",
+            "removed_by_filter",
             "loss_masks",
             "tokens",
             "input_ids",
@@ -242,6 +250,16 @@ def validate_rollout_for_grpo_training_step(
             lines.append(_summarize_vector_list(key))
 
         # Numeric aggregate summary.
+        try:
+            if _present("removed_by_filter") and _is_seq(rollout_data["removed_by_filter"]):
+                flags = rollout_data["removed_by_filter"]
+                lines.append(
+                    f"removed_by_filter: count={len(flags)} "
+                    f"removed={sum(bool(flag) for flag in flags)}"
+                )
+        except Exception as e:
+            lines.append(f"removed_by_filter aggregate failed: {type(e).__name__}: {e}")
+
         try:
             if _present("response_lengths") and _is_seq(rollout_data["response_lengths"]):
                 rs = [int(x) for x in rollout_data["response_lengths"]]
@@ -329,6 +347,28 @@ def validate_rollout_for_grpo_training_step(
         if got != n:
             _add_error(f"{key!r} length mismatch: got {got}, expected {n}")
 
+    removed_by_filter_flags = [False] * n
+    if _present("removed_by_filter"):
+        candidate_flags = rollout_data["removed_by_filter"]
+        candidate_flags_valid = True
+        if not _is_seq(candidate_flags):
+            _add_error(
+                f"'removed_by_filter' must be list/tuple, got {type(candidate_flags).__name__}"
+            )
+            candidate_flags_valid = False
+        elif len(candidate_flags) != n:
+            _add_error(f"'removed_by_filter' length mismatch: got {len(candidate_flags)}, expected {n}")
+            candidate_flags_valid = False
+        else:
+            for i, removed in enumerate(candidate_flags):
+                if not isinstance(removed, bool):
+                    _add_error(
+                        f"removed_by_filter[{i}] must be bool, got {type(removed).__name__}"
+                    )
+                    candidate_flags_valid = False
+            if candidate_flags_valid:
+                removed_by_filter_flags = list(candidate_flags)
+
     token_key = None
     if _present("tokens"):
         token_key = "tokens"
@@ -411,8 +451,24 @@ def validate_rollout_for_grpo_training_step(
             continue
 
         mask_sum = _sum_float(mask)
-        if mask_sum <= 0:
-            _add_error(f"loss_masks[{i}] has no active tokens, sum={mask_sum}, response_len={resp}")
+        removed_by_filter = removed_by_filter_flags[i]
+        mask_is_all_zero = _all_zero(mask)
+        if removed_by_filter:
+            if mask_is_all_zero:
+                _add_warning(
+                    f"loss_masks[{i}] has no active tokens because removed_by_filter=True, "
+                    f"sum={mask_sum}, response_len={resp}"
+                )
+            else:
+                _add_error(
+                    f"loss_masks[{i}] is not all-zero despite removed_by_filter=True, "
+                    f"sum={mask_sum}, response_len={resp}"
+                )
+        elif mask_sum <= 0:
+            _add_error(
+                f"loss_masks[{i}] has no active tokens without removed_by_filter=True, "
+                f"sum={mask_sum}, response_len={resp}"
+            )
         if mask_sum > resp:
             # Warning-only: float/weighted masks can legitimately have sum > resp.
             _add_warning(
@@ -483,15 +539,6 @@ def validate_rollout_for_grpo_training_step(
     for key in ("log_probs", "ref_log_probs", "values", "advantages", "returns"):
         check_vector_list(key, response_lengths)
     check_vector_list("rollout_log_probs", [] if cp_size > 1 else response_lengths)
-
-    # GRPO grouping diagnostics. Warning only because dynamic filtering can alter counts.
-    n_samples_per_prompt = int(getattr(args, "n_samples_per_prompt", 0) or 0)
-    if n_samples_per_prompt > 0 and n % n_samples_per_prompt != 0:
-        _add_warning(f"sample count {n} not divisible by n_samples_per_prompt={n_samples_per_prompt}")
-
-    grpo_group_size = int(getattr(args, "grpo_group_size", 0) or 0)
-    if grpo_group_size > 0 and n % grpo_group_size != 0:
-        _add_warning(f"sample count {n} not divisible by grpo_group_size={grpo_group_size}")
 
     # This is important for your failure mode:
     # If compute_advantages_and_returns will normalize, every rank that reaches
