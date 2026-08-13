@@ -9,6 +9,31 @@ import torch
 logger = logging.getLogger(__name__)
 
 
+def assert_rollout_engine_weight_versions(rollout_engines, expected_version) -> None:
+    """Assert that every rollout engine exposes the synchronized version.
+
+    This is intentionally metadata-only: it is cheap enough to enable for
+    acceptance runs and avoids the cost of full tensor equality checks.
+    """
+
+    if not rollout_engines:
+        return
+
+    import ray
+
+    versions = ray.get([engine.get_weight_version.remote() for engine in rollout_engines])
+    mismatches = [
+        (index, version)
+        for index, version in enumerate(versions)
+        if str(version) != str(expected_version)
+    ]
+    if mismatches:
+        raise RuntimeError(
+            "Rollout engine weight-version mismatch: "
+            f"expected {expected_version}, mismatches {mismatches}"
+        )
+
+
 def check_kl(args: Namespace, log_dict: dict[str, float], step_id: int, accumulated_step_id: int) -> None:
     if step_id == 0 and "train/ppo_kl" in log_dict and "train/pg_clipfrac" in log_dict:
         if args.multi_latent_attention:
