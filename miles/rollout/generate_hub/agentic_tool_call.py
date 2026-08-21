@@ -4,8 +4,7 @@ Generic agentic generate function for agent-environment RL training.
 The agent logic is fully encapsulated in a user-provided async function
 (--custom-agent-function-path). This generate function only handles:
   1. TITO session tracing (OpenAIEndpointTracer)
-  2. Converting session records to training samples
-  3. Multi-turn merge
+  2. Collecting one server-merged training sample
 
 Agent function contract:
   async def my_agent(
@@ -36,10 +35,9 @@ from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
 from miles.rollout.generate_utils.openai_endpoint_utils import (
     OpenAIEndpointTracer,
-    compute_samples_from_openai_records,
+    apply_merged_session_sample,
     truncate_samples_by_total_tokens,
 )
-from miles.rollout.generate_utils.sample_utils import drop_samples_after_first_non_completed, merge_samples
 from miles.utils.misc import load_function
 from miles.utils.types import Sample
 
@@ -59,6 +57,10 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     ), f"Custom agent function {input.args.custom_agent_function_path} not found"
 
     max_seq_len = getattr(input.args, "max_seq_len", None)
+    assert not getattr(input.args, "generate_multi_samples", False), (
+        "agentic_tool_call.generate with session-server merged collection produces one merged sample; "
+        "--generate-multi-samples is not supported."
+    )
 
     metadata = input.sample.metadata
     metadata = {**metadata, "sample_idx": input.sample.index}
@@ -93,42 +95,29 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         logger.warning(f"{log_prefix} Agent function failed: {e}", exc_info=True)
 
     finally:
-        logger.debug(f"{log_prefix} Calling collect_records...")
-        records, session_metadata = await tracer.collect_records()
-        logger.debug(f"{log_prefix} collect_records done: {len(records)} records")
+        logger.debug(f"{log_prefix} Calling collect_merged_sample...")
+        merged_sample, session_metadata = await tracer.collect_merged_sample()
+        if merged_sample is None:
+            logger.debug(f"{log_prefix} collect_merged_sample done: empty sample")
+        else:
+            logger.debug(
+                f"{log_prefix} collect_merged_sample done: tokens={len(merged_sample.tokens)} "
+                f"response_length={merged_sample.response_length} "
+                f"loss_mask={len(merged_sample.loss_mask)} "
+                f"rollout_log_probs={len(merged_sample.rollout_log_probs)} "
+                f"status={merged_sample.status}"
+            )
 
-    if not records:
+    if merged_sample is None:
         logger.warning("No model calls recorded for sample")
         sample = deepcopy(input.sample)
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
 
-    logger.debug(f"{log_prefix} Computing samples from {len(records)} records...")
-    samples = compute_samples_from_openai_records(
-        input.args,
-        input.sample,
-        records,
-        input.state.tokenizer,
-        accumulated_token_ids=session_metadata.get("accumulated_token_ids"),
-        max_trim_tokens=session_metadata.get("max_trim_tokens", 0),
-    )
-
-    logger.debug(
-        f"{log_prefix} compute_samples done: {len(samples)} samples, total_time={time.monotonic()-t_start:.1f}s"
-    )
-    for s in samples:
-        s.metadata.update(agent_metadata or {})
-
-    # An aborted/length-limited turn invalidates everything generated after
-    # it; the agent may have kept going on truncated output (e.g. when the
-    # engine aborts in-flight requests at the end of a rollout step).
-    samples, num_dropped = drop_samples_after_first_non_completed(samples)
-    if num_dropped > 0:
-        logger.warning(
-            f"{log_prefix} Dropped {num_dropped} trailing turn(s) generated after a " f"{samples[-1].status.name} turn"
-        )
-        for s in samples:
-            s.metadata["dropped_trailing_turns"] = num_dropped
+    sample = apply_merged_session_sample(input.args, input.sample, merged_sample)
+    sample.metadata.update(agent_metadata or {})
+    sample.metadata.update(session_metadata)
+    samples = [sample]
 
     if max_seq_len is not None:
         samples = truncate_samples_by_total_tokens(samples, max_seq_len, input.state.tokenizer)
@@ -139,12 +128,13 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
 
-    if not input.args.generate_multi_samples:
-        samples = merge_samples(samples, input.state.tokenizer)
-        samples.metadata.update(session_metadata)
-    else:
-        samples[-1].metadata.update(session_metadata)
-    return GenerateFnOutput(samples=samples)
+    sample = samples[0]
+    logger.debug(
+        f"{log_prefix} server-merged sample ready: "
+        f"tokens={len(sample.tokens)} response_length={sample.response_length} "
+        f"total_time={time.monotonic()-t_start:.1f}s"
+    )
+    return GenerateFnOutput(samples=sample)
 
 
 def build_agent_function_kwargs(
