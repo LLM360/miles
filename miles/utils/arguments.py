@@ -1635,6 +1635,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="TITO tokenizer type for pretokenized prefix reuse. Controls how token IDs are computed for messages appended after the pretokenized prefix in multi-turn agentic sessions.",
             )
             parser.add_argument(
+                "--tito-session-mismatch-sample-rate",
+                type=float,
+                default=0.0,
+                help="Fraction of sessions (0.0-1.0) for which the session server re-tokenizes the full "
+                "trajectory to compute tito_session_mismatch. This is a diagnostic canary for chat-template/"
+                "tokenizer drift; it does not affect training tokens (those come from the inference response). "
+                "It runs synchronously on the record-fetch path, so at long context it blocks the event loop and "
+                "starves record retrieval. Default 0.0 (off). Set to 0.02 for a cheap drift signal, 1.0 for legacy "
+                "always-on behaviour.",
+            )
+            parser.add_argument(
                 "--tito-allowed-append-roles",
                 nargs="+",
                 default=["tool"],
