@@ -38,6 +38,7 @@ class SchedulingSpec(FrozenStrictBaseModel):
     pg_name: str | None = None
     pg_slot_offset: int = 0
     pin_to_head: bool = False
+    ray_scheduling_strategy: Literal["SPREAD"] | None = None
 
     @classmethod
     def single(cls, num_gpus_per_worker: float, pin_to_head: bool = False) -> "SchedulingSpec":

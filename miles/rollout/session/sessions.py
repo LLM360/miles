@@ -224,7 +224,9 @@ def setup_session_routes(app, backend, config: SessionServerConfig, *, use_addit
             return await core.collect_samples(
                 session_id, max_seq_len=params.get("max_seq_len"), agent_metadata=params.get("metadata")
             )
-        return await core.collect_samples(session_id, max_seq_len=params.get("max_seq_len"))
+        return await core.collect_samples(
+            session_id, max_seq_len=params.get("max_seq_len"), decode_response=params.get("decode_response", True)
+        )
 
     @app.api_route("/sessions/{session_id}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
     async def session_proxy(request: Request, session_id: str, path: str):

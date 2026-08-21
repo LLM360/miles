@@ -122,9 +122,15 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
         b_metadata, b_lifecycle = _pop_lifecycle(b_metadata)
         a_metadata, a_messages = _pop_messages(a_metadata)
         b_metadata, b_messages = _pop_messages(b_metadata)
+        response_flag_present = any("response_decoded" in (x or {}) for x in (a_metadata, b_metadata))
+        if response_flag_present:
+            a_metadata = {k: v for k, v in (a_metadata or {}).items() if k != "response_decoded"}
+            b_metadata = {k: v for k, v in (b_metadata or {}).items() if k != "response_decoded"}
         assert a_metadata == b_metadata, f"metadata mismatch: a.metadata={a.metadata}, b.metadata={b.metadata}"
 
         merged_metadata = deepcopy(a_metadata)
+        if response_flag_present:
+            merged_metadata["response_decoded"] = response_decoded
         merged_top_logprobs = _merge_opd_student_top_logprobs(a_top_logprobs, b_top_logprobs)
         if merged_top_logprobs is not None:
             if merged_metadata is None:
@@ -146,7 +152,8 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
     obs_len = len(b.tokens) - len(a.tokens) - b.response_length
     obs_tokens = b.tokens[len(a.tokens) : len(a.tokens) + obs_len]
     # TODO: is this acceptable?
-    obs_text = tokenizer.decode(obs_tokens)
+    response_decoded = all((x.metadata or {}).get("response_decoded", True) for x in (a, b))
+    obs_text = tokenizer.decode(obs_tokens) if response_decoded else ""
 
     try:
         a.validate()
@@ -172,7 +179,7 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
             tokens=b.tokens,
             multimodal_inputs=_merge_equal_value("multimodal_inputs"),
             multimodal_train_inputs=_merge_equal_value("multimodal_train_inputs"),
-            response=a.response + obs_text + b.response,
+            response=a.response + obs_text + b.response if response_decoded else "",
             response_length=a.response_length + obs_len + b.response_length,
             label=_merge_equal_value("label"),
             reward=_merge_equal_value("reward"),

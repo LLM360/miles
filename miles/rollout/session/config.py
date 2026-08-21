@@ -59,3 +59,14 @@ def compute_session_server_config(
         session_sample_picker_path=getattr(args, "session_sample_picker_path", None),
         session_sample_postprocessor_path=getattr(args, "session_sample_postprocessor_path", None),
     )
+
+
+def normalize_session_server_urls(addrs: list[str]) -> list[str]:
+    return [
+        addr.rstrip("/") if addr.startswith(("http://", "https://")) else f"http://{addr.rstrip('/')}"
+        for addr in addrs
+    ]
+
+
+def has_external_session_servers(args) -> bool:
+    return bool(getattr(args, "session_server_addrs", None)) and not getattr(args, "_session_servers_managed", False)

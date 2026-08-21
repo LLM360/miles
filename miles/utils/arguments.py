@@ -2682,6 +2682,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "(multi-lineage trajectories, always-branch).",
             )
             parser.add_argument(
+                "--session-server-addrs",
+                nargs="+",
+                default=None,
+                help="Use existing session workers at these host:port or HTTP(S) URLs instead of launching a pool.",
+            )
+            parser.add_argument(
                 "--session-server-workers",
                 "--session-server-count",
                 dest="session_server_workers",

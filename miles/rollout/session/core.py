@@ -363,42 +363,56 @@ class SessionCore:
                 content=_render_json(payload.model_dump(mode="json")), status_code=200, media_type=JSON_MEDIA_TYPE
             )
 
-    async def collect_samples(self, session_id: str, *, max_seq_len: int | None) -> Response:
+    async def collect_samples(
+        self, session_id: str, *, max_seq_len: int | None, decode_response: bool = True
+    ) -> Response:
         """Assemble training Samples from this session's records.
 
         Validation failures return 422; unexpected errors propagate.
         """
         session = self.registry.get_session(session_id)
         async with session.lock:
-            metadata = self._session_metadata(session_id, session)
-            tokenizer = self.registry.tokenizer
-            if not session.records:
-                return _samples_response(encode_samples([], metadata, empty_reason="no_records"))
-            try:
-                samples = compute_samples_from_openai_records(
-                    self.config,
-                    session.records,
-                    tokenizer,
-                    accumulated_token_ids=metadata.get("accumulated_token_ids"),
-                    max_trim_tokens=metadata.get("max_trim_tokens", 0),
-                    use_addition_r3=self.use_addition_r3,
-                )
-                samples, num_dropped = drop_samples_after_first_non_completed(samples)
-                if num_dropped:
-                    logger.warning("Session %s dropped %d turns after an incomplete turn", session_id, num_dropped)
-                    for sample in samples:
-                        sample.metadata["dropped_trailing_turns"] = num_dropped
-                if max_seq_len is not None:
-                    samples = truncate_samples_by_total_tokens(samples, max_seq_len, tokenizer)
-                if not samples:
-                    return _samples_response(encode_samples([], metadata, empty_reason="all_truncated"))
-                if self.use_addition_r3:
-                    samples = [merge_samples_with_addition_r3(self.config, samples, session.records, tokenizer)]
-                else:
-                    samples = [merge_samples(samples, tokenizer)]
-            except (AssertionError, ValueError) as exc:
-                return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
-            return _samples_response(encode_samples(samples, metadata))
+            return await run_session_worker(self._assemble_samples, session_id, session, max_seq_len, decode_response)
+
+    def _assemble_samples(self, session_id, session, max_seq_len, decode_response):
+        metadata = self._session_metadata(session_id, session)
+        tokenizer = self.registry.tokenizer
+        if not session.records:
+            return _samples_response(encode_samples([], metadata, empty_reason="no_records"))
+        try:
+            samples = compute_samples_from_openai_records(
+                self.config,
+                session.records,
+                tokenizer,
+                accumulated_token_ids=metadata.get("accumulated_token_ids"),
+                max_trim_tokens=metadata.get("max_trim_tokens", 0),
+                use_addition_r3=self.use_addition_r3,
+                decode_response=decode_response,
+            )
+            samples, num_dropped = drop_samples_after_first_non_completed(samples)
+            if num_dropped:
+                logger.warning("Session %s dropped %d turns after an incomplete turn", session_id, num_dropped)
+                for sample in samples:
+                    sample.metadata["dropped_trailing_turns"] = num_dropped
+            if max_seq_len is not None:
+                samples = truncate_samples_by_total_tokens(samples, max_seq_len, tokenizer)
+            if not samples:
+                return _samples_response(encode_samples([], metadata, empty_reason="all_truncated"))
+            if self.use_addition_r3:
+                samples = [merge_samples_with_addition_r3(self.config, samples, session.records, tokenizer)]
+            else:
+                samples = [merge_samples(samples, tokenizer)]
+        except (AssertionError, ValueError) as exc:
+            return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
+        if not decode_response:
+            metadata.pop("accumulated_token_ids", None)
+            metadata.update(
+                records_total=len(session.records),
+                records_merged=len(session.records) - num_dropped,
+                records_dropped_after_first_non_completed=num_dropped,
+                accumulated_token_count=len(samples[0].tokens),
+            )
+        return _samples_response(encode_samples(samples, metadata))
 
     async def delete_session(self, session_id: str) -> Response:
         session = self.registry.get_session(session_id)

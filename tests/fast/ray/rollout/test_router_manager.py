@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from tests.fast.ray.rollout.conftest import make_args
@@ -214,8 +215,10 @@ class TestWaitSessionServerReady:
                 self._counter += 1
                 return {"primary": HostAndPort(host="10.0.0.9", port=5004 + self._counter)}
 
+        monkeypatch.setattr("miles.ray.rollout.router_manager._restart_session_worker", AsyncMock())
+
         async def _refuse_one(host: str, port: int, timeout: float) -> None:
-            if port == 5006:
+            if port >= 5006:
                 raise RuntimeError(f"Server at {host}:{port} not ready after {timeout}s")
 
         monkeypatch.setattr(
@@ -225,7 +228,7 @@ class TestWaitSessionServerReady:
         monkeypatch.setattr("miles.ray.rollout.router_manager.wait_tcp_ready_async", _refuse_one)
 
         args = make_args(use_session_server=True, hf_checkpoint="/fake/model", session_server_workers=2)
-        with pytest.raises(RuntimeError, match="10.0.0.9:5006 not ready"):
+        with pytest.raises(RuntimeError, match="not ready"):
             await wait_session_server_ready(args)
 
     async def test_a_failed_instance_addr_lookup_fails_before_any_tcp_wait(self, monkeypatch):
@@ -246,6 +249,46 @@ class TestWaitSessionServerReady:
         )
 
         args = make_args(use_session_server=True, hf_checkpoint="/fake/model", session_server_workers=2)
+        monkeypatch.setattr("miles.ray.rollout.router_manager._restart_session_worker", AsyncMock())
         with pytest.raises(RuntimeError, match="not registered"):
             await wait_session_server_ready(args)
         assert waited == []
+
+
+@pytest.mark.asyncio
+async def test_failed_session_start_reallocates_before_publishing(monkeypatch):
+    from miles.ray.rollout import router_manager
+
+    provider = SimpleNamespace(
+        get_addrs=AsyncMock(
+            side_effect=[
+                {"primary": HostAndPort(host="node", port=20000)},
+                {"primary": HostAndPort(host="node", port=20001)},
+            ]
+        )
+    )
+    restart = AsyncMock()
+    monkeypatch.setattr(router_manager.RayWorkerProvider, "create", lambda: provider)
+    monkeypatch.setattr(router_manager, "_restart_session_worker", restart)
+    monkeypatch.setattr(
+        router_manager, "wait_tcp_ready_async", AsyncMock(side_effect=[RuntimeError("port race"), None])
+    )
+    args = make_args(use_session_server=True, hf_checkpoint="/fake/model", session_server_workers=1)
+    await wait_session_server_ready(args)
+    assert args.session_server_addrs == ["node:20001"]
+    restart.assert_awaited_once_with(0, restart=True)
+
+
+@pytest.mark.asyncio
+async def test_session_start_exhaustion_stops_failed_worker(monkeypatch):
+    from miles.ray.rollout import router_manager
+
+    provider = SimpleNamespace(get_addrs=AsyncMock(return_value={"primary": HostAndPort(host="node", port=20000)}))
+    restart = AsyncMock()
+    monkeypatch.setattr(router_manager, "_restart_session_worker", restart)
+    monkeypatch.setattr(router_manager, "wait_tcp_ready_async", AsyncMock(side_effect=RuntimeError("startup failed")))
+    with pytest.raises(RuntimeError, match="startup failed"):
+        await router_manager._wait_session_worker(provider, 2)
+    assert provider.get_addrs.await_count == 10
+    assert restart.await_count == 10
+    assert restart.await_args.kwargs == {"restart": False}

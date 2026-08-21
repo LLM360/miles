@@ -6,7 +6,7 @@ from miles.backends.sglang_utils.router_args_utils import compute_sglang_router_
 from miles.backends.sglang_utils.sglang_config import ModelConfig, ServerGroupConfig, resolve_sglang_config
 from miles.backends.sglang_utils.sglang_engine import compute_engine_launch_cmd
 from miles.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
-from miles.rollout.session.config import compute_session_server_config
+from miles.rollout.session.config import compute_session_server_config, has_external_session_servers
 from miles.router.config import compute_miles_router_config
 from miles.utils import dumper_utils
 from miles.utils.workers.argv_utils import config_to_argv, python_argv_prefix
@@ -104,11 +104,15 @@ def spec_session_server(args) -> CommandWorkerSpec:
         ],
         env_var=lambda _ctx: {},
         scheduling=SchedulingSpec(
-            num_cells=(args.session_server_workers if args.use_session_server and config.models else 0),
+            num_cells=(
+                args.session_server_workers
+                if args.use_session_server and config.models and not has_external_session_servers(args)
+                else 0
+            ),
             num_workers_per_cell=1,
             num_gpus_per_worker=0,
-            num_cpus_per_worker=0,
-            pin_to_head=True,
+            num_cpus_per_worker=0.1,
+            ray_scheduling_strategy="SPREAD",
         ),
         launch_command=_compute_launch_command,
     )

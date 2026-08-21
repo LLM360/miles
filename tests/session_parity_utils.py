@@ -198,12 +198,29 @@ def assert_agentic_retry_trajectory_parity(v1: SessionParityRun, v2: SessionPari
     assert v1.samples[0].metadata["max_trim_tokens"] == v2.session_metadata["max_trim_tokens"]
 
     v2_linear_metadata = {key: value for key, value in v2.session_metadata.items() if key not in ("agent", "tree")}
-    _assert_bits_equal(v1.session_metadata, v2_linear_metadata, path="session_metadata")
-    assert_sample_bitwise_equal(
-        v1.samples[0],
-        v2.samples[0],
-        metadata_projection=_training_metadata_projection,
-    )
+    v1_sample, v2_sample = v1.samples[0], v2.samples[0]
+    if v1_sample.metadata.get("response_decoded") is False:
+        # Stable v1 skips response text and duplicate token IDs on the wire.
+        # Assert that difference explicitly, then compare every training field.
+        assert v1_sample.response == "" and v2_sample.response
+        _assert_bits_equal(v1_sample.tokens, v2_linear_metadata["accumulated_token_ids"], path="token_ids")
+        compact_keys = {
+            "records_total": 7,
+            "records_merged": 7,
+            "records_dropped_after_first_non_completed": 0,
+            "accumulated_token_count": len(v1_sample.tokens),
+        }
+        expected_metadata = {k: v for k, v in v2_linear_metadata.items() if k != "accumulated_token_ids"}
+        _assert_bits_equal(v1.session_metadata, {**expected_metadata, **compact_keys}, path="session_metadata")
+        normalized_metadata = {
+            k: v for k, v in v1_sample.metadata.items() if k not in compact_keys and k != "response_decoded"
+        }
+        normalized_metadata["accumulated_token_ids"] = v1_sample.tokens
+        v1_sample = dataclasses.replace(v1_sample, metadata=normalized_metadata)
+        v2_sample = dataclasses.replace(v2_sample, response="")
+    else:
+        _assert_bits_equal(v1.session_metadata, v2_linear_metadata, path="session_metadata")
+    assert_sample_bitwise_equal(v1_sample, v2_sample, metadata_projection=_training_metadata_projection)
 
 
 def assert_sample_bitwise_equal(

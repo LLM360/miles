@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from miles.ray.placement_group import create_rollout_components, create_training_models, update_weights
 from miles.ray.rollout.eval_dispatch import EvalDispatcher
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 # The framework supports other asynchronous approaches such as fully async (see miles/rollout/fully_async_rollout.py).
 async def train(args):
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=256))
     assert not args.colocate, "Colocation is not supported for async training."
     validate_async_off_policy_correction(args)
     configure_logger(args, source=MainProcessIdentity())

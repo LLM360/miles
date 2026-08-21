@@ -179,12 +179,13 @@ class TestComputeSpecSessionServer:
         assert config.port == 5006
         assert config.instance_id == f"{args.run_uuid}-1"
 
-    def test_it_reserves_no_cpu_on_the_head_node(self):
-        """Pinned to the head unconditionally, a CPU reservation would leave it pending forever on a head started with --num-cpus=0."""
+    def test_it_spreads_session_workers_with_a_small_cpu_reservation(self):
+        """Session workers can use CPU resources across the Ray cluster."""
         spec = spec_session_server(_make_session_server_args())
 
-        assert spec.scheduling.pin_to_head is True
-        assert spec.scheduling.num_cpus_per_worker == 0
+        assert spec.scheduling.pin_to_head is False
+        assert spec.scheduling.num_cpus_per_worker == 0.1
+        assert spec.scheduling.ray_scheduling_strategy == "SPREAD"
 
     def test_disabled_schedules_zero_cells(self):
         """Disabling the session server removes its cells instead of launching idle servers."""
@@ -528,15 +529,16 @@ class TestInferenceSpecPinToHead:
         assert router.scheduling.pin_to_head is pinned
 
     @pytest.mark.parametrize("pinned", [False, True])
-    def test_the_session_servers_are_always_pinned_to_the_head_node(self, pinned: bool):
-        """Session servers live on the driver host whatever the rollout manager flag says, as on main."""
+    def test_session_workers_spread_independently_of_rollout_manager_pinning(self, pinned: bool):
+        """Stable session workers spread across available Ray nodes."""
         from miles.ray.specs.inference import spec_session_server
 
         args = _make_pin_args(pinned=pinned)
 
         session = spec_session_server(args)
 
-        assert session.scheduling.pin_to_head is True
+        assert session.scheduling.pin_to_head is False
+        assert session.scheduling.ray_scheduling_strategy == "SPREAD"
 
 
 def _make_pin_args(*, pinned: bool):

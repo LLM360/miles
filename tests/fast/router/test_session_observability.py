@@ -70,11 +70,12 @@ def test_heartbeat_reports_memory_counts_and_cancels(monkeypatch, caplog):
 def test_legacy_backend_configuration_pins_the_session(monkeypatch, args):
     calls = []
 
-    async def post(url, body, action="post"):
+    async def post(method, url, **kwargs):
+        action = method.lower()
         calls.append((url, action))
         return {"session_server_instance_id": "worker-id"} if action == "get" else {"session_id": "session-id"}
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", post)
+    monkeypatch.setattr(OpenAIEndpointTracer, "_request", staticmethod(post))
     tracer = asyncio.run(OpenAIEndpointTracer.create(args))
     assert tracer.base_url == "http://worker:1234/sessions/session-id"
     assert tracer.session_server_instance_id == "worker-id"
@@ -83,14 +84,15 @@ def test_legacy_backend_configuration_pins_the_session(monkeypatch, args):
 
 @pytest.mark.parametrize("health", [None, "not-json", RuntimeError("health unavailable")])
 def test_legacy_health_failure_does_not_prevent_creation(monkeypatch, health):
-    async def post(url, body, action="post"):
+    async def post(method, url, **kwargs):
+        action = method.lower()
         if action == "get":
             if isinstance(health, Exception):
                 raise health
             return health
         return {"session_id": "created"}
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", post)
+    monkeypatch.setattr(OpenAIEndpointTracer, "_request", staticmethod(post))
     tracer = asyncio.run(OpenAIEndpointTracer.create(SimpleNamespace(session_server_backends=["http://legacy:1234"])))
     assert tracer.session_id == "created"
     assert tracer.session_server_instance_id is None

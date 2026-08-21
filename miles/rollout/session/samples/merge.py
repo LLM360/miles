@@ -29,6 +29,7 @@ def compute_samples_from_openai_records(
     max_trim_tokens: int = 0,
     *,
     use_addition_r3: bool = False,
+    decode_response: bool = True,
 ) -> list[Sample]:
     """Convert per-turn session records into training Samples, aligning each
     turn's output tokens against the TITO accumulated token sequence.
@@ -81,7 +82,7 @@ def compute_samples_from_openai_records(
             cursor += matched
 
         sample = _compute_sample_from_openai_record(
-            args, record, tokenizer, trim_count, use_addition_r3=use_addition_r3
+            args, record, tokenizer, trim_count, use_addition_r3=use_addition_r3, decode_response=decode_response
         )
         attach_lifecycle_metadata(sample, record, records[i - 1] if i else None, turn=i + 1)
         if is_last and args.save_debug_trajectory_data is not None:
@@ -99,7 +100,13 @@ def compute_samples_from_openai_records(
 
 
 def _compute_sample_from_openai_record(
-    args: Namespace, record: SessionRecord, tokenizer, trim_count: int = 0, *, use_addition_r3: bool = False
+    args: Namespace,
+    record: SessionRecord,
+    tokenizer,
+    trim_count: int = 0,
+    *,
+    use_addition_r3: bool = False,
+    decode_response: bool = True,
 ) -> Sample:
     choice = record.response["choices"][0]
 
@@ -113,7 +120,9 @@ def _compute_sample_from_openai_record(
     sample = Sample()
     sample.tokens = prompt_token_ids + output_token_ids
     sample.rollout_log_probs = output_log_probs
-    sample.response = tokenizer.decode(output_token_ids)
+    sample.response = tokenizer.decode(output_token_ids) if decode_response else ""
+    if not decode_response:
+        sample.metadata["response_decoded"] = False
     sample.response_length = len(output_token_ids)
     sample.loss_mask = [1] * len(output_token_ids)
     sample.rollout_routed_experts = (

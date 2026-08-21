@@ -287,7 +287,7 @@ class _BaseActorManager(Generic[SpecT]):
         return {}
 
     def _create_actor(self, actor_class: type, **ctor_kwargs) -> ray.actor.ActorHandle:
-        scheduling_strategy = None
+        scheduling_strategy = self.spec.scheduling.ray_scheduling_strategy
         if (pg_name := self.spec.scheduling.pg_name) is not None:
             pg = self.manager.pgs[pg_name]
             scheduling_strategy = PlacementGroupSchedulingStrategy(

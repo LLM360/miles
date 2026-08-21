@@ -311,7 +311,11 @@ class Sample:
             self.metadata["opd_student_top_logprobs"] = self.metadata["opd_student_top_logprobs"][:-n]
         if self.loss_mask is not None:
             self.loss_mask = self.loss_mask[:-n]
-        self.response = tokenizer.decode(self.tokens[-self.response_length :]) if self.response_length > 0 else ""
+        self.response = (
+            tokenizer.decode(self.tokens[-self.response_length :])
+            if self.response_length > 0 and (self.metadata or {}).get("response_decoded", True)
+            else ""
+        )
         if self.rollout_routed_experts is not None:
             self.rollout_routed_experts = self.rollout_routed_experts[:-n]
         if self.rollout_indexer_topk is not None:

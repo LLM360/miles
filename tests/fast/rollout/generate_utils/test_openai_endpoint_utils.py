@@ -3,10 +3,8 @@
 The sample-assembly and TITO multi-turn merge tests live in
 tests/fast/rollout/session/test_samples.py (assembly) and
 test_samples_codec.py (wire codec), next to the functions.
-The collect_samples tests here lock the client's HTTP behavior deltas vs the
-old collect_records path: single POST with no retries, non-2xx raises with the
-body text, timeout raises (instead of silently ABORTing), and the session
-DELETE is attempted on every path.
+Client tests cover stable v1 collection recovery and current v2 wire behavior.
+The request retry policy is exercised separately with an HTTP transport double.
 """
 
 import asyncio
@@ -21,6 +19,15 @@ from miles.utils.http_utils import post_bytes_no_retry
 from miles.utils.types import Sample
 
 
+def _patch_requests(monkeypatch, post, post_bytes=None):
+    async def request(method, url, *, payload=None, return_bytes=False, **kwargs):
+        if return_bytes:
+            return await post_bytes(url, payload, timeout=120)
+        return await post(url, payload or {}, action=method.lower())
+
+    monkeypatch.setattr(OpenAIEndpointTracer, "_request", staticmethod(request))
+
+
 @pytest.mark.asyncio
 async def test_create_reads_session_server_instance_id_from_args(monkeypatch):
     calls: list[tuple[str, str]] = []
@@ -31,7 +38,7 @@ async def test_create_reads_session_server_instance_id_from_args(monkeypatch):
         assert url == "http://127.0.0.1:12345/sessions"
         return {"session_id": "session-123"}
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+    _patch_requests(monkeypatch, fake_post)
 
     args = SimpleNamespace(
         session_server_addrs=["127.0.0.1:12345"],
@@ -51,7 +58,7 @@ async def test_create_without_instance_id_on_args(monkeypatch):
     async def fake_post(url: str, payload: dict, action: str = "post"):
         return {"session_id": "session-123"}
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+    _patch_requests(monkeypatch, fake_post)
 
     args = SimpleNamespace(session_server_addrs=["127.0.0.1:12345"])
     tracer = await OpenAIEndpointTracer.create(args)
@@ -76,8 +83,7 @@ async def test_create_distributes_sessions_across_port_range(monkeypatch):
         calls.append(("post_bytes", url))
         return encode_samples([], {}, "no_records")
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post_bytes_no_retry", fake_post_bytes)
+    _patch_requests(monkeypatch, fake_post, fake_post_bytes)
 
     ports = [12345, 12346, 12347, 12348]
     args = SimpleNamespace(session_server_addrs=[f"127.0.0.1:{port}" for port in ports])
@@ -113,7 +119,7 @@ class TestOpenAIEndpointTracerCreate:
             posted.append(url)
             return {"session_id": "session-abc"}
 
-        monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+        _patch_requests(monkeypatch, fake_post)
         monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.random.choice", lambda addrs: addrs[1])
 
         args = SimpleNamespace(
@@ -137,7 +143,7 @@ class TestOpenAIEndpointTracerCreate:
             posted.append(url)
             return {"session_id": "session-abc"}
 
-        monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+        _patch_requests(monkeypatch, fake_post)
 
         with pytest.raises(RuntimeError, match="session_server_addrs is not set"):
             await OpenAIEndpointTracer.create(SimpleNamespace(**addrs_kwargs))
@@ -171,7 +177,7 @@ class _CollectCalls:
 
         async def fake_post_bytes(url, payload, *, timeout):
             self.calls.append(f"POST {url}")
-            assert payload == {"max_seq_len": 7}
+            assert payload == {"max_seq_len": 7, "decode_response": False}
             if isinstance(post_outcome, Exception):
                 raise post_outcome
             return post_outcome
@@ -183,8 +189,7 @@ class _CollectCalls:
                 raise delete_outcome
             return {}
 
-        monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post_bytes_no_retry", fake_post_bytes)
-        monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+        _patch_requests(monkeypatch, fake_post, fake_post_bytes)
 
 
 @pytest.mark.asyncio
@@ -202,20 +207,19 @@ async def test_collect_samples_single_post_then_delete(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_collect_samples_non_2xx_raises_with_body_and_still_deletes(monkeypatch):
+async def test_collect_samples_v1_non_2xx_returns_empty_and_still_deletes(monkeypatch):
     calls = _CollectCalls(monkeypatch, post_outcome=RuntimeError("422: trim_count 2 exceeds allowed=1"))
-    with pytest.raises(RuntimeError, match="trim_count 2 exceeds allowed=1"):
-        await _tracer().collect_samples(Sample(), max_seq_len=7)
+    result = await _tracer().collect_samples(Sample(), max_seq_len=7)
+    assert result.samples == [] and result.empty_reason == "collection_failed"
     assert calls.calls[-1] == "DELETE http://127.0.0.1:12345/sessions/sid-1"
 
 
 @pytest.mark.asyncio
-async def test_collect_samples_timeout_raises_and_still_deletes(monkeypatch):
-    # The old collect_records swallowed the timeout and returned empty records
-    # (silently ABORTing the sample); the samples path must raise it.
+async def test_collect_samples_v1_timeout_returns_empty_and_still_deletes(monkeypatch):
+    # Preserve stable v1: an unsuccessful collection yields an aborted rollout.
     calls = _CollectCalls(monkeypatch, post_outcome=asyncio.TimeoutError())
-    with pytest.raises(asyncio.TimeoutError):
-        await _tracer().collect_samples(Sample(), max_seq_len=7)
+    result = await _tracer().collect_samples(Sample(), max_seq_len=7)
+    assert result.samples == [] and result.empty_reason == "collection_failed"
     assert calls.calls[-1] == "DELETE http://127.0.0.1:12345/sessions/sid-1"
 
 
@@ -283,7 +287,7 @@ async def test_post_bytes_no_retry_transport_error_propagates_once(monkeypatch):
 async def test_collect_samples_v2_payload_carries_metadata_and_decodes_extras(monkeypatch):
     """v2 pin: the collect body gains the "metadata" key only when the caller
     passes agent metadata, and the v2 field tuple overlays reward + merged
-    metadata; the v1 pin above (`payload == {"max_seq_len": 7}`) stays."""
+    metadata; the v1 client also requests token-only responses."""
     from miles.rollout.session.samples.codec import COMPUTED_FIELDS_V2
 
     sample = Sample()
@@ -307,8 +311,7 @@ async def test_collect_samples_v2_payload_carries_metadata_and_decodes_extras(mo
         assert action == "delete"
         return {}
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post_bytes_no_retry", fake_post_bytes)
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+    _patch_requests(monkeypatch, fake_post, fake_post_bytes)
 
     tracer = OpenAIEndpointTracer(
         router_url="http://127.0.0.1:12345", session_id="sid-1", samples_wire_fields=COMPUTED_FIELDS_V2
@@ -328,7 +331,7 @@ async def test_create_selects_wire_fields_by_session_server_version(monkeypatch)
     async def fake_post(url: str, payload: dict, action: str = "post"):
         return {"session_id": "sid-x"}
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+    _patch_requests(monkeypatch, fake_post)
 
     def args(version):
         return SimpleNamespace(session_server_addrs=["127.0.0.1:7000"], use_session_server=version)
