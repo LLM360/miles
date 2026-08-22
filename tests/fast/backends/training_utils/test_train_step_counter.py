@@ -283,6 +283,7 @@ def test_megatron_save_attaches_count_and_preserves_recovery_context(checkpoint_
         "checkpoint_train_step": module.checkpoint_train_step,
         "counter_for": counter_for,
         "save_checkpoint": save_backend,
+        "preprocess_common_state_dict": lambda state: state,
     }
     save = _load_function("miles/backends/megatron_utils/model.py", "save", namespace)
     context = {"local_checkpoint_manager": object()}
@@ -290,4 +291,4 @@ def test_megatron_save_attaches_count_and_preserves_recovery_context(checkpoint_
     assert captured["snapshot"]["args"].miles_train_step == 19
     assert captured["checkpointing_context"] is context
     assert captured["non_persistent_ckpt"] is True
-    assert captured["preprocess_common_state_dict_fn"] is None  # later commit 36 remains deferred
+    assert captured["preprocess_common_state_dict_fn"] is namespace["preprocess_common_state_dict"]

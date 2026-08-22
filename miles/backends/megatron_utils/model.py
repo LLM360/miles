@@ -23,7 +23,7 @@ from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.utils import get_model_config
 from megatron.training.global_vars import get_args
-from megatron.training.training import get_model
+from megatron.training.training import get_model, preprocess_common_state_dict
 
 from miles.backends.megatron_utils.ft.indep_dp import allreduce_grads_and_losses_across_replicas
 from miles.backends.megatron_utils.ft.types import TrainStepOutcome
@@ -918,7 +918,7 @@ def save(
                 opt_param_scheduler,
                 num_floating_point_operations_so_far=0,
                 train_data_iterator=None,
-                preprocess_common_state_dict_fn=None,
+                preprocess_common_state_dict_fn=preprocess_common_state_dict,
                 checkpointing_context=checkpointing_context,
                 non_persistent_ckpt=non_persistent_ckpt,
             )
@@ -1000,7 +1000,7 @@ def initialize_model_and_optimizer(
 
     # Megatron checkpoint loads can restore scheduler state directly. In that
     # case, stepping by the checkpoint iteration here would double-count.
-    if opt_param_scheduler is not None and not (args.use_checkpoint_opt_param_scheduler and iteration > 0):
+    if opt_param_scheduler is not None and (args.finetune or args.no_load_optim):
         opt_param_scheduler.step(increment=iteration * args.global_batch_size)
 
     return model, optimizer, opt_param_scheduler, iteration
