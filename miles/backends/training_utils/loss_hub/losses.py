@@ -12,6 +12,7 @@ from miles.backends.training_utils.cp_utils import (
 )
 from miles.backends.training_utils.domain_metrics import compute_domain_metrics
 from miles.backends.training_utils.loss_hub.corrections import vanilla_tis_function
+from miles.backends.training_utils.loss_hub.diagnostics import policy_nan_metrics
 from miles.backends.training_utils.loss_hub.logit_processors import get_log_probs_and_entropy, get_values
 from miles.backends.training_utils.loss_hub.math_utils import (
     compute_approx_kl,
@@ -188,6 +189,8 @@ def policy_loss_function(
         old_log_probs = torch.cat(old_log_probs, dim=0)
         log_probs = torch.cat(log_probs, dim=0)
         ppo_kl = old_log_probs - log_probs
+
+    nan_metrics = policy_nan_metrics(args, batch, logits, log_probs, old_log_probs, advantages, ppo_kl)
 
     local_loss_mask_list = get_local_response_loss_masks(
         total_lengths,
@@ -375,6 +378,8 @@ def policy_loss_function(
         "log_probs": sum_of_sample_mean(log_probs).detach(),
         "old_log_probs": sum_of_sample_mean(old_log_probs).detach(),
     }
+
+    reported_loss.update(nan_metrics)
 
     if train_rollout_logprob_abs_diff is not None:
         reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff.clone().detach()

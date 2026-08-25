@@ -125,7 +125,10 @@ def test_reused_training_log_probs_match_an_explicit_detached_baseline(
     assert torch.count_nonzero(reuse_grad).item() > 0
     assert reuse_metrics.keys() == baseline_metrics.keys()
     for key in reuse_metrics:
-        assert torch.equal(reuse_metrics[key], baseline_metrics[key]), key
+        if key.startswith("nan_dbg/"):
+            torch.testing.assert_close(reuse_metrics[key], baseline_metrics[key], rtol=0, atol=0, equal_nan=True)
+        else:
+            assert torch.equal(reuse_metrics[key], baseline_metrics[key]), key
     assert reuse_metrics["ppo_kl"].item() == 0.0
     assert reuse_metrics["pg_clipfrac"].item() == 0.0
 
@@ -170,7 +173,10 @@ def test_skip_actor_forward_only_preserves_rollout_log_probs_as_old_policy(proce
     assert torch.equal(skip_grad, baseline_grad)
     assert skip_metrics.keys() == baseline_metrics.keys()
     for key in skip_metrics:
-        assert torch.equal(skip_metrics[key], baseline_metrics[key]), key
+        if key.startswith("nan_dbg/"):
+            torch.testing.assert_close(skip_metrics[key], baseline_metrics[key], rtol=0, atol=0, equal_nan=True)
+        else:
+            assert torch.equal(skip_metrics[key], baseline_metrics[key]), key
     assert skip_metrics["ppo_kl"].item() > 0
 
 

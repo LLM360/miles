@@ -1,7 +1,16 @@
+import logging
 from argparse import Namespace
 from typing import Any
 
 import torch
+
+from miles.backends.training_utils.loss_hub.diagnostics import (
+    _nan_dbg_finite_stats,
+    _nan_dbg_flush_logs,
+    _nan_dbg_rank,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def vanilla_tis_function(
@@ -19,10 +28,23 @@ def vanilla_tis_function(
     """
     rollout_log_probs = torch.cat(rollout_log_probs, dim=0)
     old_log_probs = torch.cat(train_log_probs, dim=0)
-    tis = torch.exp(old_log_probs - rollout_log_probs)
-    tis_abs = (torch.exp(old_log_probs - rollout_log_probs) - 1).abs()
+    tis_delta = old_log_probs - rollout_log_probs
+    tis = torch.exp(tis_delta)
+    tis_abs = (tis - 1).abs()
     tis_weights = torch.clamp(tis, min=args.tis_clip_low, max=args.tis_clip)
     tis_clipfrac = (tis_weights != tis).float()
+    _, _, _, tis_bad = _nan_dbg_finite_stats(tis)
+    if tis_bad:
+        logger.error(
+            "NANDBG_BAD_TIS "
+            f"rank={_nan_dbg_rank()} "
+            f"nonfinite={tis_bad} "
+            f"tis_delta_min={_nan_dbg_finite_stats(tis_delta)[0]} "
+            f"tis_delta_max={_nan_dbg_finite_stats(tis_delta)[1]} "
+            f"tis_clip_low={args.tis_clip_low} "
+            f"tis_clip={args.tis_clip}"
+        )
+        _nan_dbg_flush_logs()
     metrics = {
         "tis": tis.clone().detach(),
         "tis_clipfrac": tis_clipfrac.clone().detach(),

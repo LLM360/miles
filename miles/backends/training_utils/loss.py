@@ -9,6 +9,7 @@ from miles.backends.training_utils.cp_utils import (
     resolve_loss_agg_mode,
 )
 from miles.backends.training_utils.loss_hub.advantages import compute_advantages, normalize_advantages
+from miles.backends.training_utils.loss_hub.diagnostics import _nan_dbg_warn_long_batch
 from miles.backends.training_utils.loss_hub.logit_processors import get_log_probs_and_entropy, get_values  # noqa: F401
 from miles.backends.training_utils.loss_hub.losses import get_loss_function
 from miles.backends.training_utils.loss_hub.math_utils import compute_approx_kl
@@ -169,6 +170,8 @@ def loss_function(
     parallel_state = get_parallel_state()
     num_tokens = sum([torch.clamp_min(loss_mask.sum(), 1) for loss_mask in batch["loss_masks"]])
     num_samples = len(batch["response_lengths"])
+    if getattr(args, "loss_type", None) == "policy_loss":
+        _nan_dbg_warn_long_batch(args, batch)
     mode = resolve_loss_agg_mode(args.calculate_per_token_loss, getattr(args, "loss_agg_mode", None))
     uses_token_normalization = mode != "sample-mean"
 
