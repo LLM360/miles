@@ -93,3 +93,41 @@ async def test_rolling_start_uses_whole_groups_and_spaces_waves(monkeypatch, gra
         harness.finish_group(i)
     output, _ = await asyncio.wait_for(task, 2)
     assert len(output.samples) == 3
+
+
+@pytest.mark.parametrize("granularity", ["group", "sample"])
+async def test_tail_cut_counts_unsubmitted_groups(monkeypatch, granularity):
+    from miles.rollout.inference_rollout import inference_rollout_train as train
+
+    original_factory = train.make_submission_scheduler
+
+    def bounded_factory(*args, **kwargs):
+        scheduler = original_factory(*args, **kwargs)
+        scheduler.has_capacity = lambda *, pending_groups, group_budget: pending_groups < 2 and group_budget > 0
+        return scheduler
+
+    monkeypatch.setattr(train, "make_submission_scheduler", bounded_factory)
+    harness = Harness(
+        monkeypatch,
+        make_args(
+            disable_oversampling=True,
+            tail_cancel_groups=1,
+            rollout_batch_size=4,
+            rollout_submission_granularity=granularity,
+        ),
+    )
+    source = harness.data_source
+    harness.data_source = lambda count: source(min(count, 1))
+    task = harness.run()
+    await asyncio.sleep(0)
+    assert harness.submitted_group_indices == [1, 2]
+    harness.finish_group(0)
+    await asyncio.sleep(0.01)
+    assert not task.done()
+    assert harness.submitted_group_indices == [1, 2, 3]
+    harness.finish_group(1)
+    await asyncio.sleep(0.01)
+    assert harness.submitted_group_indices == [1, 2, 3, 4]
+    harness.finish_group(2)
+    output, _ = await asyncio.wait_for(task, 2)
+    assert len(output.samples) == 3
