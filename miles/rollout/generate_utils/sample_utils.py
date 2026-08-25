@@ -1,4 +1,4 @@
-from copy import deepcopy
+from copy import copy, deepcopy
 from dataclasses import fields
 from typing import Any
 
@@ -53,7 +53,7 @@ def _introduces_replay_gap(a: Sample, b: Sample) -> bool:
 
 def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
     """Merge two samples generated from sibling inference engine calls."""
-    a, b = deepcopy(a), deepcopy(b)
+    a, b = copy(a), copy(b)
 
     def _merge_equal_value(field):
         x = getattr(a, field)

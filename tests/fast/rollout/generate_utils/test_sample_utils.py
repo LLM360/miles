@@ -232,3 +232,20 @@ class TestMergeSamples:
         assert merged is t0
         assert merged.tokens == t0.tokens
         assert merged.rollout_routed_experts is not None
+
+
+def test_merge_shares_replay_array_without_mutating_input_defaults(mock_tokenizer):
+    a = make_sample(tokens=[1, 2, 3], response_length=1)
+    b = make_sample(tokens=[1, 2, 3, 4, 5], response_length=1)
+    a.rollout_routed_experts = numpy.zeros((2, 1, 1), dtype=numpy.int32)
+    b.rollout_routed_experts = numpy.ones((4, 1, 1), dtype=numpy.int32)
+    a.metadata = {"nested": {"tag": [1]}}
+    b.metadata = {"nested": {"tag": [1]}}
+    merged = _merge_sample_pair(a, b, mock_tokenizer)
+    assert merged.rollout_routed_experts is b.rollout_routed_experts
+    assert a.loss_mask is None and b.loss_mask is None
+    assert a.rollout_log_probs is None and b.rollout_log_probs is None
+    merged.metadata["nested"]["tag"].append(2)
+    assert a.metadata == b.metadata == {"nested": {"tag": [1]}}
+    merged.loss_mask[0] = 0
+    assert a.loss_mask is None
