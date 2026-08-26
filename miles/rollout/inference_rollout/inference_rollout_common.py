@@ -23,6 +23,56 @@ from miles.utils.types import Sample
 logger = logging.getLogger(__name__)
 
 
+def raise_if_generation_collapsed(
+    submitted_groups: int,
+    returned_groups: list[list[Sample]],
+) -> None:
+    """Separate expected filtering/exhaustion from total generation failure.
+
+    A prompt source can legitimately end after healthy groups were filtered.
+    It is not legitimate to report normal source exhaustion when every
+    submitted group either raised before returning or contains an ABORTED
+    sample. ABORTED is Miles' explicit signal that generation is unusable.
+    """
+
+    if submitted_groups == 0:
+        return
+    if submitted_groups < 0:
+        raise ValueError("submitted_groups must be non-negative")
+
+    aborted_groups = 0
+    empty_groups = 0
+    healthy_groups = 0
+
+    def flatten_samples(value):
+        if isinstance(value, Sample):
+            return [value]
+        if isinstance(value, (list, tuple)):
+            return [sample for item in value for sample in flatten_samples(item)]
+        return []
+
+    for group in returned_groups:
+        samples = flatten_samples(group)
+        if not samples:
+            empty_groups += 1
+        elif any(sample.status == Sample.Status.ABORTED for sample in samples):
+            aborted_groups += 1
+        else:
+            healthy_groups += 1
+
+    if healthy_groups:
+        return
+
+    returned_count = len(returned_groups)
+    missing_groups = max(0, submitted_groups - returned_count)
+    raise RuntimeError(
+        "rollout generation collapsed before producing any non-aborted group: "
+        f"submitted_groups={submitted_groups}, returned_groups={returned_count}, "
+        f"aborted_groups={aborted_groups}, empty_groups={empty_groups}, "
+        f"missing_groups={missing_groups}"
+    )
+
+
 class GenerateState:
     def __init__(self, args: Namespace) -> None:
         # persistent state for the generation process

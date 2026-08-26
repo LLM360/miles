@@ -9,7 +9,11 @@ from tqdm import tqdm
 
 from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
-from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
+from miles.rollout.inference_rollout.inference_rollout_common import (
+    GenerateState,
+    generate_and_rm_group,
+    raise_if_generation_collapsed,
+)
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
 from miles.utils.misc import load_function
@@ -262,6 +266,11 @@ async def generate_rollout_async(
 
     # there are still some unfinished requests, abort them
     aborted_samples = await abort(state, pendings, rollout_id)
+    try:
+        raise_if_generation_collapsed(submitted, all_data)
+    except Exception:
+        state.reset()
+        raise
 
     stop_training = source_exhausted and len(data) < args.rollout_batch_size
     stop_reason = None
