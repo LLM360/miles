@@ -706,45 +706,37 @@ class RolloutManager:
 
     def _save_debug_rollout_data(self, data, rollout_id, evaluation: bool):
         # TODO to be refactored (originally Buffer._set_data)
-        if (path_template := self.args.save_debug_rollout_data) is not None:
-            path = Path(path_template.format(rollout_id=("eval_" if evaluation else "") + str(rollout_id)))
-            logger.info(f"Save debug rollout data to {path}")
-            path.parent.mkdir(parents=True, exist_ok=True)
+        if (path_template := self.args.save_debug_rollout_data) is None:
+            return
+        interval = getattr(self.args, "save_rollout_interval", 1) or 1
+        if not evaluation and rollout_id % interval != 0:
+            return
+        path = Path(path_template.format(rollout_id=("eval_" if evaluation else "") + str(rollout_id)))
 
-            if evaluation:
-                samples = [sample.to_dict() for dataset_name, info in data.items() for sample in info["samples"]]
-            else:
-                samples = [sample.to_dict() for sample in data]
+        if evaluation:
+            samples = [sample.to_dict() for dataset_name, info in data.items() for sample in info["samples"]]
+        else:
+            samples = [sample.to_dict() for sample in data]
+        # rollout_routed_experts dominates the dump size and the training path
+        # already carries it, so the debug file omits it.
+        for sample in samples:
+            sample.pop("rollout_routed_experts", None)
 
-            save_format = getattr(self.args, "save_rollout_format", "pt")
-
-            if save_format == "parquet":
-                import pyarrow as pa
-                import pyarrow.parquet as pq
-
-                path = path.with_suffix(".parquet")
-                table = pa.Table.from_pylist(samples)
-                table = table.replace_schema_metadata({b"rollout_id": str(rollout_id).encode()})
-                pq.write_table(table, path, compression="snappy")
-            else:
-                torch.save(dict(rollout_id=rollout_id, samples=samples), path)
-
-            # Rolling retention: delete files that aged out of the window (training rollouts only).
-            # Walk backward from the oldest allowed id so that a restart with a smaller N
-            # cleans up all accumulated stale files, not just one.
-            retain_last_n = getattr(self.args, "save_rollout_retain_last_n", 0)
-            if not evaluation and retain_last_n > 0:
-                old_id = rollout_id - retain_last_n
-                while old_id >= 0:
-                    old_path = Path(path_template.format(rollout_id=str(old_id)))
-                    if save_format == "parquet":
-                        old_path = old_path.with_suffix(".parquet")
-                    if old_path.exists():
-                        old_path.unlink()
-                        logger.info(f"Deleted aged-out rollout file {old_path} (retain_last_n={retain_last_n})")
-                        old_id -= 1
-                    else:
-                        break
+        # One write in flight at a time bounds object-store pressure; a dump
+        # that would overlap a still-running write is skipped, not queued.
+        pending = getattr(self, "_debug_save_ref", None)
+        if pending is not None and not ray.wait([pending], timeout=0)[0]:
+            logger.warning(f"Skip debug rollout dump {path}: previous dump still writing")
+            return
+        logger.info(f"Save debug rollout data to {path}")
+        self._debug_save_ref = _write_debug_rollout_data.remote(
+            samples,
+            str(path),
+            rollout_id,
+            getattr(self.args, "save_rollout_format", "pt"),
+            None if evaluation else path_template,
+            getattr(self.args, "save_rollout_retain_last_n", 0),
+        )
 
     def _post_process_rewards(self, samples: list[Sample] | list[list[Sample]]):
         if self.custom_reward_post_process_func is not None:
@@ -1038,6 +1030,41 @@ class RolloutManager:
         )
 
         return rollout_data_refs
+
+
+@ray.remote(num_cpus=1)
+def _write_debug_rollout_data(samples, path_str, rollout_id, save_format, retention_template, retain_last_n):
+    # Runs in its own worker process so serialization never blocks the
+    # RolloutManager event loop.
+    path = Path(path_str)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if save_format == "parquet":
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        path = path.with_suffix(".parquet")
+        table = pa.Table.from_pylist(samples)
+        table = table.replace_schema_metadata({b"rollout_id": str(rollout_id).encode()})
+        pq.write_table(table, path, compression="snappy")
+    else:
+        torch.save(dict(rollout_id=rollout_id, samples=samples), path)
+
+    # Rolling retention: delete files that aged out of the window (training rollouts only).
+    # Walk backward from the oldest allowed id so that a restart with a smaller N
+    # cleans up all accumulated stale files, not just one.
+    if retention_template is not None and retain_last_n > 0:
+        old_id = rollout_id - retain_last_n
+        while old_id >= 0:
+            old_path = Path(retention_template.format(rollout_id=str(old_id)))
+            if save_format == "parquet":
+                old_path = old_path.with_suffix(".parquet")
+            if old_path.exists():
+                old_path.unlink()
+                logger.info(f"Deleted aged-out rollout file {old_path} (retain_last_n={retain_last_n})")
+                old_id -= 1
+            else:
+                break
 
 
 # ---------------------------------------------------------------------------
