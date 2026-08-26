@@ -793,6 +793,10 @@ class RolloutManager:
             "rewards": rewards,
             "raw_reward": raw_rewards,
             "truncated": [1 if sample.status == Sample.Status.TRUNCATED else 0 for sample in samples],
+            # Preserve why an all-zero loss mask is intentional. Rollout sample
+            # filters mark Sample.remove_sample; the trainer validator must be
+            # able to distinguish that supported state from a corrupted mask.
+            "removed_by_filter": [bool(sample.remove_sample) for sample in samples],
             "sample_indices": [sample.index for sample in samples],
         }
 
@@ -949,6 +953,7 @@ class RolloutManager:
                 "response_lengths",
                 "rewards",
                 "truncated",
+                "removed_by_filter",
                 "loss_masks",
                 "round_number",
                 "sample_indices",

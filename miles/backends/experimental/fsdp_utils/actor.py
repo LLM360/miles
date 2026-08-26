@@ -21,7 +21,7 @@ from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 
 from ....utils.profile_utils import TrainProfiler
-from ...training_utils.ci_utils import check_grad_norm
+from ...training_utils.ci_utils import assert_rollout_engine_weight_versions, check_grad_norm
 from ...training_utils.data import DataIterator, get_batch, get_data_iterator, get_rollout_data
 from ...training_utils.log_utils import (
     aggregate_forward_results,
@@ -569,7 +569,12 @@ class FSDPTrainRayActor(TrainRayActor):
 
         self.weight_updater.update_weights()
 
-        if self.args.ci_test and len(rollout_engines) > 0:
+        if getattr(self.args, "check_all_engine_weight_versions", False):
+            assert_rollout_engine_weight_versions(
+                rollout_engines,
+                self.weight_updater.weight_version,
+            )
+        elif self.args.ci_test and len(rollout_engines) > 0:
             engine = random.choice(rollout_engines)
             engine_version = ray.get(engine.get_weight_version.remote())
             if str(engine_version) != str(self.weight_updater.weight_version):
