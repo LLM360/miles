@@ -2,6 +2,7 @@ import asyncio
 import logging
 from argparse import Namespace
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 
 from miles.rollout.base_types import (
@@ -23,54 +24,122 @@ from miles.utils.types import Sample
 logger = logging.getLogger(__name__)
 
 
+def _flatten_samples(value) -> list[Sample]:
+    if isinstance(value, Sample):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [sample for item in value for sample in _flatten_samples(item)]
+    return []
+
+
+def is_usable_generation_group(group: list[Sample]) -> bool:
+    """Return whether every sample has terminal, trainable generated tokens.
+
+    ``ABORTED`` and ``PENDING`` are never usable. ``FAILED`` is usable only
+    when the generator preserved a non-empty partial response, as permitted by
+    the ``Sample.Status.FAILED`` contract. A zero-token completion or
+    truncation is not useful training data either.
+    """
+
+    samples = _flatten_samples(group)
+    if not samples:
+        return False
+
+    terminal_statuses = {
+        Sample.Status.COMPLETED,
+        Sample.Status.TRUNCATED,
+        Sample.Status.FAILED,
+    }
+    return all(
+        sample.status in terminal_statuses
+        and sample.response_length > 0
+        and len(sample.tokens) >= sample.response_length
+        for sample in samples
+    )
+
+
+@dataclass
+class GenerationHealthTracker:
+    """Fail a rollout as soon as a complete submission wave has no usable group.
+
+    The tracker resets after each healthy wave. This makes the health decision
+    online: an unbounded prompt source cannot hide a dead generation backend by
+    continuously supplying replacement prompts.
+    """
+
+    submitted_groups: int = 0
+    returned_groups: int = 0
+    usable_groups: int = 0
+    unusable_groups: int = 0
+    task_exceptions: int = 0
+
+    def record_submitted(self, count: int) -> None:
+        if count < 0:
+            raise ValueError("submitted group count must be non-negative")
+        self.submitted_groups += count
+
+    def record_returned(self, group: list[Sample]) -> None:
+        self.returned_groups += 1
+        if is_usable_generation_group(group):
+            self.usable_groups += 1
+        else:
+            self.unusable_groups += 1
+
+    def record_task_exception(self) -> None:
+        self.task_exceptions += 1
+
+    def close_window(self, *, pending_groups: int, allow_incomplete: bool = False) -> None:
+        """Validate and reset a drained health window.
+
+        ``allow_incomplete`` is used only after the caller intentionally aborted
+        surplus requests because the target batch was already filled.
+        """
+
+        if pending_groups < 0:
+            raise ValueError("pending group count must be non-negative")
+        if self.submitted_groups == 0 or pending_groups:
+            return
+
+        accounted_groups = self.returned_groups + self.task_exceptions
+        missing_groups = max(0, self.submitted_groups - accounted_groups)
+        if not allow_incomplete and accounted_groups != self.submitted_groups:
+            raise RuntimeError(
+                "rollout generation health accounting is inconsistent: "
+                f"submitted_groups={self.submitted_groups}, returned_groups={self.returned_groups}, "
+                f"task_exceptions={self.task_exceptions}, missing_groups={missing_groups}"
+            )
+
+        if self.usable_groups == 0:
+            raise RuntimeError(
+                "rollout generation collapsed before producing a usable group: "
+                f"submitted_groups={self.submitted_groups}, returned_groups={self.returned_groups}, "
+                f"usable_groups={self.usable_groups}, unusable_groups={self.unusable_groups}, "
+                f"task_exceptions={self.task_exceptions}, missing_groups={missing_groups}"
+            )
+
+        self.reset_window()
+
+    def reset_window(self) -> None:
+        self.submitted_groups = 0
+        self.returned_groups = 0
+        self.usable_groups = 0
+        self.unusable_groups = 0
+        self.task_exceptions = 0
+
+
 def raise_if_generation_collapsed(
     submitted_groups: int,
     returned_groups: list[list[Sample]],
 ) -> None:
-    """Separate expected filtering/exhaustion from total generation failure.
+    """Compatibility wrapper for callers that validate one completed wave."""
 
-    A prompt source can legitimately end after healthy groups were filtered.
-    It is not legitimate to report normal source exhaustion when every
-    submitted group either raised before returning or contains an ABORTED
-    sample. ABORTED is Miles' explicit signal that generation is unusable.
-    """
-
-    if submitted_groups == 0:
-        return
-    if submitted_groups < 0:
-        raise ValueError("submitted_groups must be non-negative")
-
-    aborted_groups = 0
-    empty_groups = 0
-    healthy_groups = 0
-
-    def flatten_samples(value):
-        if isinstance(value, Sample):
-            return [value]
-        if isinstance(value, (list, tuple)):
-            return [sample for item in value for sample in flatten_samples(item)]
-        return []
-
+    tracker = GenerationHealthTracker()
+    tracker.record_submitted(submitted_groups)
     for group in returned_groups:
-        samples = flatten_samples(group)
-        if not samples:
-            empty_groups += 1
-        elif any(sample.status == Sample.Status.ABORTED for sample in samples):
-            aborted_groups += 1
-        else:
-            healthy_groups += 1
-
-    if healthy_groups:
-        return
-
-    returned_count = len(returned_groups)
-    missing_groups = max(0, submitted_groups - returned_count)
-    raise RuntimeError(
-        "rollout generation collapsed before producing any non-aborted group: "
-        f"submitted_groups={submitted_groups}, returned_groups={returned_count}, "
-        f"aborted_groups={aborted_groups}, empty_groups={empty_groups}, "
-        f"missing_groups={missing_groups}"
-    )
+        tracker.record_returned(group)
+    for _ in range(max(0, submitted_groups - len(returned_groups))):
+        tracker.record_task_exception()
+    tracker.close_window(pending_groups=0)
 
 
 class GenerateState:
@@ -186,7 +255,17 @@ async def generate_and_rm_group(
             asyncio.create_task(generate_and_rm(state, sample, current_sampling_params, evaluation=evaluation))
         )
 
-    group = await asyncio.gather(*tasks)
+    try:
+        group = await asyncio.gather(*tasks)
+    except BaseException:
+        # ``asyncio.gather`` propagates the first failure without waiting for
+        # sibling tasks. Cancel and drain them so a failed group cannot leave
+        # generation work running after the rollout has been reset.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
     logger.debug(f"{log_prefix} [group] All {len(group)} samples completed")
     if state.aborted:
         return group

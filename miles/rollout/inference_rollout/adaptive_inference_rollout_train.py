@@ -11,9 +11,9 @@ from tqdm import tqdm
 from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
 from miles.rollout.inference_rollout.inference_rollout_common import (
+    GenerationHealthTracker,
     GenerateState,
     generate_and_rm_group,
-    raise_if_generation_collapsed,
 )
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
@@ -96,14 +96,34 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     # specific instances harbor cancels are reported by /abort_all below.
     logger.info(f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks")
 
+    cleanup_error: Exception | None = None
+
     is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
     if is_agentic:
         harbor_url = getattr(args, "agent_server_url", None)
         if not harbor_url:
-            raise RuntimeError("agentic rollout abort requires --agent-server-url")
-        await _signal_harbor(harbor_url, rollout_id)
+            cleanup_error = RuntimeError("agentic rollout abort requires --agent-server-url")
+        else:
+            try:
+                await _signal_harbor(harbor_url, rollout_id)
+            except Exception as exc:
+                cleanup_error = exc
+                logger.error("[abort] harbor cleanup failed; continuing with engine abort and task drain", exc_info=True)
 
-    await _abort_all_engines(args)
+    try:
+        await _abort_all_engines(args)
+    except Exception as exc:
+        if cleanup_error is None:
+            cleanup_error = exc
+        logger.error("[abort] engine cleanup failed; continuing with pending-task drain", exc_info=True)
+
+    if cleanup_error is not None:
+        # Cleanup could not prove that remote decoding stopped. Cancel the
+        # local group tasks and drain their cancellation paths rather than
+        # waiting indefinitely on a broken control plane.
+        for task in pendings:
+            if not task.done():
+                task.cancel()
 
     # Drain the still-pending tasks. For partial rollout, keep each drained group
     # that has a response, stamping its origin step if not already set.
@@ -111,6 +131,8 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     for task in asyncio.as_completed(pendings):
         try:
             group = await task
+        except asyncio.CancelledError:
+            continue
         except Exception as exc:  # a failed pending task must not abort the drain
             logger.error(f"[abort] pending rollout task raised: {exc!r}", exc_info=exc)
             continue
@@ -123,6 +145,9 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
 
     if args.partial_rollout:
         logger.info(f"[abort] collected {sum(len(x) for x in aborted_samples)} partial samples")
+
+    if cleanup_error is not None:
+        raise cleanup_error
 
     return aborted_samples
 
@@ -224,112 +249,143 @@ async def generate_rollout_async(
     kept_groups = 0
     source_exhausted = False
     do_print = True
+    health = GenerationHealthTracker()
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
-    while len(data) < target_data_size:
-        n = 0
-        if source_exhausted:
+    generation_error: BaseException | None = None
+    try:
+        while len(data) < target_data_size:
             n = 0
-        elif args.disable_oversampling:
-            if submitted >= target_data_size:
-                n = 0
-            elif len(data) + len(pendings) < target_data_size:
-                n = max(0, target_data_size - submitted)
-        else:
-            keep_rate = keep_rate_getter() if keep_rate_getter else None
+            # A submission wave is immutable once started. Drain it before
+            # adapting or fetching replacement prompts so its health can be
+            # judged as a bounded unit.
+            if not pendings:
+                if source_exhausted:
+                    n = 0
+                elif args.disable_oversampling:
+                    if submitted >= target_data_size:
+                        n = 0
+                    elif len(data) < target_data_size:
+                        n = max(0, target_data_size - submitted)
+                else:
+                    keep_rate = keep_rate_getter() if keep_rate_getter else None
 
-            # Original fixed oversampling behavior:
-            # n = args.over_sampling_batch_size
-            n = _estimate_adaptive_submission_n(
-                accepted=len(data),
-                pending=len(pendings),
-                target=target_data_size,
-                keep_rate=keep_rate,
-                max_n=args.over_sampling_batch_size,
-                factor=1.1,
-            )
+                    # Estimate the next complete wave from the observed keep
+                    # rate. Pending is always zero at a wave boundary.
+                    n = _estimate_adaptive_submission_n(
+                        accepted=len(data),
+                        pending=0,
+                        target=target_data_size,
+                        keep_rate=keep_rate,
+                        max_n=args.over_sampling_batch_size,
+                        factor=1.1,
+                    )
 
-        if n > 0:
-            logger.info(
-                "[adaptive_oversampling] rollout_id=%s submit_n=%s accepted=%s pending=%s "
-                "target=%s keep_rate_ema=%s",
-                rollout_id,
-                n,
-                len(data),
-                len(pendings),
-                target_data_size,
-                keep_rate_getter() if keep_rate_getter else None,
-            )
-            samples = data_source(n)
-            if len(samples) < n:
-                source_exhausted = True
+            if n > 0:
                 logger.info(
-                    "[rollout] prompt source exhausted during rollout_id=%s: requested=%s received=%s "
-                    "accepted=%s pending=%s target=%s",
+                    "[adaptive_oversampling] rollout_id=%s submit_n=%s accepted=%s pending=%s "
+                    "target=%s keep_rate_ema=%s",
                     rollout_id,
                     n,
-                    len(samples),
                     len(data),
                     len(pendings),
                     target_data_size,
+                    keep_rate_getter() if keep_rate_getter else None,
                 )
-            if not samples:
-                n = 0
-            else:
-                n = len(samples)
-            stamp_rollout_id(samples, rollout_id)
-            submitted += len(samples)
-            pendings.update(submit_generate_tasks(state, samples))
+                samples = data_source(n)
+                if len(samples) < n:
+                    source_exhausted = True
+                    logger.info(
+                        "[rollout] prompt source exhausted during rollout_id=%s: requested=%s received=%s "
+                        "accepted=%s pending=%s target=%s",
+                        rollout_id,
+                        n,
+                        len(samples),
+                        len(data),
+                        len(pendings),
+                        target_data_size,
+                    )
+                if not samples:
+                    n = 0
+                else:
+                    n = len(samples)
+                stamp_rollout_id(samples, rollout_id)
+                submitted += len(samples)
+                health.record_submitted(len(samples))
+                pendings.update(submit_generate_tasks(state, samples))
 
-        if not pendings:
-            break
+            if not pendings:
+                break
 
-        # wait for the generation to finish
-        logger.debug(f"[rollout] Waiting on {len(pendings)} pending tasks, data={len(data)}/{target_data_size}")
-        done, pendings = await asyncio.wait(pendings, return_when=asyncio.FIRST_COMPLETED)
-        logger.debug(f"[rollout] asyncio.wait returned: {len(done)} done, {len(pendings)} pending")
-        for task in done:
-            try:
-                group: list[Sample] = task.result()
-            except Exception as e:
-                logger.error(f"[rollout] Task raised exception: {e!r}", exc_info=True)
-                continue
+            # wait for the generation to finish
+            logger.debug(f"[rollout] Waiting on {len(pendings)} pending tasks, data={len(data)}/{target_data_size}")
+            done, pendings = await asyncio.wait(pendings, return_when=asyncio.FIRST_COMPLETED)
+            logger.debug(f"[rollout] asyncio.wait returned: {len(done)} done, {len(pendings)} pending")
+            for task in done:
+                try:
+                    group: list[Sample] = task.result()
+                except Exception as e:
+                    health.record_task_exception()
+                    logger.error(f"[rollout] Task raised exception: {e!r}", exc_info=True)
+                    continue
 
-            if do_print:
-                sample = group[0][0] if isinstance(group[0], list) else group[0]
-                logger.info(
-                    f"First rollout sample: {[str(sample.prompt) + sample.response]}, label: {sample.label}, reward: {sample.reward}",
-                )
-                do_print = False
+                health.record_returned(group)
+                if do_print:
+                    sample = group[0][0] if isinstance(group[0], list) else group[0]
+                    logger.info(
+                        f"First rollout sample: {[str(sample.prompt) + sample.response]}, label: {sample.label}, reward: {sample.reward}",
+                    )
+                    do_print = False
 
-            assert len(group) == args.n_samples_per_prompt
-            all_data.append(group)
-            completed_groups += 1
-            dynamic_filter_output = call_dynamic_filter(dynamic_filter, args, group)
-            if not dynamic_filter_output.keep:
-                metric_gatherer.on_dynamic_filter_drop(reason=dynamic_filter_output.reason)
-                continue
+                assert len(group) == args.n_samples_per_prompt
+                all_data.append(group)
+                completed_groups += 1
+                dynamic_filter_output = call_dynamic_filter(dynamic_filter, args, group)
+                if not dynamic_filter_output.keep:
+                    metric_gatherer.on_dynamic_filter_drop(reason=dynamic_filter_output.reason)
+                    continue
 
-            kept_groups += 1
-            # add the samples to the data
-            # NOTE: here we have not stored all the unused samples back to the data buffer.
-            if len(data) < target_data_size:
-                data.append(group)
-                pbar.update(args.n_samples_per_prompt)
+                kept_groups += 1
+                # add the samples to the data
+                # NOTE: here we have not stored all the unused samples back to the data buffer.
+                if len(data) < target_data_size:
+                    data.append(group)
+                    pbar.update(args.n_samples_per_prompt)
 
-    pbar.close()
+            # A drained wave is the decision boundary. Fail before another
+            # prompt wave can hide a dead generation backend.
+            health.close_window(pending_groups=len(pendings))
+    except BaseException as exc:
+        generation_error = exc
+    finally:
+        pbar.close()
+
     if data:
         sample = data[-1][0][0] if isinstance(data[-1][0], list) else data[-1][0]
         logger.info(
             f"Finish rollout: {[str(sample.prompt) + sample.response]}, label: {sample.label}, reward: {sample.reward}",
         )
 
-    # there are still some unfinished requests, abort them
-    aborted_samples = await abort(state, pendings, rollout_id)
+    # Always abort/drain and reset, including online health failures and task
+    # exceptions. Preserve the generation error if cleanup also fails.
+    aborted_samples = []
     try:
-        raise_if_generation_collapsed(submitted, all_data)
-    except Exception:
+        aborted_samples = await abort(state, pendings, rollout_id)
+    except BaseException as exc:
+        if generation_error is None:
+            generation_error = exc
+        else:
+            logger.error("[rollout] cleanup also failed after generation error", exc_info=True)
+    finally:
         state.reset()
-        raise
+
+    if generation_error is None:
+        try:
+            health.close_window(pending_groups=0, allow_incomplete=True)
+        except BaseException as exc:
+            generation_error = exc
+
+    if generation_error is not None:
+        raise generation_error
 
     stop_training = source_exhausted and len(data) < args.rollout_batch_size
     stop_reason = None
@@ -358,9 +414,6 @@ async def generate_rollout_async(
     all_samples = sorted(
         all_data, key=lambda group: group[0][0].index if isinstance(group[0], list) else group[0].index
     )
-
-    # reset the global state to prevent effects on the next rollout or eval.
-    state.reset()
 
     if f := load_function(args.rollout_sample_filter_path):
         f(args, data)
