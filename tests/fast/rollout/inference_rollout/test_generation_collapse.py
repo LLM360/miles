@@ -1,4 +1,5 @@
 import asyncio
+from functools import wraps
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,16 @@ from miles.utils.types import Sample
 
 
 ROLLOUT_MODULES = [inference_rollout_train, adaptive_inference_rollout_train]
+
+
+def _run_async(test_function):
+    """Run async unit tests without requiring a pytest event-loop plugin."""
+
+    @wraps(test_function)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(test_function(*args, **kwargs))
+
+    return wrapper
 
 
 def _sample(
@@ -138,6 +149,7 @@ def _install_loop_fakes(monkeypatch, module, *, tasks_raise: bool = False, abort
         (Sample.Status.FAILED, False),
     ],
 )
+@_run_async
 async def test_unusable_unbounded_wave_fails_before_second_submission(
     monkeypatch,
     module,
@@ -160,6 +172,7 @@ async def test_unusable_unbounded_wave_fails_before_second_submission(
 
 
 @pytest.mark.parametrize("module", ROLLOUT_MODULES)
+@_run_async
 async def test_all_task_exceptions_fail_before_second_submission(monkeypatch, module):
     _install_loop_fakes(monkeypatch, module, tasks_raise=True)
     source = _UnboundedSource(Sample.Status.PENDING, with_output=False)
@@ -176,6 +189,7 @@ async def test_all_task_exceptions_fail_before_second_submission(monkeypatch, mo
 
 
 @pytest.mark.parametrize("module", ROLLOUT_MODULES)
+@_run_async
 async def test_later_unusable_wave_fails_after_healthy_filtered_wave(monkeypatch, module):
     _install_loop_fakes(monkeypatch, module)
     state = _State(_args())
@@ -201,6 +215,7 @@ async def test_later_unusable_wave_fails_after_healthy_filtered_wave(monkeypatch
 
 
 @pytest.mark.parametrize("module", ROLLOUT_MODULES)
+@_run_async
 async def test_healthy_filtered_finite_exhaustion_is_not_a_collapse(monkeypatch, module):
     _install_loop_fakes(monkeypatch, module)
     state = _State(_args())
@@ -223,6 +238,7 @@ async def test_healthy_filtered_finite_exhaustion_is_not_a_collapse(monkeypatch,
 
 
 @pytest.mark.parametrize("module", ROLLOUT_MODULES)
+@_run_async
 async def test_cleanup_failure_still_resets_rollout_state(monkeypatch, module):
     cleanup_error = RuntimeError("cleanup failed")
     _install_loop_fakes(monkeypatch, module, abort_error=cleanup_error)
@@ -236,6 +252,7 @@ async def test_cleanup_failure_still_resets_rollout_state(monkeypatch, module):
 
 
 @pytest.mark.parametrize("module", ROLLOUT_MODULES)
+@_run_async
 async def test_abort_drains_pending_tasks_when_engine_cleanup_fails(monkeypatch, module):
     drained = asyncio.Event()
 
@@ -262,6 +279,7 @@ async def test_abort_drains_pending_tasks_when_engine_cleanup_fails(monkeypatch,
     assert state.aborted
 
 
+@_run_async
 async def test_failed_group_task_cancels_and_drains_sibling_generation(monkeypatch):
     sibling_started = asyncio.Event()
     sibling_drained = asyncio.Event()
