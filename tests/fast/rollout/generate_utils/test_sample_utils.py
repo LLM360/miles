@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from miles.rollout.generate_utils.sample_utils import _merge_sample_pair
+from miles.rollout.generate_utils.sample_utils import _merge_sample_pair, collect_eval_rewards
 from miles.utils.types import Sample
 
 
@@ -154,3 +154,23 @@ class TestMergeSamples:
 
         with pytest.raises(AssertionError, match="loss_mask length"):
             _merge_sample_pair(a, b, mock_tokenizer)
+
+
+def test_collect_eval_rewards_selects_named_reward_channel():
+    samples = [
+        make_sample(reward={"trajectory_reward": 3.0, "success": 1.0}, index=1),
+        make_sample(reward={"trajectory_reward": 0.0, "success": 0.0}, index=2),
+    ]
+
+    assert collect_eval_rewards(samples, "success") == [1.0, 0.0]
+
+
+@pytest.mark.parametrize(
+    "reward",
+    [None, {"trajectory_reward": 2.0}, {"success": float("nan")}],
+)
+def test_collect_eval_rewards_rejects_invalid_or_missing_channel(reward):
+    sample = make_sample(reward=reward, index=17)
+
+    with pytest.raises(RuntimeError, match="refusing to report them as incorrect"):
+        collect_eval_rewards([sample], "success")

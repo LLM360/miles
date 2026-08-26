@@ -1,7 +1,48 @@
+import math
 from copy import deepcopy
 from dataclasses import fields
 
 from miles.utils.types import Sample
+
+
+def collect_eval_rewards(samples: list[Sample], reward_key: str | None) -> list[float]:
+    """Collect valid eval rewards or fail the evaluation without biasing it.
+
+    An aborted sample has no trustworthy correctness label. Treating it as
+    zero would turn scorer or transport failures into model failures, so the
+    entire evaluation must be retried after the underlying failure is fixed.
+    """
+
+    rewards = []
+    invalid = []
+    for sample in samples:
+        if sample.reward is None:
+            invalid.append(sample.index)
+            continue
+        if reward_key:
+            if not isinstance(sample.reward, dict) or reward_key not in sample.reward:
+                invalid.append(sample.index)
+                continue
+            reward = sample.reward[reward_key]
+        else:
+            reward = sample.reward
+        try:
+            reward_value = float(reward)
+        except (TypeError, ValueError, OverflowError):
+            invalid.append(sample.index)
+            continue
+        if not math.isfinite(reward_value):
+            invalid.append(sample.index)
+            continue
+        rewards.append(reward_value)
+    if invalid:
+        preview = invalid[:10]
+        suffix = "..." if len(invalid) > len(preview) else ""
+        raise RuntimeError(
+            f"evaluation contains {len(invalid)} invalid or unlabeled samples "
+            f"(indices={preview}{suffix}); refusing to report them as incorrect"
+        )
+    return rewards
 
 
 def drop_samples_after_first_non_completed(samples: list[Sample]) -> tuple[list[Sample], int]:

@@ -5,6 +5,7 @@ from typing import Any
 
 from tqdm import tqdm
 
+from miles.rollout.generate_utils.sample_utils import collect_eval_rewards
 from miles.rollout.inference_rollout.inference_rollout_common import (
     GenerateState,
     compute_sampling_params,
@@ -107,7 +108,7 @@ async def eval_rollout_single_dataset(
     reward_key = args.eval_reward_key or args.reward_key
     return {
         dataset_cfg.name: {
-            "rewards": [sample.reward if not reward_key else sample.reward[reward_key] for sample in data],
+            "rewards": collect_eval_rewards(data, reward_key),
             "truncated": [sample.status == Sample.Status.TRUNCATED for sample in data],
             "samples": data,
         }

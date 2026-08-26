@@ -1,11 +1,32 @@
-"""Unit tests for Sample.strip_last_output_tokens."""
+"""Unit tests for Sample helpers."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy
 import pytest
 
+from miles.rollout.filter_hub.dynamic_sampling_filters import check_reward_nonzero_std
 from miles.utils.types import Sample
+
+
+def test_get_reward_value_preserves_none_with_named_reward_key():
+    sample = Sample(reward=None)
+
+    assert sample.get_reward_value(SimpleNamespace(reward_key="trajectory_reward")) is None
+
+
+def test_named_reward_filter_rejects_aborted_sample_without_indexing_none():
+    args = SimpleNamespace(reward_key="trajectory_reward")
+    samples = [
+        Sample(status=Sample.Status.ABORTED, reward=None),
+        Sample(status=Sample.Status.COMPLETED, reward={"trajectory_reward": 2.0}),
+    ]
+
+    result = check_reward_nonzero_std(args, samples)
+
+    assert not result.keep
+    assert result.reason == "group_has_aborted"
 
 
 def _make_sample(

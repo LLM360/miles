@@ -16,6 +16,7 @@ from tqdm import tqdm
 from miles.backends.megatron_utils.lora_utils import LORA_ADAPTER_NAME, is_lora_enabled
 from miles.rollout.base_types import GenerateFnInput, RolloutFnEvalOutput, RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
+from miles.rollout.generate_utils.sample_utils import collect_eval_rewards
 from miles.rollout.inference_rollout.compatibility import load_generate_function
 from miles.utils import dumper_utils
 from miles.utils.async_utils import run
@@ -626,7 +627,7 @@ async def eval_rollout_single_dataset(
     reward_key = args.eval_reward_key or args.reward_key
     return {
         dataset_cfg.name: {
-            "rewards": [sample.reward if not reward_key else sample.reward[reward_key] for sample in data],
+            "rewards": collect_eval_rewards(data, reward_key),
             "truncated": [sample.status == Sample.Status.TRUNCATED for sample in data],
             "samples": data,
         }
