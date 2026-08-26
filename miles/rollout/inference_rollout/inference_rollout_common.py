@@ -32,13 +32,15 @@ def _flatten_samples(value) -> list[Sample]:
     return []
 
 
-def is_usable_generation_group(group: list[Sample]) -> bool:
-    """Return whether every sample has terminal, trainable generated tokens.
+def is_responsive_generation_group(group: list[Sample]) -> bool:
+    """Return whether every sample proves that generation made progress.
 
-    ``ABORTED`` and ``PENDING`` are never usable. ``FAILED`` is usable only
-    when the generator preserved a non-empty partial response, as permitted by
-    the ``Sample.Status.FAILED`` contract. A zero-token completion or
-    truncation is not useful training data either.
+    Generation health is intentionally separate from training eligibility.
+    ``ABORTED`` samples can contain a complete token chain that a downstream
+    filter must reject for training (for example, because an attempt reached
+    its token cap), while still proving that the generation backend responded.
+    ``PENDING`` samples and terminal samples without generated tokens do not
+    prove liveness.
     """
 
     samples = _flatten_samples(group)
@@ -48,6 +50,7 @@ def is_usable_generation_group(group: list[Sample]) -> bool:
     terminal_statuses = {
         Sample.Status.COMPLETED,
         Sample.Status.TRUNCATED,
+        Sample.Status.ABORTED,
         Sample.Status.FAILED,
     }
     return all(
@@ -60,17 +63,18 @@ def is_usable_generation_group(group: list[Sample]) -> bool:
 
 @dataclass
 class GenerationHealthTracker:
-    """Fail a rollout as soon as a complete submission wave has no usable group.
+    """Fail a rollout as soon as a complete wave has no responsive group.
 
     The tracker resets after each healthy wave. This makes the health decision
     online: an unbounded prompt source cannot hide a dead generation backend by
-    continuously supplying replacement prompts.
+    continuously supplying replacement prompts. Whether a responsive group is
+    suitable for training remains the dynamic filter's responsibility.
     """
 
     submitted_groups: int = 0
     returned_groups: int = 0
-    usable_groups: int = 0
-    unusable_groups: int = 0
+    responsive_groups: int = 0
+    unresponsive_groups: int = 0
     task_exceptions: int = 0
 
     def record_submitted(self, count: int) -> None:
@@ -80,10 +84,10 @@ class GenerationHealthTracker:
 
     def record_returned(self, group: list[Sample]) -> None:
         self.returned_groups += 1
-        if is_usable_generation_group(group):
-            self.usable_groups += 1
+        if is_responsive_generation_group(group):
+            self.responsive_groups += 1
         else:
-            self.unusable_groups += 1
+            self.unresponsive_groups += 1
 
     def record_task_exception(self) -> None:
         self.task_exceptions += 1
@@ -109,11 +113,12 @@ class GenerationHealthTracker:
                 f"task_exceptions={self.task_exceptions}, missing_groups={missing_groups}"
             )
 
-        if self.usable_groups == 0:
+        if self.responsive_groups == 0:
             raise RuntimeError(
-                "rollout generation collapsed before producing a usable group: "
+                "rollout generation collapsed before producing a responsive group: "
                 f"submitted_groups={self.submitted_groups}, returned_groups={self.returned_groups}, "
-                f"usable_groups={self.usable_groups}, unusable_groups={self.unusable_groups}, "
+                f"responsive_groups={self.responsive_groups}, "
+                f"unresponsive_groups={self.unresponsive_groups}, "
                 f"task_exceptions={self.task_exceptions}, missing_groups={missing_groups}"
             )
 
@@ -122,8 +127,8 @@ class GenerationHealthTracker:
     def reset_window(self) -> None:
         self.submitted_groups = 0
         self.returned_groups = 0
-        self.usable_groups = 0
-        self.unusable_groups = 0
+        self.responsive_groups = 0
+        self.unresponsive_groups = 0
         self.task_exceptions = 0
 
 

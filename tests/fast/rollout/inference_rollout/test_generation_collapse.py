@@ -9,7 +9,7 @@ from miles.rollout.inference_rollout import adaptive_inference_rollout_train, in
 from miles.rollout.inference_rollout import inference_rollout_common as common
 from miles.rollout.inference_rollout.inference_rollout_common import (
     GenerationHealthTracker,
-    is_usable_generation_group,
+    is_responsive_generation_group,
 )
 from miles.utils.types import Sample
 
@@ -107,12 +107,26 @@ def _drop_all(_args, _group):
     return DynamicFilterOutput(keep=False, reason="test_drop")
 
 
-def _install_loop_fakes(monkeypatch, module, *, tasks_raise: bool = False, abort_error: Exception | None = None):
+def _keep_completed(_args, group):
+    return DynamicFilterOutput(
+        keep=all(sample.status == Sample.Status.COMPLETED for sample in group),
+        reason="test_non_completed",
+    )
+
+
+def _install_loop_fakes(
+    monkeypatch,
+    module,
+    *,
+    tasks_raise: bool = False,
+    abort_error: Exception | None = None,
+    dynamic_filter=_drop_all,
+):
     async def configure_sglang(_args):
         return None
 
     def load_function(path):
-        return _drop_all if path == "test:drop_all" else None
+        return dynamic_filter if path == "test:drop_all" else None
 
     def submit_generate_tasks(_state, groups):
         async def finish(group, delay):
@@ -144,13 +158,13 @@ def _install_loop_fakes(monkeypatch, module, *, tasks_raise: bool = False, abort
 @pytest.mark.parametrize(
     ("status", "with_output"),
     [
-        (Sample.Status.ABORTED, True),
+        (Sample.Status.ABORTED, False),
         (Sample.Status.PENDING, True),
         (Sample.Status.FAILED, False),
     ],
 )
 @_run_async
-async def test_unusable_unbounded_wave_fails_before_second_submission(
+async def test_unresponsive_unbounded_wave_fails_before_second_submission(
     monkeypatch,
     module,
     status,
@@ -190,7 +204,10 @@ async def test_all_task_exceptions_fail_before_second_submission(monkeypatch, mo
 
 @pytest.mark.parametrize("module", ROLLOUT_MODULES)
 @_run_async
-async def test_later_unusable_wave_fails_after_healthy_filtered_wave(monkeypatch, module):
+async def test_later_zero_output_wave_fails_after_responsive_filtered_wave(
+    monkeypatch,
+    module,
+):
     _install_loop_fakes(monkeypatch, module)
     state = _State(_args())
     calls = 0
@@ -201,7 +218,13 @@ async def test_later_unusable_wave_fails_after_healthy_filtered_wave(monkeypatch
         calls += 1
         status = Sample.Status.COMPLETED if calls == 1 else Sample.Status.ABORTED
         groups = [
-            [_sample(status, index=next_index + offset, with_output=True)]
+            [
+                _sample(
+                    status,
+                    index=next_index + offset,
+                    with_output=calls == 1,
+                )
+            ]
             for offset in range(count)
         ]
         next_index += count
@@ -216,7 +239,52 @@ async def test_later_unusable_wave_fails_after_healthy_filtered_wave(monkeypatch
 
 @pytest.mark.parametrize("module", ROLLOUT_MODULES)
 @_run_async
-async def test_healthy_filtered_finite_exhaustion_is_not_a_collapse(monkeypatch, module):
+async def test_aborted_output_wave_is_responsive_and_later_wave_fills_batch(
+    monkeypatch,
+    module,
+):
+    _install_loop_fakes(monkeypatch, module, dynamic_filter=_keep_completed)
+    state = _State(_args())
+    calls = 0
+    next_index = 0
+
+    def source(count):
+        nonlocal calls, next_index
+        calls += 1
+        status = Sample.Status.ABORTED if calls == 1 else Sample.Status.COMPLETED
+        groups = [
+            [
+                _sample(
+                    status,
+                    index=next_index + offset,
+                    with_output=True,
+                )
+            ]
+            for offset in range(count)
+        ]
+        next_index += count
+        return groups
+
+    output, aborted_samples = await module.generate_rollout_async(
+        state,
+        rollout_id=82,
+        data_source=source,
+    )
+
+    assert not output.stop_training
+    assert len(output.samples) == 2
+    assert len(output.all_samples) == 4
+    assert aborted_samples == []
+    assert calls == 2
+    assert state.reset_calls == 1
+
+
+@pytest.mark.parametrize("module", ROLLOUT_MODULES)
+@_run_async
+async def test_responsive_filtered_finite_exhaustion_is_not_a_collapse(
+    monkeypatch,
+    module,
+):
     _install_loop_fakes(monkeypatch, module)
     state = _State(_args())
     calls = 0
@@ -317,17 +385,18 @@ async def test_failed_group_task_cancels_and_drains_sibling_generation(monkeypat
         ([_sample(Sample.Status.COMPLETED, with_output=True)], True),
         ([_sample(Sample.Status.TRUNCATED, with_output=True)], True),
         ([_sample(Sample.Status.FAILED, with_output=True)], True),
+        ([_sample(Sample.Status.ABORTED, with_output=True)], True),
         ([_sample(Sample.Status.FAILED, with_output=False)], False),
         ([_sample(Sample.Status.PENDING, with_output=True)], False),
-        ([_sample(Sample.Status.ABORTED, with_output=True)], False),
+        ([_sample(Sample.Status.ABORTED, with_output=False)], False),
         ([], False),
     ],
 )
-def test_usable_generation_group_contract(group, expected):
-    assert is_usable_generation_group(group) is expected
+def test_responsive_generation_group_contract(group, expected):
+    assert is_responsive_generation_group(group) is expected
 
 
-def test_health_window_resets_after_usable_group():
+def test_health_window_resets_after_responsive_group():
     tracker = GenerationHealthTracker()
     tracker.record_submitted(1)
     tracker.record_returned([_sample(Sample.Status.COMPLETED, with_output=True)])
