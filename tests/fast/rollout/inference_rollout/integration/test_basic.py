@@ -51,7 +51,12 @@ def test_train(rollout_env):
     assert len(out.samples) == env.args.rollout_batch_size
     group = out.samples[0]
     assert len(group) == env.args.n_samples_per_prompt
-    assert group[0] == expected_sample(group_index=0)
+    expected = expected_sample(group_index=0)
+    if env.args.rollout_function_path.endswith(".InferenceRolloutFn"):
+        # The experimental rollout stamps the current rollout on every sample;
+        # the legacy rollout intentionally retains its historical shape.
+        expected.metadata = {"rollout_id": 0}
+    assert group[0] == expected
 
 
 @pytest.mark.parametrize("rollout_env", _VARIANTS, indirect=True)
