@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
+from miles.rollout.filter_hub.dynamic_sampling_budget import DynamicSamplingReplacementTracker
 from miles.rollout.inference_rollout.inference_rollout_common import (
     GenerationHealthTracker,
     GenerateState,
@@ -250,6 +251,9 @@ async def generate_rollout_async(
     source_exhausted = False
     do_print = True
     health = GenerationHealthTracker()
+    replacement_tracker = DynamicSamplingReplacementTracker(
+        getattr(args, "dynamic_sampling_max_rejected_groups_without_progress", None)
+    )
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     generation_error: BaseException | None = None
     try:
@@ -320,6 +324,7 @@ async def generate_rollout_async(
             logger.debug(f"[rollout] Waiting on {len(pendings)} pending tasks, data={len(data)}/{target_data_size}")
             done, pendings = await asyncio.wait(pendings, return_when=asyncio.FIRST_COMPLETED)
             logger.debug(f"[rollout] asyncio.wait returned: {len(done)} done, {len(pendings)} pending")
+            filter_results = []
             for task in done:
                 try:
                     group: list[Sample] = task.result()
@@ -340,6 +345,9 @@ async def generate_rollout_async(
                 all_data.append(group)
                 completed_groups += 1
                 dynamic_filter_output = call_dynamic_filter(dynamic_filter, args, group)
+                filter_results.append(
+                    (dynamic_filter_output.keep, group, dynamic_filter_output.reason)
+                )
                 if not dynamic_filter_output.keep:
                     metric_gatherer.on_dynamic_filter_drop(reason=dynamic_filter_output.reason)
                     continue
@@ -351,9 +359,17 @@ async def generate_rollout_async(
                     data.append(group)
                     pbar.update(args.n_samples_per_prompt)
 
+            replacement_tracker.record_filter_batch(filter_results)
+
             # A drained wave is the decision boundary. Fail before another
             # prompt wave can hide a dead generation backend.
             health.close_window(pending_groups=len(pendings))
+
+            # Generation collapse takes precedence over a sampling-policy
+            # failure. Check the replacement budget only at the drained wave
+            # boundary, before another prompt wave can be submitted.
+            if not pendings:
+                replacement_tracker.raise_if_exhausted()
     except BaseException as exc:
         generation_error = exc
     finally:

@@ -5,6 +5,12 @@ from types import SimpleNamespace
 import pytest
 
 from miles.rollout.filter_hub.base_types import DynamicFilterOutput
+from miles.rollout.filter_hub.dynamic_sampling_budget import (
+    DynamicSamplingReplacementBudgetExceeded,
+    DynamicSamplingReplacementTracker,
+    EvaluatorInvalidReplacementBudgetExceeded,
+    group_has_evaluator_failure,
+)
 from miles.rollout.inference_rollout import adaptive_inference_rollout_train, inference_rollout_train
 from miles.rollout.inference_rollout import inference_rollout_common as common
 from miles.rollout.inference_rollout.inference_rollout_common import (
@@ -51,6 +57,7 @@ def _args(**overrides):
         "dynamic_sampling_min_reward_std": None,
         "dynamic_sampling_min_mean_reward": None,
         "dynamic_sampling_max_mean_reward": None,
+        "dynamic_sampling_max_rejected_groups_without_progress": None,
         "rollout_sample_filter_path": None,
         "rollout_all_samples_process_path": None,
         "rollout_batch_size": 2,
@@ -172,7 +179,7 @@ async def test_unresponsive_unbounded_wave_fails_before_second_submission(
 ):
     _install_loop_fakes(monkeypatch, module)
     source = _UnboundedSource(status, with_output=with_output)
-    state = _State(_args())
+    state = _State(_args(dynamic_sampling_max_rejected_groups_without_progress=2))
 
     with pytest.raises(RuntimeError, match="generation collapsed"):
         await asyncio.wait_for(
@@ -244,7 +251,7 @@ async def test_aborted_output_wave_is_responsive_and_later_wave_fills_batch(
     module,
 ):
     _install_loop_fakes(monkeypatch, module, dynamic_filter=_keep_completed)
-    state = _State(_args())
+    state = _State(_args(dynamic_sampling_max_rejected_groups_without_progress=3))
     calls = 0
     next_index = 0
 
@@ -276,6 +283,61 @@ async def test_aborted_output_wave_is_responsive_and_later_wave_fills_batch(
     assert len(output.all_samples) == 4
     assert aborted_samples == []
     assert calls == 2
+    assert state.reset_calls == 1
+
+
+@pytest.mark.parametrize("module", ROLLOUT_MODULES)
+@_run_async
+async def test_evaluator_invalid_groups_exhaust_replacement_budget(
+    monkeypatch,
+    module,
+):
+    _install_loop_fakes(monkeypatch, module)
+    state = _State(_args(dynamic_sampling_max_rejected_groups_without_progress=4))
+    calls = 0
+    next_index = 0
+
+    def source(count):
+        nonlocal calls, next_index
+        calls += 1
+        groups = []
+        for offset in range(count):
+            sample = _sample(
+                Sample.Status.ABORTED,
+                index=next_index + offset,
+                with_output=True,
+            )
+            sample.reward = None
+            sample.metadata["evaluation_failed"] = True
+            groups.append([sample])
+        next_index += count
+        return groups
+
+    with pytest.raises(
+        EvaluatorInvalidReplacementBudgetExceeded,
+        match=r"evaluator-invalid groups.*rejected_groups_without_progress=4",
+    ):
+        await module.generate_rollout_async(state, rollout_id=83, data_source=source)
+
+    assert calls == 2
+    assert state.reset_calls == 1
+
+
+@pytest.mark.parametrize("module", ROLLOUT_MODULES)
+@_run_async
+async def test_ordinary_filter_rejections_use_generic_budget_error(monkeypatch, module):
+    _install_loop_fakes(monkeypatch, module)
+    state = _State(_args(dynamic_sampling_max_rejected_groups_without_progress=2))
+    source = _UnboundedSource(Sample.Status.COMPLETED, with_output=True)
+
+    with pytest.raises(
+        DynamicSamplingReplacementBudgetExceeded,
+        match=r"without accepted progress.*rejected_groups_without_progress=2",
+    ) as exc_info:
+        await module.generate_rollout_async(state, rollout_id=84, data_source=source)
+
+    assert not isinstance(exc_info.value, EvaluatorInvalidReplacementBudgetExceeded)
+    assert source.calls == 1
     assert state.reset_calls == 1
 
 
@@ -413,3 +475,74 @@ def test_health_window_rejects_inconsistent_accounting():
 
     with pytest.raises(RuntimeError, match="accounting is inconsistent"):
         tracker.close_window(pending_groups=0)
+
+
+def test_replacement_budget_resets_after_accepted_progress():
+    tracker = DynamicSamplingReplacementTracker(max_rejected_groups_without_progress=2)
+    rejected = [_sample(Sample.Status.COMPLETED, with_output=True)]
+    accepted = [_sample(Sample.Status.COMPLETED, with_output=True)]
+
+    tracker.record_filter_result(keep=False, group=rejected, reason="zero_std")
+    tracker.record_filter_result(keep=True, group=accepted, reason=None)
+    tracker.record_filter_result(keep=False, group=rejected, reason="zero_std")
+    tracker.raise_if_exhausted()
+
+    assert tracker.rejected_groups_without_progress == 1
+    assert tracker.evaluator_invalid_groups_without_progress == 0
+    assert tracker.rejection_reasons == {"zero_std": 1}
+
+
+def test_unordered_completion_batch_with_acceptance_resets_budget():
+    tracker = DynamicSamplingReplacementTracker(max_rejected_groups_without_progress=2)
+    sample = [_sample(Sample.Status.COMPLETED, with_output=True)]
+    tracker.record_filter_result(keep=False, group=sample, reason="zero_std")
+
+    tracker.record_filter_batch(
+        [
+            (True, sample, None),
+            (False, sample, "zero_std"),
+        ]
+    )
+    tracker.raise_if_exhausted()
+
+    assert tracker.rejected_groups_without_progress == 0
+
+
+def test_evaluator_failure_marker_is_backend_independent_and_legacy_compatible():
+    generic = _sample(Sample.Status.ABORTED, with_output=True)
+    generic.metadata["evaluation_failed"] = True
+    legacy = _sample(Sample.Status.ABORTED, with_output=True)
+    legacy.metadata["llm_judge_failed"] = True
+    ordinary = _sample(Sample.Status.ABORTED, with_output=True)
+    metadata_less = _sample(Sample.Status.ABORTED, with_output=True)
+    metadata_less.metadata = None
+
+    assert group_has_evaluator_failure([generic])
+    assert group_has_evaluator_failure([[legacy]])
+    assert not group_has_evaluator_failure([ordinary])
+    assert not group_has_evaluator_failure([metadata_less])
+
+
+def test_mixed_rejection_causes_use_generic_budget_error():
+    tracker = DynamicSamplingReplacementTracker(max_rejected_groups_without_progress=2)
+    evaluator_invalid = _sample(Sample.Status.ABORTED, with_output=True)
+    evaluator_invalid.metadata["evaluation_failed"] = True
+    ordinary = _sample(Sample.Status.COMPLETED, with_output=True)
+
+    tracker.record_filter_result(keep=False, group=[evaluator_invalid], reason="group_has_aborted")
+    tracker.record_filter_result(keep=False, group=[ordinary], reason="zero_std")
+
+    with pytest.raises(
+        DynamicSamplingReplacementBudgetExceeded,
+        match=r"evaluator_invalid_groups=1.*rejected_groups_without_progress=2|"
+        r"rejected_groups_without_progress=2.*evaluator_invalid_groups=1",
+    ) as exc_info:
+        tracker.raise_if_exhausted()
+
+    assert not isinstance(exc_info.value, EvaluatorInvalidReplacementBudgetExceeded)
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, 1.5])
+def test_replacement_budget_requires_positive_integer(limit):
+    with pytest.raises(ValueError, match="positive integer"):
+        DynamicSamplingReplacementTracker(max_rejected_groups_without_progress=limit)

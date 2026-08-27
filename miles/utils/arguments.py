@@ -374,6 +374,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                     "You could use `miles.rollout.filter_hub.dynamic_sampling_filters.check_reward_nonzero_std` as an example."
                 ),
             )
+            parser.add_argument(
+                "--dynamic-sampling-max-rejected-groups-without-progress",
+                type=int,
+                default=None,
+                help=(
+                    "Stop the rollout with a clear error after this many prompt groups in a row "
+                    "are rejected by the dynamic sampling filter without any accepted group. "
+                    "Evaluator-invalid groups produce a distinct error. The default None keeps "
+                    "dynamic replacement sampling unbounded."
+                ),
+            )
 
             parser.add_argument(
                 "--dynamic-sampling-min-reward-std",
@@ -2139,6 +2150,14 @@ def miles_validate_args(args):
         f"over_sampling_batch_size {args.over_sampling_batch_size} should be greater than or equal to "
         f"rollout_batch_size {args.rollout_batch_size}"
     )
+
+    max_rejected_groups_without_progress = getattr(
+        args, "dynamic_sampling_max_rejected_groups_without_progress", None
+    )
+    if max_rejected_groups_without_progress is not None:
+        assert max_rejected_groups_without_progress > 0, (
+            "dynamic_sampling_max_rejected_groups_without_progress must be greater than 0"
+        )
 
     if args.num_epoch is not None:
         if args.num_rollout is not None:

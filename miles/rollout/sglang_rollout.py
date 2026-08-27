@@ -16,6 +16,7 @@ from tqdm import tqdm
 from miles.backends.megatron_utils.lora_utils import LORA_ADAPTER_NAME, is_lora_enabled
 from miles.rollout.base_types import GenerateFnInput, RolloutFnEvalOutput, RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
+from miles.rollout.filter_hub.dynamic_sampling_budget import DynamicSamplingReplacementTracker
 from miles.rollout.generate_utils.sample_utils import collect_eval_rewards
 from miles.rollout.inference_rollout.compatibility import load_generate_function
 from miles.utils import dumper_utils
@@ -400,6 +401,9 @@ async def generate_rollout_async(
     dynamic_filter = (
         load_function(args.dynamic_sampling_filter_path) if args.dynamic_sampling_filter_path is not None else None
     )
+    replacement_tracker = DynamicSamplingReplacementTracker(
+        getattr(args, "dynamic_sampling_max_rejected_groups_without_progress", None)
+    )
 
     metric_gatherer = MetricGatherer()
 
@@ -436,6 +440,7 @@ async def generate_rollout_async(
         if not state.pendings:
             break
         done, state.pendings = await asyncio.wait(state.pendings, return_when=asyncio.FIRST_COMPLETED)
+        filter_results = []
         for task in done:
             group: list[Sample] = task.result()
 
@@ -449,6 +454,9 @@ async def generate_rollout_async(
             assert len(group) == args.n_samples_per_prompt
             all_data.append(group)
             dynamic_filter_output = call_dynamic_filter(dynamic_filter, args, group)
+            filter_results.append(
+                (dynamic_filter_output.keep, group, dynamic_filter_output.reason)
+            )
             if not dynamic_filter_output.keep:
                 metric_gatherer.on_dynamic_filter_drop(reason=dynamic_filter_output.reason)
                 state.remaining_batch_size -= 1
@@ -460,6 +468,12 @@ async def generate_rollout_async(
                 data.append(group)
                 pbar.update(args.n_samples_per_prompt)
 
+        replacement_tracker.record_filter_batch(filter_results)
+        if replacement_tracker.exhausted:
+            # Leave the loop through the normal abort/drain path. The distinct
+            # budget error is raised only after in-flight work is cleaned up.
+            break
+
     pbar.close()
     if data:
         sample = data[-1][0][0] if isinstance(data[-1][0], list) else data[-1][0]
@@ -469,6 +483,11 @@ async def generate_rollout_async(
 
     # there are still some unfinished requests, abort them
     aborted_samples = await abort(args, rollout_id)
+    if replacement_tracker.exhausted:
+        # The legacy path uses a singleton generation state, so reset it before
+        # surfacing the budget failure to the trainer.
+        state.reset()
+        replacement_tracker.raise_if_exhausted()
 
     stop_training = source_exhausted and len(data) < args.rollout_batch_size
     stop_reason = None

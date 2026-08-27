@@ -123,3 +123,14 @@ class TestMaybeApplyDumperOverrides:
         _maybe_apply_dumper_overrides(args)
 
         assert args.num_rollout == 6
+
+
+def test_dynamic_sampling_replacement_budget_argument_is_parsed() -> None:
+    argv = ["test", "--dynamic-sampling-max-rejected-groups-without-progress", "32"] + REQUIRED_ARGS
+    with patch.object(sys, "argv", argv):
+        parser = argparse.ArgumentParser()
+        get_miles_extra_args_provider()(parser)
+        args, unknown = parser.parse_known_args()
+
+    assert unknown == []
+    assert args.dynamic_sampling_max_rejected_groups_without_progress == 32
