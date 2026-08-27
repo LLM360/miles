@@ -8,6 +8,7 @@ from tests.fast.rollout.inference_rollout.integration.utils import (
 )
 
 from miles.rollout.base_types import RolloutFnConstructorInput, RolloutFnEvalInput
+from miles.rollout.generate_utils.sample_utils import finalize_eval_rewards
 from miles.rollout.inference_rollout.compatibility import call_rollout_function, load_rollout_function
 
 _VARIANTS = [
@@ -60,6 +61,7 @@ def test_eval(rollout_env):
         RolloutFnConstructorInput(args=env.args, data_source=env.data_source), env.args.eval_function_path
     )
     out = call_rollout_function(fn, RolloutFnEvalInput(rollout_id=0))
+    finalize_eval_rewards(out.data, env.args.eval_reward_key or env.args.reward_key)
 
     assert "toy" in out.data
     rewards = out.data["toy"]["rewards"]

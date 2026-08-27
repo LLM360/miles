@@ -167,9 +167,25 @@ class GenerateState:
             max_new_tokens=args.rollout_max_response_len,
         )
 
-        self.generate_function = load_generate_function(args.custom_generate_function_path) or generate
+        self._generate_functions: dict[str, Any] = {}
+        default_path = args.custom_generate_function_path
+        self.generate_function = load_generate_function(default_path) or generate
+        if default_path:
+            self._generate_functions[default_path] = self.generate_function
 
         self.reset()
+
+    def resolve_generate_function(self, path: str | None):
+        """Resolve one dataset's generator without mutating shared state."""
+
+        if path is None:
+            return self.generate_function
+        if path not in self._generate_functions:
+            generate_function = load_generate_function(path)
+            if generate_function is None:
+                raise ValueError(f"could not load custom generate function {path!r}")
+            self._generate_functions[path] = generate_function
+        return self._generate_functions[path]
 
     def reset(self) -> None:
         self.aborted = False
@@ -180,6 +196,7 @@ async def generate_and_rm(
     sample: Sample | list[Sample],
     sampling_params: dict[str, Any],
     evaluation: bool = False,
+    generate_function=None,
 ) -> Sample | list[Sample]:
     args = state.args
 
@@ -203,7 +220,8 @@ async def generate_and_rm(
             return sample
 
         logger.debug(f"{log_prefix} Acquired semaphore, calling generate_function")
-        output = await state.generate_function(
+        selected_generate_function = generate_function or state.generate_function
+        output = await selected_generate_function(
             GenerateFnInput(
                 state=state,
                 sample=sample,

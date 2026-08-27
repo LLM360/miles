@@ -5,7 +5,6 @@ from typing import Any
 
 from tqdm import tqdm
 
-from miles.rollout.generate_utils.sample_utils import collect_eval_rewards
 from miles.rollout.inference_rollout.inference_rollout_common import (
     GenerateState,
     compute_sampling_params,
@@ -56,6 +55,7 @@ async def eval_rollout_single_dataset(
         top_k=dataset_cfg.top_k,
         max_new_tokens=dataset_cfg.max_response_len,
     )
+    generate_function = state.resolve_generate_function(dataset_cfg.custom_generate_function_path)
 
     tasks = []
     # do multiple samples for eval prompts
@@ -67,6 +67,7 @@ async def eval_rollout_single_dataset(
             sample.index = sample_index
             sample_index += 1
             sample.metadata = dataset_cfg.inject_metadata(getattr(sample, "metadata", None))
+            sample.generate_function_path = dataset_cfg.custom_generate_function_path
             sampling_params = base_sampling_params
             if getattr(args, "sglang_enable_deterministic_inference", False):
                 sampling_params = base_sampling_params.copy()
@@ -78,6 +79,7 @@ async def eval_rollout_single_dataset(
                         sample,
                         sampling_params=sampling_params,
                         evaluation=True,
+                        generate_function=generate_function,
                     )
                 )
             )
@@ -105,10 +107,11 @@ async def eval_rollout_single_dataset(
 
     data.sort(key=lambda sample: sample.index)
 
-    reward_key = args.eval_reward_key or args.reward_key
     return {
         dataset_cfg.name: {
-            "rewards": collect_eval_rewards(data, reward_key),
+            # Reward validation intentionally happens in RolloutManager.eval
+            # after these raw samples have been persisted.
+            "rewards": None,
             "truncated": [sample.status == Sample.Status.TRUNCATED for sample in data],
             "samples": data,
         }

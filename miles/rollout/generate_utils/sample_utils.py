@@ -1,8 +1,48 @@
 import math
+import re
+from collections import Counter
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import fields
+from typing import Any
 
 from miles.utils.types import Sample
+
+
+_DIAGNOSTIC_LABEL_RE = re.compile(r"[^A-Za-z0-9_.:-]+")
+
+
+def _safe_diagnostic_label(value: Any, default: str) -> str:
+    """Return a bounded internal label that cannot leak prompt/response text."""
+
+    if hasattr(value, "value"):
+        value = value.value
+    if not isinstance(value, str) or not value:
+        return default
+    value = _DIAGNOSTIC_LABEL_RE.sub("_", value).strip("_")
+    return value[:64] or default
+
+
+def _invalid_eval_signature(sample: Sample, failure: str) -> str:
+    """Describe an invalid sample using only bounded operational metadata."""
+
+    metadata = sample.metadata if isinstance(sample.metadata, dict) else {}
+    multi_attempt = metadata.get("multi_attempt")
+    multi_attempt = multi_attempt if isinstance(multi_attempt, dict) else {}
+
+    reason = _safe_diagnostic_label(
+        multi_attempt.get("invalid_reason") or multi_attempt.get("stop_reason"),
+        failure,
+    )
+    status = _safe_diagnostic_label(sample.status, "unknown")
+
+    finish_reason = None
+    attempts = multi_attempt.get("attempts")
+    if isinstance(attempts, list) and attempts and isinstance(attempts[-1], dict):
+        last_attempt = attempts[-1]
+        finish_reason = last_attempt.get("engine_finish_reason") or last_attempt.get("finish_reason")
+    finish = _safe_diagnostic_label(finish_reason, "unknown")
+    return f"reason={reason},status={status},finish={finish}"
 
 
 def collect_eval_rewards(samples: list[Sample], reward_key: str | None) -> list[float]:
@@ -14,14 +54,14 @@ def collect_eval_rewards(samples: list[Sample], reward_key: str | None) -> list[
     """
 
     rewards = []
-    invalid = []
+    invalid: list[tuple[Sample, str]] = []
     for sample in samples:
         if sample.reward is None:
-            invalid.append(sample.index)
+            invalid.append((sample, "missing_reward"))
             continue
         if reward_key:
             if not isinstance(sample.reward, dict) or reward_key not in sample.reward:
-                invalid.append(sample.index)
+                invalid.append((sample, "missing_reward_channel"))
                 continue
             reward = sample.reward[reward_key]
         else:
@@ -29,20 +69,62 @@ def collect_eval_rewards(samples: list[Sample], reward_key: str | None) -> list[
         try:
             reward_value = float(reward)
         except (TypeError, ValueError, OverflowError):
-            invalid.append(sample.index)
+            invalid.append((sample, "non_numeric_reward"))
             continue
         if not math.isfinite(reward_value):
-            invalid.append(sample.index)
+            invalid.append((sample, "non_finite_reward"))
             continue
         rewards.append(reward_value)
     if invalid:
-        preview = invalid[:10]
+        indices = [sample.index for sample, _failure in invalid]
+        preview = indices[:10]
         suffix = "..." if len(invalid) > len(preview) else ""
+        diagnostics = Counter(_invalid_eval_signature(sample, failure) for sample, failure in invalid)
+        diagnostic_summary = "; ".join(
+            f"{signature}:{count}" for signature, count in sorted(diagnostics.items())
+        )
         raise RuntimeError(
             f"evaluation contains {len(invalid)} invalid or unlabeled samples "
-            f"(indices={preview}{suffix}); refusing to report them as incorrect"
+            f"(indices={preview}{suffix}; diagnostics={{{diagnostic_summary}}}); "
+            "refusing to report them as incorrect"
         )
     return rewards
+
+
+def finalize_eval_rewards(
+    data: dict[str, dict[str, Any]], reward_key: str | None
+) -> dict[str, dict[str, Any]]:
+    """Validate raw evaluation samples after their durable debug save.
+
+    Standard rollout functions deliberately return ``rewards=None``.  The
+    rollout manager first persists the raw samples and only then calls this
+    function, so a failed scorer or generation boundary remains diagnosable.
+    Custom evaluation functions that already provide rewards retain their
+    existing behavior.
+    """
+
+    for dataset_name, info in data.items():
+        if info.get("rewards") is not None:
+            continue
+        samples = info.get("samples")
+        if not isinstance(samples, list):
+            raise RuntimeError(
+                f"evaluation dataset {dataset_name!r} deferred reward validation "
+                "without a raw sample list"
+            )
+        info["rewards"] = collect_eval_rewards(samples, reward_key)
+    return data
+
+
+def persist_then_finalize_eval_rewards(
+    data: dict[str, dict[str, Any]],
+    reward_key: str | None,
+    persist_raw_samples: Callable[[dict[str, dict[str, Any]]], None],
+) -> dict[str, dict[str, Any]]:
+    """Establish the evaluation evidence-before-aggregation ordering."""
+
+    persist_raw_samples(data)
+    return finalize_eval_rewards(data, reward_key)
 
 
 def drop_samples_after_first_non_completed(samples: list[Sample]) -> tuple[list[Sample], int]:

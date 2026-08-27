@@ -17,7 +17,6 @@ from miles.backends.megatron_utils.lora_utils import LORA_ADAPTER_NAME, is_lora_
 from miles.rollout.base_types import GenerateFnInput, RolloutFnEvalOutput, RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
 from miles.rollout.filter_hub.dynamic_sampling_budget import DynamicSamplingReplacementTracker
-from miles.rollout.generate_utils.sample_utils import collect_eval_rewards
 from miles.rollout.inference_rollout.compatibility import load_generate_function
 from miles.utils import dumper_utils
 from miles.utils.async_utils import run
@@ -643,10 +642,11 @@ async def eval_rollout_single_dataset(
 
     data.sort(key=lambda sample: sample.index)
 
-    reward_key = args.eval_reward_key or args.reward_key
     return {
         dataset_cfg.name: {
-            "rewards": collect_eval_rewards(data, reward_key),
+            # Reward validation intentionally happens in RolloutManager.eval
+            # after these raw samples have been persisted.
+            "rewards": None,
             "truncated": [sample.status == Sample.Status.TRUNCATED for sample in data],
             "samples": data,
         }

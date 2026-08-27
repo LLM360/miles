@@ -2,7 +2,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from miles.rollout.generate_utils.sample_utils import _merge_sample_pair, collect_eval_rewards
+from miles.rollout.generate_utils.sample_utils import (
+    _merge_sample_pair,
+    collect_eval_rewards,
+    finalize_eval_rewards,
+    persist_then_finalize_eval_rewards,
+)
 from miles.utils.types import Sample
 
 
@@ -25,6 +30,7 @@ def make_sample(
     reward=1.0,
     index=0,
     group_index=0,
+    metadata=None,
 ):
     return Sample(
         prompt=prompt,
@@ -38,6 +44,7 @@ def make_sample(
         reward=reward,
         index=index,
         group_index=group_index,
+        metadata=metadata or {},
     )
 
 
@@ -174,3 +181,76 @@ def test_collect_eval_rewards_rejects_invalid_or_missing_channel(reward):
 
     with pytest.raises(RuntimeError, match="refusing to report them as incorrect"):
         collect_eval_rewards([sample], "success")
+
+
+def test_collect_eval_rewards_reports_bounded_operational_histogram():
+    samples = [
+        make_sample(
+            reward=None,
+            index=17,
+            status=Sample.Status.ABORTED,
+            metadata={
+                "multi_attempt": {
+                    "invalid_reason": "non_completed_attempt",
+                    "attempts": [{"engine_finish_reason": "length"}],
+                }
+            },
+        ),
+        make_sample(
+            reward=None,
+            index=18,
+            status=Sample.Status.ABORTED,
+            metadata={
+                "multi_attempt": {
+                    "invalid_reason": "non_completed_attempt",
+                    "attempts": [{"engine_finish_reason": "length"}],
+                }
+            },
+        ),
+    ]
+
+    with pytest.raises(RuntimeError) as exc_info:
+        collect_eval_rewards(samples, "success")
+
+    message = str(exc_info.value)
+    assert "reason=non_completed_attempt,status=aborted,finish=length:2" in message
+    assert "test_prompt" not in message
+
+
+def test_finalize_eval_rewards_fills_only_deferred_standard_results():
+    standard_sample = make_sample(reward={"success": 1.0})
+    data = {
+        "standard": {"rewards": None, "samples": [standard_sample]},
+        "custom": {"rewards": [0.25], "samples": []},
+    }
+
+    assert finalize_eval_rewards(data, "success") is data
+    assert data["standard"]["rewards"] == [1.0]
+    assert data["custom"]["rewards"] == [0.25]
+
+
+def test_finalize_eval_rewards_preserves_raw_samples_when_validation_fails():
+    invalid_sample = make_sample(reward=None, index=23)
+    data = {"standard": {"rewards": None, "samples": [invalid_sample]}}
+
+    with pytest.raises(RuntimeError, match=r"indices=\[23\]"):
+        finalize_eval_rewards(data, "success")
+
+    assert data["standard"]["samples"] == [invalid_sample]
+    assert data["standard"]["rewards"] is None
+
+
+def test_persist_then_finalize_saves_raw_samples_before_validation_failure():
+    invalid_sample = make_sample(reward=None, index=29)
+    data = {"standard": {"rewards": None, "samples": [invalid_sample]}}
+    events = []
+
+    def persist(raw_data):
+        assert raw_data["standard"]["rewards"] is None
+        assert raw_data["standard"]["samples"] == [invalid_sample]
+        events.append("persisted")
+
+    with pytest.raises(RuntimeError, match=r"indices=\[29\]"):
+        persist_then_finalize_eval_rewards(data, "success", persist)
+
+    assert events == ["persisted"]

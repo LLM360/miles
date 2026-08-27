@@ -24,6 +24,7 @@ from miles.rollout.base_types import (
     RolloutFnTrainInput,
     call_rollout_fn,
 )
+from miles.rollout.generate_utils.sample_utils import persist_then_finalize_eval_rewards
 from miles.rollout.inference_rollout.compatibility import call_rollout_function, load_rollout_function
 from miles.utils import dumper_utils, tracking_utils
 from miles.utils.environ import enable_experimental_rollout_refactor
@@ -523,7 +524,17 @@ class RolloutManager:
                 self.eval_generate_rollout, self.args, rollout_id, self.data_source, evaluation=True
             )
         data = result.data
-        self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=True)
+        reward_key = self.args.eval_reward_key or self.args.reward_key
+        # Preserve the raw generations before correctness aggregation.  A
+        # missing/invalid score must fail the evaluation, but it must not also
+        # erase the evidence needed to diagnose and repair that failure.
+        persist_then_finalize_eval_rewards(
+            data,
+            reward_key,
+            lambda raw_data: self._save_debug_rollout_data(
+                raw_data, rollout_id=rollout_id, evaluation=True
+            ),
+        )
         metrics = _log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
         if self._metric_checker is not None:
             self._metric_checker.on_eval(metrics)
