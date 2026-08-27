@@ -22,13 +22,31 @@ class XllmBridge(Qwen2MoEBridge):
     def _has_moe(self):
         return (getattr(self.hf_config, "num_experts", 0) or 0) > 0
 
-    def _build_config(self):
+    def _rope_dimensions(self):
         head_dim = getattr(
             self.hf_config,
             "head_dim",
             self.hf_config.hidden_size // self.hf_config.num_attention_heads,
         )
-        rope_head_dim = getattr(self.hf_config, "rope_head_dim", head_dim)
+        rope_head_dim = getattr(self.hf_config, "rope_head_dim", None)
+        if rope_head_dim is None:
+            rope_head_dim = head_dim
+
+        if head_dim <= 0 or rope_head_dim <= 0 or rope_head_dim > head_dim:
+            raise ValueError(
+                "xLLM RoPE dimensions must satisfy 0 < rope_head_dim <= head_dim, "
+                f"got rope_head_dim={rope_head_dim}, head_dim={head_dim}"
+            )
+        if rope_head_dim != head_dim and rope_head_dim * 2 != head_dim:
+            raise ValueError(
+                "xLLM conversion supports either full RoPE or the xLLM half-head "
+                "partial-RoPE layout, "
+                f"got rope_head_dim={rope_head_dim}, head_dim={head_dim}"
+            )
+        return head_dim, rope_head_dim
+
+    def _build_config(self):
+        head_dim, rope_head_dim = self._rope_dimensions()
 
         config_kwargs = dict(
             use_cpu_initialization=False,
@@ -38,7 +56,6 @@ class XllmBridge(Qwen2MoEBridge):
             qk_layernorm=False,
             add_qkv_bias=False,
             add_bias_linear=False,
-            rotary_percent=rope_head_dim / head_dim,
             xllm_partial_rope_layout=rope_head_dim * 2 == head_dim,
         )
 
@@ -56,6 +73,13 @@ class XllmBridge(Qwen2MoEBridge):
             )
 
         return self._build_base_config(**config_kwargs)
+
+    def _get_gptmodel_args(self) -> dict:
+        """Route the model-only RoPE fraction to GPTModel, not TransformerConfig."""
+        head_dim, rope_head_dim = self._rope_dimensions()
+        model_args = super()._get_gptmodel_args()
+        model_args["rotary_percent"] = rope_head_dim / head_dim
+        return model_args
 
     def _weight_name_mapping_mcore_to_hf(self, mcore_weights_name: str) -> list[str]:
         assert "_extra_state" not in mcore_weights_name, "extra_state should not be loaded"
