@@ -12,6 +12,16 @@ PATH_ARGS = ["--rollout-function-path", "--custom-generate-function-path"]
 REQUIRED_ARGS = ["--rollout-batch-size", "64"]
 
 
+@pytest.mark.parametrize("reward_type", ["logr", "k3"])
+def test_opd_reward_type_is_parsed(reward_type: str) -> None:
+    with patch.object(sys, "argv", ["test", "--opd-reward-type", reward_type] + REQUIRED_ARGS):
+        parser = argparse.ArgumentParser()
+        get_miles_extra_args_provider()(parser)
+        args, _ = parser.parse_known_args()
+
+    assert args.opd_reward_type == reward_type
+
+
 def make_class_with_add_arguments():
     class MyFn:
         @classmethod

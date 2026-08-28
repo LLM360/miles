@@ -1,4 +1,4 @@
-from copy import deepcopy
+from copy import copy
 from dataclasses import fields
 
 from miles.utils.types import Sample
@@ -30,7 +30,7 @@ def merge_samples(samples: list[Sample], tokenizer) -> Sample:
 
 def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
     """Merge two samples generated from sibling inference engine calls."""
-    a, b = deepcopy(a), deepcopy(b)
+    a, b = copy(a), copy(b)
 
     def _merge_equal_value(field):
         x = getattr(a, field)
