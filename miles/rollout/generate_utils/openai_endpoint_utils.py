@@ -7,10 +7,11 @@ import json
 import logging
 import random
 from argparse import Namespace
-from copy import copy, deepcopy
-from typing import Any
 
 import httpx
+import orjson
+from copy import copy, deepcopy
+from typing import Any
 
 from miles.rollout.generate_utils.generate_endpoint_utils import get_rollout_topk_from_response
 from miles.rollout.session.session_types import (
@@ -182,8 +183,8 @@ class OpenAIEndpointTracer:
                             return response.text
 
                         try:
-                            return response.json()
-                        except json.JSONDecodeError as exc:
+                            return await asyncio.to_thread(orjson.loads, response.content)
+                        except orjson.JSONDecodeError as exc:
                             logger.info(
                                 "[session-client] json_decode_error phase=%s method=%s url=%s status=%d bytes=%d attempt=%d/%d",
                                 phase,
