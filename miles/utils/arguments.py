@@ -910,6 +910,17 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default="grpo",
             )
             parser.add_argument(
+                "--opd-reward-type",
+                type=str,
+                choices=["logr", "k3"],
+                default="logr",
+                help=(
+                    "Token-level reward for on_policy_distillation. logr uses log(p_teacher/p_student); "
+                    "k3 uses its lower-variance negative-KL counterpart "
+                    "1 + log(p_teacher/p_student) - p_teacher/p_student."
+                ),
+            )
+            parser.add_argument(
                 "--disable-compute-advantages-and-returns",
                 action="store_false",
                 dest="compute_advantages_and_returns",
