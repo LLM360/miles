@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from argparse import Namespace
 from collections.abc import Callable
 
@@ -9,7 +10,8 @@ from tqdm import tqdm
 
 from miles.rollout.base_types import RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
-from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm_group
+from miles.rollout.inference_rollout.inference_rollout_common import GenerateState, generate_and_rm
+from miles.rollout.rm_hub import batched_async_rm
 from miles.utils import dumper_utils
 from miles.utils.http_utils import get, post
 from miles.utils.misc import load_function
@@ -144,19 +146,70 @@ def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:
             sample.metadata["rollout_id"] = rollout_id
 
 
-def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
+def _stratified_sample_order(samples: list[list[Sample]], rng: random.Random) -> list[tuple[int, int]]:
+    group_order = list(range(len(samples)))
+    rng.shuffle(group_order)
+
+    member_orders = {}
+    for group_idx in group_order:
+        member_order = list(range(len(samples[group_idx])))
+        rng.shuffle(member_order)
+        member_orders[group_idx] = member_order
+
     return [
-        asyncio.create_task(
-            # submit a group of samples as a single task.
-            generate_and_rm_group(
-                state,
-                group,
-                sampling_params=state.sampling_params.copy(),
-                evaluation=False,
+        (group_idx, member_orders[group_idx][member_idx])
+        for member_idx in range(max((len(group) for group in samples), default=0))
+        for group_idx in group_order
+        if member_idx < len(member_orders[group_idx])
+    ]
+
+
+async def _collect_group(state: GenerateState, tasks: list[asyncio.Task]) -> list[Sample]:
+    group = await asyncio.gather(*tasks)
+    if not state.aborted and state.args.group_rm:
+        await batched_async_rm(state.args, group, inplace_set_reward_field=True)
+    return group
+
+
+async def submit_generate_tasks(
+    state: GenerateState,
+    samples: list[list[Sample]],
+    *,
+    rollout_id: int,
+    submission_round: int,
+):
+    rng = random.Random(f"{state.args.rollout_seed}:{rollout_id}:{submission_round}")
+    sample_order = _stratified_sample_order(samples, rng)
+    if not sample_order:
+        return []
+
+    member_tasks = [[None] * len(group) for group in samples]
+    wave_size = max(1, state.args.rolling_start_size) if state.args.rolling_start_size else len(sample_order)
+    for wave_start in range(0, len(sample_order), wave_size):
+        wave = sample_order[wave_start : wave_start + wave_size]
+        for group_idx, member_idx in wave:
+            sampling_params = state.sampling_params.copy()
+            if getattr(state.args, "sglang_enable_deterministic_inference", False):
+                sampling_params["sampling_seed"] = state.args.rollout_seed + member_idx
+            member_tasks[group_idx][member_idx] = asyncio.create_task(
+                generate_and_rm(state, samples[group_idx][member_idx], sampling_params, evaluation=False)
+            )
+
+        if state.args.rolling_start_size and wave_start + wave_size < len(sample_order):
+            await asyncio.sleep(state.args.rolling_start_interval)
+
+    tasks = []
+    for group, group_member_tasks in zip(samples, member_tasks, strict=True):
+        group_tasks = [task for task in group_member_tasks if task is not None]
+        assert len(group_tasks) == len(group)
+        first = group[0][0] if isinstance(group[0], list) else group[0]
+        tasks.append(
+            asyncio.create_task(
+                _collect_group(state, group_tasks),
+                name=f"group-{first.index}",
             )
         )
-        for group in samples
-    ]
+    return tasks
 
 
 async def generate_rollout_async(
@@ -189,6 +242,7 @@ async def generate_rollout_async(
     data = []
     all_data = []
     submitted = 0
+    submission_round = 0
     do_print = True
     pbar = tqdm(total=target_data_size * args.n_samples_per_prompt, desc="Rollout generation")
     while len(data) < target_data_size:
@@ -199,16 +253,18 @@ async def generate_rollout_async(
             # get samples from the buffer and submit the generation requests.
             remaining = target_data_size - submitted
             n = remaining if args.disable_oversampling else args.over_sampling_batch_size
-            if args.rolling_start_size:
-                # Cap each wave to ~rolling_start_size rollouts (a group is
-                # n_samples_per_prompt rollouts) so we don't open every session at once.
-                n = min(n, max(1, args.rolling_start_size // args.n_samples_per_prompt))
             samples = data_source(n)
             stamp_rollout_id(samples, rollout_id)
             submitted += len(samples)
-            pendings.update(submit_generate_tasks(state, samples))
-            if args.rolling_start_size and len(data) + len(pendings) < target_data_size:
-                await asyncio.sleep(args.rolling_start_interval)
+            pendings.update(
+                await submit_generate_tasks(
+                    state,
+                    samples,
+                    rollout_id=rollout_id,
+                    submission_round=submission_round,
+                )
+            )
+            submission_round += 1
 
         if not pendings:
             break
