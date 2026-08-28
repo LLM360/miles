@@ -51,6 +51,28 @@ def compute_approx_kl(
     return kl
 
 
+def compute_opd_reward(
+    student_log_prob: torch.Tensor,
+    teacher_log_prob: torch.Tensor,
+    reward_type: str,
+) -> torch.Tensor:
+    """Compute the token-level on-policy distillation reward.
+
+    Let ``r = p_teacher / p_student``. ``logr`` is the original OPD reward
+    ``log(r)``. ``k3`` uses the negative of Schulman's non-negative k3 KL
+    estimator, ``-(r - 1 - log(r))``, because this value is used as a reward
+    and OPD should minimize ``KL(p_student || p_teacher)``.
+    """
+    log_r = teacher_log_prob.float() - student_log_prob.float()
+
+    if reward_type == "logr":
+        return log_r
+    if reward_type == "k3":
+        # 1 + log(r) - r, written with expm1 for accuracy near r == 1.
+        return log_r - torch.expm1(log_r)
+    raise ValueError(f"Unknown OPD reward type: {reward_type}")
+
+
 def compute_opsm_mask(
     args: Namespace,
     full_log_probs: list[torch.Tensor],

@@ -19,7 +19,7 @@ from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.utils import get_model_config
 from megatron.training.global_vars import get_args
-from megatron.training.training import get_model
+from megatron.training.training import get_model, preprocess_common_state_dict
 
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
 from miles.utils.memory_utils import clear_memory
@@ -728,7 +728,7 @@ def save(
             num_floating_point_operations_so_far=0,
             checkpointing_context=None,
             train_data_iterator=None,
-            preprocess_common_state_dict_fn=None,
+            preprocess_common_state_dict_fn=preprocess_common_state_dict,
         )
 
     clear_memory()
@@ -834,7 +834,11 @@ def initialize_model_and_optimizer(
 
     check_model_hashes(args, model, iteration)
 
-    opt_param_scheduler.step(increment=iteration * args.global_batch_size)
+    # A full resume restores the scheduler in load_checkpoint(). Advancing it
+    # again here would double-count the completed iterations. Only reconstruct
+    # its position when optimizer/scheduler state was intentionally not loaded.
+    if args.finetune or args.no_load_optim:
+        opt_param_scheduler.step(increment=iteration * args.global_batch_size)
 
     if is_megatron_main_rank():
         init_train_step_counter(args.load, iteration)
