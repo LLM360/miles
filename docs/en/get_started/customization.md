@@ -13,7 +13,7 @@ Below is a summary of all available customization interfaces and their purposes.
 | [`--custom-rm-path`](#3-reward-model---custom-rm-path) | Implement custom reward computation logic. |
 | [`--dynamic-sampling-filter-path`](#4-dynamic-sampling-filter---dynamic-sampling-filter-path) | Filter samples during dynamic sampling (e.g., DAPO). |
 | [`--buffer-filter-path`](#5-buffer-filter---buffer-filter-path) | Filter samples in the rollout buffer before training. |
-| [`--rollout-sample-filter-path`](#6-rollout-sample-filter---rollout-sample-filter-path) | Determine if individual samples participate in loss calculation. |
+| [`--rollout-sample-filter-path`](#6-rollout-sample-filter---rollout-sample-filter-path) | Determine if individual samples participate in training. |
 | [`--rollout-all-samples-process-path`](#7-rollout-all-samples-process---rollout-all-samples-process-path) | Process all samples (including filtered ones) after rollout. |
 | [`--rollout-data-postprocess-path`](#8-rollout-data-postprocess---rollout-data-postprocess-path) | Post-process rollout data after log probs are computed. |
 | [`--custom-loss-function-path`](#9-custom-loss-function---custom-loss-function-path) | Implement custom training loss computation. |
@@ -161,7 +161,7 @@ def buffer_filter(samples: list[list[Sample]]) -> list[list[Sample]]
 
 **Default**: `None`
 
-**Purpose**: Determine whether individual samples participate in loss calculation.
+**Purpose**: Determine whether individual samples participate in training.
 
 **Signature**:
 ```python
@@ -169,6 +169,7 @@ def filter_function(args, samples: list[Sample]) -> None
 ```
 
 **Note**: This function should directly modify the `remove_sample` attribute of each `Sample` object.
+Removed samples stay available in rollout artifacts, but are excluded from reward/advantage normalization and loss calculation.
 
 **Use Cases**:
 - Filtering samples based on response quality
@@ -438,5 +439,3 @@ For detailed explanation of R3 and MilesRouter, see [Miles Router](../advanced/m
 ```python
 def custom_model_provider(pre_process: bool, post_process: bool, vp_stage: int | None = None) -> GPTModel
 ```
-
-

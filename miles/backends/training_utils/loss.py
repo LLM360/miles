@@ -21,6 +21,7 @@ from miles.utils.ppo_utils import (
     get_reinforce_plus_plus_baseline_advantages,
     get_reinforce_plus_plus_returns,
 )
+from miles.utils.training_semantics import validate_loss_masks_for_removed_samples
 from miles.utils.types import RolloutBatch
 
 from .cp_utils import (
@@ -397,12 +398,15 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
     values: None | list[torch.Tensor] = rollout_data.get("values")
     response_lengths: list[int] = rollout_data.get("response_lengths")
     loss_masks: list[torch.Tensor] = rollout_data.get("loss_masks")
+    remove_samples: list[bool] | None = rollout_data.get("remove_samples")
     total_lengths: list[int] = rollout_data.get("total_lengths")
     max_seq_lens: list[int] | None = rollout_data.get("max_seq_lens", None)
 
     # return when not the last pp stage.
     if log_probs is None and values is None:
         return
+
+    validate_loss_masks_for_removed_samples(loss_masks, response_lengths, remove_samples)
 
     if args.kl_coef == 0 or not log_probs:
         # when kl_coef is 0, we won't compute ref_log_prob
@@ -444,6 +448,7 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
             rewards=rewards,
             kl=kl,
             loss_masks=loss_masks,
+            remove_samples=remove_samples,
             response_lengths=response_lengths,
             total_lengths=total_lengths,
             kl_coef=args.kl_coef,
@@ -521,7 +526,7 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
 
             all_masks = torch.cat(mask_chunks)
 
-        if all_masks.numel() > 0:
+        if all_masks.numel() > 0 and all_masks.sum().item() > 0:
             assert (
                 all_advs.size() == all_masks.size()
             ), f"Shape mismatch before whitening: advantages {all_advs.size()}, masks {all_masks.size()}"
@@ -535,6 +540,14 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
             )
             chunk_lengths = [chunk.size(0) for chunk in advantages]
             advantages = list(torch.split(whitened_advs_flat, chunk_lengths))
+
+    if remove_samples is not None:
+        if len(remove_samples) != len(advantages):
+            raise ValueError(f"remove_samples length {len(remove_samples)} != advantages length {len(advantages)}")
+        for i, remove_sample in enumerate(remove_samples):
+            if remove_sample:
+                advantages[i] = torch.zeros_like(advantages[i])
+                returns[i] = torch.zeros_like(returns[i])
 
     rollout_data["advantages"] = advantages
     rollout_data["returns"] = returns

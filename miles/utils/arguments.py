@@ -1486,10 +1486,10 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default=None,
                 help=(
                     "Path to the rollout sample filter function. "
-                    "This function determines whether a sample will participate in loss calculation. "
+                    "This function determines whether a sample will participate in training. "
                     "The function should take args and samples (list[Sample]) as input, and return None. "
                     "Please directly modify the remove_sample attribute of Sample. "
-                    "Note: This attribute does not determine whether the sample participates in advantage normalization."
+                    "Removed samples are excluded from reward/advantage normalization and loss calculation."
                 ),
             )
             parser.add_argument(
