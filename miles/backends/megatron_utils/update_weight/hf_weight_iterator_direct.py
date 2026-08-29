@@ -12,7 +12,7 @@ from miles.utils.types import ParamInfo
 
 from ..megatron_to_hf import convert_to_hf
 from ..sglang import monkey_patch_torch_reductions
-from .common import all_gather_params_async, named_params_and_buffers
+from .common import all_gather_params_async, is_ffn_expert_parameter, named_params_and_buffers
 from .hf_weight_iterator_base import HfWeightIteratorBase
 
 
@@ -83,7 +83,7 @@ def _get_megatron_full_params(
     if ep_size > 1:
         handles = []
         for info, param in zip(megatron_local_param_infos, params, strict=False):
-            if ".experts." in info.name:
+            if is_ffn_expert_parameter(info.name):
                 src_rank = (
                     info.src_rank
                     if info.src_rank in dist.get_process_group_ranks(mpu.get_expert_model_parallel_group())
@@ -118,7 +118,7 @@ def _get_megatron_local_param_info_buckets(args: Namespace, model: Sequence[torc
 
     for info in param_infos:
         # Expert params use expert-TP size, others use regular-TP size
-        if ".experts." in info.name:
+        if is_ffn_expert_parameter(info.name):
             tp_size = mpu.get_expert_tensor_parallel_world_size()
         else:
             tp_size = mpu.get_tensor_model_parallel_world_size()

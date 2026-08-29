@@ -29,6 +29,7 @@ from miles.utils.types import RolloutBatch
 from ...utils.profile_utils import TrainProfiler
 from ...utils.tensor_backper import TensorBackuper
 from ..training_utils.cp_utils import slice_with_cp
+from ..training_utils.ci_utils import assert_rollout_engine_weight_versions
 from ..training_utils.data import DataIterator, get_data_iterator, get_rollout_data, sync_actor_critic_data
 from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollout_data
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values
@@ -1013,13 +1014,19 @@ class MegatronTrainRayActor(TrainRayActor):
             self.weight_updater.update_weights()
             print_memory("after update_weights")
 
-            if self.args.ci_test and len(rollout_engines) > 0 and not is_lora_enabled(self.args):
-                engine = random.choice(rollout_engines)
-                engine_version = ray.get(engine.get_weight_version.remote())
-                if str(engine_version) != str(self.weight_updater.weight_version):
-                    raise RuntimeError(
-                        f"Weight version mismatch! Engine: {engine_version}, Updater: {self.weight_updater.weight_version}"
+            if not is_lora_enabled(self.args):
+                if getattr(self.args, "check_all_engine_weight_versions", False):
+                    assert_rollout_engine_weight_versions(
+                        rollout_engines,
+                        self.weight_updater.weight_version,
                     )
+                elif self.args.ci_test and len(rollout_engines) > 0:
+                    engine = random.choice(rollout_engines)
+                    engine_version = ray.get(engine.get_weight_version.remote())
+                    if str(engine_version) != str(self.weight_updater.weight_version):
+                        raise RuntimeError(
+                            f"Weight version mismatch! Engine: {engine_version}, Updater: {self.weight_updater.weight_version}"
+                        )
 
             if getattr(self.args, "keep_old_actor", False):
                 if self.args.update_weights_interval == 1:

@@ -10,7 +10,12 @@ from tqdm import tqdm
 from miles.utils.distributed_utils import get_gloo_group
 
 from ...megatron_to_hf import convert_to_hf
-from ..common import all_gather_param, collect_named_tensors_for_weight_transfer, post_process_weights
+from ..common import (
+    all_gather_param,
+    collect_named_tensors_for_weight_transfer,
+    post_process_weights,
+    validate_weight_update_cache_mode,
+)
 
 
 class DistBucketedWeightUpdateMixin:
@@ -138,6 +143,9 @@ class DistBucketedWeightUpdateMixin:
 
     def _pause_and_prepare_engines(self) -> None:
         """Pause rollout engines, flush cache, and run pre-process if needed."""
+        # Validate on every training rank before rank 0 performs RPCs. Raising
+        # only on rank 0 would strand the other ranks at the following barrier.
+        validate_weight_update_cache_mode(self.args)
         if dist.get_rank() == 0:
             mode = self.args.pause_generation_mode
             ray.get([engine.pause_generation.remote(mode=mode) for engine in self.rollout_engines])
