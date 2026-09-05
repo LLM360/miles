@@ -25,11 +25,21 @@ import multiprocessing
 import socket
 import threading
 import time
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
-from miles.utils.http_utils import wait_for_server_ready
+from miles.utils.http_utils import _post, wait_for_server_ready
+
+
+def _response(status_code: int, payload: dict | None = None) -> httpx.Response:
+    return httpx.Response(
+        status_code,
+        request=httpx.Request("POST", "http://service.test/endpoint"),
+        json=payload or {"status": status_code},
+    )
 
 
 def _find_free_port() -> int:
@@ -194,3 +204,87 @@ class TestWaitForServerReadySimulatedDelays:
 
         # The fake clock should have advanced past the timeout
         assert fake_time[0] >= timeout
+
+
+class TestPostRetryPolicy:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [400, 401, 403, 404, 422])
+    async def test_permanent_client_errors_fail_without_retrying_or_sleeping(self, status_code):
+        client = SimpleNamespace(post=AsyncMock(return_value=_response(status_code)))
+
+        with patch("miles.utils.http_utils.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                await _post(client, "http://service.test/endpoint", {}, max_retries=3)
+
+        assert exc_info.value.response.status_code == status_code
+        assert client.post.await_count == 1
+        sleep.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [408, 409, 423, 425, 429])
+    async def test_transient_client_errors_retry_until_success(self, status_code):
+        client = SimpleNamespace(
+            post=AsyncMock(
+                side_effect=[
+                    _response(status_code),
+                    _response(200, {"ok": True}),
+                ]
+            )
+        )
+
+        with patch("miles.utils.http_utils.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            result = await _post(client, "http://service.test/endpoint", {}, max_retries=3)
+
+        assert result == {"ok": True}
+        assert client.post.await_count == 2
+        sleep.assert_awaited_once_with(1)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [500, 502, 503])
+    async def test_server_errors_retry_until_success(self, status_code):
+        client = SimpleNamespace(
+            post=AsyncMock(
+                side_effect=[
+                    _response(status_code),
+                    _response(200, {"ok": True}),
+                ]
+            )
+        )
+
+        with patch("miles.utils.http_utils.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            result = await _post(client, "http://service.test/endpoint", {}, max_retries=3)
+
+        assert result == {"ok": True}
+        assert client.post.await_count == 2
+        sleep.assert_awaited_once_with(1)
+
+    @pytest.mark.asyncio
+    async def test_transport_errors_retry_until_success(self):
+        request = httpx.Request("POST", "http://service.test/endpoint")
+        client = SimpleNamespace(
+            post=AsyncMock(
+                side_effect=[
+                    httpx.ConnectError("connection failed", request=request),
+                    _response(200, {"ok": True}),
+                ]
+            )
+        )
+
+        with patch("miles.utils.http_utils.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            result = await _post(client, "http://service.test/endpoint", {}, max_retries=3)
+
+        assert result == {"ok": True}
+        assert client.post.await_count == 2
+        sleep.assert_awaited_once_with(1)
+
+    @pytest.mark.asyncio
+    async def test_retryable_error_raises_after_max_retries(self):
+        client = SimpleNamespace(post=AsyncMock(return_value=_response(503)))
+
+        with patch("miles.utils.http_utils.asyncio.sleep", new_callable=AsyncMock) as sleep:
+            with pytest.raises(httpx.HTTPStatusError) as exc_info:
+                await _post(client, "http://service.test/endpoint", {}, max_retries=3)
+
+        assert exc_info.value.response.status_code == 503
+        assert client.post.await_count == 3
+        assert sleep.await_count == 2

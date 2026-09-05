@@ -185,6 +185,17 @@ def _next_actor():
     return actor
 
 
+# Most 4xx responses mean the server will reject every identical retry, so
+# retrying only delays and obscures the real error. Keep statuses that can
+# describe temporary timeout, contention, locking, early-data, or rate-limit
+# conditions retryable.
+_RETRYABLE_CLIENT_ERROR_CODES = frozenset({408, 409, 423, 425, 429})
+
+
+def _is_permanent_client_error(exc) -> bool:
+    return isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500 and exc.response.status_code not in _RETRYABLE_CLIENT_ERROR_CODES
+
+
 async def _post(client, url, payload, max_retries=60, action="post", headers=None):
     retry_count = 0
     while retry_count < max_retries:
@@ -207,9 +218,11 @@ async def _post(client, url, payload, max_retries=60, action="post", headers=Non
             else:
                 response_text = None
 
-            logger.info(
-                f"Error: {e}, retrying... (attempt {retry_count}/{max_retries}, url={url}, response={response_text})"
-            )
+            if _is_permanent_client_error(e):
+                logger.error(f"Error: {e}, not retrying: the server rejected this request (attempt {retry_count}/{max_retries}, url={url}, response={response_text})")
+                raise
+
+            logger.info(f"Error: {e}, retrying... (attempt {retry_count}/{max_retries}, url={url}, response={response_text})")
             if retry_count >= max_retries:
                 logger.info(f"Max retries ({max_retries}) reached, failing... (url={url})")
                 raise e
