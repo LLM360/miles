@@ -20,8 +20,19 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
-_MAX_ABORT_SIGNAL_SECONDS = 70.0
+_DEFAULT_ROLLOUT_ABORT_TIMEOUT_SECONDS = 180.0
+_MAX_ABORT_SIGNAL_SECONDS = 130.0
 _HARBOR_ABORT_ROUTER_HEADROOM_SECONDS = 4.0
+
+
+def _resolve_rollout_abort_timeout(args: object) -> float:
+    return float(
+        getattr(
+            args,
+            "rollout_abort_timeout_seconds",
+            _DEFAULT_ROLLOUT_ABORT_TIMEOUT_SECONDS,
+        )
+    )
 
 
 def _abort_signal_budgets(remaining_seconds: float) -> tuple[float, float]:
@@ -138,7 +149,7 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     assert not state.aborted
     state.aborted = True
     state.abort_event.set()
-    total_timeout = float(getattr(args, "rollout_abort_timeout_seconds", 120.0))
+    total_timeout = _resolve_rollout_abort_timeout(args)
     deadline = asyncio.get_running_loop().time() + max(1.0, total_timeout)
 
     # How many rollout tasks are still in flight when the abort fires, and which
