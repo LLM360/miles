@@ -86,8 +86,10 @@ def test_domain_metrics_leave_loss_gradients_and_parent_metrics_unchanged(
     torch.testing.assert_close(domain_loss, original_loss, rtol=0, atol=0)
     torch.testing.assert_close(torch.autograd.grad(domain_loss, y)[0], original_grad, rtol=0, atol=0)
     for name, value in original_metrics.items():
-        torch.testing.assert_close(metrics[name], value, rtol=0, atol=0)
-        if name not in ("ess_ratio",):
+        # Batch-wide NaN ranges/counts are diagnostics, not additive domain contributions.
+        is_nan_diagnostic = name.startswith("nan_dbg/")
+        torch.testing.assert_close(metrics[name], value, rtol=0, atol=0, equal_nan=is_nan_diagnostic)
+        if name not in ("ess_ratio",) and not is_nan_diagnostic:
             torch.testing.assert_close(metrics[f"{name}/math"] + metrics[f"{name}/code"], value)
             assert metrics[f"{name}/unseen"].item() == 0
     assert all(not value.requires_grad for name, value in metrics.items() if "/" in name)

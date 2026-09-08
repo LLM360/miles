@@ -645,9 +645,10 @@ class TestTitoFixedTemplateConfiguration:
         get_miles_extra_args_provider()(parser)
         return parser.parse_args(extra + ["--num-rollout", "1"] + REQUIRED_ARGS)
 
-    def test_removed_role_flag_is_rejected(self):
-        with pytest.raises(SystemExit):
-            self._parse(["--tito-allowed-append-roles", "tool"])
+    def test_stable_role_flag_and_default_are_preserved(self):
+        assert self._parse([]).tito_allowed_append_roles == ["tool"]
+        args = self._parse(["--tito-allowed-append-roles", "tool", "assistant"])
+        assert args.tito_allowed_append_roles == ["tool", "assistant"]
 
     @pytest.mark.parametrize(
         ("extra", "expect_warning"),
@@ -666,7 +667,8 @@ class TestTitoFixedTemplateConfiguration:
         target_records = [
             record
             for record in caplog.records
-            if record.getMessage().startswith("--tito-model=default uses a best-effort four-role append surface.")
+            if record.getMessage().startswith("--tito-model=default ")
+            and "best-effort four-role append surface" in record.getMessage()
         ]
         assert len(target_records) == int(expect_warning)
 
