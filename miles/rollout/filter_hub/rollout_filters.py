@@ -24,6 +24,7 @@ def mask_token_truncated(args, samples: list[Sample]) -> None:
         --rollout-sample-filter-path miles.rollout.filter_hub.rollout_filters.mask_token_truncated
     """
     for sample in _flatten_samples(samples):
+        # note that the following will cause a crash with `--generate-multi-samples` but that's intentionally not supported by us
         exit_status = (sample.metadata or {}).get("exit_status", "")
         if exit_status in TRUNCATION_EXIT_STATUSES or sample.status == Sample.Status.TRUNCATED:
             sample.remove_sample = True
