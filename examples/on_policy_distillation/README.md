@@ -35,6 +35,11 @@ PYTHONPATH=/root/Megatron-LM python tools/convert_hf_to_torch_dist.py \
 bash examples/on_policy_distillation/run-qwen3-8B-opd.sh
 ```
 
+The default token-level reward is `logr = log(p_teacher / p_student)`. Pass
+`--opd-reward-type k3` to instead use the negative k3 KL estimator
+`1 + log(r) - r`, where `r = p_teacher / p_student`. It has the same expected
+negative forward-KL objective while using the k3 control variate.
+
 
 # Preliminary Results
 Using Qwen3-8B-Base model sfted on part of the [OpenThoughts3-1.2M](https://huggingface.co/datasets/open-thoughts/OpenThoughts3-1.2M) dataset, we performed on-policy distillation with a Qwen3-32B teacher on the remaining data. Evaluation on Math500 shows:

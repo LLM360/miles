@@ -341,6 +341,71 @@ class RolloutServer:
         return ray.get(handles) if handles else []
 
 
+@ray.remote
+class SessionServerActor:
+    def __init__(self, args, router_url: str, index: int):
+        configure_logger()
+        self.args = copy.copy(args)
+        self.router_url = router_url
+        self.index = index
+        self.process = None
+
+    def start(self) -> str:
+        from miles.rollout.session.session_server import run_session_server
+
+        ip = _wrap_ipv6(get_host_info()[1])
+        base_port = 20000 + (self.index % 100) * 100
+        last_exc = None
+
+        for attempt in range(10):
+            port = find_available_port(base_port + attempt * 100)
+
+            self.args.session_server_ip = ip
+            self.args.session_server_port = port
+            self.args.session_server_instance_id = f"{uuid.uuid4().hex}-{self.index}"
+
+            self.process = multiprocessing.Process(
+                target=run_session_server,
+                args=(self.args, self.router_url),
+            )
+            self.process.daemon = True
+            self.process.start()
+
+            try:
+                wait_for_server_ready(ip, port, self.process, timeout=60)
+                addr = f"{ip}:{port}"
+                logger.info("Started session server actor %s at %s", self.index, addr)
+                return addr
+            except RuntimeError as exc:
+                last_exc = exc
+                logger.warning(
+                    "Session server actor %s failed to start on %s:%s " "(attempt %s/10); retrying",
+                    self.index,
+                    ip,
+                    port,
+                    attempt + 1,
+                    exc_info=True,
+                )
+
+                if self.process is not None:
+                    if self.process.is_alive():
+                        self.process.terminate()
+                    self.process.join(timeout=5)
+                    if self.process.is_alive():
+                        self.process.kill()
+                        self.process.join(timeout=5)
+                    self.process = None
+
+        raise RuntimeError(f"Failed to start session server actor {self.index} after 10 attempts") from last_exc
+
+    def stop(self):
+        if self.process is not None and self.process.is_alive():
+            self.process.terminate()
+            self.process.join(timeout=5)
+            if self.process.is_alive():
+                self.process.kill()
+
+
 # ---------------------------------------------------------------------------
 # RolloutManager
 # ---------------------------------------------------------------------------
@@ -385,7 +450,7 @@ class RolloutManager:
         else:
             init_http_client(args)
             self.servers = start_rollout_servers(args, pg)
-            _start_session_servers(args)
+            self.session_server_actors = _start_session_servers(args)
         self.rollout_engine_lock = Lock.options(num_cpus=1, num_gpus=0).remote()
         self.rollout_id = -1
 
@@ -425,6 +490,11 @@ class RolloutManager:
             self._metric_checker.dispose()
         for monitor in self._health_monitors:
             monitor.stop()
+        for actor in getattr(self, "session_server_actors", []):
+            try:
+                ray.get(actor.stop.remote(), timeout=10)
+            except Exception as e:
+                logger.warning("Failed to stop session server actor: %s", e)
 
     @property
     def server(self) -> RolloutServer | None:
@@ -629,9 +699,7 @@ class RolloutManager:
 
         if dynamic_gbs != original_gbs or wasted > 0:
             logger.info(
-                f"Dynamic global_batch_size: {original_gbs} -> {dynamic_gbs} "
-                f"(num_samples={num_samples}, dp_size={dp_size}, "
-                f"num_steps=1, wasted={wasted})"
+                f"Dynamic global_batch_size: {original_gbs} -> {dynamic_gbs} (num_samples={num_samples}, dp_size={dp_size}, num_steps=1, wasted={wasted})"
             )
 
         return dynamic_gbs
@@ -789,6 +857,7 @@ class RolloutManager:
     def _split_train_data_by_dp(self, data, dp_size):
         """Split the train data by data parallel size, with per-DP imbalance diagnostics."""
         import sys
+
         import ray
 
         def _safe_len(x):
@@ -924,10 +993,7 @@ class RolloutManager:
             dp_summaries.append(summary)
 
             logger.warning(
-                "ROLLOUT_DP_SHARD "
-                "dp=%s samples=%s token_sum=%s token_min=%s token_max=%s token_avg=%s "
-                "response_sum=%s response_min=%s response_max=%s response_avg=%s "
-                "loss_mask_sum=%s payload_mb_est=%.2f object_ref=%s partition=%s",
+                "ROLLOUT_DP_SHARD dp=%s samples=%s token_sum=%s token_min=%s token_max=%s token_avg=%s response_sum=%s response_min=%s response_max=%s response_avg=%s loss_mask_sum=%s payload_mb_est=%.2f object_ref=%s partition=%s",
                 summary["dp_rank"],
                 summary["num_samples"],
                 summary["tokens"]["sum"],
@@ -959,11 +1025,7 @@ class RolloutManager:
             return round(mx / mn, 3) if mn else float("inf")
 
         logger.warning(
-            "ROLLOUT_DP_IMBALANCE "
-            "dp_size=%s total_samples=%s total_tokens=%s "
-            "sample_counts=%s sample_ratio=%s "
-            "token_sums=%s token_ratio=%s "
-            "payload_mbs=%s payload_ratio=%s",
+            "ROLLOUT_DP_IMBALANCE dp_size=%s total_samples=%s total_tokens=%s sample_counts=%s sample_ratio=%s token_sums=%s token_ratio=%s payload_mbs=%s payload_ratio=%s",
             dp_size,
             len(total_lengths),
             sum(total_lengths),
@@ -1151,8 +1213,7 @@ def _start_router(args, *, has_pd_disaggregation: bool = False, force_new: bool 
     port = router_port
     if not is_port_available(port):
         raise RuntimeError(
-            f"Port {port} is already in use — a stale router process may still be running. "
-            f"Run 'pkill -9 python' to kill it, then retry."
+            f"Port {port} is already in use — a stale router process may still be running. Run 'pkill -9 python' to kill it, then retry."
         )
 
     process = multiprocessing.Process(
@@ -1229,8 +1290,7 @@ def start_rollout_servers(args, pg) -> dict[str, RolloutServer]:
             if args.offload_rollout and not needs_offload:
                 overrides.setdefault("enable_memory_saver", False)
             logger.info(
-                f"Engine group '{group_cfg.worker_type}' gpu_offset={gpu_offset} "
-                f"(abs={group_abs_start}): needs_offload={needs_offload}"
+                f"Engine group '{group_cfg.worker_type}' gpu_offset={gpu_offset} (abs={group_abs_start}): needs_offload={needs_offload}"
             )
 
             group = ServerGroup(
@@ -1298,84 +1358,57 @@ def _resolve_sglang_config(args) -> SglangConfig:
 # ---------------------------------------------------------------------------
 
 
+def _normalize_session_server_addrs(addrs):
+    if isinstance(addrs, str):
+        addrs = [a.strip() for a in addrs.split(",") if a.strip()]
+
+    return [addr if addr.startswith(("http://", "https://")) else f"http://{addr}" for addr in addrs]
+
+
 def _start_session_servers(args):
-    """Start N independent vanilla session-server processes on the SGLang gateway node.
-
-    Each session-server is a standalone process bound to its own port; MSA clients
-    pick one at random per session via ``args.session_server_backends`` (callee-side
-    multi-backend dispatch). This replaces the single-server design with a multi-
-    backend design that relieves the per-process GIL when many concurrent sessions
-    saturate one process.
-
-    ``args.session_server_count`` (default 1) controls N. For N=1 the behavior is
-    identical to the previous single-server path. ``session_server_ip`` /
-    ``session_server_port`` are preserved for back-compat (set to host_ip / first
-    chosen port respectively).
-    """
     if not getattr(args, "use_session_server", False):
-        return
+        return []
+
+    if getattr(args, "session_server_addrs", None):
+        args.session_server_backends = _normalize_session_server_addrs(args.session_server_addrs)
+        logger.info("Using external session servers: %s", args.session_server_backends)
+        return []
 
     hf_checkpoint = getattr(args, "hf_checkpoint", None)
     if not hf_checkpoint:
         raise ValueError("--use-session-server requires --hf-checkpoint to be set.")
 
-    if getattr(args, "session_server_ip", None) is None:
-        args.session_server_ip = args.sglang_router_ip
-    if getattr(args, "session_server_instance_id", None) is None:
-        args.session_server_instance_id = uuid.uuid4().hex
-
-    host_ip = args.session_server_ip
-    count = max(1, int(getattr(args, "session_server_count", 1) or 1))
-
     router_url = f"http://{args.sglang_router_ip}:{args.sglang_router_port}"
+    session_server_count = max(1, int(getattr(args, "session_server_count", 1) or 1))
 
-    from miles.rollout.session.session_server import run_session_server
+    actors = [
+        SessionServerActor.options(
+            num_cpus=0.1,
+            num_gpus=0,
+            scheduling_strategy="SPREAD",
+        ).remote(args, router_url, i)
+        for i in range(session_server_count)
+    ]
 
-    chosen_ports: list[int] = []
-    processes: list[multiprocessing.Process] = []
+    session_server_addrs = ray.get([actor.start.remote() for actor in actors])
+    args.session_server_backends = _normalize_session_server_addrs(session_server_addrs)
 
-    # Pre-fill the explicit port (if any) as the first backend so back-compat
-    # callers landing on backend 0 hit a deterministic port.
-    explicit_port = getattr(args, "session_server_port", None)
-    if explicit_port is not None:
-        if not is_port_available(explicit_port):
-            raise RuntimeError(
-                f"Port {explicit_port} is already in use — a stale session server may still be running. "
-                f"Run 'pkill -9 python' to kill it, then retry."
-            )
-        chosen_ports.append(explicit_port)
+    first_addr = session_server_addrs[0]
+    if first_addr.startswith("http://"):
+        first_addr = first_addr[len("http://") :]
+    elif first_addr.startswith("https://"):
+        first_addr = first_addr[len("https://") :]
 
-    while len(chosen_ports) < count:
-        port = find_available_port(random.randint(5000, 6000))
-        # Avoid races: reject duplicates produced by the random seed.
-        if port in chosen_ports:
-            continue
-        chosen_ports.append(port)
+    first_host, first_port = first_addr.rsplit(":", 1)
+    args.session_server_ip = first_host
+    args.session_server_port = int(first_port)
 
-    for port in chosen_ports:
-        # Each child sees its own port via a shallow-copied args namespace.
-        child_args = copy.copy(args)
-        child_args.session_server_port = port
-        child_args.session_server_ip = host_ip
-        process = multiprocessing.Process(target=run_session_server, args=(child_args, router_url))
-        process.daemon = True
-        process.start()
-        processes.append(process)
-
-    for port, process in zip(chosen_ports, processes, strict=True):
-        wait_for_server_ready(host_ip, port, process, timeout=30)
-        logger.info(f"Session server launched at {host_ip}:{port}")
-
-    # Publish the backend set; back-compat fields point at backend 0.
-    args.session_server_backends = [f"http://{host_ip}:{port}" for port in chosen_ports]
-    args.session_server_ip = host_ip
-    args.session_server_port = chosen_ports[0]
     logger.info(
-        "Session-server multi-backend dispatch enabled: N=%d, backends=%s",
-        count,
+        "Started %s Ray session servers: %s",
+        len(session_server_addrs),
         args.session_server_backends,
     )
-    return args.session_server_backends
+    return actors
 
 
 def _log_eval_rollout_data(rollout_id, args, data, extra_metrics: dict[str, Any] | None = None):
@@ -1468,11 +1501,9 @@ def compute_metrics_from_samples(args, samples):
         if args.ci_test:
             for strict_type in ("special_token_count", "special_token_type", "non_assistant_text"):
                 rate = log_dict.get(f"tito_session_mismatch_rate/{strict_type}", 0)
-                assert rate == 0, (
-                    f"tito_session_mismatch_rate/{strict_type}={rate:.4f} must be 0 — "
-                    "this indicates a bug in the TITO algorithm or chat template. "
-                    "Please check your tito model and chat template."
-                )
+                assert (
+                    rate == 0
+                ), f"tito_session_mismatch_rate/{strict_type}={rate:.4f} must be 0 — this indicates a bug in the TITO algorithm or chat template. Please check your tito model and chat template."
             # assistant_text mismatch is non-critical: assistant tokens are inherited
             # from the pretokenized prefix and may differ from canonical tokenization.
     # new top-level grouped keys: global

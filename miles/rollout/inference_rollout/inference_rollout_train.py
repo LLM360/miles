@@ -244,11 +244,11 @@ async def generate_rollout_async(
                 data.append(group)
                 pbar.update(args.n_samples_per_prompt)
 
-        # One pending task == one group, so len(pendings) is the live group count;
-        # with oversampling off, drop the slow tail once tail_cancel_groups remain.
-        if args.disable_oversampling and 0 < len(pendings) <= args.tail_cancel_groups:
+        groups_left = (target_data_size - submitted) + len(pendings)
+        if args.disable_oversampling and 0 < groups_left <= args.tail_cancel_groups:
             logger.info(
-                f"[rollout] tail-cancel: {len(pendings)} groups pending <= "
+                f"[rollout] tail-cancel: {groups_left} groups left "
+                f"({len(pendings)} in flight, {target_data_size - submitted} unsubmitted) <= "
                 f"{args.tail_cancel_groups}; cutting tail with {len(data)}/{target_data_size} "
                 f"groups collected"
             )
