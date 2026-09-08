@@ -71,22 +71,26 @@ def check_no_aborted(args, samples: list[Sample], **kwargs):
 
 
 def check_no_infra_failures(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
-    """Reject the group if any rollout aborted or failed for an infra reason.
+    """Reject the group if any rollout aborted or failed for an infra reason,
+    or if the group has zero reward std (all-correct / all-incorrect).
 
     Superset of ``check_no_aborted``: also drops samples whose Harbor
     ``exit_status`` is an infra / non-policy failure. Keyed on ``exit_status``
     because such rollouts may still record COMPLETED turns; aborted samples
-    (zero records, no exit_status) are caught by the status check.
+    (zero records, no exit_status) are caught by the status check. Groups that
+    survive the infra checks are then passed through ``check_reward_nonzero_std``
+    so all-same-reward groups (advantage 0, no gradient) are dropped too.
 
         --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_no_infra_failures
     """
-    for sample in _flatten_samples(samples):
+    flat_samples = list(_flatten_samples(samples))
+    for sample in flat_samples:
         if sample.status == Sample.Status.ABORTED:
             return DynamicFilterOutput(keep=False, reason="group_has_aborted")
         exit_status = (sample.metadata or {}).get("exit_status", "")
         if exit_status in INFRA_FAILURE_EXIT_STATUSES:
             return DynamicFilterOutput(keep=False, reason=f"group_has_{exit_status}")
-    return DynamicFilterOutput(keep=True)
+    return check_reward_nonzero_std(args, flat_samples, **kwargs)
 
 
 def drop_zero_std_groups_and_extreme_pass_rate(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
