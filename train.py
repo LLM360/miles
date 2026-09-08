@@ -102,6 +102,9 @@ async def train(args):
             await rollout_manager.eval.remote(rollout_id)
 
     await rollout_manager.dispose.remote()
+    if args.use_wandb:
+        import wandb
+        wandb.finish()
 
 
 if __name__ == "__main__":

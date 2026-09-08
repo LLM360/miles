@@ -9,6 +9,11 @@ from miles.utils.env_report import decode_env_report
 logger = logging.getLogger(__name__)
 
 
+def _get_wandb_entity(args):
+    """Prefer Miles' explicit CLI entity while retaining legacy compatibility."""
+    return getattr(args, "wandb_entity", None) or getattr(args, "wandb_team", None)
+
+
 def _is_offline_mode(args) -> bool:
     """Detect whether W&B should run in offline mode.
 
@@ -53,7 +58,7 @@ def init_wandb_primary(args):
 
     # Prepare wandb init parameters
     init_kwargs = {
-        "entity": args.wandb_team,
+        "entity": _get_wandb_entity(args),
         "project": args.wandb_project,
         "group": group,
         "name": run_name,
@@ -135,7 +140,7 @@ def init_wandb_secondary(args, router_addr=None):
 
     init_kwargs = {
         "id": wandb_run_id,
-        "entity": args.wandb_team,
+        "entity": _get_wandb_entity(args),
         "project": args.wandb_project,
         "config": args.__dict__,
         "resume": "allow",

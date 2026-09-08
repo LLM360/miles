@@ -488,6 +488,9 @@ class RolloutManager:
     def dispose(self):
         if self._metric_checker is not None:
             self._metric_checker.dispose()
+        if getattr(self.args, "use_wandb", False):
+            import wandb
+            wandb.finish()
         for monitor in self._health_monitors:
             monitor.stop()
         for actor in getattr(self, "session_server_actors", []):
