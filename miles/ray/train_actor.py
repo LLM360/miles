@@ -78,6 +78,16 @@ class TrainRayActor(RayActor):
         )
         init_gloo_group()
 
+        debugpy_port = os.environ.get("MILES_DEBUGPY_PORT")
+        if debugpy_port:
+            import debugpy
+
+            port = int(debugpy_port) + self._rank
+            debugpy.listen(("0.0.0.0", port))
+            logger.warning("Ray trainer rank %s waiting for debugpy client on port %s", self._rank, port)
+            if os.environ.get("MILES_DEBUGPY_WAIT", "1") == "1":
+                debugpy.wait_for_client()
+
         args.rank = dist.get_rank()
         args.world_size = dist.get_world_size()
 
