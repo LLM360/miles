@@ -91,9 +91,7 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     # groups they are. The specific instances harbor cancels are reported by
     # /abort_all below.
     cancelled_names = sorted(task.get_name() for task in pendings)
-    logger.info(
-        f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks: {cancelled_names}"
-    )
+    logger.info(f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks: {cancelled_names}")
 
     is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
     if is_agentic:
