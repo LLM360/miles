@@ -3,12 +3,8 @@ from argparse import Namespace
 import pytest
 
 from miles.rollout.filter_hub.base_types import DynamicFilterOutput
-from miles.rollout.filter_hub.dynamic_sampling_filters import (
-    INFRA_FAILURE_EXIT_STATUSES,
-    check_no_infra_failures,
-)
+from miles.rollout.filter_hub.dynamic_sampling_filters import INFRA_FAILURE_EXIT_STATUSES, check_no_infra_failures
 from miles.utils.types import Sample
-
 
 ARGS = Namespace(reward_key=None)
 
