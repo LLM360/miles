@@ -129,12 +129,23 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         return GenerateFnOutput(samples=sample)
 
     sample = samples[0]
+    _mark_limits_exceeded_truncated(sample, agent_metadata)
     logger.debug(
         f"{log_prefix} server-merged sample ready: "
         f"tokens={len(sample.tokens)} response_length={sample.response_length} "
         f"total_time={time.monotonic()-t_start:.1f}s"
     )
     return GenerateFnOutput(samples=sample)
+
+
+def _mark_limits_exceeded_truncated(
+    samples: Sample | list[Sample],
+    agent_metadata: dict[str, Any] | None,
+) -> None:
+    """Record turn-budget exhaustion even when the final model turn completed."""
+    if (agent_metadata or {}).get("exit_status") == "LimitsExceeded":
+        final_sample = samples if isinstance(samples, Sample) else samples[-1]
+        final_sample.status = Sample.Status.TRUNCATED
 
 
 def build_agent_function_kwargs(
