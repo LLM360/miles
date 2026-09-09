@@ -141,6 +141,9 @@ class TestSessionProxy:
         body = resp.json()
         assert "choices" in body
         assert body["choices"]
+        agent_choice = body["choices"][0]
+        assert "meta_info" not in agent_choice
+        assert "prompt_token_ids" not in agent_choice
 
         get_resp = requests.get(f"{router_env.url}/sessions/{session_id}", timeout=5.0)
         records = get_resp.json()["records"]
@@ -150,6 +153,16 @@ class TestSessionProxy:
         record = records[0]
         assert record["path"] == "/v1/chat/completions"
         assert record["status_code"] == 200
+        recorded_choice = record["response"]["choices"][0]
+        assert recorded_choice["prompt_token_ids"]
+        assert recorded_choice["meta_info"]["output_token_logprobs"]
+
+        merged_resp = requests.get(f"{router_env.url}/sessions/{session_id}/merged", timeout=5.0)
+        assert merged_resp.status_code == 200
+        sample = merged_resp.json()["sample"]
+        assert sample is not None
+        assert sample["response_length"] > 0
+        assert len(sample["rollout_log_probs"]) == sample["response_length"]
 
 
 class TestTokenizationOffload:
