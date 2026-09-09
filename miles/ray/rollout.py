@@ -418,6 +418,15 @@ class RolloutManager:
     def __init__(self, args, pg):
         configure_logger()
 
+        debugpy_port = os.environ.get("MILES_ROLLOUT_DEBUGPY_PORT")
+        if debugpy_port:
+            import debugpy
+
+            debugpy.listen(("0.0.0.0", int(debugpy_port)))
+            logger.warning("Rollout manager waiting for debugpy client on port %s", debugpy_port)
+            if os.environ.get("MILES_ROLLOUT_DEBUGPY_WAIT", "1") == "1":
+                debugpy.wait_for_client()
+
         self.pg = pg
         self.args = args
         # TODO make args immutable
