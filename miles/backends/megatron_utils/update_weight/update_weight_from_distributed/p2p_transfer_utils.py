@@ -172,14 +172,32 @@ class P2PTransferManager:
         return future
 
     def wait_transfers(self) -> None:
-        """Wait for all submitted tasks to complete."""
-        for future in self.transfer_futures:
-            try:
-                future.result(timeout=self.transfer_timeout)
-            except Exception as e:
-                logger.error(f"[P2P] Transfer future failed: {e}")
+        """Drain submitted tasks and fail the update if any transfer failed."""
+        failures: list[tuple[int, Exception]] = []
+        futures = tuple(self.transfer_futures)
+        try:
+            for index, future in enumerate(futures):
+                try:
+                    future.result(timeout=self.transfer_timeout)
+                except Exception as error:
+                    failures.append((index, error))
+                    logger.error(
+                        "[P2P] Transfer task %d/%d failed: %s",
+                        index + 1,
+                        len(futures),
+                        error,
+                    )
+        finally:
+            self.transfer_futures.clear()
 
-        self.transfer_futures.clear()
+        if failures:
+            details = "; ".join(
+                f"task {index + 1}: {type(error).__name__}: {error}" for index, error in failures
+            )
+            first_error = failures[0][1]
+            raise RuntimeError(
+                f"{len(failures)} of {len(futures)} P2P weight transfers failed ({details})"
+            ) from first_error
 
 
 def create_server_args_from_dict(data_dict: dict) -> ServerArgs:
