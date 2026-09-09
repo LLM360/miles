@@ -128,15 +128,14 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
 
-    if not input.args.generate_multi_samples:
-        samples = merge_samples(samples, input.state.tokenizer)
-        samples.metadata.update(session_metadata)
-    else:
-        samples[-1].metadata.update(session_metadata)
-
-    _mark_limits_exceeded_truncated(samples, agent_metadata)
-
-    return GenerateFnOutput(samples=samples)
+    sample = samples[0]
+    _mark_limits_exceeded_truncated(sample, agent_metadata)
+    logger.debug(
+        f"{log_prefix} server-merged sample ready: "
+        f"tokens={len(sample.tokens)} response_length={sample.response_length} "
+        f"total_time={time.monotonic()-t_start:.1f}s"
+    )
+    return GenerateFnOutput(samples=sample)
 
 
 def _mark_limits_exceeded_truncated(

@@ -673,6 +673,7 @@ class TestAgentMetadata:
         [{"args_kwargs": {"agentic_return_metadata": {"exit_status": "LimitsExceeded"}}}],
         indirect=True,
     )
+    @pytest.mark.parametrize("variant", ["agentic_tool_call_single_sample"])
     def test_limits_exceeded_marks_final_sample_truncated(self, variant, generation_env):
         generation_env.mock_server.process_fn = TwoTurnStub.process_fn
 
