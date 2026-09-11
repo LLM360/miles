@@ -867,6 +867,16 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             parser.add_argument("--value-clip", type=float, default=0.2, help="the clip for value loss")
             parser.add_argument(
+                "--share-backbone-critic",
+                action="store_true",
+                default=False,
+                help=(
+                    "Attach a scalar value head to the actor and train it from stop-gradient "
+                    "hidden states instead of allocating a separate critic model. "
+                    "Requires --advantage-estimator ppo."
+                ),
+            )
+            parser.add_argument(
                 "--kl-coef",
                 type=float,
                 default=0.00,
@@ -1985,6 +1995,15 @@ def miles_validate_args(args):
         args.debug_train_only = True
 
     args.use_critic = args.advantage_estimator == "ppo"
+    # Shared-backbone critic is PPO-only. Leave the flag set as a no-op for GRPO/etc.
+    args.share_backbone_critic = bool(getattr(args, "share_backbone_critic", False)) and args.use_critic
+    args.use_separate_critic = args.use_critic and not args.share_backbone_critic
+    if args.share_backbone_critic and getattr(args, "dist_ckpt_strictness", "assume_ok_unexpected") == "assume_ok_unexpected":
+        args.dist_ckpt_strictness = "log_unexpected"
+        logger.info(
+            "share-backbone-critic: setting dist_ckpt_strictness=log_unexpected "
+            "so a policy-only checkpoint can initialize the value head"
+        )
     if args.critic_num_gpus_per_node is None:
         args.critic_num_gpus_per_node = args.actor_num_gpus_per_node
     if args.critic_num_nodes is None:
@@ -2041,7 +2060,7 @@ def miles_validate_args(args):
                 f"rollout_num_gpus {args.rollout_num_gpus} != actor_num_gpus_per_node {args.actor_num_gpus_per_node} * actor_num_nodes {args.actor_num_nodes}, overriding rollout_num_gpus to match actor_num_gpus_per_node * actor_num_nodes."
             )
             args.rollout_num_gpus = args.actor_num_gpus_per_node * args.actor_num_nodes
-            if args.use_critic:
+            if args.use_separate_critic:
                 args.rollout_num_gpus += args.critic_num_gpus_per_node * args.critic_num_nodes
 
     if args.offload_train is None:
