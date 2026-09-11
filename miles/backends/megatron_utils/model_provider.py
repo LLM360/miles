@@ -55,6 +55,56 @@ class LinearForLastLayer(torch.nn.Linear):
         return logits, None
 
 
+def attach_shared_value_head(model: GPTModel) -> GPTModel:
+    """Add a scalar value head on the last pipeline stage.
+
+    Values are ``g_phi(stopgrad(h_t))``: critic grads update ``value_head`` only.
+    Policy logits still come from the attached hidden states.
+    """
+    if not getattr(model, "post_process", False):
+        return model
+    if getattr(model, "value_head", None) is not None:
+        return model
+
+    model.value_head = LinearForLastLayer(
+        input_size=model.config.hidden_size,
+        output_size=1,
+        config=model.config,
+    )
+    original_postprocess = model._postprocess
+
+    def _postprocess_with_value(hidden_states, *args, **kwargs):
+        values, _ = model.value_head(hidden_states.detach())
+        # Match GPTModel logits layout: [s, b, 1] -> [b, s, 1].
+        model._last_values = values.transpose(0, 1).contiguous()
+        return original_postprocess(hidden_states, *args, **kwargs)
+
+    model._postprocess = _postprocess_with_value
+    return model
+
+
+def maybe_attach_shared_value_head(model: GPTModel, args, role: str, post_process: bool) -> GPTModel:
+    if post_process and role == "actor" and getattr(args, "share_backbone_critic", False):
+        return attach_shared_value_head(model)
+    return model
+
+
+def unwrap_to_inner_module(model: torch.nn.Module) -> torch.nn.Module:
+    inner = model
+    while hasattr(inner, "module"):
+        inner = inner.module
+    return inner
+
+
+def pop_last_values(model: torch.nn.Module) -> torch.Tensor | None:
+    """Read and clear the value-head output stashed by the last forward."""
+    inner = unwrap_to_inner_module(model)
+    values = getattr(inner, "_last_values", None)
+    if values is not None:
+        inner._last_values = None
+    return values
+
+
 def get_model_provider_func(
     args: argparse.Namespace,
     role: Literal["actor", "critic"] = "actor",
@@ -82,7 +132,7 @@ def get_model_provider_func(
                 model.output_layer = LinearForLastLayer(
                     input_size=model.config.hidden_size, output_size=1, config=model.config
                 )
-            return model
+            return maybe_attach_shared_value_head(model, args, role, post_process)
 
         return wrapped_model_provider
 
@@ -253,6 +303,6 @@ def get_model_provider_func(
         if post_process and role == "critic":
             model.output_layer = LinearForLastLayer(input_size=config.hidden_size, output_size=1, config=config)
 
-        return model
+        return maybe_attach_shared_value_head(model, args, role, post_process)
 
     return model_provider
