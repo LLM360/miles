@@ -194,6 +194,7 @@ def forward_only(
     data_iterator: Sequence[DataIterator],
     num_microbatches: Sequence[int],
     store_prefix: str = "",
+    use_rollout_sampling_masks: bool = False,
 ) -> dict[str, list[torch.Tensor]]:
     """Run forward passes only and collect non-loss outputs (e.g., logprobs).
 
@@ -239,16 +240,18 @@ def forward_only(
         assert not return_schedule_plan, "forward_only step should never return schedule plan"
 
         # Get the batch.
+        keys = [
+            "tokens",
+            "loss_masks",
+            "multimodal_train_inputs",
+            "total_lengths",
+            "response_lengths",
+            "max_seq_lens",
+            "rollout_sampling_masks",
+        ]
         batch = get_batch(
             data_iterator,
-            [
-                "tokens",
-                "loss_masks",
-                "multimodal_train_inputs",
-                "total_lengths",
-                "response_lengths",
-                "max_seq_lens",
-            ],
+            keys,
             args.data_pad_size_multiplier,
             args.qkv_format,
             allgather_cp=args.allgather_cp,
@@ -268,15 +271,17 @@ def forward_only(
             **(batch["multimodal_train_inputs"] if batch["multimodal_train_inputs"] is not None else {}),
         )
 
-        return output_tensor, partial(
-            f,
-            args=args,
-            unconcat_tokens=unconcat_tokens,
-            total_lengths=total_lengths,
-            response_lengths=response_lengths,
-            with_entropy=args.use_rollout_entropy,
-            max_seq_lens=batch.get("max_seq_lens", None),
-        )
+        callback_kwargs = {
+            "args": args,
+            "unconcat_tokens": unconcat_tokens,
+            "total_lengths": total_lengths,
+            "response_lengths": response_lengths,
+            "with_entropy": args.use_rollout_entropy,
+            "max_seq_lens": batch.get("max_seq_lens", None),
+        }
+        if use_rollout_sampling_masks:
+            callback_kwargs["rollout_sampling_masks"] = batch["rollout_sampling_masks"]
+        return output_tensor, partial(f, **callback_kwargs)
 
     # Turn on evaluation mode which disables dropout.
     for model_module in model:
@@ -381,23 +386,25 @@ def train_one_step(
         """
 
         # Get the batch.
+        keys = [
+            "tokens",
+            "multimodal_train_inputs",
+            "packed_seq_params",
+            "total_lengths",
+            "response_lengths",
+            "loss_masks",
+            "log_probs",
+            "ref_log_probs",
+            "values",
+            "advantages",
+            "returns",
+            "rollout_log_probs",
+            "max_seq_lens",
+            "rollout_sampling_masks",
+        ]
         batch = get_batch(
             data_iterator,
-            [
-                "tokens",
-                "multimodal_train_inputs",
-                "packed_seq_params",
-                "total_lengths",
-                "response_lengths",
-                "loss_masks",
-                "log_probs",
-                "ref_log_probs",
-                "values",
-                "advantages",
-                "returns",
-                "rollout_log_probs",
-                "max_seq_lens",
-            ],
+            keys,
             args.data_pad_size_multiplier,
             args.qkv_format,
             allgather_cp=args.allgather_cp,

@@ -680,6 +680,9 @@ def _compute_server_args(
         for key in unused_keys:
             kwargs.pop(key)
 
+    if args.num_rollout != 0 and args.rollout_top_p < 1 and kwargs.get("disaggregation_mode", "null") != "null":
+        raise ValueError("sampling-mask replay is incompatible with prefill/decode disaggregation")
+
     return kwargs, external_engine_need_check_fields
 
 

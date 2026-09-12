@@ -49,7 +49,8 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         "agentic_tool_call.generate requires session_server_ip/session_server_port. "
         "Pass --use-session-server to start the session server."
     )
-    tracer = await OpenAIEndpointTracer.create(input.args)
+    capture = not input.evaluation and input.sampling_params["top_p"] < 1
+    tracer = await OpenAIEndpointTracer.create(input.args, capture_sampling_mask=capture)
 
     custom_agent_function: Callable = load_function(input.args.custom_agent_function_path)
     assert (
@@ -114,6 +115,8 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         sample.status = Sample.Status.ABORTED
         return GenerateFnOutput(samples=sample)
 
+    if capture and merged_sample.rollout_sampling_mask is None:
+        raise ValueError("a replay trajectory must carry a sampling mask")
     sample = apply_merged_session_sample(input.args, input.sample, merged_sample)
     sample.metadata.update(agent_metadata or {})
     sample.metadata.update(session_metadata)

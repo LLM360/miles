@@ -698,6 +698,7 @@ def policy_loss_function(
         response_lengths=response_lengths,
         with_entropy=True,
         max_seq_lens=max_seq_lens,
+        rollout_sampling_masks=batch.get("rollout_sampling_masks"),
     )
 
     log_probs = log_probs_and_entropy["log_probs"]

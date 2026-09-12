@@ -5,17 +5,19 @@ and merge_samples — the core of the TITO (Token In Token Out) pipeline.
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from miles.rollout.base_types import GenerateFnInput
+from miles.rollout.generate_hub.agentic_tool_call import generate
 from miles.rollout.generate_utils.openai_endpoint_utils import (
     OpenAIEndpointTracer,
     compute_samples_from_openai_records,
     truncate_samples_by_total_tokens,
 )
 from miles.rollout.generate_utils.sample_utils import merge_samples
-from miles.rollout.session.session_types import SessionRecord
+from miles.rollout.session.session_types import MergedSessionSample, SessionRecord
 from miles.utils.types import RolloutSamplingMask, Sample
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -157,6 +159,59 @@ def test_sampling_replay_trajectory_integrity():
     )[0]
     assert truncated.rollout_log_probs == [-0.4, 0.0, 0.0, 0.0, -0.7]
     assert _mask_rows(truncated.rollout_sampling_mask) == [[10, 12], [11], [20], [21], [30, 40]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("evaluation", [False, True])
+@pytest.mark.parametrize("malformed", [False, True], ids=["merged", "malformed"])
+async def test_generate_sampling_capture_and_collection_errors(monkeypatch, evaluation, malformed):
+    merged = MergedSessionSample(
+        tokens=[1, 2, 10],
+        response_length=1,
+        loss_mask=[1],
+        rollout_log_probs=[0.0],
+        status="truncated",
+    )
+
+    async def agent(**kwargs):
+        return None
+
+    tracer = OpenAIEndpointTracer("http://session", "test")
+    tracer._request = AsyncMock(
+        return_value={"session_id": "test", "sample": {"response_length": 1} if malformed else merged.model_dump()}
+    )
+    tracer.delete_session = AsyncMock()
+    captures = []
+
+    async def create(args, *, capture_sampling_mask=False):
+        captures.append(capture_sampling_mask)
+        return tracer
+
+    monkeypatch.setattr(OpenAIEndpointTracer, "create", create)
+    monkeypatch.setattr("miles.rollout.generate_hub.agentic_tool_call.load_function", lambda _: agent)
+    args = SimpleNamespace(
+        session_server_ip="session",
+        session_server_port=80,
+        custom_agent_function_path="agent",
+        generate_multi_samples=False,
+        max_seq_len=3,
+    )
+    input = GenerateFnInput(
+        SimpleNamespace(args=args, tokenizer=_mock_tokenizer()),
+        _make_input_sample(),
+        {"top_p": 0.9},
+        evaluation,
+    )
+
+    if malformed:
+        assert (await generate(input)).samples.status == Sample.Status.ABORTED
+    elif evaluation:
+        assert (await generate(input)).samples.tokens == [1, 2, 10]
+    else:
+        with pytest.raises(ValueError, match="sampling mask"):
+            await generate(input)
+    assert captures == [not evaluation]
+    tracer.delete_session.assert_awaited_once()
 
 
 @pytest.mark.asyncio

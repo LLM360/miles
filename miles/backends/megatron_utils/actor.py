@@ -781,7 +781,7 @@ class MegatronTrainRayActor(TrainRayActor):
         num_microbatches: list[int],
         store_prefix: str = "",
     ) -> dict[str, list[torch.Tensor]]:
-
+        use_rollout_sampling_masks = "rollout_sampling_masks" in data_iterator[0].rollout_data
         with timer(f"{store_prefix}log_probs"):
             return forward_only(
                 get_log_probs_and_entropy,
@@ -790,6 +790,7 @@ class MegatronTrainRayActor(TrainRayActor):
                 data_iterator,
                 num_microbatches,
                 store_prefix=store_prefix,
+                use_rollout_sampling_masks=use_rollout_sampling_masks,
             )
 
     def train(self, rollout_id: int, rollout_data_ref: Box) -> None:

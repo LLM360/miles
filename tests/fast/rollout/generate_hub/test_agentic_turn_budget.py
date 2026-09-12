@@ -70,7 +70,7 @@ def test_generate_preserves_server_merged_sample(monkeypatch, exit_status, empty
             GenerateFnInput(
                 state=SimpleNamespace(args=args, tokenizer=None),
                 sample=original,
-                sampling_params={},
+                sampling_params={"top_p": 1.0},
                 evaluation=False,
             )
         )

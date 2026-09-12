@@ -6,7 +6,14 @@ from itertools import groupby
 import numpy as np
 import pybase64
 import pytest
-from tests.fast.fixtures.generation_fixtures import GenerateEnv, generation_env, listify, make_sample, run_generate
+from tests.fast.fixtures.generation_fixtures import (
+    DEFAULT_SAMPLING_PARAMS,
+    GenerateEnv,
+    generation_env,
+    listify,
+    make_sample,
+    run_generate,
+)
 
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.test_utils.mock_sglang_server import ProcessResult, ProcessResultMetaInfo
@@ -24,7 +31,6 @@ def is_agentic_variant(variant: str) -> bool:
 
 
 MODEL_NAME = "Qwen/Qwen3-0.6B"
-DEFAULT_SAMPLING_PARAMS = {"max_new_tokens": 64, "temperature": 0.7}
 TOKENIZER = load_tokenizer(MODEL_NAME, trust_remote_code=True)
 
 
@@ -157,6 +163,7 @@ def expected_openai_request(messages: list[dict], **extra) -> dict:
         "return_prompt_token_ids": True,
         "return_meta_info": True,
         "no_stop_trim": False,
+        "top_p": DEFAULT_SAMPLING_PARAMS["top_p"],
         **extra,
     }
 
