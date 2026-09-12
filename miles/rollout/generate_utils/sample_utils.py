@@ -1,7 +1,7 @@
 from copy import copy
 from dataclasses import fields
 
-from miles.utils.types import Sample
+from miles.utils.types import RolloutSamplingMask, Sample
 
 
 def drop_samples_after_first_non_completed(samples: list[Sample]) -> tuple[list[Sample], int]:
@@ -23,8 +23,17 @@ def drop_samples_after_first_non_completed(samples: list[Sample]) -> tuple[list[
 
 def merge_samples(samples: list[Sample], tokenizer) -> Sample:
     acc = samples[0]
+    # Concatenate masks once after all turns.
+    mask_parts = []
+    if len(samples) > 1 and acc.rollout_sampling_mask is not None:
+        mask_parts.append(acc.rollout_sampling_mask)
     for sample in samples[1:]:
+        if mask_parts:
+            obs_tokens = sample.tokens[len(acc.tokens) : len(sample.tokens) - sample.response_length]
+            mask_parts.extend((RolloutSamplingMask.singletons(obs_tokens), sample.rollout_sampling_mask))
         acc = _merge_sample_pair(acc, sample, tokenizer=tokenizer)
+    if mask_parts:
+        acc.rollout_sampling_mask = RolloutSamplingMask.concatenate(*mask_parts)
     return acc
 
 
@@ -80,6 +89,7 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
             loss_mask=a.loss_mask + [0] * obs_len + b.loss_mask,
             weight_versions=a.weight_versions + b.weight_versions,
             rollout_log_probs=a.rollout_log_probs + [0.0] * obs_len + b.rollout_log_probs,
+            rollout_sampling_mask=None,
             rollout_routed_experts=b.rollout_routed_experts,
             remove_sample=_merge_equal_value("remove_sample"),
             status=b.status,

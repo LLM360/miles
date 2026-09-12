@@ -19,7 +19,7 @@ from miles.rollout.session.session_types import (
     MergedSessionSample,
     SessionRecord,
 )
-from miles.utils.types import Sample
+from miles.utils.types import RolloutSamplingMask, Sample
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +288,7 @@ class OpenAIEndpointTracer:
         raise RuntimeError(f"request failed without exception: phase={phase} method={method} url={url}")
 
     @staticmethod
-    async def create(args: Namespace):
+    async def create(args: Namespace, *, capture_sampling_mask: bool = False):
         backends = getattr(args, "session_server_backends", None)
         if backends:
             session_url = random.choice(backends).rstrip("/")
@@ -336,7 +336,7 @@ class OpenAIEndpointTracer:
             "POST",
             f"{session_url}/sessions",
             phase="create_session",
-            payload={},
+            payload={"capture_sampling_mask": capture_sampling_mask},
             max_retries=_CREATE_RETRIES,
         )
 
@@ -629,6 +629,11 @@ def apply_merged_session_sample(
     sample.response_length = merged.response_length
     sample.loss_mask = merged.loss_mask
     sample.rollout_log_probs = merged.rollout_log_probs
+    sample.rollout_sampling_mask = (
+        RolloutSamplingMask.from_dict(merged.rollout_sampling_mask)
+        if merged.rollout_sampling_mask is not None
+        else None
+    )
     sample.metadata = {**(sample.metadata or {}), **(merged.metadata or {})}
     sample.status = Sample.Status(merged.status)
     sample.weight_versions.extend(merged.weight_versions)
@@ -743,6 +748,11 @@ def _compute_sample_from_openai_record(
     output_token_ids = [item[1] for item in choice["meta_info"]["output_token_logprobs"]]
     output_log_probs = [item[0] for item in choice["meta_info"]["output_token_logprobs"]]
 
+    rollout_sampling_mask = None
+    if record.rollout_sampling_mask is not None:
+        rollout_sampling_mask = RolloutSamplingMask.from_dict(record.rollout_sampling_mask)
+        output_log_probs = record.rollout_sampling_log_probs
+
     sample = copy(input_sample)
     sample.metadata = dict(input_sample.metadata)
     sample.weight_versions = list(input_sample.weight_versions)
@@ -755,6 +765,7 @@ def _compute_sample_from_openai_record(
 
     sample.tokens = prompt_token_ids + output_token_ids
     sample.rollout_log_probs = output_log_probs
+    sample.rollout_sampling_mask = rollout_sampling_mask
     sample.response = ""
     sample.response_length = len(output_token_ids)
     sample.loss_mask = [1] * len(output_token_ids)
@@ -800,6 +811,8 @@ def _strip_last_output_tokens_without_decode(sample: Sample, trim_count: int) ->
 
     if sample.rollout_log_probs is not None:
         sample.rollout_log_probs = sample.rollout_log_probs[:keep_tokens]
+    if sample.rollout_sampling_mask is not None:
+        sample.rollout_sampling_mask = sample.rollout_sampling_mask.prefix(keep_tokens)
     if sample.loss_mask is not None:
         sample.loss_mask = sample.loss_mask[:keep_tokens]
     if sample.rollout_routed_experts is not None:
@@ -849,6 +862,8 @@ def _truncate_sample_output(sample: Sample, keep_tokens: int, tokenizer) -> None
 
     if sample.rollout_log_probs is not None:
         sample.rollout_log_probs = sample.rollout_log_probs[:keep_tokens]
+    if sample.rollout_sampling_mask is not None:
+        sample.rollout_sampling_mask = sample.rollout_sampling_mask.prefix(keep_tokens)
     if sample.loss_mask is not None:
         sample.loss_mask = sample.loss_mask[:keep_tokens]
     if sample.rollout_routed_experts is not None:
