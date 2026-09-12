@@ -21,7 +21,7 @@ from miles.utils.ppo_utils import (
     get_reinforce_plus_plus_baseline_advantages,
     get_reinforce_plus_plus_returns,
 )
-from miles.utils.types import RolloutBatch
+from miles.utils.types import RolloutBatch, RolloutSamplingMask
 
 from .cp_utils import (
     _allgather_cp_redistribute,
@@ -129,8 +129,8 @@ def get_responses(
     total_lengths: list[int],
     response_lengths: list[int],
     max_seq_lens: list[int] | None = None,
-) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
-    """Yield response-aligned `(logits_chunk, tokens_chunk)` pairs per sample.
+) -> Iterator[tuple[torch.Tensor, torch.Tensor, list[tuple[int, int]]]]:
+    """Yield response logits, targets, and response-row spans per sample.
 
     After squeezing batch dimension and applying temperature scaling, this
     function extracts the logits and tokens corresponding to response segments
@@ -149,9 +149,10 @@ def get_responses(
         response_lengths: Response segment lengths per sample.
 
     Yields:
-        Tuple of `(logits_chunk, tokens_chunk)` where `logits_chunk` is shape
+        Tuple of `(logits_chunk, tokens_chunk, response_spans)` where `logits_chunk` is shape
         `[R, V]` (policy) or `[R, 1]` (value) and `tokens_chunk` is shape `[R]`
         (1D int64), both aligned to response tokens for one sample.
+        `response_spans` contains ordered half-open row ranges in the full response.
     """
     parallel_state = get_parallel_state()
     qkv_format = args.qkv_format
@@ -183,7 +184,8 @@ def get_responses(
                 end += total_length
                 start = end - response_length
             logits_chunk = logits[start - 1 : end - 1]
-            tokens_chunk = tokens[-response_length:]
+            tokens_chunk = tokens[total_length - response_length : total_length]
+            response_spans = [(0, response_length)] if response_length else []
         elif args.allgather_cp:
             # DSA: global concat then contiguous CP split. Each rank owns logits for
             # global positions [chunk_start, chunk_end).
@@ -203,15 +205,22 @@ def get_responses(
             if e <= s:
                 logits_chunk = logits[0:0]
                 tokens_chunk = tokens[0:0]
+                response_spans = []
             else:
                 logits_chunk = logits[s - chunk_start : e - chunk_start]
                 tokens_chunk = tokens[(s + 1) - seq_start : (e + 1) - seq_start]
+                response_spans = [(s - logit_global_start, e - logit_global_start)]
             assert logits_chunk.size(0) == tokens_chunk.size(0), f"{logits_chunk.size(0)} vs {tokens_chunk.size(0)}"
         else:
             # TODO: this is super ugly... do better abstraction.
             chunk_size, chunks_offset, logits_offset, tokens_offset = get_logits_and_tokens_offset_with_cp(
                 total_length, response_length, qkv_format, max_seq_len
             )
+
+            prompt_length = total_length - response_length
+            response_spans = [
+                (start - prompt_length, stop - prompt_length) for start, stop in tokens_offset if start < stop
+            ]
 
             logits_0, logits_1 = logits[end : end + chunk_size], logits[end + chunk_size : end + 2 * chunk_size]
             end += 2 * chunk_size
@@ -230,7 +239,36 @@ def get_responses(
 
         seq_start += total_length
 
-        yield logits_chunk, tokens_chunk
+        yield logits_chunk, tokens_chunk, response_spans
+
+
+def _build_tp_sampling_mask(
+    logits: torch.Tensor,
+    sampling_mask: RolloutSamplingMask,
+    response_spans: list[tuple[int, int]],
+    tp_rank: int,
+) -> torch.Tensor:
+    mask = torch.zeros(logits.shape, dtype=torch.bool, device=logits.device)
+    if not response_spans:
+        return mask
+
+    offsets = sampling_mask.offsets
+    sizes = torch.cat([offsets[start + 1 : stop + 1] - offsets[start:stop] for start, stop in response_spans])
+    parts = [sampling_mask.token_ids[offsets[start].item() : offsets[stop].item()] for start, stop in response_spans]
+    token_ids = parts[0] if len(parts) == 1 else torch.cat(parts)
+
+    vocab_size = logits.size(-1)
+    vocab_start = tp_rank * vocab_size
+    owned_entries = ((token_ids >= vocab_start) & (token_ids < vocab_start + vocab_size)).nonzero(as_tuple=True)[0]
+    if owned_entries.numel() == 0:
+        return mask
+
+    rows = torch.repeat_interleave(sizes, output_size=token_ids.numel())[owned_entries]
+    cols = token_ids[owned_entries].long() - vocab_start
+    rows = rows.to(logits.device, non_blocking=True)
+    cols = cols.to(logits.device, non_blocking=True)
+    mask[rows, cols] = True
+    return mask
 
 
 def get_log_probs_and_entropy(
@@ -243,6 +281,7 @@ def get_log_probs_and_entropy(
     with_entropy: bool = False,
     non_loss_data: bool = True,
     max_seq_lens: list[int] | None = None,
+    rollout_sampling_masks: list[RolloutSamplingMask] | None = None,
 ) -> dict[str, list[torch.Tensor]]:
     """Compute per-token log-probabilities (and optionally entropy) on responses.
 
@@ -260,6 +299,7 @@ def get_log_probs_and_entropy(
         response_lengths: Response segment lengths per sample.
         with_entropy: If True, include "entropy" key in result.
         non_loss_data: Unused; kept for API compatibility.
+        rollout_sampling_masks: Fixed rollout support per full response; entropy remains unrestricted.
 
     Returns:
         Dict with key "log_probs" mapping to a list of `[R]` tensors per
@@ -268,16 +308,24 @@ def get_log_probs_and_entropy(
     """
     parallel_state = get_parallel_state()
     assert non_loss_data
+
     log_probs_list = []
     entropy_list = []
-    for logits_chunk, tokens_chunk in get_responses(
-        logits,
-        args=args,
-        unconcat_tokens=unconcat_tokens,
-        total_lengths=total_lengths,
-        response_lengths=response_lengths,
-        max_seq_lens=max_seq_lens,
+    for i, (logits_chunk, tokens_chunk, response_spans) in enumerate(
+        get_responses(
+            logits,
+            args=args,
+            unconcat_tokens=unconcat_tokens,
+            total_lengths=total_lengths,
+            response_lengths=response_lengths,
+            max_seq_lens=max_seq_lens,
+        )
     ):
+        sampling_mask = None
+        if rollout_sampling_masks is not None:
+            sampling_mask = _build_tp_sampling_mask(
+                logits_chunk, rollout_sampling_masks[i], response_spans, parallel_state.tp.rank
+            )
         log_prob, entropy = calculate_log_probs_and_entropy(
             logits_chunk,
             tokens_chunk,
@@ -285,9 +333,10 @@ def get_log_probs_and_entropy(
             with_entropy=with_entropy,
             chunk_size=args.log_probs_chunk_size,
             true_on_policy=args.true_on_policy_mode,
+            sampling_mask=sampling_mask,
         )
 
-        log_probs_list.append(log_prob.squeeze(-1))
+        log_probs_list.append(log_prob.reshape(-1))
         entropy_list.append(entropy)
 
     res = {
@@ -341,7 +390,7 @@ def get_values(
         per sample.
     """
     value_list = []
-    for logits_chunk, _ in get_responses(
+    for logits_chunk, _, _ in get_responses(
         logits,
         args=args,
         unconcat_tokens=unconcat_tokens,
