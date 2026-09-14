@@ -1123,7 +1123,15 @@ def loss_function(
         case _:
             raise ValueError(f"Unknown loss type: {args.loss_type}")
 
-    if args.recompute_loss_function:
+    share_backbone = getattr(args, "share_backbone_critic", False)
+    share_critic_only = share_backbone and getattr(args, "share_backbone_critic_only", False)
+    current_values = batch.get("current_values")
+
+    if share_critic_only:
+        assert current_values is not None, "share-backbone critic warmup requires current_values"
+        loss, log = value_loss_function(args, batch, current_values, sum_of_sample_mean)
+        loss = getattr(args, "vf_coef", 1.0) * loss
+    elif args.recompute_loss_function:
         loss, log = checkpoint(
             func,
             args,
@@ -1134,8 +1142,7 @@ def loss_function(
     else:
         loss, log = func(args, batch, logits, sum_of_sample_mean)
 
-    current_values = batch.get("current_values")
-    if getattr(args, "share_backbone_critic", False) and current_values is not None:
+    if share_backbone and current_values is not None and not share_critic_only:
         value_loss, value_log = value_loss_function(args, batch, current_values, sum_of_sample_mean)
         loss = loss + getattr(args, "vf_coef", 1.0) * value_loss
         log.update(value_log)
@@ -1145,7 +1152,8 @@ def loss_function(
     # the CP gather's backward (reduce-scatter) is not called, deadlocking other CP
     # ranks that call it. Adding this zero loss forces autograd to traverse the full
     # graph on every rank without changing gradient values.
-    if parallel_state.cp.size > 1 and args.allgather_cp:
+    # share_critic_only: L_v is stopgrad'd off logits; same dummy keeps PP/CP connected.
+    if (parallel_state.cp.size > 1 and args.allgather_cp) or share_critic_only:
         loss = loss + 0 * logits.sum()
 
     # Here we need to divide by cp_size because to cancel the multiply in Megatron.

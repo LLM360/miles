@@ -44,6 +44,7 @@ from .ci_utils import (
 )
 from .initialize import is_megatron_main_rank
 from .lora_utils import is_lora_enabled, is_lora_model
+from .misc_utils import zero_non_value_head_grads
 from .model_provider import get_model_provider_func, pop_last_values
 from .parallel import get_packed_seq_params
 
@@ -342,6 +343,27 @@ def forward_only(
     return rollout_data
 
 
+def _disable_optimizer_weight_decay(optimizer: MegatronOptimizer) -> list[tuple[float | None, float | None]]:
+    saved = []
+    for group in optimizer.param_groups:
+        saved.append((group.get("weight_decay"), group.get("wd_mult")))
+        if "weight_decay" in group:
+            group["weight_decay"] = 0.0
+        if "wd_mult" in group:
+            group["wd_mult"] = 0.0
+    return saved
+
+
+def _restore_optimizer_weight_decay(
+    optimizer: MegatronOptimizer, saved: list[tuple[float | None, float | None]]
+) -> None:
+    for group, (weight_decay, wd_mult) in zip(optimizer.param_groups, saved, strict=True):
+        if weight_decay is not None:
+            group["weight_decay"] = weight_decay
+        if wd_mult is not None:
+            group["wd_mult"] = wd_mult
+
+
 def train_one_step(
     args: Namespace,
     rollout_id: int,
@@ -505,18 +527,27 @@ def train_one_step(
 
         check_mtp_only_grad(model, step_id)
 
-    if valid_step:
-        # Update parameters.
-        # Long packed RL batches leave large inactive activation/logprob blocks
-        # in the CUDA caching allocator. TransformerEngine's fused Adam lazily
-        # creates optimizer state on first step, so release inactive blocks here
-        # before tiny state allocations fail with reserved-but-free memory.
-        clear_memory()
-        update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+    critic_only = getattr(args, "share_backbone_critic_only", False)
+    saved_wd = _disable_optimizer_weight_decay(optimizer) if critic_only else None
+    if critic_only:
+        zero_non_value_head_grads(model)
 
-        # Update learning rate.
-        assert update_successful
-        opt_param_scheduler.step(increment=args.global_batch_size)
+    try:
+        if valid_step:
+            # Update parameters.
+            # Long packed RL batches leave large inactive activation/logprob blocks
+            # in the CUDA caching allocator. TransformerEngine's fused Adam lazily
+            # creates optimizer state on first step, so release inactive blocks here
+            # before tiny state allocations fail with reserved-but-free memory.
+            clear_memory()
+            update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+
+            assert update_successful
+            if not critic_only:
+                opt_param_scheduler.step(increment=args.global_batch_size)
+    finally:
+        if saved_wd is not None:
+            _restore_optimizer_weight_decay(optimizer, saved_wd)
 
     # release grad
     for model_chunk in model:

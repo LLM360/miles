@@ -942,15 +942,21 @@ class MegatronTrainRayActor(TrainRayActor):
 
             # Train
             self._set_replay_stage("replay_backward")
-            with timer("actor_train"):
-                train(
-                    rollout_id,
-                    self.model,
-                    self.optimizer,
-                    self.opt_param_scheduler,
-                    data_iterator,
-                    num_microbatches,
-                )
+            self.args.share_backbone_critic_only = (
+                self.args.share_backbone_critic and rollout_id < self.args.num_critic_only_steps
+            )
+            try:
+                with timer("actor_train"):
+                    train(
+                        rollout_id,
+                        self.model,
+                        self.optimizer,
+                        self.opt_param_scheduler,
+                        data_iterator,
+                        num_microbatches,
+                    )
+            finally:
+                self.args.share_backbone_critic_only = False
 
             self.prof.step(rollout_id=rollout_id)
 
