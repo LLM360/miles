@@ -129,6 +129,7 @@ def get_responses(
     total_lengths: list[int],
     response_lengths: list[int],
     max_seq_lens: list[int] | None = None,
+    apply_temperature: bool = True,
 ) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
     """Yield response-aligned `(logits_chunk, tokens_chunk)` pairs per sample.
 
@@ -165,7 +166,8 @@ def get_responses(
         assert max_seq_lens is not None
         logits = logits.view(-1, logits.size(-1))
 
-    logits = logits.div(args.rollout_temperature)
+    if apply_temperature:
+        logits = logits.div(args.rollout_temperature)
 
     cp_size = parallel_state.cp.size
     end = 0
@@ -320,6 +322,7 @@ def get_values(
     with_entropy: bool = False,
     non_loss_data: bool = True,
     max_seq_lens: list[int] | None = None,
+    apply_temperature: bool = True,
 ) -> dict[str, list[torch.Tensor]]:
     """Extract per-token value predictions over response tokens.
 
@@ -328,13 +331,15 @@ def get_values(
 
     Args:
         logits: Value head output with shape `[1, T, 1]`.
-        args: Configuration (passed to `get_responses` which uses
-            `rollout_temperature` even though values don't need temperature).
+        args: Configuration. Shared-backbone critics should pass
+            ``apply_temperature=False``; the separate-critic path keeps the
+            historical temperature scale by default.
         unconcat_tokens: List of token tensors per sample.
         total_lengths: Total sequence lengths per sample.
         response_lengths: Response segment lengths per sample.
         with_entropy: Unused; kept for signature compatibility.
         non_loss_data: Unused; kept for signature compatibility.
+        apply_temperature: If True, divide outputs by `rollout_temperature`.
 
     Returns:
         Dict with key "values" mapping to a list of `[R]` value tensors
@@ -348,6 +353,7 @@ def get_values(
         total_lengths=total_lengths,
         response_lengths=response_lengths,
         max_seq_lens=max_seq_lens,
+        apply_temperature=apply_temperature,
     ):
         assert logits_chunk.size(-1) == 1, f"{logits_chunk.shape}"
         value_list.append(logits_chunk.squeeze(-1))
