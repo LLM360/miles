@@ -927,6 +927,7 @@ class MegatronTrainRayActor(TrainRayActor):
                 if self._active_model_tag != "actor":
                     self._switch_model("actor")
 
+                # in case values don't exist
                 if self.args.share_backbone_critic and "values" not in rollout_data:
                     rollout_data.update(self.compute_values(data_iterator, num_microbatches))
 

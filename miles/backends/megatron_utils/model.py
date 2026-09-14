@@ -271,7 +271,7 @@ def forward_only(
 
         values_tensor = pop_last_values(model) if collect_values else None
 
-        def collect(logits: torch.Tensor) -> dict[str, list[torch.Tensor]]:
+        def collect(logits: torch.Tensor, non_loss_data: bool = True) -> dict[str, list[torch.Tensor]]:
             result = f(
                 logits,
                 args=args,
