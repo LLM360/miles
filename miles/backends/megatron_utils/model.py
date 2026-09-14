@@ -463,6 +463,9 @@ def train_one_step(
             forward_kwargs["fp32_output"] = not (args.fp16 or args.bf16)
 
             output_tensor = model(**forward_kwargs)
+            # Packed [1, T, 1] from value_head. batch["values"] remains V_old.
+            if getattr(args, "share_backbone_critic", False):
+                batch["current_values"] = pop_last_values(model)
 
         for m, old_stage in zip(all_replay_managers, old_stages, strict=True):
             m.stage = old_stage

@@ -877,6 +877,15 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--vf-coef",
+                type=float,
+                default=1.0,
+                help=(
+                    "Coefficient on the clipped value loss when --share-backbone-critic is set. "
+                    "Unused for a separate critic, which uses --loss-type value_loss."
+                ),
+            )
+            parser.add_argument(
                 "--kl-coef",
                 type=float,
                 default=0.00,
