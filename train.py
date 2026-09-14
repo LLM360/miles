@@ -41,7 +41,7 @@ async def train(args):
 
     async def offload_train():
         if args.offload_train:
-            if args.use_critic:
+            if args.use_separate_critic:
                 await critic_model.offload()
                 if rollout_id >= args.num_critic_only_steps:
                     await actor_model.offload()
@@ -51,12 +51,12 @@ async def train(args):
             await actor_model.clear_memory()
 
     async def save(rollout_id):
-        if (not args.use_critic) or (rollout_id >= args.num_critic_only_steps):
+        if (not args.use_separate_critic) or (rollout_id >= args.num_critic_only_steps):
             await actor_model.save_model(
                 rollout_id,
                 force_sync=rollout_id == args.num_rollout - 1,
             )
-        if args.use_critic:
+        if args.use_separate_critic:
             await critic_model.save_model(
                 rollout_id,
                 force_sync=rollout_id == args.num_rollout - 1,
@@ -80,7 +80,7 @@ async def train(args):
                 offload_tags.append(GPU_MEMORY_TYPE_WEIGHTS)
             await rollout_manager.offload.remote(tags=offload_tags)
 
-        if args.use_critic:
+        if args.use_separate_critic:
             critic_task = await eager_create_task(critic_model.train(rollout_id, rollout_data_ref))
             if rollout_id >= args.num_critic_only_steps:
                 await actor_model.train(rollout_id, rollout_data_ref)
