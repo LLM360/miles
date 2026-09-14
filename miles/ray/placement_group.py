@@ -86,7 +86,7 @@ def create_placement_groups(args):
     if args.debug_train_only:
         num_gpus = args.actor_num_nodes * args.actor_num_gpus_per_node
         rollout_offset = 0
-        if args.use_critic:
+        if args.use_separate_critic:
             num_gpus += args.critic_num_nodes * args.critic_num_gpus_per_node
             critic_offset = args.actor_num_nodes * args.actor_num_gpus_per_node
     elif args.debug_rollout_only:
@@ -95,13 +95,13 @@ def create_placement_groups(args):
     elif args.colocate:
         num_gpus = args.actor_num_nodes * args.actor_num_gpus_per_node
         rollout_offset = 0
-        if args.use_critic:
+        if args.use_separate_critic:
             num_gpus += args.critic_num_nodes * args.critic_num_gpus_per_node
             critic_offset = args.actor_num_nodes * args.actor_num_gpus_per_node
     else:
         num_gpus = args.actor_num_nodes * args.actor_num_gpus_per_node + args.rollout_num_gpus
         rollout_offset = args.actor_num_nodes * args.actor_num_gpus_per_node
-        if args.use_critic:
+        if args.use_separate_critic:
             num_gpus += args.critic_num_nodes * args.critic_num_gpus_per_node
             critic_offset = args.actor_num_nodes * args.actor_num_gpus_per_node
             rollout_offset += args.critic_num_nodes * args.critic_num_gpus_per_node
@@ -111,13 +111,13 @@ def create_placement_groups(args):
 
     rollout_pg_reordered_bundle_indices = actor_pg_reordered_bundle_indices[rollout_offset:]
     rollout_pg_reordered_gpu_ids = actor_pg_reordered_gpu_ids[rollout_offset:]
-    if args.use_critic:
+    if args.use_separate_critic:
         critic_pg_reordered_bundle_indices = actor_pg_reordered_bundle_indices[critic_offset:]
         critic_pg_reordered_gpu_ids = actor_pg_reordered_gpu_ids[critic_offset:]
 
     return {
         "actor": (pg, actor_pg_reordered_bundle_indices, actor_pg_reordered_gpu_ids),
-        "critic": (pg, critic_pg_reordered_bundle_indices, critic_pg_reordered_gpu_ids) if args.use_critic else None,
+        "critic": (pg, critic_pg_reordered_bundle_indices, critic_pg_reordered_gpu_ids) if args.use_separate_critic else None,
         "rollout": (pg, rollout_pg_reordered_bundle_indices, rollout_pg_reordered_gpu_ids),
     }
 
@@ -143,7 +143,7 @@ async def create_training_models(args, pgs, rollout_manager):
         role="actor",
         with_ref=args.kl_coef != 0 or args.use_kl_loss,
     )
-    if args.use_critic:
+    if args.use_separate_critic:
         critic_model = allocate_train_group(
             args=args,
             num_nodes=args.critic_num_nodes,
@@ -162,7 +162,7 @@ async def create_training_models(args, pgs, rollout_manager):
     if args.start_rollout_id is None:
         args.start_rollout_id = start_rollout_ids[0]
 
-    if args.use_critic:
+    if args.use_separate_critic:
         await critic_init_task
         await actor_model.connect(critic_model)
 
