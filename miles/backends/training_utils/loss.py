@@ -986,6 +986,7 @@ def value_loss_function(
         total_lengths=batch["total_lengths"],
         response_lengths=batch["response_lengths"],
         max_seq_lens=batch.get("max_seq_lens", None),
+        apply_temperature=not getattr(args, "share_backbone_critic", False),
     )
     values = torch.cat([value.flatten() for value in values["values"]], dim=0)
 
@@ -1132,6 +1133,12 @@ def loss_function(
         )
     else:
         loss, log = func(args, batch, logits, sum_of_sample_mean)
+
+    current_values = batch.get("current_values")
+    if getattr(args, "share_backbone_critic", False) and current_values is not None:
+        value_loss, value_log = value_loss_function(args, batch, current_values, sum_of_sample_mean)
+        loss = loss + getattr(args, "vf_coef", 1.0) * value_loss
+        log.update(value_log)
 
     # With allgather-CP, some CP ranks may have no loss-contributing tokens (e.g., all
     # padding). Without this, gradient doesn't flow through their attention path, so
