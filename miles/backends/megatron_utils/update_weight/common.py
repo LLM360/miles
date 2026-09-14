@@ -11,7 +11,7 @@ from megatron.core import mpu
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from ray.actor import ActorHandle
 
-from miles.backends.megatron_utils.misc_utils import strip_param_name_prefix
+from miles.backends.megatron_utils.misc_utils import is_value_head_param_name, strip_param_name_prefix
 from miles.utils.types import ParamInfo
 
 logger = logging.getLogger(__name__)
@@ -167,6 +167,8 @@ def _named_params_and_buffers_vanilla(model: Sequence[torch.nn.Module]) -> Itera
             return f"vp_stages.{vp_stage}.{strip_param_name_prefix(name)}"
 
         for name, param in model_module.named_parameters():
+            if is_value_head_param_name(name):
+                continue
             yield _compute_fqn(name), param
 
         for name, buffer in model_module.named_buffers():
@@ -200,6 +202,9 @@ def _named_params_and_buffers_global(
             # for model without ddp wrap
             if not name.startswith("module.module."):
                 name = "module." + name
+
+            if is_value_head_param_name(name):
+                continue
 
             decoder_layers_pattern = r"module\.module\.decoder\.layers\.(\d+)\.(.+)"
             match = re.match(decoder_layers_pattern, name)
