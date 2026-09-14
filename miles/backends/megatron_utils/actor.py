@@ -778,6 +778,7 @@ class MegatronTrainRayActor(TrainRayActor):
         data_iterator: list[DataIterator],
         num_microbatches: list[int],
         store_prefix: str = "",
+        collect_values: bool = False,
     ) -> dict[str, list[torch.Tensor]]:
 
         with timer(f"{store_prefix}log_probs"):
@@ -788,6 +789,26 @@ class MegatronTrainRayActor(TrainRayActor):
                 data_iterator,
                 num_microbatches,
                 store_prefix=store_prefix,
+                collect_values=collect_values,
+            )
+
+    def compute_values(
+        self,
+        data_iterator: list[DataIterator],
+        num_microbatches: list[int],
+    ) -> dict[str, list[torch.Tensor]]:
+        def _no_logits_collect(logits, **kwargs):
+            return {}
+
+        with timer("values"):
+            return forward_only(
+                _no_logits_collect,
+                self.args,
+                self.model,
+                data_iterator,
+                num_microbatches,
+                store_prefix="",
+                collect_values=True,
             )
 
     def train(self, rollout_id: int, rollout_data_ref: Box) -> None:
@@ -874,7 +895,11 @@ class MegatronTrainRayActor(TrainRayActor):
                         )
                     )
                 self._switch_model("old_actor" if self.args.keep_old_actor else "actor")
-                if not self.args.use_rollout_logprobs or self.args.get_mismatch_metrics:
+                need_actor_logprob = not self.args.use_rollout_logprobs or self.args.get_mismatch_metrics
+                collect_values_with_logprob = (
+                    self.args.share_backbone_critic and need_actor_logprob and not self.args.keep_old_actor
+                )
+                if need_actor_logprob:
                     for m in all_replay_managers:
                         if m.enabled:
                             if self._use_rollout_replay(m):
@@ -886,13 +911,14 @@ class MegatronTrainRayActor(TrainRayActor):
                             data_iterator,
                             num_microbatches,
                             store_prefix="",
+                            collect_values=collect_values_with_logprob,
                         )
                     )
                     for m in all_replay_managers:
                         if self._use_rollout_replay(m):
                             m.clear_all_forward()
 
-                if self.args.use_critic:
+                if self.args.use_separate_critic:
                     sync_actor_critic_data(
                         self.args,
                         rollout_data,
@@ -900,6 +926,9 @@ class MegatronTrainRayActor(TrainRayActor):
                     )
                 if self._active_model_tag != "actor":
                     self._switch_model("actor")
+
+                if self.args.share_backbone_critic and "values" not in rollout_data:
+                    rollout_data.update(self.compute_values(data_iterator, num_microbatches))
 
                 # Calculate adv and returns. Need to performed before training (instead of on the fly),
                 # because we may need normalize the whole rollout.
