@@ -33,7 +33,7 @@ from ..training_utils.log_utils import (
     log_train_step,
     save_train_step_counter,
 )
-from ..training_utils.loss import loss_function
+from ..training_utils.loss import get_values, loss_function
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint, save_checkpoint, save_checkpoint_with_lora
 from .ci_utils import (
@@ -44,7 +44,7 @@ from .ci_utils import (
 )
 from .initialize import is_megatron_main_rank
 from .lora_utils import is_lora_enabled, is_lora_model
-from .model_provider import get_model_provider_func
+from .model_provider import get_model_provider_func, pop_last_values
 from .parallel import get_packed_seq_params
 
 logger = logging.getLogger(__name__)
@@ -194,6 +194,7 @@ def forward_only(
     data_iterator: Sequence[DataIterator],
     num_microbatches: Sequence[int],
     store_prefix: str = "",
+    collect_values: bool = False,
 ) -> dict[str, list[torch.Tensor]]:
     """Run forward passes only and collect non-loss outputs (e.g., logprobs).
 
@@ -268,15 +269,35 @@ def forward_only(
             **(batch["multimodal_train_inputs"] if batch["multimodal_train_inputs"] is not None else {}),
         )
 
-        return output_tensor, partial(
-            f,
-            args=args,
-            unconcat_tokens=unconcat_tokens,
-            total_lengths=total_lengths,
-            response_lengths=response_lengths,
-            with_entropy=args.use_rollout_entropy,
-            max_seq_lens=batch.get("max_seq_lens", None),
-        )
+        values_tensor = pop_last_values(model) if collect_values else None
+
+        def collect(logits: torch.Tensor) -> dict[str, list[torch.Tensor]]:
+            result = f(
+                logits,
+                args=args,
+                unconcat_tokens=unconcat_tokens,
+                total_lengths=total_lengths,
+                response_lengths=response_lengths,
+                with_entropy=args.use_rollout_entropy,
+                max_seq_lens=batch.get("max_seq_lens", None),
+            )
+            if values_tensor is not None:
+                result.update(
+                    # get the value which dont depened on logits
+                    get_values(
+                        values_tensor,
+                        args=args,
+                        unconcat_tokens=unconcat_tokens,
+                        total_lengths=total_lengths,
+                        response_lengths=response_lengths,
+                        max_seq_lens=batch.get("max_seq_lens", None),
+                        apply_temperature=False,
+                    )
+                )
+            return result
+        # output_tensor = policy logits. Megatron will call collect(output_tensor).
+        # Values are sliced from values_tensor (closure), not from those logits.
+        return output_tensor, collect
 
     # Turn on evaluation mode which disables dropout.
     for model_module in model:
