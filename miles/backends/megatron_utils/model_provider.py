@@ -23,6 +23,24 @@ from miles.utils.replay_base import routing_replay_manager
 logger = logging.getLogger(__name__)
 
 
+def _get_mova_model_components():
+    """Import MoVA components only when the architecture is requested.
+
+    Keeping this import lazy preserves compatibility with ordinary Megatron
+    installations that have not yet taken the native MoVA extension.
+    """
+
+    try:
+        from megatron.core.models.gpt.mova_layer_specs import get_mova_gpt_decoder_block_spec
+        from megatron.core.transformer.mova import MoVATransformerConfig
+    except ImportError as error:
+        raise RuntimeError(
+            "Native MoVA was requested, but this Megatron installation does not "
+            "provide MoVATransformerConfig/get_mova_gpt_decoder_block_spec"
+        ) from error
+    return MoVATransformerConfig, get_mova_gpt_decoder_block_spec
+
+
 # Adapt from https://github.com/volcengine/verl/blob/c3b20575d2bc815fcccd84bddb4c0401fc4b632b/verl/models/llama/megatron/layers/parallel_linear.py#L82
 class LinearForLastLayer(torch.nn.Linear):
     def __init__(
@@ -59,6 +77,14 @@ def get_model_provider_func(
     args: argparse.Namespace,
     role: Literal["actor", "critic"] = "actor",
 ):
+    is_mova = getattr(args, "mova_num_value_experts", 0) > 0
+    if is_mova:
+        # Validate before any provider branch so MoVA can never silently build a
+        # custom/ordinary provider or select an unsupported converter.
+        from miles.utils.arguments import validate_mova_args
+
+        validate_mova_args(args)
+
     # Support custom model provider path (similar to --custom-rm-path for reward models)
     if getattr(args, "custom_model_provider_path", None):
 
@@ -147,9 +173,21 @@ def get_model_provider_func(
 
         # Experimental loading arguments from yaml
         assert config is None, "miles builds the config from args, so it expects config to be None"
-        config = core_transformer_config_from_args(args)
+        if is_mova:
+            mova_config_class, get_mova_block_spec = _get_mova_model_components()
+            config = core_transformer_config_from_args(args, mova_config_class)
+        else:
+            config = core_transformer_config_from_args(args)
 
-        if args.spec is not None:
+        if is_mova:
+            transformer_layer_spec = get_mova_block_spec(
+                config,
+                use_transformer_engine=use_te,
+                moe_grouped_gemm=args.moe_grouped_gemm,
+                moe_use_legacy_grouped_gemm=args.moe_use_legacy_grouped_gemm,
+                vp_stage=vp_stage,
+            )
+        elif args.spec is not None:
             transformer_layer_spec = import_module(args.spec)
             # Allow the spec to be a function so that user can use customized Megatron easier.
             if callable(transformer_layer_spec):
