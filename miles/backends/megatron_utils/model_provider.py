@@ -92,6 +92,9 @@ class SharedValueHead(torch.nn.Module):
             for module in self.net.modules():
                 if isinstance(module, torch.nn.Linear):
                     module.weight.sequence_parallel = True
+                    if module.bias is not None:
+                        module.bias.sequence_parallel = True
+
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
