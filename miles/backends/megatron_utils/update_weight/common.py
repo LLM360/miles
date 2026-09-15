@@ -139,11 +139,12 @@ def named_params_and_buffers(
     model: Sequence[torch.nn.Module],
     convert_to_global_name: bool = True,
     translate_gpu_to_cpu: bool = False,
+    include_value_head: bool = False,
 ) -> Iterator[tuple[str, torch.Tensor]]:
     if convert_to_global_name:
-        ans = _named_params_and_buffers_global(args, model)
+        ans = _named_params_and_buffers_global(args, model, include_value_head=include_value_head)
     else:
-        ans = _named_params_and_buffers_vanilla(model)
+        ans = _named_params_and_buffers_vanilla(model, include_value_head=include_value_head)
 
     if translate_gpu_to_cpu:
         ans = ((name, _maybe_get_cpu_backup(tensor)) for name, tensor in ans)
@@ -160,14 +161,16 @@ def _maybe_get_cpu_backup(x: torch.Tensor):
     return x
 
 
-def _named_params_and_buffers_vanilla(model: Sequence[torch.nn.Module]) -> Iterator[tuple[str, torch.Tensor]]:
+def _named_params_and_buffers_vanilla(
+    model: Sequence[torch.nn.Module], include_value_head: bool = False
+) -> Iterator[tuple[str, torch.Tensor]]:
     for vp_stage, model_module in enumerate(model):
 
         def _compute_fqn(name, vp_stage=vp_stage):
             return f"vp_stages.{vp_stage}.{strip_param_name_prefix(name)}"
 
         for name, param in model_module.named_parameters():
-            if is_value_head_param_name(name):
+            if is_value_head_param_name(name) and not include_value_head:
                 continue
             yield _compute_fqn(name), param
 
@@ -179,7 +182,7 @@ def _named_params_and_buffers_vanilla(model: Sequence[torch.nn.Module]) -> Itera
 
 
 def _named_params_and_buffers_global(
-    args: Namespace, model: Sequence[torch.nn.Module]
+    args: Namespace, model: Sequence[torch.nn.Module], include_value_head: bool = False
 ) -> Iterator[tuple[str, torch.Tensor]]:
     """
     Yield (global_name, param/buffer) with consistent names across PP/EP. Adjusts indices for
@@ -203,7 +206,7 @@ def _named_params_and_buffers_global(
             if not name.startswith("module.module."):
                 name = "module." + name
 
-            if is_value_head_param_name(name):
+            if is_value_head_param_name(name) and not include_value_head:
                 continue
 
             decoder_layers_pattern = r"module\.module\.decoder\.layers\.(\d+)\.(.+)"

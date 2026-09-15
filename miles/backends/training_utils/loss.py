@@ -1140,6 +1140,7 @@ def loss_function(
             sum_of_sample_mean,
         )
     else:
+        # This is the usual path when not training only critic. 
         loss, log = func(args, batch, logits, sum_of_sample_mean)
 
     if share_backbone and current_values is not None and not share_critic_only:

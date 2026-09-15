@@ -6,7 +6,7 @@ from contextlib import nullcontext
 from typing import Literal
 
 import torch
-from megatron.core import tensor_parallel
+from megatron.core import mpu, tensor_parallel
 from megatron.core.models.gpt import GPTModel
 from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_decoder_block_spec,
@@ -38,8 +38,11 @@ class LinearForLastLayer(torch.nn.Linear):
         if self.sequence_parallel:
             self.weight.sequence_parallel = True
 
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
         self.weight.data.normal_(mean=0.0, std=0.02)
-        if bias:
+        if self.bias is not None:
             self.bias.data.zero_()
 
     def forward(
@@ -87,6 +90,48 @@ def maybe_attach_shared_value_head(model: GPTModel, args, role: str, post_proces
     if post_process and role == "actor" and getattr(args, "share_backbone_critic", False):
         return attach_shared_value_head(model)
     return model
+
+
+def _broadcast_replicated_param(tensor: torch.Tensor) -> None:
+    if not torch.distributed.is_initialized():
+        return
+    if mpu.get_tensor_model_parallel_world_size() > 1:
+        torch.distributed.broadcast(
+            tensor, src=mpu.get_tensor_model_parallel_src_rank(), group=mpu.get_tensor_model_parallel_group()
+        )
+    if mpu.get_data_parallel_world_size(with_context_parallel=True) > 1:
+        torch.distributed.broadcast(
+            tensor,
+            src=mpu.get_data_parallel_src_rank(with_context_parallel=True),
+            group=mpu.get_data_parallel_group(with_context_parallel=True),
+        )
+
+
+def maybe_reinit_zero_shared_value_head(model, force: bool = False) -> bool:
+    """Re-init value_head after a policy-only load.
+
+    Dist load ignores missing keys and can leave constructor weights in the
+    module while optimizer/DDP main shards stay at zero. Do not skip just
+    because the tensor is currently nonzero. ``force`` is for finetune /
+    no-load-optim (no trained head in the ckpt). Without force, only re-init
+    an all-zero head. Skip a resumed shared ckpt that already has a real head.
+    Last PP stage only.
+    """
+    modules = model if isinstance(model, (list, tuple)) else [model]
+    reinited = False
+    for module in modules:
+        inner = unwrap_to_inner_module(module)
+        value_head = getattr(inner, "value_head", None)
+        if value_head is None:
+            continue
+        if not force and value_head.weight.detach().float().abs().max().item() > 0:
+            continue
+        value_head.reset_parameters()
+        _broadcast_replicated_param(value_head.weight.data)
+        if value_head.bias is not None:
+            _broadcast_replicated_param(value_head.bias.data)
+        reinited = True
+    return reinited
 
 
 def unwrap_to_inner_module(model: torch.nn.Module) -> torch.nn.Module:

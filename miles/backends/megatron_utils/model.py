@@ -45,7 +45,7 @@ from .ci_utils import (
 from .initialize import is_megatron_main_rank
 from .lora_utils import is_lora_enabled, is_lora_model
 from .misc_utils import zero_non_value_head_grads
-from .model_provider import get_model_provider_func, pop_last_values
+from .model_provider import get_model_provider_func, maybe_reinit_zero_shared_value_head, pop_last_values
 from .parallel import get_packed_seq_params
 
 logger = logging.getLogger(__name__)
@@ -884,6 +884,15 @@ def initialize_model_and_optimizer(
         checkpointing_context={},
         skip_load_to_model_and_opt=False,
     )
+    force_value_head_reinit = bool(getattr(args, "finetune", False) or getattr(args, "no_load_optim", False))
+    if maybe_reinit_zero_shared_value_head(model, force=force_value_head_reinit):
+        if optimizer is not None:
+            optimizer.reload_model_params()
+        if is_megatron_main_rank():
+            logger.info(
+                "share-backbone-critic: reinitialized value_head after policy checkpoint load "
+                f"(force={force_value_head_reinit})"
+            )
     check_peak_gpu_memory_after_load(args)
     clear_memory()
 
