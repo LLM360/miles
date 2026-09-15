@@ -487,6 +487,7 @@ def train_one_step(
             output_tensor = model(**forward_kwargs)
             # Packed [1, T, 1] from value_head. batch["values"] remains V_old.
             if getattr(args, "share_backbone_critic", False):
+                print("@dhawgupta: train_one_step stash current_values", flush=True)
                 batch["current_values"] = pop_last_values(model)
 
         for m, old_stage in zip(all_replay_managers, old_stages, strict=True):
@@ -540,6 +541,7 @@ def train_one_step(
             # creates optimizer state on first step, so release inactive blocks here
             # before tiny state allocations fail with reserved-but-free memory.
             clear_memory()
+            print("@dhawgupta: optimizer.step", flush=True)
             update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
 
             assert update_successful
@@ -885,6 +887,7 @@ def initialize_model_and_optimizer(
         skip_load_to_model_and_opt=False,
     )
     force_value_head_reinit = bool(getattr(args, "finetune", False) or getattr(args, "no_load_optim", False))
+    print("@dhawgupta: after load_checkpoint, maybe reinit value_head", flush=True)
     if maybe_reinit_zero_shared_value_head(model, force=force_value_head_reinit):
         if optimizer is not None:
             optimizer.reload_model_params()

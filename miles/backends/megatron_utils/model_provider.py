@@ -83,6 +83,7 @@ def attach_shared_value_head(model: GPTModel) -> GPTModel:
         return original_postprocess(hidden_states, *args, **kwargs)
 
     model._postprocess = _postprocess_with_value
+    print("@dhawgupta: attach shared value_head", flush=True)
     return model
 
 
@@ -126,6 +127,7 @@ def maybe_reinit_zero_shared_value_head(model, force: bool = False) -> bool:
             continue
         if not force and value_head.weight.detach().float().abs().max().item() > 0:
             continue
+        print("@dhawgupta: reinit value_head after policy load", flush=True)
         value_head.reset_parameters()
         _broadcast_replicated_param(value_head.weight.data)
         if value_head.bias is not None:
@@ -147,6 +149,7 @@ def pop_last_values(model: torch.nn.Module) -> torch.Tensor | None:
     values = getattr(inner, "_last_values", None)
     if values is not None:
         inner._last_values = None
+        print("@dhawgupta: pop_last_values", flush=True)
     return values
 
 

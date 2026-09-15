@@ -12,6 +12,7 @@ def is_value_head_param_name(name: str) -> bool:
 
 def zero_non_value_head_grads(model) -> None:
     """Zero backbone/LM-head grads so critic-only warmup does not step π."""
+    print("@dhawgupta: zero backbone grads (critic-only warmup)", flush=True)
     modules = model if isinstance(model, (list, tuple)) else [model]
     for module in modules:
         for name, param in module.named_parameters():

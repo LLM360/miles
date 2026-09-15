@@ -618,6 +618,8 @@ class MegatronTrainRayActor(TrainRayActor):
         )
         self._active_model_tag: str | None = "actor"
         self.weights_backuper.backup("actor")
+        
+        print("@dhawgupta: backup actor weights (includes value_head)", flush=True)
 
         if with_ref:
             self.load_other_checkpoint("ref", args.ref_load)
@@ -674,6 +676,8 @@ class MegatronTrainRayActor(TrainRayActor):
         clear_memory(clear_host_memory=True)
         print_memory("before offload model")
         destroy_process_groups()
+        if getattr(self.args, "share_backbone_critic", False):
+            print("@dhawgupta: sleep / offload train", flush=True)
 
         torch_memory_saver.pause()
 
@@ -692,12 +696,16 @@ class MegatronTrainRayActor(TrainRayActor):
         clear_memory()
         reload_process_groups()
         print_memory("after wake_up model")
+        if getattr(self.args, "share_backbone_critic", False):
+            print("@dhawgupta: wake_up train", flush=True)
 
     def _switch_model(self, target_tag: str) -> None:
         if target_tag not in self.weights_backuper.backup_tags:
             raise ValueError(f"Cannot switch to unknown model tag: {target_tag}")
         self.weights_backuper.restore(target_tag)
         self._active_model_tag = target_tag
+        if getattr(self.args, "share_backbone_critic", False):
+            print("@dhawgupta: switch_model restore", flush=True)
 
     def _set_replay_stage(self, stage: str) -> None:
         for m in all_replay_managers:
@@ -900,6 +908,8 @@ class MegatronTrainRayActor(TrainRayActor):
                 collect_values_with_logprob = (
                     self.args.share_backbone_critic and need_actor_logprob and not self.args.keep_old_actor
                 )
+                if self.args.share_backbone_critic:
+                    print("@dhawgupta: snapshot V_old with logprob", flush=True)
                 if need_actor_logprob:
                     for m in all_replay_managers:
                         if m.enabled:
@@ -930,6 +940,7 @@ class MegatronTrainRayActor(TrainRayActor):
 
                 # in case values don't exist
                 if self.args.share_backbone_critic and "values" not in rollout_data:
+                    print("@dhawgupta: fallback compute_values", flush=True)
                     rollout_data.update(self.compute_values(data_iterator, num_microbatches))
 
                 # Calculate adv and returns. Need to performed before training (instead of on the fly),
@@ -946,6 +957,8 @@ class MegatronTrainRayActor(TrainRayActor):
             self.args.share_backbone_critic_only = (
                 self.args.share_backbone_critic and rollout_id < self.args.num_critic_only_steps
             )
+            if self.args.share_backbone_critic:
+                print("@dhawgupta: actor train step", flush=True)
             try:
                 with timer("actor_train"):
                     train(

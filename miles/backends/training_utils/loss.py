@@ -1129,6 +1129,7 @@ def loss_function(
 
     if share_critic_only:
         assert current_values is not None, "share-backbone critic warmup requires current_values"
+        print("@dhawgupta: loss critic-only warmup", flush=True)
         loss, log = value_loss_function(args, batch, current_values, sum_of_sample_mean)
         loss = getattr(args, "vf_coef", 1.0) * loss
     elif args.recompute_loss_function:
@@ -1144,6 +1145,7 @@ def loss_function(
         loss, log = func(args, batch, logits, sum_of_sample_mean)
 
     if share_backbone and current_values is not None and not share_critic_only:
+        print("@dhawgupta: loss pg + value", flush=True)
         value_loss, value_log = value_loss_function(args, batch, current_values, sum_of_sample_mean)
         loss = loss + getattr(args, "vf_coef", 1.0) * value_loss
         log.update(value_log)
