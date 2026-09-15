@@ -58,26 +58,89 @@ class LinearForLastLayer(torch.nn.Linear):
         return logits, None
 
 
-def attach_shared_value_head(model: GPTModel) -> GPTModel:
+class SharedValueHead(torch.nn.Module):
+    """Scalar critic on last-PP hidden states: linear or a small SiLU MLP."""
+
+    def __init__(
+        self,
+        input_size: int,
+        *,
+        config: TransformerConfig,
+        head_type: str = "linear",
+        mlp_hidden_size: int | None = None,
+        mlp_num_hidden_layers: int = 1,
+        bias: bool = True,
+    ) -> None:
+        super().__init__()
+        self.sequence_parallel = config.sequence_parallel
+        self.head_type = head_type
+        hidden = mlp_hidden_size if mlp_hidden_size is not None else input_size
+        layers: list[torch.nn.Module] = []
+        if head_type == "linear":
+            layers.append(torch.nn.Linear(input_size, 1, bias=bias))
+        else:
+            in_features = input_size
+            for _ in range(mlp_num_hidden_layers):
+                layers.append(torch.nn.Linear(in_features, hidden, bias=bias))
+                layers.append(torch.nn.SiLU())
+                in_features = hidden
+            layers.append(torch.nn.Linear(in_features, 1, bias=bias))
+        self.net = torch.nn.Sequential(*layers)
+        if self.sequence_parallel:
+            last = None
+            for module in self.net.modules():
+                if isinstance(module, torch.nn.Linear):
+                    last = module
+            if last is not None:
+                last.weight.sequence_parallel = True
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        for module in self.net.modules():
+            if isinstance(module, torch.nn.Linear):
+                module.weight.data.normal_(mean=0.0, std=0.02)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+
+    def forward(
+        self,
+        input_: torch.Tensor,
+        weight: torch.Tensor | None = None,
+        runtime_gather_output: bool | None = None,
+    ) -> tuple[torch.Tensor, None]:
+        logits = self.net(input_).float()
+        if self.sequence_parallel:
+            logits = tensor_parallel.gather_from_sequence_parallel_region(logits, tensor_parallel_output_grad=False)
+        return logits, None
+
+
+def attach_shared_value_head(model: GPTModel, args) -> GPTModel:
     """Add a scalar value head on the last pipeline stage.
 
-    Values are ``g_phi(stopgrad(h_t))``: critic grads update ``value_head`` only.
-    Policy logits still come from the attached hidden states.
+    Default is ``g_phi(stopgrad(h_t))``. ``--share-backbone-critic-no-stopgrad``
+    lets value grads reach the policy backbone. Policy logits still come from
+    the attached hidden states.
     """
     if not getattr(model, "post_process", False):
         return model
     if getattr(model, "value_head", None) is not None:
         return model
 
-    model.value_head = LinearForLastLayer(
+    stopgrad = getattr(args, "share_backbone_critic_stopgrad", True)
+    head_type = getattr(args, "share_backbone_critic_head_type", "linear")
+    model.value_head = SharedValueHead(
         input_size=model.config.hidden_size,
-        output_size=1,
         config=model.config,
+        head_type=head_type,
+        mlp_hidden_size=getattr(args, "share_backbone_critic_mlp_hidden_size", None),
+        mlp_num_hidden_layers=getattr(args, "share_backbone_critic_mlp_num_hidden_layers", 1),
     )
+    model.value_head.stopgrad_hidden = stopgrad
     original_postprocess = model._postprocess
 
     def _postprocess_with_value(hidden_states, *args, **kwargs):
-        values, _ = model.value_head(hidden_states.detach())
+        hidden = hidden_states.detach() if stopgrad else hidden_states
+        values, _ = model.value_head(hidden)
         # Match GPTModel logits layout: [s, b, 1] -> [b, s, 1].
         model._last_values = values.transpose(0, 1).contiguous()
         return original_postprocess(hidden_states, *args, **kwargs)
@@ -89,7 +152,7 @@ def attach_shared_value_head(model: GPTModel) -> GPTModel:
 
 def maybe_attach_shared_value_head(model: GPTModel, args, role: str, post_process: bool) -> GPTModel:
     if post_process and role == "actor" and getattr(args, "share_backbone_critic", False):
-        return attach_shared_value_head(model)
+        return attach_shared_value_head(model, args)
     return model
 
 
@@ -125,13 +188,12 @@ def maybe_reinit_zero_shared_value_head(model, force: bool = False) -> bool:
         value_head = getattr(inner, "value_head", None)
         if value_head is None:
             continue
-        if not force and value_head.weight.detach().float().abs().max().item() > 0:
+        if not force and any(p.detach().float().abs().max().item() > 0 for p in value_head.parameters()):
             continue
         print("@dhawgupta: reinit value_head after policy load", flush=True)
         value_head.reset_parameters()
-        _broadcast_replicated_param(value_head.weight.data)
-        if value_head.bias is not None:
-            _broadcast_replicated_param(value_head.bias.data)
+        for param in value_head.parameters():
+            _broadcast_replicated_param(param.data)
         reinited = True
     return reinited
 

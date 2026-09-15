@@ -880,9 +880,9 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Attach a scalar value head to the actor and train it from stop-gradient "
+                    "Attach a scalar value head to the actor and train it from "
                     "hidden states instead of allocating a separate critic model. "
-                    "Requires --advantage-estimator ppo."
+                    "Default stops the value gradient at h_t. Requires --advantage-estimator ppo."
                 ),
             )
             parser.add_argument(
@@ -892,6 +892,43 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help=(
                     "Coefficient on the clipped value loss when --share-backbone-critic is set. "
                     "Unused for a separate critic, which uses --loss-type value_loss."
+                ),
+            )
+            parser.add_argument(
+                "--share-backbone-critic-no-stopgrad",
+                action="store_true",
+                default=False,
+                help=(
+                    "Let value-loss gradients flow into the shared policy backbone. "
+                    "Default stops the gradient at h_t so only the value head is trained by L_v."
+                ),
+            )
+            parser.add_argument(
+                "--share-backbone-critic-head-type",
+                type=str,
+                choices=["linear", "mlp"],
+                default="linear",
+                help=(
+                    "Shared critic head. linear is V = W h + b. mlp is a SiLU feedforward "
+                    "with --share-backbone-critic-mlp-num-hidden-layers hidden layers."
+                ),
+            )
+            parser.add_argument(
+                "--share-backbone-critic-mlp-hidden-size",
+                type=int,
+                default=None,
+                help=(
+                    "Hidden width of the shared MLP value head. Default is the model hidden size. "
+                    "Unused when --share-backbone-critic-head-type linear."
+                ),
+            )
+            parser.add_argument(
+                "--share-backbone-critic-mlp-num-hidden-layers",
+                type=int,
+                default=1,
+                help=(
+                    "Number of hidden Linear+SiLU layers before the scalar output. "
+                    "Unused when --share-backbone-critic-head-type linear."
                 ),
             )
             parser.add_argument(
@@ -2016,6 +2053,14 @@ def miles_validate_args(args):
     # Shared-backbone critic is PPO-only. Leave the flag set as a no-op for GRPO/etc.
     args.share_backbone_critic = bool(getattr(args, "share_backbone_critic", False)) and args.use_critic
     args.use_separate_critic = args.use_critic and not args.share_backbone_critic
+    args.share_backbone_critic_stopgrad = args.share_backbone_critic and not bool(
+        getattr(args, "share_backbone_critic_no_stopgrad", False)
+    )
+    if not args.share_backbone_critic:
+        args.share_backbone_critic_stopgrad = True
+    if args.share_backbone_critic and args.share_backbone_critic_head_type == "mlp":
+        if args.share_backbone_critic_mlp_num_hidden_layers < 1:
+            raise ValueError("--share-backbone-critic-mlp-num-hidden-layers must be >= 1")
     if args.share_backbone_critic and getattr(args, "dist_ckpt_strictness", "assume_ok_unexpected") == "assume_ok_unexpected":
         args.dist_ckpt_strictness = "log_unexpected"
         logger.info(
