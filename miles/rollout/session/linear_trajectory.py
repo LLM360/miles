@@ -54,6 +54,7 @@ class LinearTrajectory:
     records: list[SessionRecord] = field(default_factory=list)
     trajectory_token_ids: list[list[int]] = field(default_factory=list)
     num_assistant: int = 0
+    capture_sampling_mask: bool = False
 
     @property
     def token_ids(self) -> list[int]:
@@ -312,9 +313,9 @@ class SessionRegistry:
         self.tito_tokenizer = tito_tokenizer
         self.comparator = tito_tokenizer.create_comparator()
 
-    def create_session(self) -> str:
+    def create_session(self, *, capture_sampling_mask: bool = False) -> str:
         session_id = uuid.uuid4().hex
-        self.sessions[session_id] = LinearTrajectory()
+        self.sessions[session_id] = LinearTrajectory(capture_sampling_mask=capture_sampling_mask)
         return session_id
 
     def get_session(self, session_id: str) -> LinearTrajectory:

@@ -668,7 +668,13 @@ def chunked_gae(
 
 
 def calculate_log_probs_and_entropy(
-    logits, tokens, tp_group, with_entropy: bool = False, chunk_size: int = -1, true_on_policy: bool = False
+    logits,
+    tokens,
+    tp_group,
+    with_entropy: bool = False,
+    chunk_size: int = -1,
+    true_on_policy: bool = False,
+    sampling_mask: torch.Tensor | None = None,
 ):
     if true_on_policy:
         return _calculate_log_probs_and_entropy_true_on_policy(
@@ -687,11 +693,22 @@ def calculate_log_probs_and_entropy(
             num_chunks = (logits.size(0) - 1) // chunk_size + 1
             tokens_chunks = tokens.chunk(num_chunks, dim=0)
             logits_chunks = logits.chunk(num_chunks, dim=0)
+            sampling_mask_chunks = (
+                sampling_mask.chunk(num_chunks, dim=0) if sampling_mask is not None else [None] * num_chunks
+            )
             log_probs = []
-            for tokens_chunk, logits_chunk in zip(tokens_chunks, logits_chunks, strict=True):
+            for tokens_chunk, logits_chunk, mask_chunk in zip(
+                tokens_chunks, logits_chunks, sampling_mask_chunks, strict=True
+            ):
                 if logits_chunk.dtype != torch.float32:
                     logits_chunk = logits_chunk.float()
-                log_prob = compute_log_probs(logits_chunk.clone(), tokens_chunk, tp_group)
+                log_prob_logits = logits_chunk.clone()
+                if mask_chunk is not None:
+                    # CE gradients are already zero outside the recorded support;
+                    # no_grad avoids saving the dense mask for backward.
+                    with torch.no_grad():
+                        log_prob_logits.masked_fill_(~mask_chunk, float("-inf"))
+                log_prob = compute_log_probs(log_prob_logits, tokens_chunk, tp_group)
                 log_probs.append(log_prob)
             log_prob = torch.cat(log_probs, dim=0)
             if with_entropy:
@@ -705,7 +722,11 @@ def calculate_log_probs_and_entropy(
         else:
             if logits.dtype != torch.float32:
                 logits = logits.float()
-            log_prob = compute_log_probs(logits.clone(), tokens, tp_group)
+            log_prob_logits = logits.clone()
+            if sampling_mask is not None:
+                with torch.no_grad():
+                    log_prob_logits.masked_fill_(~sampling_mask, float("-inf"))
+            log_prob = compute_log_probs(log_prob_logits, tokens, tp_group)
             if with_entropy:
                 entropy = compute_entropy_from_logits(logits.clone(), tp_group)
     else:

@@ -10,11 +10,17 @@ from unittest.mock import patch
 import pytest
 import requests
 
+from miles.rollout.generate_utils.openai_endpoint_utils import (
+    apply_merged_session_sample,
+    truncate_samples_by_total_tokens,
+)
 from miles.rollout.session.linear_trajectory import LinearTrajectory
 from miles.rollout.session.session_server import SessionServer
+from miles.rollout.session.session_types import MergedSessionSample
 from miles.utils.http_utils import find_available_port
 from miles.utils.test_utils.mock_sglang_server import MockSGLangServer, ProcessResult, with_mock_server
 from miles.utils.test_utils.uvicorn_thread_server import UvicornThreadServer
+from miles.utils.types import Sample
 
 
 @pytest.fixture(scope="class")
@@ -37,6 +43,13 @@ def router_env():
             "output_token_logprobs": output_token_logprobs,
             "completion_tokens": len(output_token_logprobs),
         }
+        if payload.get("return_sampling_mask") and payload.get("model") != "omit-sampling-mask":
+            output_ids = [token_id for _, token_id in output_token_logprobs]
+            choice["meta_info"].update(
+                output_token_sampling_mask=[[token_id] for token_id in output_ids],
+                output_token_sampling_logprobs=[0.0] * len(output_ids),
+                output_token_sampling_mask_length=len(output_ids),
+            )
         return response
 
     with patch.object(MockSGLangServer, "_compute_chat_completions_response", new=patched_chat_response):
@@ -47,6 +60,8 @@ def router_env():
                 chat_template_path=None,
                 trajectory_manager="linear_trajectory",
                 session_server_instance_id=uuid.uuid4().hex,
+                rollout_temperature=1.0,
+                tito_allowed_append_roles=["system"],
             )
             server_obj = SessionServer(args, backend_url=backend.url)
 
@@ -57,7 +72,7 @@ def router_env():
             url = f"http://127.0.0.1:{port}"
 
             try:
-                yield SimpleNamespace(url=url)
+                yield SimpleNamespace(url=url, backend=backend)
             finally:
                 server.stop()
 
@@ -150,6 +165,68 @@ class TestSessionProxy:
         record = records[0]
         assert record["path"] == "/v1/chat/completions"
         assert record["status_code"] == 200
+
+    def test_top_p_sampling_replay_contract(self, router_env):
+        capture_fields = {
+            "output_token_sampling_mask",
+            "output_token_sampling_logprobs",
+            "output_token_sampling_mask_length",
+        }
+        session_id = requests.post(
+            f"{router_env.url}/sessions", json={"capture_sampling_mask": True}, timeout=5.0
+        ).json()["session_id"]
+
+        def chat(**overrides):
+            payload = {
+                "messages": [{"role": "user", "content": "What is 1+2?"}],
+                "temperature": 1.0,
+                "top_p": 0.9,
+            }
+            payload.update(overrides)
+            return requests.post(
+                f"{router_env.url}/sessions/{session_id}/v1/chat/completions",
+                json=payload,
+                timeout=10.0,
+            )
+
+        response = chat(return_sampling_mask=False)
+        assert response.status_code == 200
+        assert router_env.backend.request_log[-1]["top_p"] == 0.9
+        assert router_env.backend.request_log[-1]["return_sampling_mask"] is True
+        assert capture_fields.isdisjoint(response.json()["choices"][0]["meta_info"])
+        before_failure = requests.get(f"{router_env.url}/sessions/{session_id}", timeout=5.0).json()
+        first_record = before_failure["records"][0]
+        assert set(first_record["rollout_sampling_mask"]) == {"ids", "offsets"}
+        assert first_record["rollout_sampling_log_probs"]
+        assert capture_fields.isdisjoint(first_record["response"]["choices"][0]["meta_info"])
+
+        second_messages = [
+            {"role": "user", "content": "What is 1+2?"},
+            response.json()["choices"][0]["message"],
+            {"role": "system", "content": "second turn"},
+        ]
+        assert chat(messages=second_messages, model="omit-sampling-mask").status_code == 502
+        after_failure = requests.get(f"{router_env.url}/sessions/{session_id}", timeout=5.0).json()
+        assert after_failure == before_failure
+
+        assert chat(messages=second_messages).status_code == 200
+        second_state = requests.get(f"{router_env.url}/sessions/{session_id}", timeout=5.0).json()
+        assert len(second_state["records"]) == 2
+        assert all(record["rollout_sampling_mask"] is not None for record in second_state["records"])
+
+        merged_response = requests.get(f"{router_env.url}/sessions/{session_id}/merged", timeout=5.0)
+        assert merged_response.status_code == 200
+        merged = MergedSessionSample.model_validate(merged_response.json()["sample"])
+        sample = apply_merged_session_sample(SimpleNamespace(), Sample(), merged)
+        assert 0 in sample.loss_mask and 1 in sample.loss_mask
+        assert sample.rollout_log_probs == [0.0] * sample.response_length
+        mask = sample.rollout_sampling_mask
+        assert mask.offsets.tolist() == list(range(sample.response_length + 1))
+        assert mask.token_ids.tolist() == sample.tokens[-sample.response_length :]
+
+        sample = truncate_samples_by_total_tokens([sample], len(sample.tokens) - 1, None)[0]
+        assert len(sample.rollout_sampling_mask) == sample.response_length
+        assert sample.rollout_sampling_mask.token_ids.tolist() == sample.tokens[-sample.response_length :]
 
 
 class TestTokenizationOffload:

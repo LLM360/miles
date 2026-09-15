@@ -26,7 +26,7 @@ from miles.utils.types import Sample
 
 MODEL_NAME = "Qwen/Qwen3-0.6B"
 RESPONSE_TEXT = "\\boxed{8}"
-DEFAULT_SAMPLING_PARAMS = {"max_new_tokens": 64, "temperature": 0.7}
+DEFAULT_SAMPLING_PARAMS = {"max_new_tokens": 64, "temperature": 0.7, "top_p": 1.0}
 
 VARIANT_TO_GENERATE_FN_PATH = {
     "old_sglang_rollout": "miles.rollout.sglang_rollout.generate",

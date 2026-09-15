@@ -8,6 +8,8 @@ class SessionRecord(BaseModel):
     request: dict
     response: dict
     status_code: int
+    rollout_sampling_mask: dict[str, str] | None = None
+    rollout_sampling_log_probs: list[float] | None = None
 
 
 class GetSessionResponse(BaseModel):
@@ -22,6 +24,7 @@ class MergedSessionSample(BaseModel):
     response_length: int
     loss_mask: list[int]
     rollout_log_probs: list[float]
+    rollout_sampling_mask: dict[str, str] | None = None
     status: str
     metadata: dict = Field(default_factory=lambda: {"response_decoded": False})
     weight_versions: list[str] = Field(default_factory=list)

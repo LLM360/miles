@@ -5,7 +5,7 @@ import uuid
 
 import orjson
 import pybase64
-from fastapi import Request
+from fastapi import Body, Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
@@ -19,6 +19,7 @@ from miles.rollout.session.session_types import (
 )
 from miles.utils.chat_template_utils import get_tito_tokenizer
 from miles.utils.processing_utils import load_tokenizer
+from miles.utils.types import RolloutSamplingMask
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,19 @@ logger = logging.getLogger(__name__)
 # each other when sharing a Python process (currently they don't, but cheap
 # insurance). The "default" key is used when ``session_server_port`` is unset.
 _worker_stats: dict = {}
+
+
+def _compact_sampling_replay(meta_info: dict) -> tuple[dict[str, str], list[float]]:
+    try:
+        masks = meta_info.pop("output_token_sampling_mask")
+        log_probs = meta_info.pop("output_token_sampling_logprobs")
+        if not (len(masks) == len(log_probs) == meta_info["completion_tokens"] and all(masks)):
+            raise ValueError("expected one nonempty mask and logprob per output token")
+        mask = RolloutSamplingMask.from_rows(masks).to_dict()
+        meta_info.pop("output_token_sampling_mask_length", None)
+        return mask, [float(value) for value in log_probs]
+    except (KeyError, TypeError, ValueError, RuntimeError, OverflowError) as exc:
+        raise UpstreamResponseError(f"invalid sampling-mask metadata: {exc}") from exc
 
 
 def get_worker_stats(port):
@@ -101,8 +115,8 @@ def setup_session_routes(app, backend, args):
         return JSONResponse(status_code=exc.status_code, content={"error": str(exc)})
 
     @app.post("/sessions")
-    async def create_session():
-        session_id = registry.create_session()
+    async def create_session(capture_sampling_mask: bool = Body(False, embed=True)):
+        session_id = registry.create_session(capture_sampling_mask=capture_sampling_mask)
         return {"session_id": session_id}
 
     def _compact_output_token_logprobs(output_token_logprobs):
@@ -176,6 +190,8 @@ def setup_session_routes(app, backend, args):
             response={
                 "choices": [compact_choice],
             },
+            rollout_sampling_mask=record.rollout_sampling_mask,
+            rollout_sampling_log_probs=record.rollout_sampling_log_probs,
         )
 
     def _status_from_finish_reason(finish_reason: str | None) -> str:
@@ -231,6 +247,7 @@ def setup_session_routes(app, backend, args):
         records: list[SessionRecord],
         accumulated_token_ids: list[int],
         max_trim_tokens: int,
+        capture_sampling_mask: bool,
     ) -> MergedSessionSample | None:
         if not records:
             return None
@@ -241,6 +258,7 @@ def setup_session_routes(app, backend, args):
         first_prompt_len: int | None = None
         loss_mask_full = [0] * len(tokens)
         rollout_log_probs_full = [0.0] * len(tokens)
+        sampling_mask_parts = []
         weight_versions: list[str] = []
         prefix_cache_meta_infos: list[dict] = []
         routed_experts = None
@@ -301,6 +319,17 @@ def setup_session_routes(app, backend, args):
                 f"record {i}: trim_count={trim_count} exceeds allowed={allowed}; "
                 f"is_last={is_last}, max_trim_tokens={max_trim_tokens}"
             )
+
+            if capture_sampling_mask:
+                mask = RolloutSamplingMask.from_dict(record.rollout_sampling_mask)
+                obs_start = len(prev_checkpoint) if prev_checkpoint is not None else first_prompt_len
+                sampling_mask_parts.extend(
+                    (
+                        RolloutSamplingMask.singletons(tokens[obs_start:cursor]),
+                        mask.prefix(matched) if trim_count else mask,
+                    )
+                )
+                output_log_probs = record.rollout_sampling_log_probs
 
             for j in range(matched):
                 idx = cursor + j
@@ -364,6 +393,9 @@ def setup_session_routes(app, backend, args):
             response_length=response_length,
             loss_mask=loss_mask_full[first_prompt_len:],
             rollout_log_probs=rollout_log_probs_full[first_prompt_len:],
+            rollout_sampling_mask=(
+                RolloutSamplingMask.concatenate(*sampling_mask_parts).to_dict() if capture_sampling_mask else None
+            ),
             status=final_status,
             metadata={"response_decoded": False},
             weight_versions=weight_versions,
@@ -417,6 +449,7 @@ def setup_session_routes(app, backend, args):
             records_to_merge,
             accumulated_token_ids,
             max_trim_tokens,
+            session.capture_sampling_mask,
         )
         metadata = {
             "records_total": len(records),
@@ -547,6 +580,7 @@ def setup_session_routes(app, backend, args):
                 request_body["logprobs"] = True
                 request_body["return_prompt_token_ids"] = True
                 request_body["return_meta_info"] = True
+                request_body["return_sampling_mask"] = session.capture_sampling_mask
                 if getattr(args, "use_rollout_routing_replay", False):
                     request_body["return_routed_experts"] = True
                 # Must be False so stop tokens are trimmed from output: otherwise the
@@ -656,6 +690,14 @@ def setup_session_routes(app, backend, args):
 
             completion_token_ids = [t[1] for t in output_token_logprobs]
 
+            rollout_sampling_mask = None
+            rollout_sampling_log_probs = None
+            if session.capture_sampling_mask:
+                rollout_sampling_mask, rollout_sampling_log_probs = await asyncio.to_thread(
+                    _compact_sampling_replay, meta_info
+                )
+                result["response_body"] = orjson.dumps(response)
+
             async with session.lock:
                 if session.closing:
                     logger.warning(f"Session {session_id} closed during proxy, skipping state update")
@@ -703,6 +745,8 @@ def setup_session_routes(app, backend, args):
                     status_code=result["status_code"],
                     request=request_body,
                     response=response,
+                    rollout_sampling_mask=rollout_sampling_mask,
+                    rollout_sampling_log_probs=rollout_sampling_log_probs,
                 )
                 session.append_record(record)
 
