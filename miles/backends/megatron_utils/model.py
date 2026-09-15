@@ -529,8 +529,9 @@ def train_one_step(
         check_mtp_only_grad(model, step_id)
 
     critic_only = getattr(args, "share_backbone_critic_only", False)
-    saved_wd = _disable_optimizer_weight_decay(optimizer) if critic_only else None
-    if critic_only:
+    freeze_backbone = critic_only and getattr(args, "share_backbone_critic_stopgrad", True)
+    saved_wd = _disable_optimizer_weight_decay(optimizer) if freeze_backbone else None
+    if freeze_backbone:
         zero_non_value_head_grads(model)
 
     try:

@@ -851,9 +851,10 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 type=int,
                 default=0,
                 help=(
-                    "Number of initial rollouts that train the critic only (policy frozen). "
+                    "Number of initial rollouts that train with value loss only (no policy loss). "
                     "With a separate critic this skips actor.train. With --share-backbone-critic "
-                    "actor.train still runs but applies value loss only."
+                    "actor.train still runs but applies value loss only. The policy backbone is "
+                    "frozen unless --share-backbone-critic-no-stopgrad, which lets L_v update it."
                 ),
             )
             parser.add_argument("--critic-load", type=str, default=None, help="The checkpoint for critic model.")
@@ -899,8 +900,9 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 action="store_true",
                 default=False,
                 help=(
-                    "Let value-loss gradients flow into the shared policy backbone. "
-                    "Default stops the gradient at h_t so only the value head is trained by L_v."
+                    "Let value-loss gradients flow into the shared policy backbone, including "
+                    "during --num-critic-only-steps. Default stops the gradient at h_t so only "
+                    "the value head is trained by L_v."
                 ),
             )
             parser.add_argument(

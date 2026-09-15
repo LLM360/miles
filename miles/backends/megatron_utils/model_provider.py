@@ -87,12 +87,11 @@ class SharedValueHead(torch.nn.Module):
             layers.append(torch.nn.Linear(in_features, 1, bias=bias))
         self.net = torch.nn.Sequential(*layers)
         if self.sequence_parallel:
-            last = None
+            # Every Linear sees a sequence shard; Megatron all-reduces grads on
+            # params marked sequence_parallel. Gather is after the net.
             for module in self.net.modules():
                 if isinstance(module, torch.nn.Linear):
-                    last = module
-            if last is not None:
-                last.weight.sequence_parallel = True
+                    module.weight.sequence_parallel = True
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
