@@ -185,7 +185,11 @@ class ServerGroup:
                 args=self.args, rollout_engines=rollout_engines
             )
         else:
-            base_port = max(port_cursors.values()) if port_cursors else 17500
+            # Independent runs on one host need disjoint ranges: checking a
+            # free port does not reserve it until the engine actually binds.
+            base_port = max(port_cursors.values()) if port_cursors else int(
+                os.environ.get("MILES_ROLLOUT_PORT_BASE", "17500")
+            )
             addr_and_ports, port_cursors = _allocate_rollout_engine_addr_and_ports_normal(
                 args=self.args,
                 rollout_engines=rollout_engines,
