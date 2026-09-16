@@ -877,6 +877,62 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             parser.add_argument("--value-clip", type=float, default=0.2, help="the clip for value loss")
             parser.add_argument(
+                "--value-loss-type",
+                type=str,
+                choices=["mse", "hl_gauss", "twohot", "onehot", "bernoulli"],
+                default="mse",
+                help=(
+                    "Value-head training objective. `mse` is the default clipped-MSE scalar "
+                    "critic. `hl_gauss`/`twohot`/`onehot`/`bernoulli` train a categorical head "
+                    "via cross-entropy over a discretized return support (arXiv:2608.02181) and "
+                    "decode E[V] for GAE/PPO, which stay scalar and unchanged. Applies to both "
+                    "--share-backbone-critic and a separate critic. --value-clip is unused when "
+                    "not `mse`."
+                ),
+            )
+            parser.add_argument(
+                "--value-num-bins",
+                type=int,
+                default=51,
+                help="Number of bins for hl_gauss/twohot/onehot value heads. Unused for mse/bernoulli.",
+            )
+            parser.add_argument(
+                "--value-min",
+                type=float,
+                default=0.0,
+                help="Lower edge of the value support for hl_gauss/twohot/onehot.",
+            )
+            parser.add_argument(
+                "--value-max",
+                type=float,
+                default=1.0,
+                help="Upper edge of the value support for hl_gauss/twohot/onehot.",
+            )
+            parser.add_argument(
+                "--value-hl-gauss-sigma-ratio",
+                type=float,
+                default=0.75,
+                help=(
+                    "HL-Gauss target std as a multiple of the bin width: "
+                    "sigma = ratio * (value_max - value_min) / value_num_bins."
+                ),
+            )
+            parser.add_argument(
+                "--value-support-endpoints",
+                type=str,
+                choices=["midpoint", "inclusive"],
+                default="midpoint",
+                help=(
+                    "How bin centers are placed on [value_min, value_max] for "
+                    "hl_gauss/twohot/onehot. `midpoint` (default) is the HL-Gauss-paper "
+                    "convention: K equal-width bins, centers never exactly equal "
+                    "value_min/value_max (bias shrinks as 1/(2*value_num_bins)). "
+                    "`inclusive` is the C51/MuZero/DreamerV3 convention: K atoms at "
+                    "linspace(value_min, value_max, value_num_bins), so decoding can hit "
+                    "the exact endpoints."
+                ),
+            )
+            parser.add_argument(
                 "--share-backbone-critic",
                 action="store_true",
                 default=False,
@@ -2052,6 +2108,12 @@ def miles_validate_args(args):
         args.debug_train_only = True
 
     args.use_critic = args.advantage_estimator == "ppo"
+    if args.use_critic and args.value_loss_type != "mse":
+        if args.value_loss_type != "bernoulli":
+            if args.value_num_bins < 2:
+                raise ValueError("--value-num-bins must be >= 2")
+            if not (args.value_min < args.value_max):
+                raise ValueError("--value-min must be < --value-max")
     # Shared-backbone critic is PPO-only. Leave the flag set as a no-op for GRPO/etc.
     args.share_backbone_critic = bool(getattr(args, "share_backbone_critic", False)) and args.use_critic
     args.use_separate_critic = args.use_critic and not args.share_backbone_critic
