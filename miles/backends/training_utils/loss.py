@@ -8,11 +8,13 @@ import torch
 from torch.utils.checkpoint import checkpoint
 
 from miles.utils.distributed_utils import distributed_masked_whiten
+from miles.utils.entropy_control import adaptive_clip_high, update_adaptive_clip_relaxation
 from miles.utils.misc import load_function
 from miles.utils.ppo_utils import (
     calculate_log_probs_and_entropy,
     compute_approx_kl,
     compute_gspo_kl,
+    compute_importance_weighted_entropy,
     compute_opd_reward,
     compute_opsm_mask,
     compute_policy_loss,
@@ -32,6 +34,58 @@ from .cp_utils import (
 from .parallel import get_parallel_state
 
 logger = logging.getLogger(__name__)
+
+
+def update_adaptive_clip(
+    args: Namespace,
+    loss_dict: dict[str, float],
+    *,
+    pipeline_group: torch.distributed.ProcessGroup | None = None,
+    pipeline_source_rank: int | None = None,
+) -> None:
+    """Update and synchronize MAI's clipping controller after an optimizer step.
+
+    The policy loss emits an entropy numerator and token count for each
+    microbatch. ``aggregate_train_losses`` sums both globally; their ratio is
+    therefore the paper's all-token importance-weighted entropy estimate.
+    """
+    if not getattr(args, "use_adaptive_clip", False):
+        return
+
+    parallel_state = get_parallel_state()
+    is_last_stage = parallel_state.is_pp_last_stage
+    state = torch.tensor(
+        [float(args.adaptive_clip_relaxation), float("nan")],
+        dtype=torch.float64,
+        device=torch.cuda.current_device(),
+    )
+    if is_last_stage:
+        entropy_sum = loss_dict.pop("adaptive_clip_entropy_sum")
+        token_count = loss_dict.pop("adaptive_clip_token_count")
+        if token_count <= 0:
+            raise RuntimeError("adaptive clipping received a training step with no valid response tokens")
+        estimated_entropy = entropy_sum / token_count
+        relaxation = update_adaptive_clip_relaxation(
+            args.adaptive_clip_relaxation,
+            estimated_entropy,
+            args.adaptive_clip_target_entropy,
+            args.adaptive_clip_step_size,
+            args.adaptive_clip_max_relaxation,
+        )
+        state[0] = relaxation
+        state[1] = estimated_entropy
+
+    if pipeline_group is not None and torch.distributed.get_world_size(pipeline_group) > 1:
+        if pipeline_source_rank is None:
+            raise ValueError("pipeline_source_rank is required when synchronizing adaptive clipping")
+        torch.distributed.broadcast(state, src=pipeline_source_rank, group=pipeline_group)
+
+    args.adaptive_clip_relaxation = state[0].item()
+    args.eps_clip_high = adaptive_clip_high(args.eps_clip, args.adaptive_clip_relaxation)
+    if is_last_stage:
+        loss_dict["adaptive_clip_entropy"] = state[1].item()
+        loss_dict["adaptive_clip_relaxation"] = args.adaptive_clip_relaxation
+        loss_dict["adaptive_clip_high"] = args.eps_clip_high
 
 
 def _nan_dbg_flush_logs() -> None:
@@ -763,6 +817,26 @@ def policy_loss_function(
         extra=f"ratio_delta_min={ratio_delta_min} ratio_delta_max={ratio_delta_max}",
     )
 
+    adaptive_clip_metrics = {}
+    if getattr(args, "use_adaptive_clip", False):
+        # MAI Eq. (7): mean over every valid response token of
+        # -log pi_theta(y_t | x, y_<t) * pi_theta(y_t) / pi_old(y_t).
+        # Use token-level ratios even when the optimization objective is GSPO.
+        importance_weighted_entropy = compute_importance_weighted_entropy(log_probs, old_log_probs)
+        token_sum = get_sum_of_sample_mean(
+            total_lengths,
+            response_lengths,
+            batch["loss_masks"],
+            args.calculate_per_token_loss,
+            args.qkv_format,
+            max_seq_lens,
+            loss_agg_mode="token-sum",
+        )
+        adaptive_clip_metrics = {
+            "adaptive_clip_entropy_sum": token_sum(importance_weighted_entropy),
+            "adaptive_clip_token_count": token_sum(torch.ones_like(importance_weighted_entropy)),
+        }
+
     pg_loss, pg_clipfrac = compute_policy_loss(ppo_kl, advantages, args.eps_clip, args.eps_clip_high)
 
     if args.use_opsm:
@@ -930,6 +1004,7 @@ def policy_loss_function(
         "nan_dbg/tis_delta_max": _nan_dbg_scalar(tis_delta_max, loss.device),
         "nan_dbg/tis_nonfinite_count": _nan_dbg_scalar(tis_nonfinite_count, loss.device),
     }
+    reported_loss.update(adaptive_clip_metrics)
 
     if train_rollout_logprob_abs_diff is not None:
         reported_loss["train_rollout_logprob_abs_diff"] = train_rollout_logprob_abs_diff

@@ -48,6 +48,7 @@ from miles.utils.metric_utils import (
     dict_add_prefix,
 )
 from miles.utils.misc import load_function
+from miles.utils.ppo_utils import compute_group_advantages
 from miles.utils.ray_utils import Box
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
 from miles.utils.tracking_utils import init_tracking
@@ -762,12 +763,12 @@ class RolloutManager:
             else:
                 # when samples count are not equal in each group
                 rewards = rewards.view(-1, rewards.shape[-1])
-            mean = rewards.mean(dim=-1, keepdim=True)
-            rewards = rewards - mean
-
-            if self.args.advantage_estimator in ["grpo", "gspo"] and self.args.grpo_std_normalization:
-                std = rewards.std(dim=-1, keepdim=True)
-                rewards = rewards / (std + 1e-6)
+            is_group_policy_estimator = self.args.advantage_estimator in ["grpo", "gspo"]
+            rewards, _ = compute_group_advantages(
+                rewards,
+                quantile=getattr(self.args, "qae_quantile", None) if is_group_policy_estimator else None,
+                normalize_by_std=is_group_policy_estimator and self.args.grpo_std_normalization,
+            )
 
             return raw_rewards, rewards.flatten().tolist()
 

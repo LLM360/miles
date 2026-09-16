@@ -1,11 +1,56 @@
 # Adapt from https://github.com/OpenRLHF/OpenRLHF/blob/10c733694ed9fbb78a0a2ff6a05efc7401584d46/openrlhf/models/utils.py
 # and https://github.com/OpenRLHF/OpenRLHF/blob/10c733694ed9fbb78a0a2ff6a05efc7401584d46/openrlhf/trainer/ppo_utils/experience_maker.py
 
+import math
 from argparse import Namespace
 
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+
+
+def compute_group_advantages(
+    rewards: torch.Tensor,
+    *,
+    quantile: float | None = None,
+    normalize_by_std: bool = True,
+    epsilon: float = 1e-6,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Center grouped rewards with either the GRPO mean or the QAE baseline.
+
+    ``rewards`` must have shape ``[num_prompts, samples_per_prompt]``.  When
+    ``quantile`` is set, the baseline is the right-continuous empirical
+    quantile from QAE, i.e. order statistic ``ceil(K * G)``.  This is not
+    ``torch.quantile``'s default linear interpolation; for binary rewards the
+    order statistic is what gives QAE's exact zero/one, two-regime gate.
+    """
+    if rewards.ndim != 2:
+        raise ValueError(f"grouped rewards must be rank 2, got shape {tuple(rewards.shape)}")
+    if rewards.size(1) == 0:
+        raise ValueError("each reward group must contain at least one sample")
+
+    if quantile is None:
+        baseline = rewards.mean(dim=-1, keepdim=True)
+    else:
+        if not 0 < quantile < 1:
+            raise ValueError(f"QAE quantile must be in (0, 1), got {quantile}")
+        order = math.ceil(quantile * rewards.size(1))
+        baseline = rewards.kthvalue(order, dim=-1, keepdim=True).values
+
+    advantages = rewards - baseline
+    if normalize_by_std:
+        advantages = advantages / (rewards.std(dim=-1, keepdim=True) + epsilon)
+    return advantages, baseline
+
+
+def compute_importance_weighted_entropy(
+    log_probs: torch.Tensor,
+    old_log_probs: torch.Tensor,
+) -> torch.Tensor:
+    """Return the per-token entropy estimator from MAI-Thinking-1 Eq. (7)."""
+    log_probs = log_probs.detach().float()
+    old_log_probs = old_log_probs.detach().float()
+    return -log_probs * torch.exp(log_probs - old_log_probs)
 
 
 @torch.compile(dynamic=True)

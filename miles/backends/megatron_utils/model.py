@@ -22,6 +22,7 @@ from megatron.training.global_vars import get_args
 from megatron.training.training import get_model, preprocess_common_state_dict
 
 from miles.utils.dumper_utils import DumperMegatronUtil, DumperPhase
+from miles.utils.entropy_control import load_adaptive_clip_state, save_adaptive_clip_state
 from miles.utils.memory_utils import clear_memory
 
 from ..training_utils.ci_utils import check_grad_norm, check_kl
@@ -33,7 +34,7 @@ from ..training_utils.log_utils import (
     log_train_step,
     save_train_step_counter,
 )
-from ..training_utils.loss import loss_function
+from ..training_utils.loss import loss_function, update_adaptive_clip
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint, save_checkpoint, save_checkpoint_with_lora
 from .ci_utils import (
@@ -626,6 +627,15 @@ def train(
             num_microbatches[step_id],
         )
 
+        role = getattr(model[0], "role", "actor")
+        if role == "actor":
+            update_adaptive_clip(
+                args,
+                loss_dict,
+                pipeline_group=mpu.get_pipeline_model_parallel_group(),
+                pipeline_source_rank=mpu.get_pipeline_model_parallel_last_rank(),
+            )
+
         if step_id == 0:
             # Enable forward pre-hook after training step has successfully run. All subsequent
             # forward passes will use the forward pre-hook / `param_sync_func` in
@@ -659,7 +669,6 @@ def train(
         # per train step log.
         if is_megatron_main_rank():
             accumulated_step_id = rollout_id * num_steps_per_rollout + step_id
-            role = getattr(model[0], "role", "actor")
             role_tag = "" if role == "actor" else f"{role}-"
 
             extra_metrics = {}
@@ -741,6 +750,7 @@ def save(
     clear_memory()
     if is_megatron_main_rank():
         save_train_step_counter(args.save, iteration)
+        save_adaptive_clip_state(args, args.save, iteration)
 
     if hashes is not None:
         save_model_hashes(args, model, iteration, hashes)
@@ -840,6 +850,7 @@ def initialize_model_and_optimizer(
     clear_memory()
 
     check_model_hashes(args, model, iteration)
+    load_adaptive_clip_state(args, args.load, iteration)
 
     # A full resume restores the scheduler in load_checkpoint(). Advancing it
     # again here would double-count the completed iterations. Only reconstruct
