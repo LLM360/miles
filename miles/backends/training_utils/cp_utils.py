@@ -256,6 +256,29 @@ def slice_with_cp(
     return torch.cat([tokens[start_1:end_1], tokens[start_2:end_2]])
 
 
+def _pad_token_chunk(value: torch.Tensor, resp_start: int, response_length: int) -> torch.Tensor:
+    """Pad a local token chunk into a full ``[R, ...]`` response along dim 0.
+
+    ``F.pad(value, (left, right))`` pads the last dim, which is correct for a
+    1D ``[local_R]`` log-prob but wrong for categorical value logits
+    ``[local_R, K]`` (that would pad bins). Always pad the token axis.
+    """
+    tail = response_length - resp_start - value.size(0)
+    extra = value.shape[1:]
+    pieces = []
+    if resp_start:
+        pieces.append(value.new_zeros((resp_start, *extra)))
+    pieces.append(value)
+    if tail:
+        pieces.append(value.new_zeros((tail, *extra)))
+    return pieces[0] if len(pieces) == 1 else torch.cat(pieces, dim=0)
+
+
+def _empty_response_like(value: torch.Tensor, response_length: int) -> torch.Tensor:
+    """Zeros for a CP rank that owns no tokens of this response."""
+    return value.new_zeros((response_length, *value.shape[1:]), requires_grad=True)
+
+
 def _allgather_cp_redistribute(
     res: dict[str, list[torch.Tensor]],
     *,
@@ -304,17 +327,11 @@ def _allgather_cp_redistribute(
             e = min(logit_global_end, chunk_end)
 
             if e <= s:
-                # This rank has no response logprobs for this sample
-                full_resp = torch.zeros(
-                    response_length,
-                    dtype=value.dtype,
-                    device=value.device,
-                    requires_grad=True,
-                )
+                # This rank has no response tokens for this sample
+                full_resp = _empty_response_like(value, response_length)
             else:
                 resp_start = s - logit_global_start
-                resp_end = e - logit_global_start
-                full_resp = F.pad(value, (resp_start, response_length - resp_end))
+                full_resp = _pad_token_chunk(value, resp_start, response_length)
 
             assert full_resp.size(0) == response_length, f"Expected {response_length}, got {full_resp.size(0)}"
             full_resps.append(full_resp)
@@ -344,7 +361,8 @@ def slice_log_prob_with_cp(
     qkv_format: str = "thd",
     max_token_len: int | None = None,
 ) -> list[float] | torch.Tensor:
-    assert len(log_prob) == response_length
+    n = log_prob.size(0) if isinstance(log_prob, torch.Tensor) else len(log_prob)
+    assert n == response_length
 
     parallel_state = get_parallel_state()
     cp_size = parallel_state.cp.size

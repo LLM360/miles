@@ -22,6 +22,12 @@ from miles.utils.ppo_utils import (
     get_reinforce_plus_plus_returns,
 )
 from miles.utils.types import RolloutBatch
+from miles.utils.value_head_utils import (
+    categorical_value_target,
+    cross_entropy_with_soft_target,
+    decode_categorical_value,
+    get_value_support,
+)
 
 from .cp_utils import (
     _allgather_cp_redistribute,
@@ -324,27 +330,39 @@ def get_values(
     max_seq_lens: list[int] | None = None,
     apply_temperature: bool = True,
 ) -> dict[str, list[torch.Tensor]]:
-    """Extract per-token value predictions over response tokens.
+    """Extract per-token scalar value predictions over response tokens.
 
     For each sample, extracts response-aligned chunks from the value head
-    output and squeezes the final dimension from `[R, 1]` to `[R]`.
+    output. The default scalar critic (``--value-loss-type mse``) squeezes
+    the final dimension from `[R, 1]` to `[R]`. A categorical critic
+    (hl_gauss/twohot/onehot/bernoulli) is decoded to a scalar expectation
+    ``E[V] = sum_k softmax(logits)_k * z_k`` instead, so GAE/PPO always see a
+    scalar `V_old` regardless of head type. For the raw `[R, K]` logits
+    needed by the categorical training loss, see `get_value_logits`.
 
     Args:
-        logits: Value head output with shape `[1, T, 1]`.
+        logits: Value head output with shape `[1, T, 1]` (scalar) or
+            `[1, T, K]` (categorical).
         args: Configuration. Shared-backbone critics should pass
             ``apply_temperature=False``; the separate-critic path keeps the
-            historical temperature scale by default.
+            historical temperature scale by default. Ignored (forced off)
+            for a categorical head, where dividing logits by
+            ``rollout_temperature`` before decoding would be meaningless.
         unconcat_tokens: List of token tensors per sample.
         total_lengths: Total sequence lengths per sample.
         response_lengths: Response segment lengths per sample.
         with_entropy: Unused; kept for signature compatibility.
         non_loss_data: Unused; kept for signature compatibility.
         apply_temperature: If True, divide outputs by `rollout_temperature`.
+            Only applies to the scalar (`mse`) head.
 
     Returns:
         Dict with key "values" mapping to a list of `[R]` value tensors
         per sample.
     """
+    value_loss_type = getattr(args, "value_loss_type", "mse")
+    support = None if value_loss_type == "mse" else get_value_support(args, device=logits.device)
+
     value_list = []
     for logits_chunk, _ in get_responses(
         logits,
@@ -353,10 +371,13 @@ def get_values(
         total_lengths=total_lengths,
         response_lengths=response_lengths,
         max_seq_lens=max_seq_lens,
-        apply_temperature=apply_temperature,
+        apply_temperature=apply_temperature and support is None,
     ):
-        assert logits_chunk.size(-1) == 1, f"{logits_chunk.shape}"
-        value_list.append(logits_chunk.squeeze(-1))
+        if support is not None:
+            value_list.append(decode_categorical_value(logits_chunk, support))
+        else:
+            assert logits_chunk.size(-1) == 1, f"{logits_chunk.shape}"
+            value_list.append(logits_chunk.squeeze(-1))
 
     res = {
         "values": value_list,
@@ -373,6 +394,55 @@ def get_values(
         )
 
     return res
+
+
+def get_value_logits(
+    logits: torch.Tensor,
+    *,
+    args: Namespace,
+    unconcat_tokens: list[torch.Tensor],
+    total_lengths: list[int],
+    response_lengths: list[int],
+    max_seq_lens: list[int] | None = None,
+) -> list[torch.Tensor]:
+    """Extract raw per-token categorical value-head logits over response tokens.
+
+    Unlike `get_values`, this does not decode to a scalar and never divides
+    by `rollout_temperature` (meaningless for value-head bins). Used only by
+    the training-loss path (`value_loss_function`) for a categorical
+    `--value-loss-type`: cross-entropy needs the full `[R, K]` distribution,
+    not the scalar `E[V]` that `get_values` decodes for GAE.
+
+    With `--allgather-cp`, the same zigzag redistribute as `get_values` is
+    applied so CE logits line up with zigzag `returns`.
+
+    Returns:
+        List of `[R, K]` raw logits tensors per sample.
+    """
+    chunks = [
+        logits_chunk
+        for logits_chunk, _ in get_responses(
+            logits,
+            args=args,
+            unconcat_tokens=unconcat_tokens,
+            total_lengths=total_lengths,
+            response_lengths=response_lengths,
+            max_seq_lens=max_seq_lens,
+            apply_temperature=False,
+        )
+    ]
+    if args.allgather_cp:
+        res = {"value_logits": chunks}
+        _allgather_cp_redistribute(
+            res,
+            logits=logits,
+            args=args,
+            total_lengths=total_lengths,
+            response_lengths=response_lengths,
+            max_seq_lens=max_seq_lens,
+        )
+        return res["value_logits"]
+    return chunks
 
 
 def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) -> None:
@@ -960,23 +1030,63 @@ def value_loss_function(
     logits: torch.Tensor,
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Compute clipped value loss and metrics.
+    """Compute the value-head loss and metrics.
 
-    Extracts current value predictions from `logits`, compares them against
-    stored old values with clipping, and computes the maximum of clipped and
-    unclipped squared errors (PPO-style value clipping).
+    Default (`--value-loss-type mse`): clipped value loss. Extracts current
+    value predictions from `logits`, compares them against stored old values
+    with clipping, and computes the maximum of clipped and unclipped squared
+    errors (PPO-style value clipping).
+
+    Categorical (`hl_gauss`/`twohot`/`onehot`/`bernoulli`): cross-entropy
+    between the raw `[R, K]` logits and a target distribution built from
+    `returns` (arXiv:2608.02181). No value clipping; `--value-clip` is
+    unused. GAE/PPO are unaffected either way — `V_old`/`returns` are always
+    scalar (see `get_values`).
 
     Args:
-        args: Configuration containing `value_clip` threshold.
-        batch: Mini-batch with "values" (old predictions), "returns",
-            "unconcat_tokens", "total_lengths", and "response_lengths".
-        logits: Value head output with shape `[1, T, 1]`.
+        args: Configuration containing `value_clip` (mse) or
+            `value_loss_type`/`value_num_bins`/`value_min`/`value_max`/
+            `value_hl_gauss_sigma_ratio`/`value_support_endpoints`
+            (categorical).
+        batch: Mini-batch with "values" (old predictions, mse only),
+            "returns", "unconcat_tokens", "total_lengths", and
+            "response_lengths".
+        logits: Value head output with shape `[1, T, 1]` (mse) or
+            `[1, T, K]` (categorical).
         sum_of_sample_mean: Reduction function that averages per-sample values.
 
     Returns:
         Tuple of `(loss, metrics)` where `loss` is a scalar tensor and
-        `metrics` contains detached scalars "value_loss" and "value_clipfrac".
+        `metrics` contains detached scalars "value_loss" and "value_clipfrac"
+        ("value_clipfrac" is always 0 for a categorical head).
     """
+    value_loss_type = getattr(args, "value_loss_type", "mse")
+    returns = torch.cat(batch["returns"], dim=0)
+
+    if value_loss_type != "mse":
+        logits_list = get_value_logits(
+            logits,
+            args=args,
+            unconcat_tokens=batch["unconcat_tokens"],
+            total_lengths=batch["total_lengths"],
+            response_lengths=batch["response_lengths"],
+            max_seq_lens=batch.get("max_seq_lens", None),
+        )
+        current_logits = torch.cat([chunk.reshape(-1, chunk.size(-1)) for chunk in logits_list], dim=0)
+
+        target_probs = categorical_value_target(returns, args)
+        loss = sum_of_sample_mean(cross_entropy_with_soft_target(current_logits, target_probs))
+
+        # make sure the gradient could backprop correctly.
+        if current_logits.numel() == 0:
+            loss = loss + 0 * current_logits.sum()
+
+        reported_loss = {
+            "value_loss": loss.clone().detach(),
+            "value_clipfrac": torch.zeros_like(loss),
+        }
+        return loss, reported_loss
+
     old_values = torch.cat(batch["values"], dim=0)
 
     values = get_values(
@@ -989,8 +1099,6 @@ def value_loss_function(
         apply_temperature=not getattr(args, "share_backbone_critic", False),
     )
     values = torch.cat([value.flatten() for value in values["values"]], dim=0)
-
-    returns = torch.cat(batch["returns"], dim=0)
 
     values_clipfrac = torch.abs(values - old_values) > args.value_clip
     values_clipped = old_values + (values - old_values).clamp(-args.value_clip, args.value_clip)
