@@ -19,6 +19,7 @@ from megatron.training.arguments import core_transformer_config_from_args
 
 from miles.utils.misc import load_function
 from miles.utils.replay_base import routing_replay_manager
+from miles.utils.value_head_utils import value_head_output_size
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,12 @@ class LinearForLastLayer(torch.nn.Linear):
 
 
 class SharedValueHead(torch.nn.Module):
-    """Scalar critic on last-PP hidden states: linear or a small SiLU MLP."""
+    """Critic on last-PP hidden states: linear or a small SiLU MLP.
+
+    ``output_size`` is 1 for the default scalar (clipped-MSE) critic, or the
+    number of bins/classes for a categorical value head (see
+    ``miles.utils.value_head_utils``).
+    """
 
     def __init__(
         self,
@@ -70,6 +76,7 @@ class SharedValueHead(torch.nn.Module):
         mlp_hidden_size: int | None = None,
         mlp_num_hidden_layers: int = 1,
         bias: bool = True,
+        output_size: int = 1,
     ) -> None:
         super().__init__()
         self.sequence_parallel = config.sequence_parallel
@@ -77,14 +84,14 @@ class SharedValueHead(torch.nn.Module):
         hidden = mlp_hidden_size if mlp_hidden_size is not None else input_size
         layers: list[torch.nn.Module] = []
         if head_type == "linear":
-            layers.append(torch.nn.Linear(input_size, 1, bias=bias))
+            layers.append(torch.nn.Linear(input_size, output_size, bias=bias))
         else:
             in_features = input_size
             for _ in range(mlp_num_hidden_layers):
                 layers.append(torch.nn.Linear(in_features, hidden, bias=bias))
                 layers.append(torch.nn.SiLU())
                 in_features = hidden
-            layers.append(torch.nn.Linear(in_features, 1, bias=bias))
+            layers.append(torch.nn.Linear(in_features, output_size, bias=bias))
         self.net = torch.nn.Sequential(*layers)
         if self.sequence_parallel:
             # Every Linear sees a sequence shard; Megatron all-reduces grads on
@@ -136,6 +143,7 @@ def attach_shared_value_head(model: GPTModel, args) -> GPTModel:
         head_type=head_type,
         mlp_hidden_size=getattr(args, "share_backbone_critic_mlp_hidden_size", None),
         mlp_num_hidden_layers=getattr(args, "share_backbone_critic_mlp_num_hidden_layers", 1),
+        output_size=value_head_output_size(args),
     )
     model.value_head.stopgrad_hidden = stopgrad
     original_postprocess = model._postprocess
@@ -143,7 +151,7 @@ def attach_shared_value_head(model: GPTModel, args) -> GPTModel:
     def _postprocess_with_value(hidden_states, *args, **kwargs):
         hidden = hidden_states.detach() if stopgrad else hidden_states
         values, _ = model.value_head(hidden)
-        # Match GPTModel logits layout: [s, b, 1] -> [b, s, 1].
+        # Match GPTModel logits layout: [s, b, K] -> [b, s, K] (K=1 for the scalar critic).
         model._last_values = values.transpose(0, 1).contiguous()
         return original_postprocess(hidden_states, *args, **kwargs)
 
@@ -242,7 +250,9 @@ def get_model_provider_func(
             # Apply critic output layer if needed
             if post_process and role == "critic":
                 model.output_layer = LinearForLastLayer(
-                    input_size=model.config.hidden_size, output_size=1, config=model.config
+                    input_size=model.config.hidden_size,
+                    output_size=value_head_output_size(args),
+                    config=model.config,
                 )
             return maybe_attach_shared_value_head(model, args, role, post_process)
 
@@ -413,7 +423,9 @@ def get_model_provider_func(
             model = GPTModel(**kwargs)
 
         if post_process and role == "critic":
-            model.output_layer = LinearForLastLayer(input_size=config.hidden_size, output_size=1, config=config)
+            model.output_layer = LinearForLastLayer(
+                input_size=config.hidden_size, output_size=value_head_output_size(args), config=config
+            )
 
         return maybe_attach_shared_value_head(model, args, role, post_process)
 

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 from megatron.core.utils import get_attr_wrapped_model
 
+from miles.utils.value_head_utils import value_head_output_size
+
 from .lora_utils import create_lora_instance
 
 
@@ -27,8 +29,13 @@ def _ensure_model_list(model):
     return model if isinstance(model, list) else [model]
 
 
-def _make_value_model_hook(hidden_size: int, sequence_parallel: bool):
-    """Create a pre-wrap hook that replaces the output layer with a value head."""
+def _make_value_model_hook(hidden_size: int, sequence_parallel: bool, output_size: int = 1):
+    """Create a pre-wrap hook that replaces the output layer with a value head.
+
+    ``output_size`` is 1 for the default scalar critic, or the number of
+    bins/classes for a categorical value head (``--value-loss-type``; see
+    ``miles.utils.value_head_utils``).
+    """
     from megatron.core import parallel_state
 
     from .model_provider import LinearForLastLayer
@@ -52,7 +59,8 @@ def _make_value_model_hook(hidden_size: int, sequence_parallel: bool):
                 continue
             model_chunk.output_layer = LinearForLastLayer(
                 input_size=hidden_size,
-                output_size=1,
+                output_size=output_size,
+                #FIXME: sequence_parallel is not a parameter of LinearForLastLayer
                 sequence_parallel=sequence_parallel,
             )
 
@@ -113,7 +121,9 @@ def _setup_lora_model_via_bridge(args: Namespace) -> list:
     )
     if is_value_model:
         hidden_size = hf_config.text_config.hidden_size if hasattr(hf_config, "text_config") else hf_config.hidden_size
-        provider.register_pre_wrap_hook(_make_value_model_hook(hidden_size, provider.sequence_parallel))
+        provider.register_pre_wrap_hook(
+            _make_value_model_hook(hidden_size, provider.sequence_parallel, output_size=value_head_output_size(args))
+        )
 
     ddp_config = DistributedDataParallelConfig(use_distributed_optimizer=True)
     ddp_config.finalize()
