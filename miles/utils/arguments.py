@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import math
 import os
 from typing import Any
 
@@ -2112,8 +2113,14 @@ def miles_validate_args(args):
         if args.value_loss_type != "bernoulli":
             if args.value_num_bins < 2:
                 raise ValueError("--value-num-bins must be >= 2")
+            if not (math.isfinite(args.value_min) and math.isfinite(args.value_max)):
+                raise ValueError("--value-min and --value-max must be finite")
             if not (args.value_min < args.value_max):
                 raise ValueError("--value-min must be < --value-max")
+        if args.value_loss_type == "hl_gauss" and not (
+            math.isfinite(args.value_hl_gauss_sigma_ratio) and args.value_hl_gauss_sigma_ratio > 0
+        ):
+            raise ValueError("--value-hl-gauss-sigma-ratio must be finite and positive")
     # Shared-backbone critic is PPO-only. Leave the flag set as a no-op for GRPO/etc.
     args.share_backbone_critic = bool(getattr(args, "share_backbone_critic", False)) and args.use_critic
     args.use_separate_critic = args.use_critic and not args.share_backbone_critic

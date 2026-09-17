@@ -58,6 +58,8 @@ def build_value_support(
     ``+-inf`` so tail mass beyond ``v_min``/``v_max`` still collapses onto
     the endpoint atom instead of being lost.
     """
+    if not (math.isfinite(v_min) and math.isfinite(v_max)):
+        raise ValueError("Value support bounds must be finite")
     if endpoints == "midpoint":
         edges = torch.linspace(v_min, v_max, num_bins + 1, dtype=torch.float32)
         centers = (edges[:-1] + edges[1:]) / 2
@@ -105,6 +107,13 @@ def decode_categorical_value(logits: torch.Tensor, support: torch.Tensor) -> tor
 def hl_gauss_target(returns: torch.Tensor, edges: torch.Tensor, sigma: float) -> torch.Tensor:
     """HL-Gauss target: ``Normal(mean=returns, std=sigma)`` mass per bin, renormalized.
 
+    Clamp means to finite outer bin edges before computing the CDF. This
+    intentionally treats out-of-support returns as bounded targets, matching
+    the saturation used by the other categorical encodings. Without it,
+    distant means can round all bin masses to zero and silently stop learning.
+    In-range means are unchanged. Inclusive supports have infinite outer
+    edges, so their original Gaussian tail allocation is also unchanged.
+
     Args:
         returns: Target scalars, shape ``[...]``.
         edges: Bin edges, shape ``[K + 1]``.
@@ -113,8 +122,11 @@ def hl_gauss_target(returns: torch.Tensor, edges: torch.Tensor, sigma: float) ->
     Returns:
         Target distribution, shape ``[..., K]``, rows sum to 1.
     """
+    if not (math.isfinite(sigma) and sigma > 0):
+        raise ValueError("HL-Gauss sigma must be finite and positive")
     y = returns.float().unsqueeze(-1)
     edges = edges.to(y.device, dtype=torch.float32)
+    y = y.clamp(min=edges[0], max=edges[-1])
     cdf = 0.5 * (1.0 + torch.erf((edges - y) / (sigma * math.sqrt(2.0))))
     probs = cdf[..., 1:] - cdf[..., :-1]
     return probs / probs.sum(dim=-1, keepdim=True).clamp_min(_EPS)

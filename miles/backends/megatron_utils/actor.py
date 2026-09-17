@@ -938,10 +938,14 @@ class MegatronTrainRayActor(TrainRayActor):
                 if self._active_model_tag != "actor":
                     self._switch_model("actor")
 
-                # in case values don't exist
-                if self.args.share_backbone_critic and "values" not in rollout_data:
+                # Only the last PP stage receives forward results. Use the
+                # shared execution plan, not rank-local value availability,
+                # so every stage enters the same pipeline forward passes.
+                if self.args.share_backbone_critic and not collect_values_with_logprob:
                     print("@dhawgupta: fallback compute_values", flush=True)
                     rollout_data.update(self.compute_values(data_iterator, num_microbatches))
+                if self.args.share_backbone_critic and get_parallel_state().is_pp_last_stage:
+                    assert "values" in rollout_data, "Shared critic forward did not produce values on the last PP stage"
 
                 # Calculate adv and returns. Need to performed before training (instead of on the fly),
                 # because we may need normalize the whole rollout.

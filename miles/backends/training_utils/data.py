@@ -398,13 +398,22 @@ def get_data_iterator(
         dist.all_reduce(num_microbatches, op=dist.ReduceOp.MAX, group=dp_group)
 
         if vpp_size > 1:
-            # vpp requies the number of microbatches to be divisible by vpp_size
+            # Round up to a complete VPP scheduling group. Rounding down
+            # can violate the token budget or leave fewer than one group.
+            group_size = microbatch_group_size_per_vp_stage
             num_microbatches = torch.clamp(
-                num_microbatches // microbatch_group_size_per_vp_stage * microbatch_group_size_per_vp_stage,
-                min=1,
+                (num_microbatches + group_size - 1) // group_size * group_size,
+                min=group_size,
             )
 
         num_microbatches = num_microbatches.tolist()
+        if vpp_size > 1 and any(count > num_local_gbs for count in num_microbatches):
+            raise ValueError(
+                f"VPP requires {num_microbatches} microbatches per step after rounding to groups of "
+                f"{microbatch_group_size_per_vp_stage}, but each DP rank has only {num_local_gbs} samples "
+                "per step. Increase the global batch size or max_tokens_per_gpu; "
+                "empty microbatches are not supported."
+            )
 
         # balance the each micro batch
         samples = rollout_data["total_lengths"]

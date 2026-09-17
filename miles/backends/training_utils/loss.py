@@ -455,8 +455,8 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
     True, advantages are whitened across the data-parallel group using masked
     statistics.
 
-    Early returns if both `log_probs` and `values` are None (intermediate
-    pipeline stages).
+    Only the final pipeline stage computes advantages. Earlier stages can
+    still receive rollout log-probabilities, but do not have critic values.
 
     Args:
         args: Configuration specifying estimator type, KL coefficient,
@@ -467,6 +467,9 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
             "returns" keys, each mapping to lists of tensors per sample.
     """
     parallel_state = get_parallel_state()
+    if not parallel_state.is_pp_last_stage:
+        return
+
     log_probs: list[torch.Tensor] = rollout_data.get("rollout_log_probs" if args.use_rollout_logprobs else "log_probs")
     ref_log_probs: list[torch.Tensor] = rollout_data.get("ref_log_probs")
     rewards: list[float] = rollout_data.get("rewards")
@@ -476,7 +479,7 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
     total_lengths: list[int] = rollout_data.get("total_lengths")
     max_seq_lens: list[int] | None = rollout_data.get("max_seq_lens", None)
 
-    # return when not the last pp stage.
+    # No predictions were collected for this batch.
     if log_probs is None and values is None:
         return
 
@@ -504,14 +507,36 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
         old_rewards = rewards
         rewards = []
         kl_coef = -args.kl_coef
-        cp_rank = parallel_state.cp.rank
-        for reward, k in zip(old_rewards, kl, strict=False):
+        for i, (reward, k) in enumerate(zip(old_rewards, kl, strict=False)):
             k *= kl_coef
-            if cp_rank == 0:
+            if parallel_state.cp.size == 1:
                 k[-1] += reward
+            else:
+                # Padding can put the final response token on any CP rank.
+                # Locate it in this rank's two response chunks, including
+                # the case where this rank has no response tokens at all.
+                _, _, _, token_offsets = get_logits_and_tokens_offset_with_cp(
+                    total_lengths[i],
+                    response_lengths[i],
+                    args.qkv_format,
+                    max_seq_lens[i] if max_seq_lens is not None else None,
+                )
+                local_offset = 0
+                terminal_token = total_lengths[i] - 1
+                for start, end in token_offsets:
+                    if start <= terminal_token < end:
+                        k[local_offset + terminal_token - start] += reward
+                    local_offset += end - start
             rewards.append(k)
         advantages, returns = get_advantages_and_returns_batch(
-            total_lengths, response_lengths, values, rewards, args.gamma, args.lambd
+            total_lengths,
+            response_lengths,
+            values,
+            rewards,
+            args.gamma,
+            args.lambd,
+            qkv_format=args.qkv_format,
+            max_seq_lens=max_seq_lens,
         )
 
     elif args.advantage_estimator == "reinforce_plus_plus":
@@ -911,10 +936,12 @@ def policy_loss_function(
     train_rollout_logprob_diff = None
     _train_rollout_logprob_abs_per_token = None
     _train_rollout_logprob_signed_per_token = None
-    if "rollout_log_probs" in batch and batch["rollout_log_probs"]:
+    # The training-backend forward is optional when PPO uses rollout log-probs.
+    # A train/inference comparison exists only when both were collected.
+    if batch.get("rollout_log_probs") and batch.get("log_probs"):
         rollout_log_probs_cat = torch.cat(batch["rollout_log_probs"], dim=0)
         log_probs_batch_cat = torch.cat(batch["log_probs"], dim=0)
-        _train_rollout_logprob_abs_per_token = (old_log_probs - rollout_log_probs_cat).abs()
+        _train_rollout_logprob_abs_per_token = (log_probs_batch_cat - rollout_log_probs_cat).abs()
         # signed: log π(inf) − log π(fsdp rollout)
         _train_rollout_logprob_signed_per_token = rollout_log_probs_cat - log_probs_batch_cat
         train_rollout_logprob_abs_diff = sum_of_sample_mean(_train_rollout_logprob_abs_per_token).clone().detach()

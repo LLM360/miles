@@ -400,6 +400,8 @@ def get_advantages_and_returns_batch(
     gamma,
     lambd,
     chunked: bool = True,
+    qkv_format: str = "thd",
+    max_seq_lens: list[int] | None = None,
 ):
     """
     Batched GAE with CP support.
@@ -408,6 +410,8 @@ def get_advantages_and_returns_batch(
         response_lengths:  list[int], each sample's response_len
         values_list:       list[Tensor], each shape = [resp_len_i]
         rewards_list:      list[Tensor], same shape
+        qkv_format:        CP layout (packed thd or padded bshd)
+        max_seq_lens:      padded sequence lengths required for bshd CP
     Output:
         advantages_list:   list[Tensor], each shape = [resp_len_i]
         returns_list:      list[Tensor], same shape
@@ -430,11 +434,12 @@ def get_advantages_and_returns_batch(
             full_values_list = []
             full_rewards_list = []
 
-            for total_len, resp_len, v, r in zip(
-                total_lengths, response_lengths, values_list, rewards_list, strict=False
+            for i, (total_len, resp_len, v, r) in enumerate(
+                zip(total_lengths, response_lengths, values_list, rewards_list, strict=False)
             ):
-                full_v = all_gather_with_cp(v, total_len, resp_len)
-                full_r = all_gather_with_cp(r, total_len, resp_len)
+                max_seq_len = max_seq_lens[i] if max_seq_lens is not None else None
+                full_v = all_gather_with_cp(v, total_len, resp_len, qkv_format, max_seq_len)
+                full_r = all_gather_with_cp(r, total_len, resp_len, qkv_format, max_seq_len)
                 full_values_list.append(full_v)
                 full_rewards_list.append(full_r)
 
@@ -475,18 +480,19 @@ def get_advantages_and_returns_batch(
         if cp_size > 1:
             from miles.backends.training_utils.cp_utils import slice_log_prob_with_cp
 
-            for total_len, resp_len, adv_row, ret_row in zip(
-                total_lengths,
-                response_lengths,
-                full_advantages,
-                full_returns,
-                strict=False,
+            for i, (total_len, resp_len, adv_row, ret_row) in enumerate(
+                zip(total_lengths, response_lengths, full_advantages, full_returns, strict=False)
             ):
                 adv_full = adv_row  # shape = [resp_len_i padded to max_len]
                 ret_full = ret_row
 
-                adv_sliced = slice_log_prob_with_cp(adv_full[:resp_len], total_len, resp_len)
-                ret_sliced = slice_log_prob_with_cp(ret_full[:resp_len], total_len, resp_len)
+                max_seq_len = max_seq_lens[i] if max_seq_lens is not None else None
+                adv_sliced = slice_log_prob_with_cp(
+                    adv_full[:resp_len], total_len, resp_len, qkv_format, max_seq_len
+                )
+                ret_sliced = slice_log_prob_with_cp(
+                    ret_full[:resp_len], total_len, resp_len, qkv_format, max_seq_len
+                )
 
                 advantages_list.append(adv_sliced)
                 returns_list.append(ret_sliced)

@@ -73,6 +73,70 @@ def test_build_value_support_rejects_unknown_endpoints() -> None:
         build_value_support(0.0, 1.0, num_bins=5, endpoints="bogus")
 
 
+@pytest.mark.parametrize("endpoints", ["midpoint", "inclusive"])
+@pytest.mark.parametrize(
+    "v_min,v_max",
+    [(float("-inf"), 1.0), (0.0, float("inf")), (float("nan"), 1.0), (0.0, float("nan"))],
+)
+def test_build_value_support_rejects_nonfinite_bounds(endpoints: str, v_min: float, v_max: float) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        build_value_support(v_min, v_max, num_bins=5, endpoints=endpoints)
+
+
+@pytest.mark.parametrize("sigma", [0.0, -0.1, float("inf"), float("-inf"), float("nan")])
+def test_hl_gauss_rejects_invalid_sigma(sigma: float) -> None:
+    _, edges = build_value_support(0.0, 1.0, num_bins=51)
+    with pytest.raises(ValueError, match="finite and positive"):
+        hl_gauss_target(torch.tensor([0.0, 0.5, 1.0]), edges, sigma=sigma)
+
+
+@pytest.mark.parametrize("ratio", [0.0, -0.75, float("inf"), float("-inf"), float("nan")])
+def test_categorical_hl_gauss_rejects_invalid_sigma_ratio(ratio: float) -> None:
+    args = _categorical_args("hl_gauss", num_bins=51)
+    args.value_hl_gauss_sigma_ratio = ratio
+    with pytest.raises(ValueError, match="finite and positive"):
+        categorical_value_target(torch.tensor([0.0, 1.0]), args)
+
+
+@pytest.mark.parametrize("endpoints", ["midpoint", "inclusive"])
+def test_hl_gauss_out_of_support_targets_remain_normalized_and_trainable(endpoints: str) -> None:
+    args = _categorical_args("hl_gauss", num_bins=51, endpoints=endpoints)
+    returns = torch.tensor([-100.0, -0.2, 1.2, 100.0])
+    target = categorical_value_target(returns, args)
+    assert torch.isfinite(target).all()
+    assert (target >= 0).all()
+    torch.testing.assert_close(target.sum(dim=-1), torch.ones_like(returns))
+    assert target.argmax(dim=-1).tolist() == [0, 0, 50, 50]
+
+    logits = torch.zeros_like(target, requires_grad=True)
+    loss = cross_entropy_with_soft_target(logits, target)
+    assert (loss > 0).all()
+    loss.sum().backward()
+    assert torch.isfinite(logits.grad).all()
+    assert (logits.grad.abs().sum(dim=-1) > 0).all()
+
+
+def test_hl_gauss_midpoint_clamps_returns_to_support_edges() -> None:
+    args = _categorical_args("hl_gauss", num_bins=51)
+    returns = torch.tensor([-0.2, 0.0, 0.3, 1.0, 1.2])
+    actual = categorical_value_target(returns, args)
+    expected = categorical_value_target(returns.clamp(0.0, 1.0), args)
+    torch.testing.assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("endpoints", ["midpoint", "inclusive"])
+def test_hl_gauss_preserves_unclamped_cdf_formula_where_applicable(endpoints: str) -> None:
+    _, edges = build_value_support(0.0, 1.0, num_bins=5, endpoints=endpoints)
+    # Inclusive outer edges are infinite: out-of-support means retain their
+    # original Gaussian tail mass, rather than being clamped to the atoms.
+    returns = torch.tensor([-0.2, 0.0, 0.3, 1.0, 1.2] if endpoints == "inclusive" else [0.0, 0.3, 1.0])
+    sigma = 0.15
+    cdf = 0.5 * (1.0 + torch.erf((edges - returns.unsqueeze(-1)) / (sigma * 2.0**0.5)))
+    mass = cdf[:, 1:] - cdf[:, :-1]
+    expected = mass / mass.sum(dim=-1, keepdim=True)
+    torch.testing.assert_close(hl_gauss_target(returns, edges, sigma), expected)
+
+
 def test_twohot_target_inclusive_endpoints_recovers_exact_min_max() -> None:
     centers, _ = build_value_support(0.0, 1.0, num_bins=5, endpoints="inclusive")
     target = twohot_target(torch.tensor([0.0, 1.0]), centers)
