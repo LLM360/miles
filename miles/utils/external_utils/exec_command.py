@@ -7,16 +7,17 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from miles.utils.misc import get_current_node_ip
 
 
-def exec_command_gpu(cmd: str, capture_output: bool = False) -> str | None:
-    return _exec_command(cmd, capture_output=capture_output)
+def exec_command_gpu(cmd: str, capture_output: bool = False, display_cmd: str | None = None) -> str | None:
+    return _exec_command(cmd, capture_output=capture_output, display_cmd=display_cmd)
 
 
-def exec_command_cpu(cmd: str, capture_output: bool = False) -> str | None:
-    return _exec_command(cmd, capture_output=capture_output)
+def exec_command_cpu(cmd: str, capture_output: bool = False, display_cmd: str | None = None) -> str | None:
+    return _exec_command(cmd, capture_output=capture_output, display_cmd=display_cmd)
 
 
-def _exec_command(cmd: str, capture_output: bool = False) -> str | None:
-    print(f"EXEC: {cmd}", flush=True)
+def _exec_command(cmd: str, capture_output: bool = False, display_cmd: str | None = None) -> str | None:
+    """Run `cmd`; `display_cmd` is what gets echoed instead when `cmd` carries a secret."""
+    print(f"EXEC: {display_cmd if display_cmd is not None else cmd}", flush=True)
 
     try:
         result = subprocess.run(
@@ -26,9 +27,16 @@ def _exec_command(cmd: str, capture_output: bool = False) -> str | None:
             capture_output=capture_output,
             **(dict(text=True) if capture_output else {}),
         )
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError as error:
         if capture_output:
-            print(f"{e.stdout=} {e.stderr=}")
+            print(f"{error.stdout=} {error.stderr=}")
+        if display_cmd is not None:
+            raise subprocess.CalledProcessError(
+                error.returncode,
+                ["bash", "-c", display_cmd],
+                output=error.output,
+                stderr=error.stderr,
+            ) from None
         raise
 
     if capture_output:

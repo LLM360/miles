@@ -559,6 +559,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 "--rollout-top-k", type=int, default=-1, help="the top-k for the inference engine during rollout."
             )
             parser.add_argument(
+                "--rollout-required-context-len",
+                type=int,
+                default=None,
+                help="Require each rollout engine's context window and KV capacity to cover this many tokens.",
+            )
+            parser.add_argument(
                 "--rollout-max-context-len",
                 type=int,
                 default=None,

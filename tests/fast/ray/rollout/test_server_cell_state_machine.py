@@ -242,6 +242,35 @@ class TestInit:
 
 
 class TestTick:
+    @pytest.mark.parametrize("capacity", [131072, 196608])
+    async def test_required_context_is_checked_before_offload_and_router_registration(
+        self, cell_env, monkeypatch, capacity
+    ):
+        async def get_server_info(self):
+            _RecordingApiClient.calls.append(("server_info", {}))
+            return {"context_length": 131072, "max_total_num_tokens": capacity, "page_size": 256}
+
+        monkeypatch.setattr(_RecordingApiClient, "get_server_info", get_server_info, raising=False)
+        router = _RecordingRouterApiClient()
+        cell = _make_cell(
+            router=router,
+            needs_offload=True,
+            update_weights=False,
+            args_overrides={"rollout_required_context_len": 131072},
+        )
+        await cell.init()
+        if capacity == 131072:
+            with pytest.raises(ValueError, match="KV capacity"):
+                await cell.tick()
+            assert cell.is_initializing
+            assert router.calls == []
+            assert cell_env["memory_calls"] == [("server_info", {})]
+        else:
+            await cell.tick()
+            assert cell.is_serving
+            assert [name for name, _ in cell_env["memory_calls"]] == ["server_info", "release", "resume"]
+            assert [name for name, _ in router.calls] == ["add_worker"]
+
     async def test_an_uninitialized_cell_is_not_probed(self, cell_env):
         """It has no address yet, so probing it would be dialing nothing."""
         cell = _make_cell()

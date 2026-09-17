@@ -19,6 +19,8 @@ repos:
       - id: detect-private-key
       - id: check-added-large-files
         args: ['--maxkb=1000']
+        # Bundled training data; provenance and SHA-256 are recorded in the example README.
+        exclude: '^examples/dapo_math_17k/dapo-math-17k\.jsonl$'
       - id: requirements-txt-fixer
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

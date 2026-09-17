@@ -11,7 +11,7 @@ def model_args(rotary_base: str | None = None) -> str:
         "--num-attention-heads 32 "
         "--group-query-attention "
         "--num-query-groups 8 "
-        "--use-rotary-position-embeddings "
+        "--position-embedding-type rope "
         "--disable-bias-linear "
         "--normalization RMSNorm "
         "--norm-epsilon 1e-6 "

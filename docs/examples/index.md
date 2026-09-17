@@ -10,6 +10,7 @@ A few are purely demonstrative, but most are verifiable against a concrete perfo
 
 End-to-end training workflows — the place to start.
 
+- **[dapo_math_17k](/examples/dapo-math-17k)**: Qwen3-8B Megatron GRPO with Math-Verify rewards and optional eight-GPU 128K-response presets.
 - **[geo3k_vlm](/examples/geo3k-vlm)**: Training VLMs with FSDP using GRPO on the GEO3K dataset.
   - **[multi_turn](/examples/geo3k-vlm/multi-turn)**: The same dataset over multiple turns, with the model cropping images through an interactive environment.
 - **[lora](https://github.com/radixark/miles/tree/main/examples/lora)**: LoRA fine-tuning with the Megatron backend.

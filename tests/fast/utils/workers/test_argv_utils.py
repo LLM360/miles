@@ -225,6 +225,26 @@ def _render_drifting(args_obj: _DemoArgs, **overrides) -> list[str]:
 
 
 class TestRenderCliArgv:
+    @pytest.mark.parametrize("value", [None, "cuda"])
+    def test_always_rendered_nullable_field_preserves_deferred_default(self, value):
+        """Deferred device detection must not receive the literal string 'None'."""
+
+        def make_parser():
+            parser = _make_parser()
+            parser.set_defaults(cli_filled=None)
+            return parser
+
+        expected = _from_parsed(make_parser().parse_args([]))
+        expected.cli_filled = value
+        argv = render_cli_argv(
+            {"cli_filled": value},
+            expected_obj=expected,
+            make_parser=make_parser,
+            from_parsed=_from_parsed,
+            always_render_fields=("cli_filled",),
+        )
+        assert argv == ([] if value is None else ["--cli-filled", value])
+
     def test_cli_defaults_render_to_an_empty_argv(self):
         """An object matching the CLI defaults needs no flags at all."""
         assert _render(_parse([])) == []

@@ -124,6 +124,9 @@ def _resolve_action(
 
 
 def _render_action_argv(action: argparse.Action, value: object) -> list[str]:
+    if value is None:
+        return []
+
     if isinstance(action, argparse.BooleanOptionalAction):
         return [_boolean_option_string(action, value=bool(value))]
 

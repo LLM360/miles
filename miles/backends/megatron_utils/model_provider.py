@@ -17,6 +17,7 @@ from megatron.core.transformer.spec_utils import import_module
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training.arguments import core_transformer_config_from_args
 
+from miles.backends.megatron_utils.yarn import apply_dense_yarn_config
 from miles.utils.audit_utils.witness.module import install_witness
 from miles.utils.function_registry import load_function
 from miles.utils.replay_base import routing_replay_manager
@@ -226,6 +227,7 @@ def get_model_provider_func(
         # Experimental loading arguments from yaml
         assert config is None, "miles builds the config from args, so it expects config to be None"
         config = core_transformer_config_from_args(args)
+        apply_dense_yarn_config(config, args)
 
         # `enable_mtp_training` comes from miles' arg parser; megatron-only arg contexts
         # (e.g. the run_megatron debug worker) won't have it, so default to False.

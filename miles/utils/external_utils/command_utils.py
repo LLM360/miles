@@ -78,8 +78,8 @@ def convert_checkpoint(
             f"{multinode_args}"
             f"{repo_base_dir}/tools/convert_hf_to_torch_dist.py "
             f"{shell_safe_model_args(megatron_model_type)} "
-            f"--hf-checkpoint {hf_checkpoint} "
-            f"--save {path_dst} "
+            f"--hf-checkpoint {shlex.quote(hf_checkpoint)} "
+            f"--save {shlex.quote(path_dst)} "
             f"{extra_args}"
         )
 
@@ -169,9 +169,17 @@ def execute_train(
     extra_env_vars=None,
     config: ExecuteTrainConfig | None = None,
     megatron_path: str = "/root/Megatron-LM",
+    secret_env_vars: dict[str, str] | None = None,
 ):
+    """Start ray (unless external) and submit `train_script`.
+
+    `secret_env_vars` reach the ray runtime env like `extra_env_vars`, but their values are
+    redacted from the echoed `ray job submit` command so credentials never land in a log.
+    """
     if extra_env_vars is None:
         extra_env_vars = {}
+    if secret_env_vars is None:
+        secret_env_vars = {}
     if config is None:
         config = ExecuteTrainConfig()
     if not os.path.isabs(train_script):
@@ -243,18 +251,22 @@ def execute_train(
         **resolve_extra_env_vars(extra_env_vars, config),
     }
     runtime_env_vars["PYTHONPATH"] = _pythonpath_with_sources(megatron_path, runtime_env_vars.get("PYTHONPATH"))
-    runtime_env_json = json.dumps({"env_vars": runtime_env_vars})
 
     if get_bool_env_var("MILES_SCRIPT_ENABLE_RAY_SUBMIT", "1"):
         model_args = shell_safe_model_args(megatron_model_type)
-        exec_command_cpu(
+        submit_cmd, display_cmd = (
             f"export no_proxy=127.0.0.1 && export PYTHONUNBUFFERED=1 && "
             f"""ray job submit {'' if 'RAY_ADDRESS' in os.environ else '--address="http://127.0.0.1:8265" '}"""
-            f"--runtime-env-json={shlex.quote(runtime_env_json)} "
+            f"--runtime-env-json={shlex.quote(json.dumps({'env_vars': {**runtime_env_vars, **secrets}}))} "
             f"-- python3 {train_script} "
             f"{model_args} "
             f"{train_args}"
+            for secrets in (secret_env_vars, {k: "<redacted>" for k in secret_env_vars})
         )
+        if secret_env_vars:
+            exec_command_cpu(submit_cmd, display_cmd=display_cmd)
+        else:
+            exec_command_cpu(submit_cmd)
 
 
 def _parse_extra_env_vars(text: str):

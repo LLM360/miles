@@ -1,0 +1,807 @@
+### qwen3-4b_warmup_thinking_seed42
+model definition: qwen3-4B
+runtime env: {"SGLANG_MAX_NEW_TOKENS_LIMIT": "128000"}
+secret env names: WANDB_API_KEY
+--hf-checkpoint <OUTPUT_ROOT>/qwen3-4b_warmup_thinking_seed42/hf_long_context
+--load <OUTPUT_ROOT>/qwen3-4b_warmup_thinking_seed42/megatron_init/Qwen3-4B_torch_dist
+--prompt-data <REPO_ROOT>/examples/dapo_math_17k/dapo-math-640-seed42.jsonl
+--input-key prompt
+--label-key label
+--apply-chat-template
+--apply-chat-template-kwargs '{"enable_thinking": true}'
+--rollout-shuffle
+--rollout-seed 42
+--balance-data
+--custom-rm-path examples.dapo_math_17k.reward.reward_func
+--num-rollout 100
+--rollout-batch-size 64
+--over-sampling-batch-size 32
+--n-samples-per-prompt 8
+--rollout-max-response-len 128000
+--rollout-temperature 1.0
+--rollout-top-p 0.95
+--rollout-top-k 20
+--global-batch-size 512
+--advantage-estimator grpo
+--kl-loss-coef 0.0
+--kl-loss-type low_var_kl
+--kl-coef 0.00
+--entropy-coef 0.00
+--eps-clip 0.2
+--eps-clip-high 0.28
+--optimizer adam
+--lr 5e-06
+--min-lr 2e-06
+--lr-decay-style linear
+--lr-decay-iters 100
+--lr-warmup-init 1.414e-06
+--lr-warmup-iters 10
+--weight-decay 0.1
+--adam-beta1 0.9
+--adam-beta2 0.98
+--clip-grad 1.0
+--rollout-num-gpus-per-engine 1
+--sglang-mem-fraction-static 0.6
+--sglang-chunked-prefill-size 8192
+--train-backend megatron
+--bf16
+--tensor-model-parallel-size 2
+--sequence-parallel
+--pipeline-model-parallel-size 1
+--context-parallel-size 4
+--cp-comm-type a2a
+--attention-backend flash
+--attention-dropout 0.0
+--hidden-dropout 0.0
+--accumulate-allreduce-grads-in-fp32
+--attention-softmax-in-fp32
+--recompute-granularity full
+--recompute-method uniform
+--recompute-num-layers 1
+--update-weight-buffer-size 536870912
+--seq-length 131072
+--position-embedding-type yarn
+--rotary-base 1000000
+--rotary-scaling-factor 4.0
+--yarn-original-max-position-embeddings 32768
+--yarn-beta-fast 32
+--yarn-beta-slow 1
+--mscale 1
+--mscale-all-dim 0
+--yarn-correction-range-round-to-int
+--use-dynamic-batch-size
+--max-tokens-per-gpu 32768
+--log-probs-chunk-size 512
+--recompute-loss-function
+--save <OUTPUT_ROOT>/qwen3-4b_warmup_thinking_seed42/dapo_math_17k
+--save-interval 50
+--seed 42
+--start-rollout-id 0
+--actor-num-nodes 1
+--actor-num-gpus-per-node 8
+--num-gpus-per-node 8
+--colocate
+--sglang-context-length 131072
+--sglang-max-running-requests 8
+--sglang-router-policy round_robin
+--sglang-page-size 64
+--sglang-kv-cache-dtype fp8_e4m3
+--sglang-attention-backend fa3
+--sglang-cuda-graph-backend-decode full
+--sglang-cuda-graph-max-bs-decode 8
+--rollout-required-context-len 131072
+--rollout-max-context-len 131070
+--skip-eval-before-train
+--use-wandb
+--wandb-mode online
+--wandb-project dapo-long-context-test
+--wandb-group qwen3-4b_warmup_thinking_seed42
+--disable-wandb-random-suffix
+--wandb-dir <OUTPUT_ROOT>/qwen3-4b_warmup_thinking_seed42/wandb
+
+### qwen3-4b_warmup_nothinking_seed42
+model definition: qwen3-4B
+runtime env: {"SGLANG_MAX_NEW_TOKENS_LIMIT": "128000"}
+secret env names: WANDB_API_KEY
+--hf-checkpoint <OUTPUT_ROOT>/qwen3-4b_warmup_nothinking_seed42/hf_long_context
+--load <OUTPUT_ROOT>/qwen3-4b_warmup_nothinking_seed42/megatron_init/Qwen3-4B_torch_dist
+--prompt-data <REPO_ROOT>/examples/dapo_math_17k/dapo-math-640-seed42.jsonl
+--input-key prompt
+--label-key label
+--apply-chat-template
+--apply-chat-template-kwargs '{"enable_thinking": false}'
+--rollout-shuffle
+--rollout-seed 42
+--balance-data
+--custom-rm-path examples.dapo_math_17k.reward.reward_func
+--num-rollout 100
+--rollout-batch-size 64
+--over-sampling-batch-size 32
+--n-samples-per-prompt 8
+--rollout-max-response-len 128000
+--rollout-temperature 1.0
+--rollout-top-p 0.95
+--rollout-top-k 20
+--global-batch-size 512
+--advantage-estimator grpo
+--kl-loss-coef 0.0
+--kl-loss-type low_var_kl
+--kl-coef 0.00
+--entropy-coef 0.00
+--eps-clip 0.2
+--eps-clip-high 0.28
+--optimizer adam
+--lr 5e-06
+--min-lr 2e-06
+--lr-decay-style linear
+--lr-decay-iters 100
+--lr-warmup-init 1.414e-06
+--lr-warmup-iters 10
+--weight-decay 0.1
+--adam-beta1 0.9
+--adam-beta2 0.98
+--clip-grad 1.0
+--rollout-num-gpus-per-engine 1
+--sglang-mem-fraction-static 0.6
+--sglang-chunked-prefill-size 8192
+--train-backend megatron
+--bf16
+--tensor-model-parallel-size 2
+--sequence-parallel
+--pipeline-model-parallel-size 1
+--context-parallel-size 4
+--cp-comm-type a2a
+--attention-backend flash
+--attention-dropout 0.0
+--hidden-dropout 0.0
+--accumulate-allreduce-grads-in-fp32
+--attention-softmax-in-fp32
+--recompute-granularity full
+--recompute-method uniform
+--recompute-num-layers 1
+--update-weight-buffer-size 536870912
+--seq-length 131072
+--position-embedding-type yarn
+--rotary-base 1000000
+--rotary-scaling-factor 4.0
+--yarn-original-max-position-embeddings 32768
+--yarn-beta-fast 32
+--yarn-beta-slow 1
+--mscale 1
+--mscale-all-dim 0
+--yarn-correction-range-round-to-int
+--use-dynamic-batch-size
+--max-tokens-per-gpu 32768
+--log-probs-chunk-size 512
+--recompute-loss-function
+--save <OUTPUT_ROOT>/qwen3-4b_warmup_nothinking_seed42/dapo_math_17k
+--save-interval 50
+--seed 42
+--start-rollout-id 0
+--actor-num-nodes 1
+--actor-num-gpus-per-node 8
+--num-gpus-per-node 8
+--colocate
+--sglang-context-length 131072
+--sglang-max-running-requests 8
+--sglang-router-policy round_robin
+--sglang-page-size 64
+--sglang-kv-cache-dtype fp8_e4m3
+--sglang-attention-backend fa3
+--sglang-cuda-graph-backend-decode full
+--sglang-cuda-graph-max-bs-decode 8
+--rollout-required-context-len 131072
+--rollout-max-context-len 131070
+--skip-eval-before-train
+--use-wandb
+--wandb-mode online
+--wandb-project dapo-long-context-test
+--wandb-group qwen3-4b_warmup_nothinking_seed42
+--disable-wandb-random-suffix
+--wandb-dir <OUTPUT_ROOT>/qwen3-4b_warmup_nothinking_seed42/wandb
+
+### qwen3-4b_nowarmup_thinking_seed42
+model definition: qwen3-4B
+runtime env: {"SGLANG_MAX_NEW_TOKENS_LIMIT": "128000"}
+secret env names: WANDB_API_KEY
+--hf-checkpoint <OUTPUT_ROOT>/qwen3-4b_nowarmup_thinking_seed42/hf_long_context
+--load <OUTPUT_ROOT>/qwen3-4b_nowarmup_thinking_seed42/megatron_init/Qwen3-4B_torch_dist
+--prompt-data <REPO_ROOT>/examples/dapo_math_17k/dapo-math-640-seed42.jsonl
+--input-key prompt
+--label-key label
+--apply-chat-template
+--apply-chat-template-kwargs '{"enable_thinking": true}'
+--rollout-shuffle
+--rollout-seed 42
+--balance-data
+--custom-rm-path examples.dapo_math_17k.reward.reward_func
+--num-rollout 100
+--rollout-batch-size 64
+--over-sampling-batch-size 32
+--n-samples-per-prompt 8
+--rollout-max-response-len 128000
+--rollout-temperature 1.0
+--rollout-top-p 0.95
+--rollout-top-k 20
+--global-batch-size 512
+--advantage-estimator grpo
+--kl-loss-coef 0.0
+--kl-loss-type low_var_kl
+--kl-coef 0.00
+--entropy-coef 0.00
+--eps-clip 0.2
+--eps-clip-high 0.28
+--optimizer adam
+--lr 5e-06
+--min-lr 2e-06
+--lr-decay-style linear
+--lr-decay-iters 100
+--lr-warmup-init 5e-06
+--lr-warmup-iters 0
+--weight-decay 0.1
+--adam-beta1 0.9
+--adam-beta2 0.98
+--clip-grad 1.0
+--rollout-num-gpus-per-engine 1
+--sglang-mem-fraction-static 0.6
+--sglang-chunked-prefill-size 8192
+--train-backend megatron
+--bf16
+--tensor-model-parallel-size 2
+--sequence-parallel
+--pipeline-model-parallel-size 1
+--context-parallel-size 4
+--cp-comm-type a2a
+--attention-backend flash
+--attention-dropout 0.0
+--hidden-dropout 0.0
+--accumulate-allreduce-grads-in-fp32
+--attention-softmax-in-fp32
+--recompute-granularity full
+--recompute-method uniform
+--recompute-num-layers 1
+--update-weight-buffer-size 536870912
+--seq-length 131072
+--position-embedding-type yarn
+--rotary-base 1000000
+--rotary-scaling-factor 4.0
+--yarn-original-max-position-embeddings 32768
+--yarn-beta-fast 32
+--yarn-beta-slow 1
+--mscale 1
+--mscale-all-dim 0
+--yarn-correction-range-round-to-int
+--use-dynamic-batch-size
+--max-tokens-per-gpu 32768
+--log-probs-chunk-size 512
+--recompute-loss-function
+--save <OUTPUT_ROOT>/qwen3-4b_nowarmup_thinking_seed42/dapo_math_17k
+--save-interval 50
+--seed 42
+--start-rollout-id 0
+--actor-num-nodes 1
+--actor-num-gpus-per-node 8
+--num-gpus-per-node 8
+--colocate
+--sglang-context-length 131072
+--sglang-max-running-requests 8
+--sglang-router-policy round_robin
+--sglang-page-size 64
+--sglang-kv-cache-dtype fp8_e4m3
+--sglang-attention-backend fa3
+--sglang-cuda-graph-backend-decode full
+--sglang-cuda-graph-max-bs-decode 8
+--rollout-required-context-len 131072
+--rollout-max-context-len 131070
+--skip-eval-before-train
+--use-wandb
+--wandb-mode online
+--wandb-project dapo-long-context-test
+--wandb-group qwen3-4b_nowarmup_thinking_seed42
+--disable-wandb-random-suffix
+--wandb-dir <OUTPUT_ROOT>/qwen3-4b_nowarmup_thinking_seed42/wandb
+
+### qwen3-4b_nowarmup_nothinking_seed42
+model definition: qwen3-4B
+runtime env: {"SGLANG_MAX_NEW_TOKENS_LIMIT": "128000"}
+secret env names: WANDB_API_KEY
+--hf-checkpoint <OUTPUT_ROOT>/qwen3-4b_nowarmup_nothinking_seed42/hf_long_context
+--load <OUTPUT_ROOT>/qwen3-4b_nowarmup_nothinking_seed42/megatron_init/Qwen3-4B_torch_dist
+--prompt-data <REPO_ROOT>/examples/dapo_math_17k/dapo-math-640-seed42.jsonl
+--input-key prompt
+--label-key label
+--apply-chat-template
+--apply-chat-template-kwargs '{"enable_thinking": false}'
+--rollout-shuffle
+--rollout-seed 42
+--balance-data
+--custom-rm-path examples.dapo_math_17k.reward.reward_func
+--num-rollout 100
+--rollout-batch-size 64
+--over-sampling-batch-size 32
+--n-samples-per-prompt 8
+--rollout-max-response-len 128000
+--rollout-temperature 1.0
+--rollout-top-p 0.95
+--rollout-top-k 20
+--global-batch-size 512
+--advantage-estimator grpo
+--kl-loss-coef 0.0
+--kl-loss-type low_var_kl
+--kl-coef 0.00
+--entropy-coef 0.00
+--eps-clip 0.2
+--eps-clip-high 0.28
+--optimizer adam
+--lr 5e-06
+--min-lr 2e-06
+--lr-decay-style linear
+--lr-decay-iters 100
+--lr-warmup-init 5e-06
+--lr-warmup-iters 0
+--weight-decay 0.1
+--adam-beta1 0.9
+--adam-beta2 0.98
+--clip-grad 1.0
+--rollout-num-gpus-per-engine 1
+--sglang-mem-fraction-static 0.6
+--sglang-chunked-prefill-size 8192
+--train-backend megatron
+--bf16
+--tensor-model-parallel-size 2
+--sequence-parallel
+--pipeline-model-parallel-size 1
+--context-parallel-size 4
+--cp-comm-type a2a
+--attention-backend flash
+--attention-dropout 0.0
+--hidden-dropout 0.0
+--accumulate-allreduce-grads-in-fp32
+--attention-softmax-in-fp32
+--recompute-granularity full
+--recompute-method uniform
+--recompute-num-layers 1
+--update-weight-buffer-size 536870912
+--seq-length 131072
+--position-embedding-type yarn
+--rotary-base 1000000
+--rotary-scaling-factor 4.0
+--yarn-original-max-position-embeddings 32768
+--yarn-beta-fast 32
+--yarn-beta-slow 1
+--mscale 1
+--mscale-all-dim 0
+--yarn-correction-range-round-to-int
+--use-dynamic-batch-size
+--max-tokens-per-gpu 32768
+--log-probs-chunk-size 512
+--recompute-loss-function
+--save <OUTPUT_ROOT>/qwen3-4b_nowarmup_nothinking_seed42/dapo_math_17k
+--save-interval 50
+--seed 42
+--start-rollout-id 0
+--actor-num-nodes 1
+--actor-num-gpus-per-node 8
+--num-gpus-per-node 8
+--colocate
+--sglang-context-length 131072
+--sglang-max-running-requests 8
+--sglang-router-policy round_robin
+--sglang-page-size 64
+--sglang-kv-cache-dtype fp8_e4m3
+--sglang-attention-backend fa3
+--sglang-cuda-graph-backend-decode full
+--sglang-cuda-graph-max-bs-decode 8
+--rollout-required-context-len 131072
+--rollout-max-context-len 131070
+--skip-eval-before-train
+--use-wandb
+--wandb-mode online
+--wandb-project dapo-long-context-test
+--wandb-group qwen3-4b_nowarmup_nothinking_seed42
+--disable-wandb-random-suffix
+--wandb-dir <OUTPUT_ROOT>/qwen3-4b_nowarmup_nothinking_seed42/wandb
+
+### qwen3-8b_warmup_thinking_seed42
+model definition: qwen3-8B
+runtime env: {"SGLANG_MAX_NEW_TOKENS_LIMIT": "128000"}
+secret env names: WANDB_API_KEY
+--hf-checkpoint <OUTPUT_ROOT>/qwen3-8b_warmup_thinking_seed42/hf_long_context
+--load <OUTPUT_ROOT>/qwen3-8b_warmup_thinking_seed42/megatron_init/Qwen3-8B_torch_dist
+--prompt-data <REPO_ROOT>/examples/dapo_math_17k/dapo-math-640-seed42.jsonl
+--input-key prompt
+--label-key label
+--apply-chat-template
+--apply-chat-template-kwargs '{"enable_thinking": true}'
+--rollout-shuffle
+--rollout-seed 42
+--balance-data
+--custom-rm-path examples.dapo_math_17k.reward.reward_func
+--num-rollout 100
+--rollout-batch-size 64
+--over-sampling-batch-size 32
+--n-samples-per-prompt 8
+--rollout-max-response-len 128000
+--rollout-temperature 1.0
+--rollout-top-p 0.95
+--rollout-top-k 20
+--global-batch-size 512
+--advantage-estimator grpo
+--kl-loss-coef 0.0
+--kl-loss-type low_var_kl
+--kl-coef 0.00
+--entropy-coef 0.00
+--eps-clip 0.2
+--eps-clip-high 0.28
+--optimizer adam
+--lr 5e-06
+--min-lr 2e-06
+--lr-decay-style linear
+--lr-decay-iters 100
+--lr-warmup-init 1.414e-06
+--lr-warmup-iters 10
+--weight-decay 0.1
+--adam-beta1 0.9
+--adam-beta2 0.98
+--clip-grad 1.0
+--rollout-num-gpus-per-engine 1
+--sglang-mem-fraction-static 0.6
+--sglang-chunked-prefill-size 8192
+--train-backend megatron
+--bf16
+--tensor-model-parallel-size 2
+--sequence-parallel
+--pipeline-model-parallel-size 1
+--context-parallel-size 4
+--cp-comm-type a2a
+--attention-backend flash
+--attention-dropout 0.0
+--hidden-dropout 0.0
+--accumulate-allreduce-grads-in-fp32
+--attention-softmax-in-fp32
+--recompute-granularity full
+--recompute-method uniform
+--recompute-num-layers 1
+--update-weight-buffer-size 536870912
+--seq-length 131072
+--position-embedding-type yarn
+--rotary-base 1000000
+--rotary-scaling-factor 4.0
+--yarn-original-max-position-embeddings 32768
+--yarn-beta-fast 32
+--yarn-beta-slow 1
+--mscale 1
+--mscale-all-dim 0
+--yarn-correction-range-round-to-int
+--use-dynamic-batch-size
+--max-tokens-per-gpu 32768
+--log-probs-chunk-size 512
+--recompute-loss-function
+--save <OUTPUT_ROOT>/qwen3-8b_warmup_thinking_seed42/dapo_math_17k
+--save-interval 50
+--seed 42
+--start-rollout-id 0
+--actor-num-nodes 1
+--actor-num-gpus-per-node 8
+--num-gpus-per-node 8
+--colocate
+--sglang-context-length 131072
+--sglang-max-running-requests 8
+--sglang-router-policy round_robin
+--sglang-page-size 64
+--sglang-kv-cache-dtype fp8_e4m3
+--sglang-attention-backend fa3
+--sglang-cuda-graph-backend-decode full
+--sglang-cuda-graph-max-bs-decode 8
+--rollout-required-context-len 131072
+--rollout-max-context-len 131070
+--skip-eval-before-train
+--use-wandb
+--wandb-mode online
+--wandb-project dapo-long-context-test
+--wandb-group qwen3-8b_warmup_thinking_seed42
+--disable-wandb-random-suffix
+--wandb-dir <OUTPUT_ROOT>/qwen3-8b_warmup_thinking_seed42/wandb
+
+### qwen3-8b_warmup_nothinking_seed42
+model definition: qwen3-8B
+runtime env: {"SGLANG_MAX_NEW_TOKENS_LIMIT": "128000"}
+secret env names: WANDB_API_KEY
+--hf-checkpoint <OUTPUT_ROOT>/qwen3-8b_warmup_nothinking_seed42/hf_long_context
+--load <OUTPUT_ROOT>/qwen3-8b_warmup_nothinking_seed42/megatron_init/Qwen3-8B_torch_dist
+--prompt-data <REPO_ROOT>/examples/dapo_math_17k/dapo-math-640-seed42.jsonl
+--input-key prompt
+--label-key label
+--apply-chat-template
+--apply-chat-template-kwargs '{"enable_thinking": false}'
+--rollout-shuffle
+--rollout-seed 42
+--balance-data
+--custom-rm-path examples.dapo_math_17k.reward.reward_func
+--num-rollout 100
+--rollout-batch-size 64
+--over-sampling-batch-size 32
+--n-samples-per-prompt 8
+--rollout-max-response-len 128000
+--rollout-temperature 1.0
+--rollout-top-p 0.95
+--rollout-top-k 20
+--global-batch-size 512
+--advantage-estimator grpo
+--kl-loss-coef 0.0
+--kl-loss-type low_var_kl
+--kl-coef 0.00
+--entropy-coef 0.00
+--eps-clip 0.2
+--eps-clip-high 0.28
+--optimizer adam
+--lr 5e-06
+--min-lr 2e-06
+--lr-decay-style linear
+--lr-decay-iters 100
+--lr-warmup-init 1.414e-06
+--lr-warmup-iters 10
+--weight-decay 0.1
+--adam-beta1 0.9
+--adam-beta2 0.98
+--clip-grad 1.0
+--rollout-num-gpus-per-engine 1
+--sglang-mem-fraction-static 0.6
+--sglang-chunked-prefill-size 8192
+--train-backend megatron
+--bf16
+--tensor-model-parallel-size 2
+--sequence-parallel
+--pipeline-model-parallel-size 1
+--context-parallel-size 4
+--cp-comm-type a2a
+--attention-backend flash
+--attention-dropout 0.0
+--hidden-dropout 0.0
+--accumulate-allreduce-grads-in-fp32
+--attention-softmax-in-fp32
+--recompute-granularity full
+--recompute-method uniform
+--recompute-num-layers 1
+--update-weight-buffer-size 536870912
+--seq-length 131072
+--position-embedding-type yarn
+--rotary-base 1000000
+--rotary-scaling-factor 4.0
+--yarn-original-max-position-embeddings 32768
+--yarn-beta-fast 32
+--yarn-beta-slow 1
+--mscale 1
+--mscale-all-dim 0
+--yarn-correction-range-round-to-int
+--use-dynamic-batch-size
+--max-tokens-per-gpu 32768
+--log-probs-chunk-size 512
+--recompute-loss-function
+--save <OUTPUT_ROOT>/qwen3-8b_warmup_nothinking_seed42/dapo_math_17k
+--save-interval 50
+--seed 42
+--start-rollout-id 0
+--actor-num-nodes 1
+--actor-num-gpus-per-node 8
+--num-gpus-per-node 8
+--colocate
+--sglang-context-length 131072
+--sglang-max-running-requests 8
+--sglang-router-policy round_robin
+--sglang-page-size 64
+--sglang-kv-cache-dtype fp8_e4m3
+--sglang-attention-backend fa3
+--sglang-cuda-graph-backend-decode full
+--sglang-cuda-graph-max-bs-decode 8
+--rollout-required-context-len 131072
+--rollout-max-context-len 131070
+--skip-eval-before-train
+--use-wandb
+--wandb-mode online
+--wandb-project dapo-long-context-test
+--wandb-group qwen3-8b_warmup_nothinking_seed42
+--disable-wandb-random-suffix
+--wandb-dir <OUTPUT_ROOT>/qwen3-8b_warmup_nothinking_seed42/wandb
+
+### qwen3-8b_nowarmup_thinking_seed42
+model definition: qwen3-8B
+runtime env: {"SGLANG_MAX_NEW_TOKENS_LIMIT": "128000"}
+secret env names: WANDB_API_KEY
+--hf-checkpoint <OUTPUT_ROOT>/qwen3-8b_nowarmup_thinking_seed42/hf_long_context
+--load <OUTPUT_ROOT>/qwen3-8b_nowarmup_thinking_seed42/megatron_init/Qwen3-8B_torch_dist
+--prompt-data <REPO_ROOT>/examples/dapo_math_17k/dapo-math-640-seed42.jsonl
+--input-key prompt
+--label-key label
+--apply-chat-template
+--apply-chat-template-kwargs '{"enable_thinking": true}'
+--rollout-shuffle
+--rollout-seed 42
+--balance-data
+--custom-rm-path examples.dapo_math_17k.reward.reward_func
+--num-rollout 100
+--rollout-batch-size 64
+--over-sampling-batch-size 32
+--n-samples-per-prompt 8
+--rollout-max-response-len 128000
+--rollout-temperature 1.0
+--rollout-top-p 0.95
+--rollout-top-k 20
+--global-batch-size 512
+--advantage-estimator grpo
+--kl-loss-coef 0.0
+--kl-loss-type low_var_kl
+--kl-coef 0.00
+--entropy-coef 0.00
+--eps-clip 0.2
+--eps-clip-high 0.28
+--optimizer adam
+--lr 5e-06
+--min-lr 2e-06
+--lr-decay-style linear
+--lr-decay-iters 100
+--lr-warmup-init 5e-06
+--lr-warmup-iters 0
+--weight-decay 0.1
+--adam-beta1 0.9
+--adam-beta2 0.98
+--clip-grad 1.0
+--rollout-num-gpus-per-engine 1
+--sglang-mem-fraction-static 0.6
+--sglang-chunked-prefill-size 8192
+--train-backend megatron
+--bf16
+--tensor-model-parallel-size 2
+--sequence-parallel
+--pipeline-model-parallel-size 1
+--context-parallel-size 4
+--cp-comm-type a2a
+--attention-backend flash
+--attention-dropout 0.0
+--hidden-dropout 0.0
+--accumulate-allreduce-grads-in-fp32
+--attention-softmax-in-fp32
+--recompute-granularity full
+--recompute-method uniform
+--recompute-num-layers 1
+--update-weight-buffer-size 536870912
+--seq-length 131072
+--position-embedding-type yarn
+--rotary-base 1000000
+--rotary-scaling-factor 4.0
+--yarn-original-max-position-embeddings 32768
+--yarn-beta-fast 32
+--yarn-beta-slow 1
+--mscale 1
+--mscale-all-dim 0
+--yarn-correction-range-round-to-int
+--use-dynamic-batch-size
+--max-tokens-per-gpu 32768
+--log-probs-chunk-size 512
+--recompute-loss-function
+--save <OUTPUT_ROOT>/qwen3-8b_nowarmup_thinking_seed42/dapo_math_17k
+--save-interval 50
+--seed 42
+--start-rollout-id 0
+--actor-num-nodes 1
+--actor-num-gpus-per-node 8
+--num-gpus-per-node 8
+--colocate
+--sglang-context-length 131072
+--sglang-max-running-requests 8
+--sglang-router-policy round_robin
+--sglang-page-size 64
+--sglang-kv-cache-dtype fp8_e4m3
+--sglang-attention-backend fa3
+--sglang-cuda-graph-backend-decode full
+--sglang-cuda-graph-max-bs-decode 8
+--rollout-required-context-len 131072
+--rollout-max-context-len 131070
+--skip-eval-before-train
+--use-wandb
+--wandb-mode online
+--wandb-project dapo-long-context-test
+--wandb-group qwen3-8b_nowarmup_thinking_seed42
+--disable-wandb-random-suffix
+--wandb-dir <OUTPUT_ROOT>/qwen3-8b_nowarmup_thinking_seed42/wandb
+
+### qwen3-8b_nowarmup_nothinking_seed42
+model definition: qwen3-8B
+runtime env: {"SGLANG_MAX_NEW_TOKENS_LIMIT": "128000"}
+secret env names: WANDB_API_KEY
+--hf-checkpoint <OUTPUT_ROOT>/qwen3-8b_nowarmup_nothinking_seed42/hf_long_context
+--load <OUTPUT_ROOT>/qwen3-8b_nowarmup_nothinking_seed42/megatron_init/Qwen3-8B_torch_dist
+--prompt-data <REPO_ROOT>/examples/dapo_math_17k/dapo-math-640-seed42.jsonl
+--input-key prompt
+--label-key label
+--apply-chat-template
+--apply-chat-template-kwargs '{"enable_thinking": false}'
+--rollout-shuffle
+--rollout-seed 42
+--balance-data
+--custom-rm-path examples.dapo_math_17k.reward.reward_func
+--num-rollout 100
+--rollout-batch-size 64
+--over-sampling-batch-size 32
+--n-samples-per-prompt 8
+--rollout-max-response-len 128000
+--rollout-temperature 1.0
+--rollout-top-p 0.95
+--rollout-top-k 20
+--global-batch-size 512
+--advantage-estimator grpo
+--kl-loss-coef 0.0
+--kl-loss-type low_var_kl
+--kl-coef 0.00
+--entropy-coef 0.00
+--eps-clip 0.2
+--eps-clip-high 0.28
+--optimizer adam
+--lr 5e-06
+--min-lr 2e-06
+--lr-decay-style linear
+--lr-decay-iters 100
+--lr-warmup-init 5e-06
+--lr-warmup-iters 0
+--weight-decay 0.1
+--adam-beta1 0.9
+--adam-beta2 0.98
+--clip-grad 1.0
+--rollout-num-gpus-per-engine 1
+--sglang-mem-fraction-static 0.6
+--sglang-chunked-prefill-size 8192
+--train-backend megatron
+--bf16
+--tensor-model-parallel-size 2
+--sequence-parallel
+--pipeline-model-parallel-size 1
+--context-parallel-size 4
+--cp-comm-type a2a
+--attention-backend flash
+--attention-dropout 0.0
+--hidden-dropout 0.0
+--accumulate-allreduce-grads-in-fp32
+--attention-softmax-in-fp32
+--recompute-granularity full
+--recompute-method uniform
+--recompute-num-layers 1
+--update-weight-buffer-size 536870912
+--seq-length 131072
+--position-embedding-type yarn
+--rotary-base 1000000
+--rotary-scaling-factor 4.0
+--yarn-original-max-position-embeddings 32768
+--yarn-beta-fast 32
+--yarn-beta-slow 1
+--mscale 1
+--mscale-all-dim 0
+--yarn-correction-range-round-to-int
+--use-dynamic-batch-size
+--max-tokens-per-gpu 32768
+--log-probs-chunk-size 512
+--recompute-loss-function
+--save <OUTPUT_ROOT>/qwen3-8b_nowarmup_nothinking_seed42/dapo_math_17k
+--save-interval 50
+--seed 42
+--start-rollout-id 0
+--actor-num-nodes 1
+--actor-num-gpus-per-node 8
+--num-gpus-per-node 8
+--colocate
+--sglang-context-length 131072
+--sglang-max-running-requests 8
+--sglang-router-policy round_robin
+--sglang-page-size 64
+--sglang-kv-cache-dtype fp8_e4m3
+--sglang-attention-backend fa3
+--sglang-cuda-graph-backend-decode full
+--sglang-cuda-graph-max-bs-decode 8
+--rollout-required-context-len 131072
+--rollout-max-context-len 131070
+--skip-eval-before-train
+--use-wandb
+--wandb-mode online
+--wandb-project dapo-long-context-test
+--wandb-group qwen3-8b_nowarmup_nothinking_seed42
+--disable-wandb-random-suffix
+--wandb-dir <OUTPUT_ROOT>/qwen3-8b_nowarmup_nothinking_seed42/wandb

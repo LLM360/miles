@@ -5,8 +5,8 @@ def record_commands(monkeypatch) -> list[str]:
     """Replace every command-executing helper with a recorder and return the list it appends to."""
     commands: list[str] = []
 
-    def fake_exec_command(cmd: str, capture_output: bool = False) -> str | None:
-        commands.append(cmd)
+    def fake_exec_command(cmd: str, capture_output: bool = False, display_cmd: str | None = None) -> str | None:
+        commands.append(display_cmd if display_cmd is not None else cmd)
         return "0" if capture_output else None
 
     def fake_exec_command_multi_node(

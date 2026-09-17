@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from sglang.srt.constants import GPU_MEMORY_TYPE_WEIGHTS
 
+from miles.backends.sglang_utils.length_validation import validate_context_capacity
 from miles.backends.sglang_utils.sglang_api_client import SGLangApiClient, probe_server_healthy
 from miles.backends.sglang_utils.sglang_engine import build_server_url
 from miles.backends.sglang_utils.sglang_router_api_client import SGLangRouterApiClient, use_legacy_router_api
@@ -168,6 +169,10 @@ class ServerCell:
         addr_info = self._state.addr_info
         if not await probe_server_healthy(server_url=addr_info.server_url, api_key=self.meta.sglang_api_key):
             return
+
+        required_context = getattr(self.args, "rollout_required_context_len", None)
+        if required_context is not None:
+            validate_context_capacity(await self.api_client.get_server_info(), required_context=required_context)
 
         if self.args.check_weight_update_equal and self.meta.update_weights:
             await self.check_weights(action="snapshot", allow_quant_error=False, selector="all", skip_list=None)
