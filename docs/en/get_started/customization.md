@@ -170,6 +170,11 @@ def filter_function(args, samples: list[Sample]) -> None
 
 **Note**: This function should directly modify the `remove_sample` attribute of each `Sample` object.
 
+The default sample-to-training-data converter propagates this decision as
+`removed_by_filter`. A custom `--custom-convert-samples-to-train-data-path`
+that emits an all-zero loss mask must also emit a parallel boolean
+`removed_by_filter` field. The trainer rejects unexplained all-zero masks.
+
 **Use Cases**:
 - Filtering samples based on response quality
 - Implementing selective training strategies
@@ -438,5 +443,4 @@ For detailed explanation of R3 and MilesRouter, see [Miles Router](../advanced/m
 ```python
 def custom_model_provider(pre_process: bool, post_process: bool, vp_stage: int | None = None) -> GPTModel
 ```
-
 

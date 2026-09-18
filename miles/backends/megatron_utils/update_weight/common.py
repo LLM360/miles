@@ -17,6 +17,38 @@ from miles.utils.types import ParamInfo
 logger = logging.getLogger(__name__)
 
 
+def is_ffn_expert_parameter(name: str) -> bool:
+    """Return whether ``name`` belongs to the EP-sharded feed-forward experts.
+
+    MoVA value projections also contain an ``experts`` path component, but
+    they are replicated over FFN expert parallelism and sharded over regular
+    attention tensor parallelism. Keep the predicate deliberately tied to the
+    MLP path so the two expert systems cannot be mixed accidentally.
+    """
+
+    return ".mlp.experts." in name
+
+
+def is_mova_model(args: Namespace) -> bool:
+    return getattr(args, "mova_num_value_experts", 0) > 0
+
+
+def validate_weight_update_cache_mode(args: Namespace) -> None:
+    """Reject cache-preserving updates for MoVA.
+
+    MoVA caches the routed value, which depends on both router and value-expert
+    weights. Reusing a KV cache after a policy update therefore mixes two model
+    versions even when keys are unchanged.
+    """
+
+    if is_mova_model(args) and getattr(args, "pause_generation_mode", None) == "in_place":
+        raise ValueError(
+            "MoVA weight updates do not support pause_generation_mode='in_place': "
+            "the routed-value KV cache must be flushed after every policy update. "
+            "Use 'retract' (recommended) or 'abort'."
+        )
+
+
 def _gather_with_stride(
     param_partitions: list[torch.Tensor], partition_dim: int, partition_stride: int
 ) -> torch.Tensor:
@@ -50,7 +82,8 @@ def _check_and_fix_partition(args: Namespace, name: str, partition_stride: int, 
 def all_gather_param(args: Namespace, name: str, param: torch.nn.Parameter) -> torch.Tensor:
     """
     All-gather TP-sharded param to full tensor. expert_bias→param, non-TP/duplicated→param.data.
-    Uses expert-TP for ".experts.", else regular-TP. Handles strided partitioning via partition_stride.
+    Uses expert-TP for FFN ``.mlp.experts.`` tensors, else regular-TP. Handles
+    strided partitioning via ``partition_stride``.
     """
     if "expert_bias" in name:
         return param
@@ -59,7 +92,7 @@ def all_gather_param(args: Namespace, name: str, param: torch.nn.Parameter) -> t
     if not param.tensor_model_parallel or getattr(param, "parallel_mode", None) == "duplicated":
         return param.data
 
-    if ".experts." in name:
+    if is_ffn_expert_parameter(name):
         tp_size = mpu.get_expert_tensor_parallel_world_size()
         tp_group = mpu.get_expert_tensor_parallel_group()
     else:
@@ -99,7 +132,7 @@ def all_gather_params_async(
             handles.append(None)
         else:
             # Start async all_gather
-            if ".experts." in info.name:
+            if is_ffn_expert_parameter(info.name):
                 tp_size = mpu.get_expert_tensor_parallel_world_size()
                 tp_group = mpu.get_expert_tensor_parallel_group()
             else:
@@ -270,7 +303,7 @@ def collect_named_tensors_for_weight_transfer(
         convert_to_global_name,
         translate_gpu_to_cpu,
     ):
-        if is_expert == (".experts." in name):
+        if is_expert == is_ffn_expert_parameter(name):
             yield name, tensor
 
 

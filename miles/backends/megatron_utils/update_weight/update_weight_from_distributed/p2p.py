@@ -267,7 +267,7 @@ class UpdateWeightP2P(DistBucketedWeightUpdateMixin):
         initialize_fp4_gemm_config(server_args)
         with ParallelismContext(parallelism_config):
             model = get_model(
-                model_config=ModelConfig(model_path),
+                model_config=ModelConfig(model_path, dtype=server_args.dtype),
                 load_config=load_config,
                 device_config=DeviceConfig(),
             )
