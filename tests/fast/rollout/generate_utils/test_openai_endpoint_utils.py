@@ -5,17 +5,20 @@ and merge_samples — the core of the TITO (Token In Token Out) pipeline.
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from miles.rollout.base_types import GenerateFnInput
+from miles.rollout.generate_hub.agentic_tool_call import generate
 from miles.rollout.generate_utils.openai_endpoint_utils import (
     OpenAIEndpointTracer,
     compute_samples_from_openai_records,
+    truncate_samples_by_total_tokens,
 )
 from miles.rollout.generate_utils.sample_utils import merge_samples
-from miles.rollout.session.session_types import SessionRecord
-from miles.utils.types import Sample
+from miles.rollout.session.session_types import MergedSessionSample, SessionRecord
+from miles.utils.types import RolloutSamplingMask, Sample
 
 # ── helpers ──────────────────────────────────────────────────────────
 
@@ -92,30 +95,149 @@ def _make_record(
     )
 
 
+def _make_replay_record(
+    prompt_token_ids: list[int],
+    output_token_ids: list[int],
+    sampling_rows: list[list[int]],
+    sampling_log_probs: list[float],
+) -> SessionRecord:
+    record = _make_record(
+        prompt_token_ids=prompt_token_ids,
+        output_token_ids=output_token_ids,
+        output_log_probs=[-9.0] * len(output_token_ids),
+    )
+    record.rollout_sampling_mask = RolloutSamplingMask.from_rows(sampling_rows).to_dict()
+    record.rollout_sampling_log_probs = sampling_log_probs
+    return record
+
+
+def _mask_rows(mask: RolloutSamplingMask) -> list[list[int]]:
+    return [mask.token_ids[mask.offsets[i] : mask.offsets[i + 1]].tolist() for i in range(len(mask))]
+
+
+def test_sampling_replay_trajectory_integrity():
+    tokenizer = _mock_tokenizer()
+    records = [
+        _make_replay_record([1, 2], [10, 11, 99], [[10, 12], [11], [99]], [-0.4, 0.0, -1.0]),
+        _make_replay_record(
+            [1, 2, 10, 11, 20, 21],
+            [30, 31],
+            [[30, 40], [31, 41]],
+            [-0.7, -0.8],
+        ),
+    ]
+
+    turns = compute_samples_from_openai_records(
+        _ARGS,
+        _make_input_sample(),
+        records,
+        tokenizer,
+        accumulated_token_ids=[1, 2, 10, 11, 20, 21, 30, 31],
+        max_trim_tokens=1,
+    )
+    assert turns[0].rollout_log_probs == [-0.4, 0.0]
+    assert _mask_rows(turns[0].rollout_sampling_mask) == [[10, 12], [11]]
+
+    merged = merge_samples(turns, tokenizer)
+    assert merged.loss_mask == [1, 1, 0, 0, 1, 1]
+    assert merged.rollout_log_probs == [-0.4, 0.0, 0.0, 0.0, -0.7, -0.8]
+    assert _mask_rows(merged.rollout_sampling_mask) == [
+        [10, 12],
+        [11],
+        [20],
+        [21],
+        [30, 40],
+        [31, 41],
+    ]
+
+    round_trip = Sample.from_dict(merged.to_dict())
+    round_trip.validate()
+    truncated = truncate_samples_by_total_tokens(
+        [round_trip],
+        max_seq_len=len(round_trip.tokens) - 1,
+        tokenizer=tokenizer,
+    )[0]
+    assert truncated.rollout_log_probs == [-0.4, 0.0, 0.0, 0.0, -0.7]
+    assert _mask_rows(truncated.rollout_sampling_mask) == [[10, 12], [11], [20], [21], [30, 40]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("evaluation", [False, True])
+@pytest.mark.parametrize("malformed", [False, True], ids=["merged", "malformed"])
+async def test_generate_sampling_capture_and_collection_errors(monkeypatch, evaluation, malformed):
+    merged = MergedSessionSample(
+        tokens=[1, 2, 10],
+        response_length=1,
+        loss_mask=[1],
+        rollout_log_probs=[0.0],
+        status="truncated",
+    )
+
+    async def agent(**kwargs):
+        return None
+
+    tracer = OpenAIEndpointTracer("http://session", "test")
+    tracer._request = AsyncMock(
+        return_value={"session_id": "test", "sample": {"response_length": 1} if malformed else merged.model_dump()}
+    )
+    tracer.delete_session = AsyncMock()
+    captures = []
+
+    async def create(args, *, capture_sampling_mask=False):
+        captures.append(capture_sampling_mask)
+        return tracer
+
+    monkeypatch.setattr(OpenAIEndpointTracer, "create", create)
+    monkeypatch.setattr("miles.rollout.generate_hub.agentic_tool_call.load_function", lambda _: agent)
+    args = SimpleNamespace(
+        session_server_ip="session",
+        session_server_port=80,
+        custom_agent_function_path="agent",
+        generate_multi_samples=False,
+        max_seq_len=3,
+    )
+    input = GenerateFnInput(
+        SimpleNamespace(args=args, tokenizer=_mock_tokenizer()),
+        _make_input_sample(),
+        {"top_p": 0.9},
+        evaluation,
+    )
+
+    if malformed:
+        assert (await generate(input)).samples.status == Sample.Status.ABORTED
+    elif evaluation:
+        assert (await generate(input)).samples.tokens == [1, 2, 10]
+    else:
+        with pytest.raises(ValueError, match="sampling mask"):
+            await generate(input)
+    assert captures == [not evaluation]
+    tracer.delete_session.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 async def test_create_fetches_session_server_instance_id(monkeypatch):
-    calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str, dict]] = []
 
-    async def fake_post(url: str, payload: dict, action: str = "post"):
-        calls.append((action, url))
-        if action == "get":
+    async def fake_request(method, url, *, payload=None, **kwargs):
+        calls.append((method, url, payload))
+        if method == "GET":
             assert url == "http://127.0.0.1:12345/health"
             return {"status": "ok", "session_server_instance_id": "server-instance-123"}
-        assert action == "post"
+        assert method == "POST"
         assert url == "http://127.0.0.1:12345/sessions"
         return {"session_id": "session-123"}
 
-    monkeypatch.setattr("miles.rollout.generate_utils.openai_endpoint_utils.post", fake_post)
+    monkeypatch.setattr(OpenAIEndpointTracer, "_request", fake_request)
 
     args = SimpleNamespace(session_server_ip="127.0.0.1", session_server_port=12345)
-    tracer = await OpenAIEndpointTracer.create(args)
+    tracer = await OpenAIEndpointTracer.create(args, capture_sampling_mask=True)
 
     assert tracer.base_url == "http://127.0.0.1:12345/sessions/session-123"
     assert tracer.session_server_instance_id == "server-instance-123"
     assert args.session_server_instance_id == "server-instance-123"
     assert calls == [
-        ("get", "http://127.0.0.1:12345/health"),
-        ("post", "http://127.0.0.1:12345/sessions"),
+        ("GET", "http://127.0.0.1:12345/health", None),
+        ("POST", "http://127.0.0.1:12345/sessions", {"capture_sampling_mask": True}),
     ]
 
 

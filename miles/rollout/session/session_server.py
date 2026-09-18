@@ -111,7 +111,7 @@ class SessionServer:
         )
 
 
-async def _stats_logger_loop(worker_port, interval_seconds: float = 30.0):
+async def _stats_logger_loop(worker_port, interval_seconds: float = 300.0):
     """Per-worker observability heartbeat.
 
     Logs counters maintained in ``sessions._worker_stats`` plus RSS/VMS

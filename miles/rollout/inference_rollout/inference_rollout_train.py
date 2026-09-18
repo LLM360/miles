@@ -87,9 +87,11 @@ async def abort(state: GenerateState, pendings: set, rollout_id: int) -> list[li
     assert not state.aborted
     state.aborted = True
 
-    # How many rollout tasks are still in flight when the abort fires. The
-    # specific instances harbor cancels are reported by /abort_all below.
-    logger.info(f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks")
+    # How many rollout tasks are still in flight when the abort fires, and which
+    # groups they are. The specific instances harbor cancels are reported by
+    # /abort_all below.
+    cancelled_names = sorted(task.get_name() for task in pendings)
+    logger.info(f"[abort] rollout_id={rollout_id} draining {len(pendings)} in-flight rollout tasks: {cancelled_names}")
 
     is_agentic = bool(getattr(args, "use_session_server", False) and getattr(args, "custom_agent_function_path", None))
     if is_agentic:
@@ -145,18 +147,22 @@ def stamp_rollout_id(samples: list[list[Sample]], rollout_id: int) -> None:
 
 
 def submit_generate_tasks(state: GenerateState, samples: list[list[Sample]]):
-    return [
-        asyncio.create_task(
-            # submit a group of samples as a single task.
-            generate_and_rm_group(
-                state,
-                group,
-                sampling_params=state.sampling_params.copy(),
-                evaluation=False,
+    tasks = []
+    for group in samples:
+        first = group[0][0] if isinstance(group[0], list) else group[0]
+        tasks.append(
+            asyncio.create_task(
+                # submit a group of samples as a single task.
+                generate_and_rm_group(
+                    state,
+                    group,
+                    sampling_params=state.sampling_params.copy(),
+                    evaluation=False,
+                ),
+                name=f"group-{first.index}",
             )
         )
-        for group in samples
-    ]
+    return tasks
 
 
 async def generate_rollout_async(
@@ -244,11 +250,11 @@ async def generate_rollout_async(
                 data.append(group)
                 pbar.update(args.n_samples_per_prompt)
 
-        # One pending task == one group, so len(pendings) is the live group count;
-        # with oversampling off, drop the slow tail once tail_cancel_groups remain.
-        if args.disable_oversampling and 0 < len(pendings) <= args.tail_cancel_groups:
+        groups_left = (target_data_size - submitted) + len(pendings)
+        if args.disable_oversampling and 0 < groups_left <= args.tail_cancel_groups:
             logger.info(
-                f"[rollout] tail-cancel: {len(pendings)} groups pending <= "
+                f"[rollout] tail-cancel: {groups_left} groups left "
+                f"({len(pendings)} in flight, {target_data_size - submitted} unsubmitted) <= "
                 f"{args.tail_cancel_groups}; cutting tail with {len(data)}/{target_data_size} "
                 f"groups collected"
             )

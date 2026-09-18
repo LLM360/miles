@@ -1,9 +1,72 @@
+import base64
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 import numpy
 import torch
+
+
+@dataclass(frozen=True, eq=False)
+class RolloutSamplingMask:
+    """CPU CSR (int32 IDs, int64 offsets). Treat tensors as immutable; inputs may share storage."""
+
+    token_ids: torch.Tensor
+    offsets: torch.Tensor
+
+    def __len__(self) -> int:
+        return self.offsets.numel() - 1
+
+    @classmethod
+    def from_rows(cls, rows: Sequence[Sequence[int]]) -> "RolloutSamplingMask":
+        token_ids: list[int] = []
+        offsets = [0]
+        for row in rows:
+            token_ids.extend(row)
+            offsets.append(len(token_ids))
+        return cls(
+            torch.tensor(token_ids, dtype=torch.int32, device="cpu"),
+            torch.tensor(offsets, dtype=torch.int64, device="cpu"),
+        )
+
+    def to_dict(self) -> dict[str, str]:
+        ids = self.token_ids.numpy().astype("<i4", copy=False).tobytes()
+        offsets = self.offsets.numpy().astype("<i8", copy=False).tobytes()
+        return {
+            "ids": base64.b64encode(ids).decode("ascii"),
+            "offsets": base64.b64encode(offsets).decode("ascii"),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, str]) -> "RolloutSamplingMask":
+        ids = numpy.frombuffer(base64.b64decode(data["ids"], validate=True), dtype="<i4").astype(
+            numpy.int32, copy=True
+        )
+        offsets = numpy.frombuffer(base64.b64decode(data["offsets"], validate=True), dtype="<i8").astype(
+            numpy.int64, copy=True
+        )
+        return cls(torch.from_numpy(ids), torch.from_numpy(offsets))
+
+    @classmethod
+    def concatenate(cls, *masks: "RolloutSamplingMask") -> "RolloutSamplingMask":
+        token_ids = torch.cat([mask.token_ids for mask in masks])
+        shifted_offsets = []
+        cursor = 0
+        for mask in masks:
+            shifted_offsets.append(mask.offsets[1:] + cursor)
+            cursor += mask.token_ids.numel()
+        offsets = torch.cat([torch.zeros(1, dtype=torch.int64, device="cpu"), *shifted_offsets])
+        return cls(token_ids, offsets)
+
+    @classmethod
+    def singletons(cls, token_ids: Sequence[int] | torch.Tensor) -> "RolloutSamplingMask":
+        token_ids = torch.as_tensor(token_ids, dtype=torch.int32, device="cpu")
+        return cls(token_ids, torch.arange(len(token_ids) + 1, dtype=torch.int64, device="cpu"))
+
+    def prefix(self, rows: int) -> "RolloutSamplingMask":
+        end = self.offsets[rows].item()
+        return type(self)(self.token_ids[:end].clone(), self.offsets[: rows + 1].clone())
 
 
 @dataclass
@@ -25,6 +88,7 @@ class Sample:
     loss_mask: list[int] | None = None
     weight_versions: list[str] = field(default_factory=list)
     rollout_log_probs: list[float] | None = None  # Log probabilities from rollout engine
+    rollout_sampling_mask: RolloutSamplingMask | None = None
     rollout_routed_experts: numpy.ndarray | None = (
         None  # Routed experts from rollout engine. shape: (num_tokens-1, num_layers, moe_router_topk), dtype=int32
     )
@@ -124,6 +188,9 @@ class Sample:
 
     def to_dict(self):
         value = self.__dict__.copy()
+        value["rollout_sampling_mask"] = (
+            self.rollout_sampling_mask.to_dict() if self.rollout_sampling_mask is not None else None
+        )
         value["status"] = self.status.value
         value["spec_info"] = self.spec_info.to_dict()
         value["prefix_cache_info"] = self.prefix_cache_info.to_dict()
@@ -132,6 +199,8 @@ class Sample:
     @staticmethod
     def from_dict(data: dict):
         data = dict(data)
+        if data.get("rollout_sampling_mask") is not None:
+            data["rollout_sampling_mask"] = RolloutSamplingMask.from_dict(data["rollout_sampling_mask"])
         data["status"] = Sample.Status(data["status"])
         data["spec_info"] = Sample.SpecInfo.from_dict(data.get("spec_info", {}))
         data["prefix_cache_info"] = Sample.PrefixCacheInfo.from_dict(data.get("prefix_cache_info", {}))
@@ -180,6 +249,8 @@ class Sample:
         ), f"cannot strip {n} tokens: only {self.response_length} output tokens available"
         self.tokens = self.tokens[:-n]
         self.response_length -= n
+        if self.rollout_sampling_mask is not None:
+            self.rollout_sampling_mask = self.rollout_sampling_mask.prefix(self.response_length)
         if self.rollout_log_probs is not None:
             self.rollout_log_probs = self.rollout_log_probs[:-n]
         if self.loss_mask is not None:
@@ -203,6 +274,7 @@ class Sample:
         self.loss_mask = None
         self.weight_versions = []
         self.rollout_log_probs = None
+        self.rollout_sampling_mask = None
         self.rollout_routed_experts = None
         self.status = Sample.Status.ABORTED
         self.non_generation_time = 0.0
@@ -254,7 +326,10 @@ class ParamInfo:
 # A dict-based batch produced along the rollout -> training path
 # In Megatron backend, several fields are converted to torch.Tensor lists on GPU
 # before being consumed by data iterators (see megatron_utils.actor._get_rollout_data).
-RolloutBatch = dict[str, list[torch.Tensor] | list[int] | list[float] | list[str]]
+RolloutBatch = dict[
+    str,
+    list[torch.Tensor] | list[RolloutSamplingMask] | list[int] | list[float] | list[str],
+]
 
 
 @dataclass

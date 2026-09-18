@@ -1861,6 +1861,23 @@ def dump_args_to_file(args, main_log_dir=None):
         f.write("-------------------- end of arguments ---------------------\n")
 
 
+def _validate_sampling_mask_replay(args) -> None:
+    if args.rollout_top_p >= 1 or args.num_rollout == 0:
+        return
+    if args.train_backend != "megatron":
+        raise ValueError("rollout_top_p < 1 sampling-mask replay requires the Megatron backend")
+    if not args.use_session_server:
+        raise ValueError("rollout_top_p < 1 sampling-mask replay requires the session server")
+    if args.custom_generate_function_path != "miles.rollout.generate_hub.agentic_tool_call.generate":
+        raise ValueError("sampling-mask replay requires miles.rollout.generate_hub.agentic_tool_call.generate")
+    if args.true_on_policy_mode:
+        raise ValueError("sampling-mask replay is incompatible with --true-on-policy-mode")
+    if args.sglang_pp_size > 1:
+        raise ValueError("sampling-mask replay requires SGLang pipeline parallel size 1")
+    if args.sglang_speculative_algorithm is not None:
+        raise ValueError("sampling-mask replay is incompatible with speculative decoding")
+
+
 def parse_args(add_custom_arguments=None):
     # Users may call `parse_args` very early, thus we ensure logger is configured here
     configure_logger()
@@ -1914,6 +1931,7 @@ def parse_args(add_custom_arguments=None):
             ), "decoder_first_pipeline_num_layers and decoder_last_pipeline_num_layers should be None when pipeline_model_parallel_size is 1."
 
     sglang_validate_args(args)
+    _validate_sampling_mask_replay(args)
     dump_args_to_file(args)
 
     return args

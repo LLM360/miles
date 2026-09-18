@@ -1,3 +1,5 @@
+import logging
+import sys
 from argparse import Namespace
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -19,7 +21,7 @@ from miles.utils.ppo_utils import (
     get_reinforce_plus_plus_baseline_advantages,
     get_reinforce_plus_plus_returns,
 )
-from miles.utils.types import RolloutBatch
+from miles.utils.types import RolloutBatch, RolloutSamplingMask
 
 from .cp_utils import (
     _allgather_cp_redistribute,
@@ -28,6 +30,95 @@ from .cp_utils import (
     get_sum_of_sample_mean,
 )
 from .parallel import get_parallel_state
+
+logger = logging.getLogger(__name__)
+
+
+def _nan_dbg_flush_logs() -> None:
+    """Flush logger/stdout/stderr so crash diagnostics survive abrupt failures."""
+    for handler in logging.getLogger().handlers + logger.handlers:
+        try:
+            handler.flush()
+        except Exception:
+            pass
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+    try:
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _nan_dbg_rank() -> int:
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+    return -1
+
+
+def _nan_dbg_scalar(value: float | int, device: torch.device) -> torch.Tensor:
+    return torch.tensor(value, device=device, dtype=torch.float32)
+
+
+def _nan_dbg_finite_stats(x: torch.Tensor) -> tuple[float, float, float, int]:
+    x = x.detach()
+    finite = torch.isfinite(x)
+    bad = int((~finite).sum().item())
+    if x.numel() == 0 or not bool(finite.any().item()):
+        return float("nan"), float("nan"), float("nan"), bad
+    xf = x[finite].float()
+    return float(xf.min().item()), float(xf.max().item()), float(xf.abs().max().item()), bad
+
+
+def _nan_dbg_batch_stats(batch: RolloutBatch) -> tuple[int, int, int, int]:
+    response_len_max = max((int(x) for x in batch.get("response_lengths", [])), default=0)
+    response_len_sum = sum(int(x) for x in batch.get("response_lengths", []))
+    loss_tokens = [int(m.sum().item()) for m in batch.get("loss_masks", [])]
+    loss_tokens_max = max(loss_tokens, default=0)
+    loss_tokens_sum = sum(loss_tokens)
+    return response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum
+
+
+def _nan_dbg_warn_bad_tensor(name: str, x: torch.Tensor, *, batch: RolloutBatch, extra: str = "") -> None:
+    x = x.detach()
+    bad = int((~torch.isfinite(x)).sum().item())
+    if bad == 0:
+        return
+    response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum = _nan_dbg_batch_stats(batch)
+    logger.error(
+        "NANDBG_BAD_TENSOR "
+        f"rank={_nan_dbg_rank()} "
+        f"name={name} "
+        f"shape={tuple(x.shape)} "
+        f"dtype={x.dtype} "
+        f"nonfinite={bad} "
+        f"response_len_max={response_len_max} "
+        f"response_len_sum={response_len_sum} "
+        f"loss_tokens_max={loss_tokens_max} "
+        f"loss_tokens_sum={loss_tokens_sum} "
+        f"{extra}"
+    )
+    _nan_dbg_flush_logs()
+
+
+def _nan_dbg_warn_long_batch(args: Namespace, batch: RolloutBatch) -> None:
+    response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum = _nan_dbg_batch_stats(batch)
+    if response_len_max <= 65536 and loss_tokens_max <= 65536:
+        return
+    logger.warning(
+        "NANDBG_LONG_BATCH "
+        f"rank={_nan_dbg_rank()} "
+        f"num_samples={len(batch.get('response_lengths', []))} "
+        f"response_len_max={response_len_max} "
+        f"response_len_sum={response_len_sum} "
+        f"loss_tokens_max={loss_tokens_max} "
+        f"loss_tokens_sum={loss_tokens_sum} "
+        f"calculate_per_token_loss={args.calculate_per_token_loss} "
+        f"loss_agg_mode={getattr(args, 'loss_agg_mode', None)} "
+        f"use_dynamic_global_batch_size={args.use_dynamic_global_batch_size}"
+    )
+    _nan_dbg_flush_logs()
 
 
 def get_responses(
@@ -38,8 +129,8 @@ def get_responses(
     total_lengths: list[int],
     response_lengths: list[int],
     max_seq_lens: list[int] | None = None,
-) -> Iterator[tuple[torch.Tensor, torch.Tensor]]:
-    """Yield response-aligned `(logits_chunk, tokens_chunk)` pairs per sample.
+) -> Iterator[tuple[torch.Tensor, torch.Tensor, list[tuple[int, int]]]]:
+    """Yield response logits, targets, and response-row spans per sample.
 
     After squeezing batch dimension and applying temperature scaling, this
     function extracts the logits and tokens corresponding to response segments
@@ -58,9 +149,10 @@ def get_responses(
         response_lengths: Response segment lengths per sample.
 
     Yields:
-        Tuple of `(logits_chunk, tokens_chunk)` where `logits_chunk` is shape
+        Tuple of `(logits_chunk, tokens_chunk, response_spans)` where `logits_chunk` is shape
         `[R, V]` (policy) or `[R, 1]` (value) and `tokens_chunk` is shape `[R]`
         (1D int64), both aligned to response tokens for one sample.
+        `response_spans` contains ordered half-open row ranges in the full response.
     """
     parallel_state = get_parallel_state()
     qkv_format = args.qkv_format
@@ -92,7 +184,8 @@ def get_responses(
                 end += total_length
                 start = end - response_length
             logits_chunk = logits[start - 1 : end - 1]
-            tokens_chunk = tokens[-response_length:]
+            tokens_chunk = tokens[total_length - response_length : total_length]
+            response_spans = [(0, response_length)] if response_length else []
         elif args.allgather_cp:
             # DSA: global concat then contiguous CP split. Each rank owns logits for
             # global positions [chunk_start, chunk_end).
@@ -112,15 +205,22 @@ def get_responses(
             if e <= s:
                 logits_chunk = logits[0:0]
                 tokens_chunk = tokens[0:0]
+                response_spans = []
             else:
                 logits_chunk = logits[s - chunk_start : e - chunk_start]
                 tokens_chunk = tokens[(s + 1) - seq_start : (e + 1) - seq_start]
+                response_spans = [(s - logit_global_start, e - logit_global_start)]
             assert logits_chunk.size(0) == tokens_chunk.size(0), f"{logits_chunk.size(0)} vs {tokens_chunk.size(0)}"
         else:
             # TODO: this is super ugly... do better abstraction.
             chunk_size, chunks_offset, logits_offset, tokens_offset = get_logits_and_tokens_offset_with_cp(
                 total_length, response_length, qkv_format, max_seq_len
             )
+
+            prompt_length = total_length - response_length
+            response_spans = [
+                (start - prompt_length, stop - prompt_length) for start, stop in tokens_offset if start < stop
+            ]
 
             logits_0, logits_1 = logits[end : end + chunk_size], logits[end + chunk_size : end + 2 * chunk_size]
             end += 2 * chunk_size
@@ -139,7 +239,36 @@ def get_responses(
 
         seq_start += total_length
 
-        yield logits_chunk, tokens_chunk
+        yield logits_chunk, tokens_chunk, response_spans
+
+
+def _build_tp_sampling_mask(
+    logits: torch.Tensor,
+    sampling_mask: RolloutSamplingMask,
+    response_spans: list[tuple[int, int]],
+    tp_rank: int,
+) -> torch.Tensor:
+    mask = torch.zeros(logits.shape, dtype=torch.bool, device=logits.device)
+    if not response_spans:
+        return mask
+
+    offsets = sampling_mask.offsets
+    sizes = torch.cat([offsets[start + 1 : stop + 1] - offsets[start:stop] for start, stop in response_spans])
+    parts = [sampling_mask.token_ids[offsets[start].item() : offsets[stop].item()] for start, stop in response_spans]
+    token_ids = parts[0] if len(parts) == 1 else torch.cat(parts)
+
+    vocab_size = logits.size(-1)
+    vocab_start = tp_rank * vocab_size
+    owned_entries = ((token_ids >= vocab_start) & (token_ids < vocab_start + vocab_size)).nonzero(as_tuple=True)[0]
+    if owned_entries.numel() == 0:
+        return mask
+
+    rows = torch.repeat_interleave(sizes, output_size=token_ids.numel())[owned_entries]
+    cols = token_ids[owned_entries].long() - vocab_start
+    rows = rows.to(logits.device, non_blocking=True)
+    cols = cols.to(logits.device, non_blocking=True)
+    mask[rows, cols] = True
+    return mask
 
 
 def get_log_probs_and_entropy(
@@ -152,6 +281,7 @@ def get_log_probs_and_entropy(
     with_entropy: bool = False,
     non_loss_data: bool = True,
     max_seq_lens: list[int] | None = None,
+    rollout_sampling_masks: list[RolloutSamplingMask] | None = None,
 ) -> dict[str, list[torch.Tensor]]:
     """Compute per-token log-probabilities (and optionally entropy) on responses.
 
@@ -169,6 +299,7 @@ def get_log_probs_and_entropy(
         response_lengths: Response segment lengths per sample.
         with_entropy: If True, include "entropy" key in result.
         non_loss_data: Unused; kept for API compatibility.
+        rollout_sampling_masks: Fixed rollout support per full response; entropy remains unrestricted.
 
     Returns:
         Dict with key "log_probs" mapping to a list of `[R]` tensors per
@@ -177,16 +308,24 @@ def get_log_probs_and_entropy(
     """
     parallel_state = get_parallel_state()
     assert non_loss_data
+
     log_probs_list = []
     entropy_list = []
-    for logits_chunk, tokens_chunk in get_responses(
-        logits,
-        args=args,
-        unconcat_tokens=unconcat_tokens,
-        total_lengths=total_lengths,
-        response_lengths=response_lengths,
-        max_seq_lens=max_seq_lens,
+    for i, (logits_chunk, tokens_chunk, response_spans) in enumerate(
+        get_responses(
+            logits,
+            args=args,
+            unconcat_tokens=unconcat_tokens,
+            total_lengths=total_lengths,
+            response_lengths=response_lengths,
+            max_seq_lens=max_seq_lens,
+        )
     ):
+        sampling_mask = None
+        if rollout_sampling_masks is not None:
+            sampling_mask = _build_tp_sampling_mask(
+                logits_chunk, rollout_sampling_masks[i], response_spans, parallel_state.tp.rank
+            )
         log_prob, entropy = calculate_log_probs_and_entropy(
             logits_chunk,
             tokens_chunk,
@@ -194,9 +333,10 @@ def get_log_probs_and_entropy(
             with_entropy=with_entropy,
             chunk_size=args.log_probs_chunk_size,
             true_on_policy=args.true_on_policy_mode,
+            sampling_mask=sampling_mask,
         )
 
-        log_probs_list.append(log_prob.squeeze(-1))
+        log_probs_list.append(log_prob.reshape(-1))
         entropy_list.append(entropy)
 
     res = {
@@ -250,7 +390,7 @@ def get_values(
         per sample.
     """
     value_list = []
-    for logits_chunk, _ in get_responses(
+    for logits_chunk, _, _ in get_responses(
         logits,
         args=args,
         unconcat_tokens=unconcat_tokens,
@@ -460,10 +600,23 @@ def vanilla_tis_function(
 ) -> tuple[torch.Tensor, list[torch.Tensor], dict[str, torch.Tensor]]:
     rollout_log_probs = torch.cat(rollout_log_probs, dim=0)
     old_log_probs = torch.cat(train_log_probs, dim=0)
-    tis = torch.exp(old_log_probs - rollout_log_probs)
-    tis_abs = (torch.exp(old_log_probs - rollout_log_probs) - 1).abs()
+    tis_delta = old_log_probs - rollout_log_probs
+    tis = torch.exp(tis_delta)
+    tis_abs = (tis - 1).abs()
     tis_weights = torch.clamp(tis, min=args.tis_clip_low, max=args.tis_clip)
     tis_clipfrac = (tis_weights != tis).float()
+    _, _, _, tis_bad = _nan_dbg_finite_stats(tis)
+    if tis_bad:
+        logger.error(
+            "NANDBG_BAD_TIS "
+            f"rank={_nan_dbg_rank()} "
+            f"nonfinite={tis_bad} "
+            f"tis_delta_min={_nan_dbg_finite_stats(tis_delta)[0]} "
+            f"tis_delta_max={_nan_dbg_finite_stats(tis_delta)[1]} "
+            f"tis_clip_low={args.tis_clip_low} "
+            f"tis_clip={args.tis_clip}"
+        )
+        _nan_dbg_flush_logs()
     metrics = {
         "tis": tis.clone().detach(),
         "tis_clipfrac": tis_clipfrac.clone().detach(),
@@ -545,6 +698,7 @@ def policy_loss_function(
         response_lengths=response_lengths,
         with_entropy=True,
         max_seq_lens=max_seq_lens,
+        rollout_sampling_masks=batch.get("rollout_sampling_masks"),
     )
 
     log_probs = log_probs_and_entropy["log_probs"]
@@ -592,6 +746,22 @@ def policy_loss_function(
         old_log_probs = torch.cat(old_log_probs, dim=0)
         log_probs = torch.cat(log_probs, dim=0)
         ppo_kl = old_log_probs - log_probs
+
+    _nan_dbg_warn_bad_tensor("logits", logits, batch=batch)
+    _nan_dbg_warn_bad_tensor("log_probs", log_probs, batch=batch)
+    _nan_dbg_warn_bad_tensor("old_log_probs", old_log_probs, batch=batch)
+    _nan_dbg_warn_bad_tensor("advantages", advantages, batch=batch)
+    _nan_dbg_warn_bad_tensor("ppo_kl", ppo_kl, batch=batch)
+
+    ratio_delta = -ppo_kl
+    ratio = ratio_delta.exp()
+    ratio_delta_min, ratio_delta_max, _, _ = _nan_dbg_finite_stats(ratio_delta)
+    _nan_dbg_warn_bad_tensor(
+        "ratio_exp_current_minus_old",
+        ratio,
+        batch=batch,
+        extra=f"ratio_delta_min={ratio_delta_min} ratio_delta_max={ratio_delta_max}",
+    )
 
     pg_loss, pg_clipfrac = compute_policy_loss(ppo_kl, advantages, args.eps_clip, args.eps_clip_high)
 
@@ -659,6 +829,22 @@ def policy_loss_function(
     _pg_clipfrac_per_token = pg_clipfrac
     _ppo_kl_per_token = ppo_kl
 
+    log_probs_min, log_probs_max, _, log_probs_bad = _nan_dbg_finite_stats(log_probs)
+    old_log_probs_min, old_log_probs_max, _, old_log_probs_bad = _nan_dbg_finite_stats(old_log_probs)
+    _, _, advantage_absmax, advantages_bad = _nan_dbg_finite_stats(advantages)
+    ppo_kl_min, ppo_kl_max, _, ppo_kl_bad = _nan_dbg_finite_stats(ppo_kl)
+    _, ratio_max, _, ratio_bad = _nan_dbg_finite_stats(ratio)
+    response_len_max, response_len_sum, loss_tokens_max, loss_tokens_sum = _nan_dbg_batch_stats(batch)
+    tis_delta_min = float("nan")
+    tis_delta_max = float("nan")
+    tis_nonfinite_count = 0
+    if args.get_mismatch_metrics or args.use_tis:
+        rollout_log_probs_cat = torch.cat(batch["rollout_log_probs"], dim=0)
+        train_rollout_tis_delta = old_log_probs - rollout_log_probs_cat
+        tis_for_dbg = torch.exp(train_rollout_tis_delta)
+        tis_delta_min, tis_delta_max, _, _ = _nan_dbg_finite_stats(train_rollout_tis_delta)
+        _, _, _, tis_nonfinite_count = _nan_dbg_finite_stats(tis_for_dbg)
+
     pg_loss = pg_loss_reducer(pg_loss)
     pg_clipfrac = sum_of_sample_mean(pg_clipfrac)
     ppo_kl = sum_of_sample_mean(ppo_kl)
@@ -724,6 +910,25 @@ def policy_loss_function(
         "ppo_kl": ppo_kl.clone().detach(),
         "log_probs": log_probs_metric,
         "old_log_probs": old_log_probs_metric,
+        "nan_dbg/log_probs_min": _nan_dbg_scalar(log_probs_min, loss.device),
+        "nan_dbg/log_probs_max": _nan_dbg_scalar(log_probs_max, loss.device),
+        "nan_dbg/old_log_probs_min": _nan_dbg_scalar(old_log_probs_min, loss.device),
+        "nan_dbg/old_log_probs_max": _nan_dbg_scalar(old_log_probs_max, loss.device),
+        "nan_dbg/advantage_absmax": _nan_dbg_scalar(advantage_absmax, loss.device),
+        "nan_dbg/ppo_kl_min": _nan_dbg_scalar(ppo_kl_min, loss.device),
+        "nan_dbg/ppo_kl_max": _nan_dbg_scalar(ppo_kl_max, loss.device),
+        "nan_dbg/ratio_max": _nan_dbg_scalar(ratio_max, loss.device),
+        "nan_dbg/response_len_max": _nan_dbg_scalar(response_len_max, loss.device),
+        "nan_dbg/response_len_sum": _nan_dbg_scalar(response_len_sum, loss.device),
+        "nan_dbg/loss_tokens_max": _nan_dbg_scalar(loss_tokens_max, loss.device),
+        "nan_dbg/loss_tokens_sum": _nan_dbg_scalar(loss_tokens_sum, loss.device),
+        "nan_dbg/nonfinite_count": _nan_dbg_scalar(
+            log_probs_bad + old_log_probs_bad + advantages_bad + ppo_kl_bad + ratio_bad,
+            loss.device,
+        ),
+        "nan_dbg/tis_delta_min": _nan_dbg_scalar(tis_delta_min, loss.device),
+        "nan_dbg/tis_delta_max": _nan_dbg_scalar(tis_delta_max, loss.device),
+        "nan_dbg/tis_nonfinite_count": _nan_dbg_scalar(tis_nonfinite_count, loss.device),
     }
 
     if train_rollout_logprob_abs_diff is not None:
@@ -935,6 +1140,9 @@ def loss_function(
     parallel_state = get_parallel_state()
     num_tokens = sum([torch.clamp_min(loss_mask.sum(), 1) for loss_mask in batch["loss_masks"]])
     num_samples = len(batch["response_lengths"])
+
+    if args.loss_type == "policy_loss":
+        _nan_dbg_warn_long_batch(args, batch)
 
     sum_of_sample_mean = get_sum_of_sample_mean(
         batch["total_lengths"],

@@ -6,7 +6,14 @@ from itertools import groupby
 import numpy as np
 import pybase64
 import pytest
-from tests.fast.fixtures.generation_fixtures import GenerateEnv, generation_env, listify, make_sample, run_generate
+from tests.fast.fixtures.generation_fixtures import (
+    DEFAULT_SAMPLING_PARAMS,
+    GenerateEnv,
+    generation_env,
+    listify,
+    make_sample,
+    run_generate,
+)
 
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.test_utils.mock_sglang_server import ProcessResult, ProcessResultMetaInfo
@@ -24,7 +31,6 @@ def is_agentic_variant(variant: str) -> bool:
 
 
 MODEL_NAME = "Qwen/Qwen3-0.6B"
-DEFAULT_SAMPLING_PARAMS = {"max_new_tokens": 64, "temperature": 0.7}
 TOKENIZER = load_tokenizer(MODEL_NAME, trust_remote_code=True)
 
 
@@ -157,6 +163,7 @@ def expected_openai_request(messages: list[dict], **extra) -> dict:
         "return_prompt_token_ids": True,
         "return_meta_info": True,
         "no_stop_trim": False,
+        "top_p": DEFAULT_SAMPLING_PARAMS["top_p"],
         **extra,
     }
 
@@ -667,6 +674,22 @@ class TestAgentMetadata:
         for s in samples:
             assert s.metadata.get("instance_id") == "test-123"
             assert "reward" not in s.metadata
+
+    @pytest.mark.parametrize(
+        "generation_env",
+        [{"args_kwargs": {"agentic_return_metadata": {"exit_status": "LimitsExceeded"}}}],
+        indirect=True,
+    )
+    @pytest.mark.parametrize("variant", ["agentic_tool_call_single_sample"])
+    def test_limits_exceeded_marks_final_sample_truncated(self, variant, generation_env):
+        generation_env.mock_server.process_fn = TwoTurnStub.process_fn
+
+        result = _run_generate(variant, generation_env, make_sample(prompt=TwoTurnStub.PROMPT))
+
+        samples = listify(result.sample)
+        assert all(sample.status == Sample.Status.COMPLETED for sample in samples[:-1])
+        assert samples[-1].status == Sample.Status.TRUNCATED
+        assert samples[-1].metadata["exit_status"] == "LimitsExceeded"
 
     def test_session_server_identity_forwarded_to_agent_metadata(self, variant, generation_env):
         from miles.utils.test_utils import mock_tools
