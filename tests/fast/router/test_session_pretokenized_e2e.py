@@ -9,8 +9,8 @@ Validation strategy:
   prefix of full_str) and uses pretokenized_token_ids for prompt construction.
 - We check mock server request_log to verify pretokenized fields are injected
   on turn 2+.
-- We verify pretokenized_token_ids is a valid prefix of the returned
-  prompt_token_ids.
+- We verify pretokenized_token_ids is a valid prefix of the prompt_token_ids
+  retained in the session record.
 
 Tests are parametrized across multiple models and chat template combinations.
 Models whose native templates satisfy the prefix invariant (Qwen3.5,
@@ -239,13 +239,14 @@ def _run_trajectory_e2e(env):
     return session_id, responses
 
 
-def _verify_pretokenized_injection(env, responses):
+def _verify_pretokenized_injection(env, session_id):
     """Verify input_ids in request_log and prompt consistency."""
     backend = env.backend
+    records = requests.get(f"{env.url}/sessions/{session_id}", timeout=5.0).json()["records"]
 
     for turn_idx in range(len(env.trajectory.turns)):
         req = backend.request_log[turn_idx]
-        resp_prompt_ids = responses[turn_idx]["choices"][0]["prompt_token_ids"]
+        resp_prompt_ids = records[turn_idx]["response"]["choices"][0]["prompt_token_ids"]
 
         if turn_idx == 0:
             assert "input_ids" not in req, "Turn 0 should not have input_ids"
@@ -262,13 +263,14 @@ def _verify_pretokenized_injection(env, responses):
             )
 
 
-def _verify_pretokenized_NOT_prefix(env, responses):
+def _verify_pretokenized_NOT_prefix(env, session_id):
     """Verify that input_ids does NOT match prompt on turn 2+.
 
     This is the inverse of _verify_pretokenized_injection: it proves that a
     broken native template causes token mismatch in the e2e flow.
     """
     backend = env.backend
+    records = requests.get(f"{env.url}/sessions/{session_id}", timeout=5.0).json()["records"]
     found_mismatch = False
 
     for turn_idx in range(1, len(env.trajectory.turns)):
@@ -276,7 +278,7 @@ def _verify_pretokenized_NOT_prefix(env, responses):
         if "input_ids" not in req:
             continue
         input_ids = req["input_ids"]
-        resp_prompt_ids = responses[turn_idx]["choices"][0]["prompt_token_ids"]
+        resp_prompt_ids = records[turn_idx]["response"]["choices"][0]["prompt_token_ids"]
 
         if resp_prompt_ids != input_ids:
             found_mismatch = True
@@ -308,8 +310,8 @@ class TestMultiTurnE2E:
         assert len(responses) == 2
 
     def test_pretokenized_injection(self):
-        session_id, responses = _run_trajectory_e2e(self._env)
-        _verify_pretokenized_injection(self._env, responses)
+        session_id, _responses = _run_trajectory_e2e(self._env)
+        _verify_pretokenized_injection(self._env, session_id)
 
     def test_session_records(self):
         session_id, responses = _run_trajectory_e2e(self._env)
@@ -336,8 +338,8 @@ class TestLongChainE2E:
 
     def test_pretokenized_injection(self):
         self._env.backend.reset_stats()
-        session_id, responses = _run_trajectory_e2e(self._env)
-        _verify_pretokenized_injection(self._env, responses)
+        session_id, _responses = _run_trajectory_e2e(self._env)
+        _verify_pretokenized_injection(self._env, session_id)
 
     def test_pretokenized_grows_across_turns(self):
         self._env.backend.reset_stats()
