@@ -19,9 +19,7 @@ def test_all_rollout_engine_versions_are_queried(monkeypatch):
     ci_utils.assert_rollout_engine_weight_versions(engines, expected_version=7)
 
     assert [engine.get_weight_version.remote.call_count for engine in engines] == [1, 1, 1]
-    ray_get.assert_called_once_with(
-        ["version-ref-7", "version-ref-7", "version-ref-7"]
-    )
+    ray_get.assert_called_once_with(["version-ref-7", "version-ref-7", "version-ref-7"])
 
 
 def test_all_rollout_engine_versions_report_every_mismatch(monkeypatch):

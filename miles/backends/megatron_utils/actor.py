@@ -28,8 +28,8 @@ from miles.utils.types import RolloutBatch
 
 from ...utils.profile_utils import TrainProfiler
 from ...utils.tensor_backper import TensorBackuper
-from ..training_utils.cp_utils import slice_with_cp
 from ..training_utils.ci_utils import assert_rollout_engine_weight_versions
+from ..training_utils.cp_utils import slice_with_cp
 from ..training_utils.data import DataIterator, get_data_iterator, get_rollout_data, sync_actor_critic_data
 from ..training_utils.log_utils import log_cpu_memory, log_perf_data, log_rollout_data
 from ..training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, get_values
@@ -253,10 +253,7 @@ def validate_rollout_for_grpo_training_step(
         try:
             if _present("removed_by_filter") and _is_seq(rollout_data["removed_by_filter"]):
                 flags = rollout_data["removed_by_filter"]
-                lines.append(
-                    f"removed_by_filter: count={len(flags)} "
-                    f"removed={sum(bool(flag) for flag in flags)}"
-                )
+                lines.append(f"removed_by_filter: count={len(flags)} " f"removed={sum(bool(flag) for flag in flags)}")
         except Exception as e:
             lines.append(f"removed_by_filter aggregate failed: {type(e).__name__}: {e}")
 
@@ -352,9 +349,7 @@ def validate_rollout_for_grpo_training_step(
         candidate_flags = rollout_data["removed_by_filter"]
         candidate_flags_valid = True
         if not _is_seq(candidate_flags):
-            _add_error(
-                f"'removed_by_filter' must be list/tuple, got {type(candidate_flags).__name__}"
-            )
+            _add_error(f"'removed_by_filter' must be list/tuple, got {type(candidate_flags).__name__}")
             candidate_flags_valid = False
         elif len(candidate_flags) != n:
             _add_error(f"'removed_by_filter' length mismatch: got {len(candidate_flags)}, expected {n}")
@@ -362,9 +357,7 @@ def validate_rollout_for_grpo_training_step(
         else:
             for i, removed in enumerate(candidate_flags):
                 if not isinstance(removed, bool):
-                    _add_error(
-                        f"removed_by_filter[{i}] must be bool, got {type(removed).__name__}"
-                    )
+                    _add_error(f"removed_by_filter[{i}] must be bool, got {type(removed).__name__}")
                     candidate_flags_valid = False
             if candidate_flags_valid:
                 removed_by_filter_flags = list(candidate_flags)

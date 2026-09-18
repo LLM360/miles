@@ -138,10 +138,7 @@ def validate_mova_args(args) -> None:
         raise ValueError("MoVA sparse layers require --num-experts")
     if getattr(args, "attention_dropout", None) != 0.0 or getattr(args, "hidden_dropout", None) != 0.0:
         raise ValueError("xLLM MoVA requires --attention-dropout 0 and --hidden-dropout 0")
-    if (
-        getattr(args, "tensor_model_parallel_size", 1) > 1
-        and not getattr(args, "sequence_parallel", False)
-    ):
+    if getattr(args, "tensor_model_parallel_size", 1) > 1 and not getattr(args, "sequence_parallel", False):
         raise ValueError("MoVA with tensor parallelism requires --sequence-parallel")
 
 

@@ -191,9 +191,7 @@ class P2PTransferManager:
             self.transfer_futures.clear()
 
         if failures:
-            details = "; ".join(
-                f"task {index + 1}: {type(error).__name__}: {error}" for index, error in failures
-            )
+            details = "; ".join(f"task {index + 1}: {type(error).__name__}: {error}" for index, error in failures)
             first_error = failures[0][1]
             raise RuntimeError(
                 f"{len(failures)} of {len(futures)} P2P weight transfers failed ({details})"

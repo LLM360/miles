@@ -22,15 +22,10 @@ def assert_rollout_engine_weight_versions(rollout_engines, expected_version) -> 
     import ray
 
     versions = ray.get([engine.get_weight_version.remote() for engine in rollout_engines])
-    mismatches = [
-        (index, version)
-        for index, version in enumerate(versions)
-        if str(version) != str(expected_version)
-    ]
+    mismatches = [(index, version) for index, version in enumerate(versions) if str(version) != str(expected_version)]
     if mismatches:
         raise RuntimeError(
-            "Rollout engine weight-version mismatch: "
-            f"expected {expected_version}, mismatches {mismatches}"
+            "Rollout engine weight-version mismatch: " f"expected {expected_version}, mismatches {mismatches}"
         )
 
 

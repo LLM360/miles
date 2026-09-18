@@ -53,21 +53,13 @@ def _pack_by_query_group(*projections: torch.Tensor, args: Namespace) -> torch.T
 
 
 def _permute_qk_to_hf(weight: torch.Tensor, num_heads: int, args: Namespace) -> torch.Tensor:
-    return (
-        weight.reshape(num_heads, args.kv_channels // 2, 2, args.hidden_size)
-        .transpose(1, 2)
-        .reshape_as(weight)
-    )
+    return weight.reshape(num_heads, args.kv_channels // 2, 2, args.hidden_size).transpose(1, 2).reshape_as(weight)
 
 
 def _restore_native_qk(weight: torch.Tensor, num_heads: int, args: Namespace) -> torch.Tensor:
     """Independent inverse used by the Megatron HF checkpoint reader."""
 
-    return (
-        weight.reshape(num_heads, 2, args.kv_channels // 2, args.hidden_size)
-        .transpose(1, 2)
-        .reshape_as(weight)
-    )
+    return weight.reshape(num_heads, 2, args.kv_channels // 2, args.hidden_size).transpose(1, 2).reshape_as(weight)
 
 
 def test_dense_mova_qkgv_conversion_preserves_gate_and_value() -> None:
@@ -161,8 +153,7 @@ def test_grouped_value_experts_convert_input_to_output_sharding_layout() -> None
     )
 
     assert [name for name, _ in converted] == [
-        f"model.layers.3.self_attn.v_experts.{expert}.weight"
-        for expert in range(args.mova_num_value_experts)
+        f"model.layers.3.self_attn.v_experts.{expert}.weight" for expert in range(args.mova_num_value_experts)
     ]
     for expert, (_, weight) in enumerate(converted):
         assert weight.is_contiguous()
@@ -187,9 +178,7 @@ def test_grouped_value_experts_require_regular_tp_gather_first() -> None:
         ("router.expert_bias", "v_router.bias"),
     ],
 )
-def test_value_router_parameter_and_buffer_are_both_synchronized(
-    megatron_suffix: str, hf_suffix: str
-) -> None:
+def test_value_router_parameter_and_buffer_are_both_synchronized(megatron_suffix: str, hf_suffix: str) -> None:
     args = _args()
     tensor = torch.randn(args.mova_num_value_experts, args.hidden_size)
     if megatron_suffix.endswith("expert_bias"):
@@ -342,9 +331,7 @@ def test_value_and_ffn_expert_bias_buffers_are_enumerated_for_sync() -> None:
 
 
 def test_p2p_staging_contract_requires_all_value_expert_shards() -> None:
-    from miles.backends.megatron_utils.update_weight.update_weight_from_distributed.p2p import (
-        UpdateWeightP2P,
-    )
+    from miles.backends.megatron_utils.update_weight.update_weight_from_distributed.p2p import UpdateWeightP2P
 
     updater = object.__new__(UpdateWeightP2P)
     num_value_experts = 3
@@ -370,8 +357,7 @@ def test_p2p_staging_contract_requires_all_value_expert_shards() -> None:
 
     assert ready_names == [packed_name]
     assert [name for name, _ in ready_tensors] == [
-        f"model.layers.3.self_attn.v_experts.{expert}.weight"
-        for expert in range(num_value_experts)
+        f"model.layers.3.self_attn.v_experts.{expert}.weight" for expert in range(num_value_experts)
     ]
     assert updater._staged_tensors == {}
     assert updater._tensor_update_pending == {}
@@ -438,8 +424,7 @@ def test_broadcast_path_preserves_all_converted_value_expert_metadata() -> None:
     )
 
     tensors = [
-        (f"model.layers.3.self_attn.v_experts.{expert}.weight", torch.full((4, 8), expert))
-        for expert in range(3)
+        (f"model.layers.3.self_attn.v_experts.{expert}.weight", torch.full((4, 8), expert)) for expert in range(3)
     ]
     engine = MagicMock()
     engine.update_weights_from_distributed.remote.return_value = "engine-ref"

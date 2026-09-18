@@ -16,8 +16,7 @@ def _attention_geometry(args) -> tuple[int, int, int, int]:
 
     if num_attention_heads % num_query_groups:
         raise ValueError(
-            f"num_attention_heads={num_attention_heads} must be divisible by "
-            f"num_query_groups={num_query_groups}"
+            f"num_attention_heads={num_attention_heads} must be divisible by " f"num_query_groups={num_query_groups}"
         )
     if head_dim <= 0 or head_dim % 2:
         raise ValueError(f"xLLM MoVA requires an even positive head dimension, got {head_dim}")
@@ -38,10 +37,7 @@ def _permute_qk_to_hf(
     if tuple(weight.shape) != expected_shape:
         raise ValueError(f"Invalid {name} shape: got {tuple(weight.shape)}, expected {expected_shape}")
     return (
-        weight.reshape(num_heads, head_dim // 2, 2, hidden_size)
-        .transpose(1, 2)
-        .reshape(expected_shape)
-        .contiguous()
+        weight.reshape(num_heads, head_dim // 2, 2, hidden_size).transpose(1, 2).reshape(expected_shape).contiguous()
     )
 
 
@@ -63,8 +59,7 @@ def _unpack_grouped_attention_projection(
     expected_rows = num_query_groups * sum(segment_heads) * head_dim
     if tuple(param.shape) != (expected_rows, hidden_size):
         raise ValueError(
-            f"Invalid {name} shape: got {tuple(param.shape)}, expected "
-            f"{(expected_rows, hidden_size)}"
+            f"Invalid {name} shape: got {tuple(param.shape)}, expected " f"{(expected_rows, hidden_size)}"
         )
 
     packed = param.reshape(num_query_groups, sum(segment_heads), head_dim, hidden_size)
@@ -103,9 +98,7 @@ def _convert_grouped_value_experts(
         )
     expected_experts = getattr(args, "mova_num_value_experts", 0)
     if expected_experts and param.shape[0] != expected_experts:
-        raise ValueError(
-            f"Invalid {name} expert count: got {param.shape[0]}, expected {expected_experts}"
-        )
+        raise ValueError(f"Invalid {name} expert count: got {param.shape[0]}, expected {expected_experts}")
     if param.shape[1] != args.hidden_size:
         raise ValueError(
             f"Invalid {name} hidden dimension: got {param.shape[1]}, expected {args.hidden_size}. "
@@ -178,9 +171,7 @@ def convert_xllm_to_hf(args, name, param):
 
         if rest == "self_attention.linear_qkv.weight":
             if _is_mova(args):
-                query, gate, key, value = _unpack_grouped_attention_projection(
-                    args, name, param, include_value=True
-                )
+                query, gate, key, value = _unpack_grouped_attention_projection(args, name, param, include_value=True)
                 assert value is not None
                 return [
                     (f"model.layers.{layer_idx}.self_attn.q_proj.weight", query),
@@ -201,9 +192,7 @@ def convert_xllm_to_hf(args, name, param):
         if rest == "self_attention.linear_qkg.weight":
             if not _is_mova(args):
                 raise ValueError(f"Found MoVA Q/K/gate projection while MoVA is disabled: {name}")
-            query, gate, key, value = _unpack_grouped_attention_projection(
-                args, name, param, include_value=False
-            )
+            query, gate, key, value = _unpack_grouped_attention_projection(args, name, param, include_value=False)
             assert value is None
             return [
                 (f"model.layers.{layer_idx}.self_attn.q_proj.weight", query),
@@ -216,9 +205,7 @@ def convert_xllm_to_hf(args, name, param):
                 raise ValueError(f"Found grouped MoVA value experts while MoVA is disabled: {name}")
             return _convert_grouped_value_experts(args, layer_idx, name, param)
 
-        sequential_value_expert_pattern = (
-            r"self_attention\.value_projection\.experts\.experts\.(\d+)\.weight"
-        )
+        sequential_value_expert_pattern = r"self_attention\.value_projection\.experts\.experts\.(\d+)\.weight"
         match = re.match(sequential_value_expert_pattern, rest)
         if match:
             expert_idx = match.group(1)
