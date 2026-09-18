@@ -13,6 +13,7 @@ from torch.distributed.checkpoint.state_dict import get_state_dict, set_state_di
 from torch.distributed.checkpoint.stateful import Stateful
 
 from miles.backends.training_utils.log_utils import init_train_step_counter, save_train_step_counter
+from miles.utils.entropy_control import load_adaptive_clip_state, save_adaptive_clip_state
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,7 @@ def finalize_load(actor: Any, checkpoint_payload: dict[str, Any] | None) -> None
         if getattr(actor.args, "start_rollout_id", None) is None:
             actor.args.start_rollout_id = iteration
 
+    load_adaptive_clip_state(actor.args, actor.args.load, iteration)
     if dist.get_rank() == 0:
         init_train_step_counter(actor.args.load, iteration)
 
@@ -251,6 +253,7 @@ def save(actor: Any, iteration: int) -> None:
         tracker_file = base_dir / "latest_checkpointed_iteration.txt"
         tracker_file.write_text(str(step_id))
         save_train_step_counter(actor.args.save, step_id)
+        save_adaptive_clip_state(actor.args, actor.args.save, step_id)
         logger.info(f"[FSDP] Saved checkpoint to {checkpoint_dir}")
 
     dist.barrier()

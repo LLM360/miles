@@ -29,7 +29,12 @@ from ...training_utils.log_utils import (
     log_rollout_data,
     log_train_step,
 )
-from ...training_utils.loss import compute_advantages_and_returns, get_log_probs_and_entropy, loss_function
+from ...training_utils.loss import (
+    compute_advantages_and_returns,
+    get_log_probs_and_entropy,
+    loss_function,
+    update_adaptive_clip,
+)
 from ...training_utils.parallel import get_parallel_state, set_parallel_state
 from . import checkpoint
 from .lr_scheduler import get_lr_scheduler
@@ -492,6 +497,7 @@ class FSDPTrainRayActor(TrainRayActor):
                     )
 
                 loss_dict = aggregate_train_losses(losses_reduced)
+                update_adaptive_clip(self.args, loss_dict)
 
                 extra_metrics = {}
                 for param_group_id, param_group in enumerate(self.optimizer.param_groups):

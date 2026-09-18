@@ -11,6 +11,7 @@ from transformers import AutoConfig
 from miles.backends.sglang_utils.arguments import add_sglang_arguments
 from miles.backends.sglang_utils.arguments import validate_args as sglang_validate_args
 from miles.utils.chat_template_utils.tito_tokenizer import TITOTokenizerType
+from miles.utils.entropy_control import initialize_adaptive_clip
 from miles.utils.environ import enable_experimental_rollout_refactor
 from miles.utils.eval_config import EvalDatasetConfig, build_eval_dataset_configs, ensure_dataset_list
 from miles.utils.logging_utils import configure_logger
@@ -966,6 +967,45 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
 
             parser.add_argument("--eps-clip", type=float, default=0.2, help="PPO clip range")
             parser.add_argument("--eps-clip-high", type=float, default=None, help="PPO clip upper range")
+            parser.add_argument(
+                "--qae-quantile",
+                type=float,
+                default=None,
+                help=(
+                    "Enable Quantile Advantage Estimation with this group quantile K. "
+                    "The paper default is 0.4; unset preserves the GRPO mean baseline."
+                ),
+            )
+            parser.add_argument(
+                "--use-adaptive-clip",
+                action="store_true",
+                default=False,
+                help="Dynamically control the PPO upper clip from importance-weighted policy entropy.",
+            )
+            parser.add_argument(
+                "--adaptive-clip-target-entropy",
+                type=float,
+                default=0.3,
+                help="Target per-token entropy H* for the adaptive clipping controller.",
+            )
+            parser.add_argument(
+                "--adaptive-clip-step-size",
+                type=float,
+                default=0.25,
+                help="Integral-controller step size delta for adaptive clipping.",
+            )
+            parser.add_argument(
+                "--adaptive-clip-max-relaxation",
+                type=float,
+                default=2.5,
+                help="Maximum entropy-dependent upper-clip relaxation k.",
+            )
+            parser.add_argument(
+                "--adaptive-clip-initial-relaxation",
+                type=float,
+                default=0.0,
+                help="Initial value of adaptive clipping relaxation k.",
+            )
             parser.add_argument(
                 "--eps-clip-c",
                 type=float,
@@ -1987,6 +2027,55 @@ def _resolve_eval_datasets(args) -> list[EvalDatasetConfig]:
     return eval_datasets
 
 
+def _validate_entropy_control_args(args) -> None:
+    if args.qae_quantile is not None:
+        if not 0 < args.qae_quantile < 1:
+            raise ValueError(f"--qae-quantile must be in (0, 1), got {args.qae_quantile}")
+        if args.advantage_estimator not in ["grpo", "gspo"]:
+            raise ValueError("--qae-quantile requires --advantage-estimator grpo or gspo")
+        if not args.rewards_normalization:
+            raise ValueError("--qae-quantile requires reward normalization")
+        if args.n_samples_per_prompt < 2:
+            raise ValueError("--qae-quantile requires at least two samples per prompt")
+        if (
+            args.custom_reward_post_process_path is not None
+            or args.custom_convert_samples_to_train_data_path is not None
+        ):
+            raise ValueError(
+                "--qae-quantile uses MILES' built-in reward post-processing and is incompatible with custom "
+                "reward post-processing or sample conversion"
+            )
+
+    if args.use_adaptive_clip:
+        if args.advantage_estimator not in ["grpo", "gspo"]:
+            raise ValueError("--use-adaptive-clip requires --advantage-estimator grpo or gspo")
+        if args.loss_type != "policy_loss":
+            raise ValueError("--use-adaptive-clip requires --loss-type policy_loss")
+        if args.eps_clip_high is not None:
+            raise ValueError("--eps-clip-high is controlled by --use-adaptive-clip and must be unset")
+        if not 0 <= args.eps_clip < 1:
+            raise ValueError(f"adaptive clipping requires --eps-clip in [0, 1), got {args.eps_clip}")
+        if args.adaptive_clip_target_entropy < 0:
+            raise ValueError("--adaptive-clip-target-entropy must be non-negative")
+        if args.adaptive_clip_step_size <= 0:
+            raise ValueError("--adaptive-clip-step-size must be positive")
+        if args.adaptive_clip_max_relaxation < 0:
+            raise ValueError("--adaptive-clip-max-relaxation must be non-negative")
+        if not 0 <= args.adaptive_clip_initial_relaxation <= args.adaptive_clip_max_relaxation:
+            raise ValueError(
+                "--adaptive-clip-initial-relaxation must be between zero and "
+                "--adaptive-clip-max-relaxation"
+            )
+        if args.entropy_coef != 0:
+            logger.warning(
+                "Adaptive clipping was evaluated without an explicit entropy bonus; "
+                "consider setting --entropy-coef 0."
+            )
+        initialize_adaptive_clip(args)
+    elif args.eps_clip_high is None:
+        args.eps_clip_high = args.eps_clip
+
+
 def miles_validate_args(args):
     validate_mova_args(args)
     validate_rollout_temperature(args)
@@ -2103,9 +2192,6 @@ def miles_validate_args(args):
 
     if getattr(args, "balance_by_flops", False):
         assert args.use_dynamic_batch_size, "--balance-by-flops requires --use-dynamic-batch-size"
-
-    if args.eps_clip_high is None:
-        args.eps_clip_high = args.eps_clip
 
     if args.eval_reward_key is None:
         args.eval_reward_key = args.reward_key
@@ -2237,6 +2323,8 @@ def miles_validate_args(args):
             if hasattr(args, k):
                 logger.info(f"Warning: Argument {k} is already set to {getattr(args, k)}, will override with {v}.")
             setattr(args, k, v)
+
+    _validate_entropy_control_args(args)
 
     if args.eval_max_context_len is None:
         logger.info(
