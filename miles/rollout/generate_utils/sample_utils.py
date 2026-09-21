@@ -3,6 +3,7 @@ from dataclasses import fields
 from typing import Any
 
 from miles.rollout.generate_utils.sampling_mask import merge_sampling_masks
+from miles.utils.repetition import REPETITION_METRIC_KEY
 from miles.utils.types import Sample
 
 _OPD_STUDENT_TOP_LOGPROBS_KEY = "opd_student_top_logprobs"
@@ -118,6 +119,10 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
     def _merge_metadata():
         a_metadata, a_top_logprobs = _pop_opd_student_top_logprobs(a.metadata)
         b_metadata, b_top_logprobs = _pop_opd_student_top_logprobs(b.metadata)
+        # Per-turn repetition results do not describe the merged response.
+        for metadata in (a_metadata, b_metadata):
+            if metadata is not None:
+                metadata.pop(REPETITION_METRIC_KEY, None)
         a_metadata, a_lifecycle = _pop_lifecycle(a_metadata)
         b_metadata, b_lifecycle = _pop_lifecycle(b_metadata)
         a_metadata, a_messages = _pop_messages(a_metadata)

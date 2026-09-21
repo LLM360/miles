@@ -15,8 +15,8 @@ from miles.utils.metric_utils import (
     compute_samples_seen,
     compute_statistics,
     dict_add_prefix,
-    has_repetition,
 )
+from miles.utils.repetition import repetition_metrics, sample_repetition
 from miles.utils.tracking_utils import tracking
 from miles.utils.types import AdapterRef, Sample
 
@@ -126,7 +126,8 @@ def _compute_metrics_from_samples(args, samples):
     log_dict |= _compute_spec_metrics(args, samples)
     log_dict |= _compute_prefix_cache_metrics(args, samples)
     log_dict |= _compute_reward_cat_metrics(args, samples)
-    log_dict["repetition_frac"] = np.mean([int(has_repetition(s.response)) for s in samples]).item()
+    repetition_values = {id(s): sample_repetition(s) for s in samples}
+    log_dict |= repetition_metrics(samples, repetition_values)
     log_dict["truncated_ratio"] = np.mean([int(s.status == Sample.Status.TRUNCATED) for s in samples]).item()
 
     oldest_versions = [s.oldest_weight_version for s in samples if s.oldest_weight_version is not None]
@@ -158,7 +159,7 @@ def _compute_metrics_from_samples(args, samples):
     n = len(samples)
     # new top-level grouped keys: global
     log_dict |= _compute_grouped_reward_metrics(args, samples, "reward", n, include_count_frac=False)
-    log_dict |= _compute_grouped_response_metrics(args, samples, "response_stats")
+    log_dict |= _compute_grouped_response_metrics(args, samples, "response_stats", repetition_values=repetition_values)
     log_dict |= _compute_group_outcome_metrics(args, samples, prefix="reward")
 
     # per-correctness (no count_frac: for binary rewards = mean reward = already in reward/raw_reward)
@@ -167,7 +168,9 @@ def _compute_metrics_from_samples(args, samples):
     log_dict["reward/correctness"] = len(correct) / n
     for label, grp in [("correct", correct), ("incorrect", incorrect)]:
         if grp:
-            log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{label}")
+            log_dict |= _compute_grouped_response_metrics(
+                args, grp, f"response_stats/{label}", repetition_values=repetition_values
+            )
 
     # per-category and combined (only if category data present)
     cat_key = _get_problem_category_key(args, samples)
@@ -176,7 +179,9 @@ def _compute_metrics_from_samples(args, samples):
             if cat is None or not cat_grp:
                 continue
             log_dict |= _compute_grouped_reward_metrics(args, cat_grp, f"reward/{cat}", n)
-            log_dict |= _compute_grouped_response_metrics(args, cat_grp, f"response_stats/{cat}")
+            log_dict |= _compute_grouped_response_metrics(
+                args, cat_grp, f"response_stats/{cat}", repetition_values=repetition_values
+            )
             log_dict |= _compute_group_outcome_metrics(args, cat_grp, prefix=f"reward/{cat}")
             log_dict[f"reward/{cat}/correctness"] = sum(_correctness(s, args) for s in cat_grp) / len(cat_grp)
             for label, grp in [
@@ -184,7 +189,9 @@ def _compute_metrics_from_samples(args, samples):
                 ("incorrect", [s for s in cat_grp if not _correctness(s, args)]),
             ]:
                 if grp:
-                    log_dict |= _compute_grouped_response_metrics(args, grp, f"response_stats/{cat}/{label}")
+                    log_dict |= _compute_grouped_response_metrics(
+                        args, grp, f"response_stats/{cat}/{label}", repetition_values=repetition_values
+                    )
 
     return log_dict
 
@@ -432,12 +439,14 @@ def _compute_grouped_reward_metrics(
     return result
 
 
-def _compute_grouped_response_metrics(args, group: list[Sample], prefix: str) -> dict:
+def _compute_grouped_response_metrics(
+    args, group: list[Sample], prefix: str, *, repetition_values: dict[int, bool | None] | None = None
+) -> dict:
     """Response shape metrics for a split — emitted under response_stats/ sections."""
     return {
         f"{prefix}/response_len": np.mean([s.effective_response_length for s in group]).item(),
         f"{prefix}/truncated_frac": np.mean([int(s.status == Sample.Status.TRUNCATED) for s in group]).item(),
-        f"{prefix}/repetition_frac": np.mean([int(has_repetition(s.response)) for s in group]).item(),
+        **dict_add_prefix(repetition_metrics(group, repetition_values), f"{prefix}/"),
     }
 
 

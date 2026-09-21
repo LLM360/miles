@@ -5,6 +5,7 @@ from typing import Any
 import numpy
 import torch
 
+from miles.utils.repetition import invalidate_repetition
 from miles.utils.sampling_mask import RolloutSamplingMask
 
 
@@ -297,6 +298,7 @@ class Sample:
         assert (
             n <= self.response_length
         ), f"cannot strip {n} tokens: only {self.response_length} output tokens available"
+        invalidate_repetition(self)
         self.tokens = self.tokens[:-n]
         self.response_length -= n
         if self.rollout_log_probs is not None:
@@ -334,6 +336,7 @@ class Sample:
         multimodal_inputs, metadata, generate_function_path, routing_key) and
         restores everything else to dataclass defaults.
         """
+        invalidate_repetition(self)
         self.tokens = []
         self.multimodal_train_inputs = None
         self.response = ""

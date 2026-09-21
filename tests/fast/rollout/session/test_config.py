@@ -13,6 +13,8 @@ _ARGS_TO_CONFIG_FIELD = {
     "hf_checkpoint": "hf_checkpoint",
     "chat_template_path": "chat_template_path",
     "tito_model": "tito_model",
+    "tito_allowed_append_roles": "tito_allowed_append_roles",
+    "sglang_served_model_name": "sglang_served_model_name",
     "apply_chat_template_kwargs": "apply_chat_template_kwargs",
     "use_rollout_routing_replay": "use_rollout_routing_replay",
     "use_rollout_indexer_replay": "use_rollout_indexer_replay",
@@ -32,6 +34,8 @@ _ARGS_TO_CONFIG_FIELD = {
 _CALL_SITE_FIELDS = ("host", "port", "instance_id", "backend_url")
 
 _OPTIONAL_ARGS_ATTRS = (
+    "tito_allowed_append_roles",
+    "sglang_served_model_name",
     "num_layers",
     "pause_generation_mode",
     "moe_router_topk",
@@ -45,6 +49,8 @@ _DISTINCT_ARGS_VALUES = dict(
     hf_checkpoint="/fake/model",
     chat_template_path="/fake/chat_template.jinja",
     tito_model="tito-xyz",
+    tito_allowed_append_roles=["assistant", "tool"],
+    sglang_served_model_name="test-served-model",
     apply_chat_template_kwargs={"enable_thinking": True},
     use_rollout_routing_replay=True,
     use_rollout_indexer_replay=True,
@@ -122,6 +128,8 @@ _COMPLETE_CONFIG_KWARGS = dict(
     hf_checkpoint=None,
     chat_template_path=None,
     tito_model="default",
+    tito_allowed_append_roles=None,
+    sglang_served_model_name=None,
     apply_chat_template_kwargs=None,
     use_rollout_routing_replay=False,
     use_rollout_indexer_replay=False,
@@ -170,12 +178,19 @@ class TestSessionServerConfig:
         with pytest.raises(ValidationError):
             SessionServerConfig(**{**_COMPLETE_CONFIG_KWARGS, "use_session_server": value})
 
-    @pytest.mark.parametrize("missing", sorted(SessionServerConfig.model_fields))
-    def test_every_field_is_required(self, missing: str):
-        """Omitting any single field must fail, so none can be silently defaulted."""
+    @pytest.mark.parametrize(
+        "missing", sorted(name for name, field in SessionServerConfig.model_fields.items() if field.is_required())
+    )
+    def test_required_fields_cannot_be_omitted(self, missing: str):
+        """Fields without a declared default must still be supplied explicitly."""
         kwargs = {name: value for name, value in _COMPLETE_CONFIG_KWARGS.items() if name != missing}
         with pytest.raises(ValidationError):
             SessionServerConfig(**kwargs)
+
+    @pytest.mark.parametrize("missing", ["tito_allowed_append_roles", "sglang_served_model_name"])
+    def test_optional_fields_default_to_none(self, missing: str):
+        kwargs = {name: value for name, value in _COMPLETE_CONFIG_KWARGS.items() if name != missing}
+        assert getattr(SessionServerConfig(**kwargs), missing) is None
 
     def test_unknown_field_is_rejected(self):
         """An unrecognized keyword must fail validation instead of being silently ignored."""

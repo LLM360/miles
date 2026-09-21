@@ -15,6 +15,7 @@ import numpy as np
 import safetensors.numpy
 import torch
 
+from miles.utils.repetition import invalidate_repetition
 from miles.utils.sampling_mask import RolloutSamplingMask
 from miles.utils.types import Sample, WeightVersionsPerCall
 
@@ -169,6 +170,8 @@ def decode_samples_and_merge_input_sample(
     samples = []
     for sample_index, sample_meta in enumerate(meta["samples"]):
         sample = deepcopy(input_sample)
+        # Input telemetry refers to an earlier response, not this wire sample.
+        invalidate_repetition(sample)
         nulls = set(sample_meta["nulls"])  # KeyError propagates: missing null markers are malformed
         if nulls - _TENSOR_FIELDS:
             raise ValueError(f"null markers reference non-tensor fields: {sorted(nulls - _TENSOR_FIELDS)}")

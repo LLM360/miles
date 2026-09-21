@@ -5,6 +5,7 @@ from tests.fast.fixtures.generation_fixtures import generation_env, listify, mak
 
 from miles.rollout.generate_hub.agentic_tool_call import generate
 from miles.utils.function_registry import function_registry
+from miles.utils.repetition import REPETITION_METRIC_KEY, sample_repetition
 from miles.utils.test_utils import mock_tools
 from miles.utils.test_utils.mock_sglang_server import ProcessResult
 from miles.utils.types import Sample
@@ -37,6 +38,46 @@ HARBOR_EXIT_STATUSES_TO_ABORT = [
 @pytest.fixture
 def variant():
     return "agentic_tool_call"
+
+
+@pytest.mark.parametrize(
+    "generation_env",
+    [{"args_kwargs": {"extra_argv": ["--use-session-server", version]}} for version in ("v1", "v2")],
+    indirect=True,
+    ids=["v1", "v2"],
+)
+@pytest.mark.parametrize("evaluation", [False, True])
+def test_repetition_after_server_truncation_preserves_training_fields(variant, generation_env, evaluation):
+    generation_env.mock_server.process_fn = lambda _: ProcessResult(text=RESPONSE, finish_reason="stop")
+    mock_tools.AGENTIC_RETURN_METADATA = {"exit_status": "Submitted", "reward": 0.75}
+    generation_env.args.max_seq_len = None
+    (full,) = listify(
+        run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant, evaluation=evaluation).sample
+    )
+    assert full.status is Sample.Status.COMPLETED
+    assert sample_repetition(full) is False
+    assert full.response_length > 2
+
+    prompt_length = len(full.tokens) - full.response_length
+    generation_env.args.max_seq_len = prompt_length + 2
+    (truncated,) = listify(
+        run_generate(generation_env, make_sample(prompt=PROMPT), variant=variant, evaluation=evaluation).sample
+    )
+    assert truncated.status is Sample.Status.TRUNCATED
+    assert truncated.response_length == 2
+    assert truncated.tokens == full.tokens[: prompt_length + 2]
+    assert truncated.loss_mask == full.loss_mask[:2]
+    assert truncated.rollout_log_probs == full.rollout_log_probs[:2]
+    assert truncated.metadata["reward"] == full.metadata["reward"] == 0.75
+    assert truncated.reward == full.reward
+    assert sample_repetition(truncated) is False
+    for sample in (full, truncated):
+        if (sample.metadata or {}).get("response_decoded") is False:
+            assert sample.response == ""
+            assert sample.metadata[REPETITION_METRIC_KEY]["response_length"] == sample.response_length
+        else:
+            assert sample.response
+            assert REPETITION_METRIC_KEY not in sample.metadata
 
 
 def _parse_agentic_args(*argv: str):

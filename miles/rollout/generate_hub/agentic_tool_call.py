@@ -40,6 +40,7 @@ from miles.rollout._agentic_outcomes import TOKEN_TRUNCATION_EXIT_STATUSES, clas
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
 from miles.rollout.generate_utils.openai_endpoint_utils import OpenAIEndpointTracer
 from miles.utils.function_registry import load_function
+from miles.utils.repetition import invalidate_repetition, record_repetition
 from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,7 @@ def _set_eval_token_truncation_reward(
 
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
+    invalidate_repetition(input.sample)
     assert not input.args.partial_rollout, "Partial rollout is not supported"
     assert getattr(input.args, "session_server_addrs", None), (
         "agentic_tool_call.generate requires session_server_addrs. "
@@ -206,12 +208,19 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
             s.non_generation_time = ngt
 
     if use_v2:
+        for sample in samples:
+            if (sample.metadata or {}).get("response_decoded") is False:
+                await record_repetition(sample, input.state.tokenizer)
         return GenerateFnOutput(samples=samples)
 
     (sample,) = samples
     sample.metadata.update(result.session_metadata)
     _apply_agentic_outcome_status(samples, agent_metadata)
     _set_eval_token_truncation_reward(samples, agent_metadata, input.args, input.evaluation)
+    # Both server versions assemble/truncate before returning these samples.
+    # Keep response text unchanged and attach only compact monitoring results.
+    if (sample.metadata or {}).get("response_decoded") is False:
+        await record_repetition(sample, input.state.tokenizer)
     return GenerateFnOutput(samples=sample)
 
 

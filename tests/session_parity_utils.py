@@ -26,6 +26,8 @@ from miles.rollout.session.samples.codec import SamplesReply
 from miles.rollout.session.server import SessionServer
 from miles.utils import http_utils
 from miles.utils.http_utils import find_available_port
+from miles.utils.processing_utils import load_tokenizer
+from miles.utils.repetition import REPETITION_METRIC_KEY, sample_repetition
 from miles.utils.test_utils.uvicorn_thread_server import UvicornThreadServer
 from miles.utils.types import Sample
 
@@ -99,6 +101,7 @@ async def _run_and_collect(
     hf_checkpoint: str,
     input_samples: list[Sample],
 ) -> list[tuple[dict[str, Any], SamplesReply, list[Sample]]]:
+    tokenizer = load_tokenizer(hf_checkpoint, trust_remote_code=True)
     async with httpx.AsyncClient(timeout=None) as client:
         with patch.object(http_utils, "_http_client", client):
             original_collect = OpenAIEndpointTracer.collect_samples
@@ -131,7 +134,7 @@ async def _run_and_collect(
                     }
                 )
                 generate_input = GenerateFnInput(
-                    state=SimpleNamespace(args=args),
+                    state=SimpleNamespace(args=args, tokenizer=tokenizer),
                     sample=input_sample,
                     sampling_params={
                         "model": hf_checkpoint,
@@ -203,17 +206,25 @@ def assert_agentic_retry_trajectory_parity(v1: SessionParityRun, v2: SessionPari
         # Stable v1 skips response text and duplicate token IDs on the wire.
         # Assert that difference explicitly, then compare every training field.
         assert v1_sample.response == "" and v2_sample.response
+        assert REPETITION_METRIC_KEY in v1_sample.metadata
+        assert REPETITION_METRIC_KEY not in v2_sample.metadata
+        expected_repetition = sample_repetition(v2_sample)
+        assert expected_repetition is not None
+        assert sample_repetition(v1_sample) is expected_repetition
         _assert_bits_equal(v1_sample.tokens, v2_linear_metadata["accumulated_token_ids"], path="token_ids")
         compact_keys = {
             "records_total": 7,
             "records_merged": 7,
             "records_dropped_after_first_non_completed": 0,
             "accumulated_token_count": len(v1_sample.tokens),
+            "latest_rollout_routed_experts_num_tokens": 0,
         }
         expected_metadata = {k: v for k, v in v2_linear_metadata.items() if k != "accumulated_token_ids"}
         _assert_bits_equal(v1.session_metadata, {**expected_metadata, **compact_keys}, path="session_metadata")
         normalized_metadata = {
-            k: v for k, v in v1_sample.metadata.items() if k not in compact_keys and k != "response_decoded"
+            k: v
+            for k, v in v1_sample.metadata.items()
+            if k not in compact_keys and k not in ("response_decoded", REPETITION_METRIC_KEY)
         }
         normalized_metadata["accumulated_token_ids"] = v1_sample.tokens
         v1_sample = dataclasses.replace(v1_sample, metadata=normalized_metadata)
