@@ -1417,6 +1417,20 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--value-pretrain",
+                action="store_true",
+                default=False,
+                help=(
+                    "Offline Monte-Carlo critic fit on file-backed rollouts (JSONL episode "
+                    "rewards). Implies --debug-train-only, --advantage-estimator ppo, and "
+                    "compute_advantages_and_returns. Skips the PPO logprob/value snapshot "
+                    "and fills per-token returns with the episode reward. Default rollout "
+                    "becomes miles.rollout.value_pretrain_rollout.generate_rollout. Shared "
+                    "and separate critics both work; critic-only steps are raised to cover "
+                    "the run so the policy is not updated."
+                ),
+            )
+            parser.add_argument(
                 "--save-debug-train-data",
                 type=str,
                 default=None,
@@ -2108,6 +2122,8 @@ def miles_validate_args(args):
         )
         args.debug_train_only = True
 
+    apply_value_pretrain_args(args)
+
     args.use_critic = args.advantage_estimator == "ppo"
     if args.use_critic and args.value_loss_type != "mse":
         if args.value_loss_type != "bernoulli":
@@ -2290,6 +2306,47 @@ def miles_validate_args(args):
         ), "Dynamic batch size is not supported for bshd format. Please specify --micro-batch-size instead."
 
     _maybe_apply_dumper_overrides(args)
+
+
+def apply_value_pretrain_args(args) -> None:
+    """Force the offline MC critic-pretrain implications of `--value-pretrain`."""
+    if not getattr(args, "value_pretrain", False):
+        return
+
+    args.debug_train_only = True
+    args.advantage_estimator = "ppo"
+    args.compute_advantages_and_returns = True
+    args.kl_coef = 0.0
+    if getattr(args, "n_samples_per_prompt", 1) != 1:
+        logger.info("value-pretrain: setting n_samples_per_prompt=1")
+        args.n_samples_per_prompt = 1
+
+    default_rollouts = {
+        "miles.rollout.sglang_rollout.generate_rollout",
+        "miles.rollout.inference_rollout.inference_rollout_common.InferenceRolloutFn",
+        "miles.rollout.sft_rollout.generate_rollout",
+    }
+    current_rollout = getattr(args, "rollout_function_path", None)
+    if current_rollout in default_rollouts or not current_rollout:
+        args.rollout_function_path = "miles.rollout.value_pretrain_rollout.generate_rollout"
+
+    current_critic_only = int(getattr(args, "num_critic_only_steps", 0) or 0)
+    num_rollout = getattr(args, "num_rollout", None)
+    if num_rollout is not None:
+        args.num_critic_only_steps = max(current_critic_only, int(num_rollout))
+    else:
+        args.num_critic_only_steps = max(current_critic_only, 10**9)
+
+    print(
+        f"@dhawgupta: value-pretrain enabled rollout={args.rollout_function_path} "
+        f"critic_only_steps={args.num_critic_only_steps}",
+        flush=True,
+    )
+    logger.info(
+        "value-pretrain: debug_train_only + ppo + MC returns; critic-only for the run "
+        "(num_critic_only_steps=%s)",
+        args.num_critic_only_steps,
+    )
 
 
 def _maybe_apply_dumper_overrides(args) -> None:

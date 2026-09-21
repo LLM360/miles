@@ -5,7 +5,11 @@ from unittest.mock import patch
 
 import pytest
 
-from miles.utils.arguments import _maybe_apply_dumper_overrides, get_miles_extra_args_provider
+from miles.utils.arguments import (
+    _maybe_apply_dumper_overrides,
+    apply_value_pretrain_args,
+    get_miles_extra_args_provider,
+)
 from miles.utils.misc import function_registry
 
 PATH_ARGS = ["--rollout-function-path", "--custom-generate-function-path"]
@@ -133,3 +137,57 @@ class TestMaybeApplyDumperOverrides:
         _maybe_apply_dumper_overrides(args)
 
         assert args.num_rollout == 6
+
+
+def test_value_pretrain_flag_is_parsed() -> None:
+    with patch.object(sys, "argv", ["test", "--value-pretrain"] + REQUIRED_ARGS):
+        parser = argparse.ArgumentParser()
+        get_miles_extra_args_provider()(parser)
+        args, _ = parser.parse_known_args()
+
+    assert args.value_pretrain is True
+
+
+def test_apply_value_pretrain_args_forces_mc_critic_path() -> None:
+    args = SimpleNamespace(
+        value_pretrain=True,
+        debug_train_only=False,
+        advantage_estimator="grpo",
+        compute_advantages_and_returns=False,
+        kl_coef=0.1,
+        n_samples_per_prompt=8,
+        rollout_function_path="miles.rollout.sglang_rollout.generate_rollout",
+        num_critic_only_steps=0,
+        num_rollout=12,
+    )
+    apply_value_pretrain_args(args)
+
+    assert args.debug_train_only is True
+    assert args.advantage_estimator == "ppo"
+    assert args.compute_advantages_and_returns is True
+    assert args.kl_coef == 0.0
+    assert args.n_samples_per_prompt == 1
+    assert args.rollout_function_path == "miles.rollout.value_pretrain_rollout.generate_rollout"
+    assert args.num_critic_only_steps == 12
+
+
+def test_apply_value_pretrain_args_keeps_custom_rollout_and_is_noop_when_off() -> None:
+    custom = "miles.rollout.custom.generate_rollout"
+    args = SimpleNamespace(
+        value_pretrain=True,
+        debug_train_only=False,
+        advantage_estimator="grpo",
+        compute_advantages_and_returns=False,
+        kl_coef=0.0,
+        n_samples_per_prompt=1,
+        rollout_function_path=custom,
+        num_critic_only_steps=3,
+        num_rollout=None,
+    )
+    apply_value_pretrain_args(args)
+    assert args.rollout_function_path == custom
+    assert args.num_critic_only_steps == 10**9
+
+    off = SimpleNamespace(value_pretrain=False, advantage_estimator="grpo")
+    apply_value_pretrain_args(off)
+    assert off.advantage_estimator == "grpo"

@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from miles.backends.training_utils import loss as loss_module
-from miles.backends.training_utils.parallel import GroupInfo, ParallelState
+from miles.backends.training_utils.parallel import GroupInfo, ParallelState, set_parallel_state
 
 
 @pytest.mark.parametrize("stage", ["non-final", "final", "default-single-stage"])
@@ -55,3 +55,40 @@ def test_ppo_only_computes_advantages_on_final_pipeline_stage(monkeypatch, stage
         assert data["advantages"] is expected_advantages
         assert data["returns"] is expected_returns
     torch.testing.assert_close(rollout_log_probs, torch.tensor([-0.5, -0.25]))
+
+
+def test_value_pretrain_fills_mc_returns_without_values_or_log_probs(monkeypatch):
+    group = GroupInfo(rank=0, size=1, group=None)
+    state = ParallelState(intra_dp=group, intra_dp_cp=group, cp=group, tp=group)
+    set_parallel_state(state)
+    monkeypatch.setattr(loss_module, "get_parallel_state", lambda: state)
+    args = Namespace(value_pretrain=True, qkv_format="thd")
+    data = dict(
+        rewards=[0.0, 1.0],
+        response_lengths=[2, 3],
+        total_lengths=[5, 6],
+        loss_masks=[torch.tensor([0, 1], dtype=torch.int), torch.ones(3, dtype=torch.int)],
+    )
+    gae = Mock()
+    monkeypatch.setattr(loss_module, "get_advantages_and_returns_batch", gae)
+
+    loss_module.compute_advantages_and_returns(args, data)
+
+    gae.assert_not_called()
+    assert [t.tolist() for t in data["returns"]] == [[0.0, 0.0], [1.0, 1.0, 1.0]]
+    assert [t.tolist() for t in data["advantages"]] == [[0.0, 0.0], [0.0, 0.0, 0.0]]
+
+
+def test_fill_monte_carlo_returns_matches_response_lengths():
+    group = GroupInfo(rank=0, size=1, group=None)
+    set_parallel_state(ParallelState(intra_dp=group, intra_dp_cp=group, cp=group, tp=group))
+    args = Namespace(qkv_format="thd")
+    data = dict(
+        rewards=[0.4],
+        response_lengths=[4],
+        total_lengths=[7],
+        loss_masks=[torch.tensor([0, 1, 1, 0], dtype=torch.int)],
+    )
+    loss_module.fill_monte_carlo_returns(args, data)
+    torch.testing.assert_close(data["returns"][0], torch.full((4,), 0.4))
+    torch.testing.assert_close(data["advantages"][0], torch.zeros(4))

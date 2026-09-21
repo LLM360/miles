@@ -280,3 +280,14 @@ def test_hl_gauss_round_trip_decode_close_to_return_for_narrow_sigma() -> None:
     target = hl_gauss_target(returns, edges, sigma=0.01)
     decoded = decode_categorical_value(torch.log(target.clamp_min(1e-12)), centers)
     torch.testing.assert_close(decoded, returns, atol=1e-2, rtol=1e-2)
+
+
+@pytest.mark.parametrize("value_loss_type", ["hl_gauss", "twohot", "onehot", "bernoulli"])
+def test_mc_episode_returns_are_valid_categorical_targets(value_loss_type: str) -> None:
+    """Value-pretrain fills every response token with the episode reward; CE needs a simplex row."""
+    returns = torch.tensor([1.0, 1.0, 0.0, 0.0])
+    target = categorical_value_target(returns, _categorical_args(value_loss_type))
+    assert torch.isfinite(target).all()
+    torch.testing.assert_close(target.sum(dim=-1), torch.ones(4))
+    torch.testing.assert_close(target[0], target[1])
+    torch.testing.assert_close(target[2], target[3])

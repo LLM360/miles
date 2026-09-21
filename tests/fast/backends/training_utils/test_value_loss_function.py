@@ -105,6 +105,58 @@ def test_mse_value_loss_matches_hand_computed_clipped_mse() -> None:
     assert log["value_clipfrac"].item() == pytest.approx(2.0)
 
 
+def test_value_pretrain_mse_is_unclipped() -> None:
+    args = _base_args(value_loss_type="mse", value_pretrain=True)
+    batch = _make_batch(
+        returns=[torch.tensor([1.0, 1.0]), torch.tensor([0.0, 0.0, 0.0])],
+        response_lengths=_RESPONSE_LENGTHS,
+        total_lengths=_TOTAL_LENGTHS,
+    )
+    batch["values"] = [torch.tensor([0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5])]
+
+    logits = torch.zeros(1, sum(_TOTAL_LENGTHS), 1)
+    logits[0, [0, 1, 3, 4, 5], 0] = 0.9
+
+    loss, log = value_loss_function(args, batch, logits, _sum_of_sample_mean(batch, args))
+
+    expected = torch.tensor(
+        [
+            (0.9 - 1.0) ** 2,
+            (0.9 - 1.0) ** 2,
+            (0.9 - 0.0) ** 2,
+            (0.9 - 0.0) ** 2,
+            (0.9 - 0.0) ** 2,
+        ]
+    )
+    expected_loss = expected[:2].mean() + expected[2:].mean()
+    torch.testing.assert_close(loss, expected_loss, atol=1e-5, rtol=1e-4)
+    assert log["value_clipfrac"].item() == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("value_loss_type", ["hl_gauss", "twohot", "onehot", "bernoulli"])
+def test_value_pretrain_categorical_is_ce_without_v_old(value_loss_type: str) -> None:
+    """MC pretrain has no V_old. Categorical CE already ignores V_old, so the flag is a no-op."""
+    extra = {} if value_loss_type == "bernoulli" else dict(value_num_bins=5, value_min=0.0, value_max=1.0)
+    args_pretrain = _base_args(value_loss_type=value_loss_type, value_pretrain=True, **extra)
+    args_online = _base_args(value_loss_type=value_loss_type, **extra)
+    batch = _make_batch(
+        returns=[torch.ones(2), torch.zeros(3)],
+        response_lengths=_RESPONSE_LENGTHS,
+        total_lengths=_TOTAL_LENGTHS,
+    )
+    width = 2 if value_loss_type == "bernoulli" else 5
+    logits = torch.zeros(1, sum(_TOTAL_LENGTHS), width, requires_grad=True)
+    reducer = _sum_of_sample_mean(batch, args_pretrain)
+
+    loss_pretrain, log = value_loss_function(args_pretrain, batch, logits, reducer)
+    loss_online, _ = value_loss_function(args_online, batch, logits, reducer)
+
+    torch.testing.assert_close(loss_pretrain, loss_online)
+    assert log["value_clipfrac"].item() == 0.0
+    loss_pretrain.backward()
+    assert torch.any(logits.grad != 0)
+
+
 @pytest.mark.parametrize("value_loss_type", ["hl_gauss", "twohot", "onehot"])
 def test_categorical_value_loss_is_minimized_by_logits_matching_target(value_loss_type: str) -> None:
     """CE(target, softmax(logits)) >= H(target), with equality iff softmax(logits) == target

@@ -224,6 +224,7 @@ class Dataset:
                 Sample(
                     prompt=output_prompt,
                     label=data[label_key] if label_key is not None else None,
+                    reward=data.get("reward"),
                     metadata=metadata,
                     multimodal_inputs=multimodal_inputs,
                 )

@@ -16,6 +16,7 @@ from miles.utils.ppo_utils import (
     compute_opd_reward,
     compute_opsm_mask,
     compute_policy_loss,
+    fill_monte_carlo_returns,
     get_advantages_and_returns_batch,
     get_grpo_returns,
     get_reinforce_plus_plus_baseline_advantages,
@@ -457,6 +458,8 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
 
     Only the final pipeline stage computes advantages. Earlier stages can
     still receive rollout log-probabilities, but do not have critic values.
+    `--value-pretrain` fills per-token `returns` with the episode reward and
+    does not need values or log-probs.
 
     Args:
         args: Configuration specifying estimator type, KL coefficient,
@@ -468,6 +471,10 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
     """
     parallel_state = get_parallel_state()
     if not parallel_state.is_pp_last_stage:
+        return
+
+    if getattr(args, "value_pretrain", False):
+        fill_monte_carlo_returns(args, rollout_data)
         return
 
     log_probs: list[torch.Tensor] = rollout_data.get("rollout_log_probs" if args.use_rollout_logprobs else "log_probs")
@@ -1075,9 +1082,9 @@ def value_loss_function(
             `value_loss_type`/`value_num_bins`/`value_min`/`value_max`/
             `value_hl_gauss_sigma_ratio`/`value_support_endpoints`
             (categorical).
-        batch: Mini-batch with "values" (old predictions, mse only),
-            "returns", "unconcat_tokens", "total_lengths", and
-            "response_lengths".
+        batch: Mini-batch with "values" (old predictions, mse only; unused
+            under `--value-pretrain`), "returns", "unconcat_tokens",
+            "total_lengths", and "response_lengths".
         logits: Value head output with shape `[1, T, 1]` (mse) or
             `[1, T, K]` (categorical).
         sum_of_sample_mean: Reduction function that averages per-sample values.
@@ -1114,8 +1121,6 @@ def value_loss_function(
         }
         return loss, reported_loss
 
-    old_values = torch.cat(batch["values"], dim=0)
-
     values = get_values(
         logits,
         args=args,
@@ -1126,6 +1131,19 @@ def value_loss_function(
         apply_temperature=not getattr(args, "share_backbone_critic", False),
     )
     values = torch.cat([value.flatten() for value in values["values"]], dim=0)
+
+    if getattr(args, "value_pretrain", False) or "values" not in batch:
+        loss = (values - returns) ** 2
+        loss = sum_of_sample_mean(loss)
+        if values.numel() == 0:
+            loss += 0 * values.sum()
+        reported_loss = {
+            "value_loss": loss.clone().detach(),
+            "value_clipfrac": torch.zeros_like(loss),
+        }
+        return loss, reported_loss
+
+    old_values = torch.cat(batch["values"], dim=0)
 
     values_clipfrac = torch.abs(values - old_values) > args.value_clip
     values_clipped = old_values + (values - old_values).clamp(-args.value_clip, args.value_clip)

@@ -839,18 +839,21 @@ class MegatronTrainRayActor(TrainRayActor):
     def train_critic(self, rollout_id: int, rollout_data: RolloutBatch) -> None:
         # Create data iterator for log_probs and train.
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, rollout_data)
-        rollout_data.update(
-            forward_only(
-                get_values,
-                self.args,
-                self.model,
-                data_iterator,
-                num_microbatches,
+        if not getattr(self.args, "value_pretrain", False):
+            rollout_data.update(
+                forward_only(
+                    get_values,
+                    self.args,
+                    self.model,
+                    data_iterator,
+                    num_microbatches,
+                )
             )
-        )
 
-        if rollout_id >= self.args.num_critic_only_steps:
-            sync_actor_critic_data(self.args, rollout_data, self._actor_critic_groups)
+            if rollout_id >= self.args.num_critic_only_steps:
+                sync_actor_critic_data(self.args, rollout_data, self._actor_critic_groups)
+        else:
+            print("@dhawgupta: value-pretrain skip critic V_old", flush=True)
 
         compute_advantages_and_returns(self.args, rollout_data)
 
@@ -893,7 +896,10 @@ class MegatronTrainRayActor(TrainRayActor):
 
         with inverse_timer("train_wait"), timer("train"):
             if self.args.compute_advantages_and_returns:
-                if "ref" in self.weights_backuper.backup_tags:
+                skip_snapshot = getattr(self.args, "value_pretrain", False)
+                if skip_snapshot:
+                    print("@dhawgupta: value-pretrain skip PPO snapshot", flush=True)
+                if not skip_snapshot and "ref" in self.weights_backuper.backup_tags:
                     self._set_replay_stage("fallthrough")
                     self._switch_model("ref")
                     rollout_data.update(
@@ -903,12 +909,15 @@ class MegatronTrainRayActor(TrainRayActor):
                             store_prefix="ref_",
                         )
                     )
-                self._switch_model("old_actor" if self.args.keep_old_actor else "actor")
-                need_actor_logprob = not self.args.use_rollout_logprobs or self.args.get_mismatch_metrics
+                if not skip_snapshot:
+                    self._switch_model("old_actor" if self.args.keep_old_actor else "actor")
+                need_actor_logprob = not skip_snapshot and (
+                    not self.args.use_rollout_logprobs or self.args.get_mismatch_metrics
+                )
                 collect_values_with_logprob = (
                     self.args.share_backbone_critic and need_actor_logprob and not self.args.keep_old_actor
                 )
-                if self.args.share_backbone_critic:
+                if self.args.share_backbone_critic and not skip_snapshot:
                     print("@dhawgupta: snapshot V_old with logprob", flush=True)
                 if need_actor_logprob:
                     for m in all_replay_managers:
@@ -929,22 +938,26 @@ class MegatronTrainRayActor(TrainRayActor):
                         if self._use_rollout_replay(m):
                             m.clear_all_forward()
 
-                if self.args.use_separate_critic:
+                if not skip_snapshot and self.args.use_separate_critic:
                     sync_actor_critic_data(
                         self.args,
                         rollout_data,
                         self._actor_critic_groups,
                     )
-                if self._active_model_tag != "actor":
+                if not skip_snapshot and self._active_model_tag != "actor":
                     self._switch_model("actor")
 
                 # Only the last PP stage receives forward results. Use the
                 # shared execution plan, not rank-local value availability,
                 # so every stage enters the same pipeline forward passes.
-                if self.args.share_backbone_critic and not collect_values_with_logprob:
+                if not skip_snapshot and self.args.share_backbone_critic and not collect_values_with_logprob:
                     print("@dhawgupta: fallback compute_values", flush=True)
                     rollout_data.update(self.compute_values(data_iterator, num_microbatches))
-                if self.args.share_backbone_critic and get_parallel_state().is_pp_last_stage:
+                if (
+                    not skip_snapshot
+                    and self.args.share_backbone_critic
+                    and get_parallel_state().is_pp_last_stage
+                ):
                     assert "values" in rollout_data, "Shared critic forward did not produce values on the last PP stage"
 
                 # Calculate adv and returns. Need to performed before training (instead of on the fly),
@@ -958,8 +971,8 @@ class MegatronTrainRayActor(TrainRayActor):
 
             # Train
             self._set_replay_stage("replay_backward")
-            self.args.share_backbone_critic_only = (
-                self.args.share_backbone_critic and rollout_id < self.args.num_critic_only_steps
+            self.args.share_backbone_critic_only = self.args.share_backbone_critic and (
+                rollout_id < self.args.num_critic_only_steps or getattr(self.args, "value_pretrain", False)
             )
             if self.args.share_backbone_critic:
                 print("@dhawgupta: actor train step", flush=True)

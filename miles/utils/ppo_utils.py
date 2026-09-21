@@ -506,6 +506,43 @@ def get_advantages_and_returns_batch(
     return advantages_list, returns_list
 
 
+def fill_monte_carlo_returns(args: Namespace, rollout_data: dict) -> None:
+    """Fill per-token `returns` with the scalar episode reward (MC critic target).
+
+    Does not need `values` or log-probs. Advantages are zeros (unused by
+    value-only pretrain). Context-parallel ranks get the same zigzag slice as GAE.
+    """
+    from miles.backends.training_utils.cp_utils import slice_log_prob_with_cp
+
+    rewards = rollout_data["rewards"]
+    response_lengths = rollout_data["response_lengths"]
+    total_lengths = rollout_data["total_lengths"]
+    loss_masks = rollout_data.get("loss_masks")
+    max_seq_lens = rollout_data.get("max_seq_lens")
+    qkv_format = getattr(args, "qkv_format", "thd")
+
+    device = None
+    if loss_masks:
+        mask0 = loss_masks[0]
+        if torch.is_tensor(mask0):
+            device = mask0.device
+    if device is None:
+        device = torch.device("cpu")
+
+    returns = []
+    advantages = []
+    for i, reward in enumerate(rewards):
+        response_len = int(response_lengths[i])
+        ret = torch.full((response_len,), float(reward), dtype=torch.float32, device=device)
+        max_seq_len = max_seq_lens[i] if max_seq_lens is not None else None
+        ret = slice_log_prob_with_cp(ret, int(total_lengths[i]), response_len, qkv_format, max_seq_len)
+        returns.append(ret)
+        advantages.append(torch.zeros_like(ret))
+
+    rollout_data["returns"] = returns
+    rollout_data["advantages"] = advantages
+
+
 def vanilla_gae(
     rewards: torch.Tensor,
     values: torch.Tensor,
