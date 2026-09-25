@@ -97,6 +97,7 @@ async def update_sample_from_response(
 
     # TODO handle multi-turn cases (may need concat instead of assignment)
     sample.rollout_routed_experts = get_rollout_topk_from_response(args, output, sample, "routed_experts")
+    sample.rollout_routed_value_experts = get_rollout_topk_from_response(args, output, sample, "routed_value_experts")
 
     # TODO may unify (currently there are both methods inside Sample and separate functions)
     sample.update_from_meta_info(args, output["meta_info"])
@@ -107,4 +108,9 @@ def get_rollout_topk_from_response(args, output, sample, key):
     if info is None:
         return None
     x = np.frombuffer(pybase64.b64decode(info.encode("ascii")), dtype=np.int32)
-    return x.reshape(len(sample.tokens) - 1, args.num_layers, args.moe_router_topk)
+    num_layers = args.num_layers
+    router_topk = args.moe_router_topk
+    if key == "routed_value_experts":
+        num_layers -= args.mova_num_dense_layers
+        router_topk = args.mova_router_topk
+    return x.reshape(len(sample.tokens) - 1, num_layers, router_topk)

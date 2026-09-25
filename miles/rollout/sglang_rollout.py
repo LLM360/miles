@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
-import pybase64
 import sglang_router
 from packaging.version import parse
 from tqdm import tqdm
@@ -16,6 +15,7 @@ from tqdm import tqdm
 from miles.backends.megatron_utils.lora_utils import LORA_ADAPTER_NAME, is_lora_enabled
 from miles.rollout.base_types import GenerateFnInput, RolloutFnEvalOutput, RolloutFnTrainOutput
 from miles.rollout.filter_hub.base_types import MetricGatherer, call_dynamic_filter
+from miles.rollout.generate_utils.generate_endpoint_utils import get_rollout_topk_from_response
 from miles.rollout.inference_rollout.compatibility import load_generate_function
 from miles.utils import dumper_utils
 from miles.utils.async_utils import run
@@ -216,15 +216,12 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
             sample.rollout_log_probs = []
         sample.rollout_log_probs += new_response_log_probs
 
-    if "routed_experts" in output["meta_info"]:
-        sample.rollout_routed_experts = np.frombuffer(
-            pybase64.b64decode(output["meta_info"]["routed_experts"].encode("ascii")),
-            dtype=np.int32,
-        ).reshape(
-            len(sample.tokens) - 1,
-            args.num_layers,
-            args.moe_router_topk,
-        )
+    for key, attr in (
+        ("routed_experts", "rollout_routed_experts"),
+        ("routed_value_experts", "rollout_routed_value_experts"),
+    ):
+        if key in output["meta_info"]:
+            setattr(sample, attr, get_rollout_topk_from_response(args, output, sample, key))
 
     sample.update_from_meta_info(args, output["meta_info"])
 

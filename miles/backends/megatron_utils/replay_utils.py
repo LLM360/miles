@@ -1,33 +1,17 @@
-from megatron.core.transformer.transformer_block import get_num_layers_to_build
-from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
+from megatron.core.utils import unwrap_model
 
-from miles.utils.replay_base import BaseReplayManager, RoutingReplayManager
-
-
-def _register_replay_list_moe(replay_list, replay_data, models):
-    layer_indices = []
-    replay_idx = 0
-    for vp_stage, model in enumerate(models):
-        config = model.module.config
-        num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
-        offset = get_transformer_layer_offset(config, vp_stage=vp_stage)
-        for layer_id in range(offset, offset + num_layers_to_build):
-            if isinstance(config.moe_layer_freq, int):
-                if layer_id % config.moe_layer_freq != 0:
-                    continue
-            elif isinstance(config.moe_layer_freq, list):
-                assert len(config.moe_layer_freq) == config.num_layers
-                if config.moe_layer_freq[layer_id] == 0:
-                    continue
-            layer_indices.append(layer_id)
-
-    for replay_idx, layer_idx in enumerate(layer_indices):
-        layer_data = replay_data[:, layer_idx]
-        replay_list[replay_idx].record(layer_data)
+from miles.utils.replay_base import Replay
 
 
-def get_register_replay_list_func(manager: BaseReplayManager):
-    if isinstance(manager, RoutingReplayManager):
-        return _register_replay_list_moe
-    else:
-        raise ValueError(f"Unsupported manager type: {type(manager)}")
+def get_replay_columns(kind: str, models) -> list[tuple[Replay, int]]:
+    is_value = kind == "value"
+    dense_prefix = unwrap_model(models[0]).config.mova_num_dense_layers if is_value else 0
+
+    columns = []
+    for model in unwrap_model(models):
+        for layer in model.decoder.layers:
+            owner = getattr(layer.self_attention, "value_projection", None) if is_value else layer.mlp
+            replay = getattr(getattr(owner, "router", None), "routing_replay", None)
+            if replay is not None:
+                columns.append((replay, layer.layer_number - 1 - dense_prefix))
+    return columns

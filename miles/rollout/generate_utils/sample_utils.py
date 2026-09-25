@@ -72,6 +72,8 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
         assert obs_len > 0, f"obs_len must be > 0, got {obs_len}"
         if a.rollout_routed_experts is not None:
             assert a.rollout_routed_experts.shape[0] <= b.rollout_routed_experts.shape[0]
+        if a.rollout_routed_value_experts is not None:
+            assert a.rollout_routed_value_experts.shape[0] <= b.rollout_routed_value_experts.shape[0]
         assert a.status == Sample.Status.COMPLETED, f"a.status must be COMPLETED, got {a.status}"
 
         return _create_with_all_fields(
@@ -91,6 +93,7 @@ def _merge_sample_pair(a: Sample, b: Sample, tokenizer) -> Sample:
             rollout_log_probs=a.rollout_log_probs + [0.0] * obs_len + b.rollout_log_probs,
             rollout_sampling_mask=None,
             rollout_routed_experts=b.rollout_routed_experts,
+            rollout_routed_value_experts=b.rollout_routed_value_experts,
             remove_sample=_merge_equal_value("remove_sample"),
             status=b.status,
             metadata=metadata,
