@@ -644,6 +644,11 @@ def apply_merged_session_sample(
     if merged.rollout_routed_experts is not None:
         choice = {"meta_info": {"routed_experts": merged.rollout_routed_experts}}
         sample.rollout_routed_experts = get_rollout_topk_from_response(args, choice, sample, "routed_experts")
+    if merged.rollout_routed_value_experts is not None:
+        choice = {"meta_info": {"routed_value_experts": merged.rollout_routed_value_experts}}
+        sample.rollout_routed_value_experts = get_rollout_topk_from_response(
+            args, choice, sample, "routed_value_experts"
+        )
 
     routed_experts_shape = None
     routed_experts_decoded_bytes = 0
@@ -770,6 +775,7 @@ def _compute_sample_from_openai_record(
     sample.response_length = len(output_token_ids)
     sample.loss_mask = [1] * len(output_token_ids)
     sample.rollout_routed_experts = get_rollout_topk_from_response(args, choice, sample, "routed_experts")
+    sample.rollout_routed_value_experts = get_rollout_topk_from_response(args, choice, sample, "routed_value_experts")
 
     if not hasattr(sample, "metadata") or sample.metadata is None:
         sample.metadata = {}
@@ -817,6 +823,8 @@ def _strip_last_output_tokens_without_decode(sample: Sample, trim_count: int) ->
         sample.loss_mask = sample.loss_mask[:keep_tokens]
     if sample.rollout_routed_experts is not None:
         sample.rollout_routed_experts = sample.rollout_routed_experts[: len(sample.tokens) - 1]
+    if sample.rollout_routed_value_experts is not None:
+        sample.rollout_routed_value_experts = sample.rollout_routed_value_experts[: len(sample.tokens) - 1]
 
 
 def truncate_samples_by_total_tokens(
@@ -868,4 +876,6 @@ def _truncate_sample_output(sample: Sample, keep_tokens: int, tokenizer) -> None
         sample.loss_mask = sample.loss_mask[:keep_tokens]
     if sample.rollout_routed_experts is not None:
         sample.rollout_routed_experts = sample.rollout_routed_experts[: len(sample.tokens) - 1]
+    if sample.rollout_routed_value_experts is not None:
+        sample.rollout_routed_value_experts = sample.rollout_routed_value_experts[: len(sample.tokens) - 1]
     sample.status = Sample.Status.TRUNCATED

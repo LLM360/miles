@@ -30,6 +30,7 @@ class MergedSessionSample(BaseModel):
     weight_versions: list[str] = Field(default_factory=list)
     prefix_cache_meta_infos: list[dict] = Field(default_factory=list)
     rollout_routed_experts: str | None = None
+    rollout_routed_value_experts: str | None = None
 
 
 class GetMergedSessionResponse(BaseModel):

@@ -15,6 +15,7 @@ def _make_sample(
     log_probs: bool = False,
     loss_mask: bool = False,
     routed_experts: bool = False,
+    routed_value_experts: bool = False,
 ) -> Sample:
     """Create a Sample with the given prompt + response token IDs."""
     tokens = prompt_ids + response_ids
@@ -30,6 +31,9 @@ def _make_sample(
     if routed_experts:
         # shape: (num_tokens - 1, ...)
         s.rollout_routed_experts = numpy.zeros((len(tokens) - 1, 2, 2), dtype=numpy.int32)
+    if routed_value_experts:
+        # shape: (num_tokens - 1, num_value_layers, mova_router_topk)
+        s.rollout_routed_value_experts = numpy.zeros((len(tokens) - 1, 2, 2), dtype=numpy.int32)
     return s
 
 
@@ -83,6 +87,12 @@ class TestStripLastOutputTokens:
         original_len = len(s.rollout_routed_experts)
         s.strip_last_output_tokens(2, tokenizer)
         assert len(s.rollout_routed_experts) == original_len - 2
+
+    def test_strip_truncates_routed_value_experts(self, tokenizer):
+        s = _make_sample([1, 2], [3, 4, 5], routed_value_experts=True)
+        original_len = len(s.rollout_routed_value_experts)
+        s.strip_last_output_tokens(2, tokenizer)
+        assert len(s.rollout_routed_value_experts) == original_len - 2
 
     def test_strip_updates_response_text(self, tokenizer):
         s = _make_sample([1, 2], [3, 4, 5])

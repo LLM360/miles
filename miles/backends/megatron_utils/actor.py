@@ -21,7 +21,7 @@ from miles.utils.memory_utils import clear_memory, print_memory
 from miles.utils.processing_utils import load_tokenizer
 from miles.utils.ray_utils import Box
 from miles.utils.reloadable_process_group import destroy_process_groups, monkey_patch_torch_dist, reload_process_groups
-from miles.utils.replay_base import all_replay_managers
+from miles.utils.replay_base import Replay, all_replay_managers
 from miles.utils.timer import Timer, inverse_timer, timer
 from miles.utils.tracking_utils import init_tracking
 from miles.utils.types import RolloutBatch
@@ -39,7 +39,7 @@ from .initialize import init, is_megatron_main_rank
 from .lora_utils import is_lora_enabled
 from .model import forward_only, initialize_model_and_optimizer, save, train
 from .parallel import verify_megatron_parallel_state
-from .replay_utils import get_register_replay_list_func
+from .replay_utils import get_replay_columns
 from .update_weight.common import named_params_and_buffers
 from .update_weight.update_weight_from_distributed.broadcast import UpdateWeightFromDistributed
 from .update_weight.update_weight_from_distributed.p2p import UpdateWeightP2P
@@ -749,8 +749,7 @@ class MegatronTrainRayActor(TrainRayActor):
         num_microbatches,
         rollout_data,
         data_key: str,
-        replay_list: list,
-        register_replay_list_func,
+        replay_columns: list[tuple[Replay, int]],
         if_sp_region=True,
     ):
         if data_key not in rollout_data:
@@ -807,7 +806,8 @@ class MegatronTrainRayActor(TrainRayActor):
                 start, end = seqlen // tp_size * tp_rank, seqlen // tp_size * (tp_rank + 1)
                 replay_data = replay_data[start:end]
 
-            register_replay_list_func(replay_list, replay_data, self.model)
+            for replay, column in replay_columns:
+                replay.record(replay_data[:, column])
 
         del rollout_data[data_key]
 
@@ -892,14 +892,17 @@ class MegatronTrainRayActor(TrainRayActor):
         data_iterator, num_microbatches = get_data_iterator(self.args, self.model, rollout_data)
 
         for m in all_replay_managers:
-            if self._use_rollout_replay(m):
+            if not self._use_rollout_replay(m):
+                continue
+            for kind, data_key in m.data_keys.items():
+                if data_key not in rollout_data:
+                    continue
                 self._fill_replay_data(
                     data_iterator,
                     num_microbatches,
                     rollout_data,
-                    data_key=m.data_key,
-                    replay_list=m.replays,
-                    register_replay_list_func=get_register_replay_list_func(m),
+                    data_key=data_key,
+                    replay_columns=get_replay_columns(kind, self.model),
                     if_sp_region=m.if_sp_region,
                 )
 

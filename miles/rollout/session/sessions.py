@@ -164,9 +164,10 @@ def setup_session_routes(app, backend, args):
                 compact_meta_info[key] = meta_info[key]
 
         # Preserve routed experts if present. get_rollout_topk_from_response()
-        # may read this from choice or meta_info depending on implementation.
-        if "routed_experts" in meta_info:
-            compact_meta_info["routed_experts"] = meta_info["routed_experts"]
+        # may read these from choice or meta_info depending on implementation.
+        for key in ("routed_experts", "routed_value_experts"):
+            if key in meta_info:
+                compact_meta_info[key] = meta_info[key]
 
         compact_choice = {
             "prompt_token_ids": choice.get("prompt_token_ids", []),
@@ -174,8 +175,9 @@ def setup_session_routes(app, backend, args):
             "meta_info": compact_meta_info,
         }
 
-        if "routed_experts" in choice:
-            compact_choice["routed_experts"] = choice["routed_experts"]
+        for key in ("routed_experts", "routed_value_experts"):
+            if key in choice:
+                compact_choice[key] = choice[key]
 
         return SessionRecord(
             timestamp=record.timestamp,
@@ -262,6 +264,7 @@ def setup_session_routes(app, backend, args):
         weight_versions: list[str] = []
         prefix_cache_meta_infos: list[dict] = []
         routed_experts = None
+        routed_value_experts = None
         prev_checkpoint: list[int] | None = None
         final_cursor = 0
         final_status = "completed"
@@ -345,6 +348,7 @@ def setup_session_routes(app, backend, args):
             )
 
             routed_experts = meta_info.get("routed_experts", choice.get("routed_experts"))
+            routed_value_experts = meta_info.get("routed_value_experts", choice.get("routed_value_experts"))
             final_status = _status_from_finish_reason(choice.get("finish_reason"))
             if not is_last:
                 assert (
@@ -401,6 +405,7 @@ def setup_session_routes(app, backend, args):
             weight_versions=weight_versions,
             prefix_cache_meta_infos=prefix_cache_meta_infos,
             rollout_routed_experts=routed_experts,
+            rollout_routed_value_experts=routed_value_experts,
         )
 
     @app.get("/sessions/{session_id}")

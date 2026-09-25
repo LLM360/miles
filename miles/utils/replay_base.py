@@ -52,6 +52,7 @@ class Replay:
 class BaseReplayManager:
     name: str = ""
     filename: str = ""
+    data_keys: dict[str, str] = {}
 
     def __init__(self):
         self.replays: list[Replay] = []
@@ -220,7 +221,7 @@ class BaseReplayManager:
 class RoutingReplayManager(BaseReplayManager):
     name = "routing"
     filename = "routing_replay.pt"
-    data_key = "rollout_routed_experts"
+    data_keys = {"ffn": "rollout_routed_experts", "value": "rollout_routed_value_experts"}
     if_sp_region = True
     enable_check_replay_result = False
     replay_check_threshold = 1e-2
