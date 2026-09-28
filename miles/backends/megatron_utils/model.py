@@ -260,6 +260,11 @@ def forward_only(
         packed_seq_params = get_packed_seq_params(batch, args)
         total_lengths = batch["total_lengths"]
         response_lengths = batch["response_lengths"]
+        forward_kwargs = {}
+        if getattr(args, "value_pretrain", False) and collect_values:
+            # Offline value evaluation does not use full-vocabulary policy logits.
+            # Match critic-only training and avoid their unnecessary FP32 copy.
+            forward_kwargs["fp32_output"] = not (args.fp16 or args.bf16)
         output_tensor = model(
             input_ids=tokens,
             position_ids=None,
@@ -267,6 +272,7 @@ def forward_only(
             labels=None,
             packed_seq_params=packed_seq_params,
             loss_mask=batch["full_loss_masks"],
+            **forward_kwargs,
             **(batch["multimodal_train_inputs"] if batch["multimodal_train_inputs"] is not None else {}),
         )
 

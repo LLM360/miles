@@ -118,6 +118,10 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             return parser
 
         def add_train_arguments(parser):
+            reset_arg(
+                parser, "--layernorm-num-groups", type=int, default=1,
+                help="Number of groups for Megatron RMSNorm (K2 uses 2).",
+            )
             parser.add_argument(
                 "--train-backend",
                 type=str,
