@@ -147,6 +147,14 @@ def _normalize_value(value: Any) -> Any:
     return value
 
 
+def _normalize_tool_calls(tool_calls: Any) -> Any:
+    """Drop ``index`` from tool calls: a streaming position marker SGLang
+    returns but templates never render, and clients (e.g. Harbor) strip."""
+    if not isinstance(tool_calls, list):
+        return tool_calls
+    return [{k: v for k, v in tc.items() if k != "index"} if isinstance(tc, dict) else tc for tc in tool_calls]
+
+
 def message_matches(stored: dict[str, Any], new: dict[str, Any]) -> bool:
     """Compare only the fields that affect chat-template tokenization.
 
@@ -156,7 +164,10 @@ def message_matches(stored: dict[str, Any], new: dict[str, Any]) -> bool:
     templates actually read: role, content, reasoning_content, tool_calls.
     """
     for key in _TEMPLATE_RELEVANT_KEYS:
-        if _normalize_value(stored.get(key)) != _normalize_value(new.get(key)):
+        stored_value, new_value = stored.get(key), new.get(key)
+        if key == "tool_calls":
+            stored_value, new_value = _normalize_tool_calls(stored_value), _normalize_tool_calls(new_value)
+        if _normalize_value(stored_value) != _normalize_value(new_value):
             return False
     return True
 

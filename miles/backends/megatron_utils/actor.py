@@ -411,7 +411,9 @@ def validate_rollout_for_grpo_training_step(
 
         mask_sum = _sum_float(mask)
         if mask_sum <= 0:
-            _add_error(f"loss_masks[{i}] has no active tokens, sum={mask_sum}, response_len={resp}")
+            # Warning-only: rollout sample filters zero a sample's loss_mask
+            # (remove_sample) to drop it from the gradient; the reducer clamps.
+            _add_warning(f"loss_masks[{i}] has no active tokens, sum={mask_sum}, response_len={resp}")
         if mask_sum > resp:
             # Warning-only: float/weighted masks can legitimately have sum > resp.
             _add_warning(

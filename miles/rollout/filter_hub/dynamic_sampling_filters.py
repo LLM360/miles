@@ -6,9 +6,36 @@ from miles.utils.types import Sample
 __all__ = [
     "check_reward_nonzero_std",
     "check_no_aborted",
+    "check_valid_reward_nonzero_std",
     "drop_zero_std_groups_and_extreme_pass_rate",
     "drop_truncated_or_extreme_pass_rate",
 ]
+
+# Harbor exit_status values for infra / non-policy failures.
+INFRA_FAILURE_EXIT_STATUSES = frozenset(
+    {
+        "AgentTimeout",
+        "AgentTimeoutError",
+        "HealthcheckError",
+        "_K8sInternalInfraError",
+        "Cancelled",
+        "RewardFileNotFoundError",
+        "AgentSetupTimeout",
+        "AgentSetupTimeoutError",
+        "SqsConsumerError",
+        "VerifierTimeout",
+        "VerifierTimeoutError",
+        "VerifierCleanupError",
+        "EnvStartTimeout",
+        "EnvironmentStartTimeoutError",
+        "TimeoutError",
+        "AddTestsDirError",
+        # litellm.NotFoundError: sglang multi-turn session id 404s when a
+        # later turn is routed to an engine that doesn't hold that session
+        # (routing/eviction, not a policy failure).
+        "NotFoundError",
+    }
+)
 
 
 def check_reward_nonzero_std(args, samples: list[Sample], **kwargs):
@@ -44,6 +71,26 @@ def check_no_aborted(args, samples: list[Sample], **kwargs):
     if any(s.status == Sample.Status.ABORTED for s in _flatten_samples(samples)):
         return DynamicFilterOutput(keep=False, reason="group_has_aborted")
     return DynamicFilterOutput(keep=True)
+
+
+def is_infra_failure(sample: Sample) -> bool:
+    return (
+        sample.status == Sample.Status.ABORTED
+        or (sample.metadata or {}).get("exit_status", "") in INFRA_FAILURE_EXIT_STATUSES
+        or (sample.metadata or {}).get("llm_judge_failed", False)
+        or sample.reward is None
+    )
+
+
+def check_valid_reward_nonzero_std(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
+    """Keep groups with varying valid rewards despite individual infrastructure failures.
+
+        --dynamic-sampling-filter-path miles.rollout.filter_hub.dynamic_sampling_filters.check_valid_reward_nonzero_std
+    """
+    valid_samples = [sample for sample in _flatten_samples(samples) if not is_infra_failure(sample)]
+    if len(valid_samples) < 2:
+        return DynamicFilterOutput(keep=False, reason="insufficient_valid_rewards")
+    return check_reward_nonzero_std(args, valid_samples, **kwargs)
 
 
 def drop_zero_std_groups_and_extreme_pass_rate(args, samples: list[Sample], **kwargs) -> DynamicFilterOutput:
