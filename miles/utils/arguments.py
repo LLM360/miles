@@ -1082,6 +1082,28 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             parser.add_argument("--lambd", type=float, default=1.0, help="PPO GAE lambd")
             parser.add_argument("--normalize-advantages", action="store_true", default=False)
             parser.add_argument(
+                "--normalize-advantages-scale-only",
+                action="store_true",
+                default=False,
+                help="With --normalize-advantages, divide by the std but keep the mean, so a shifted "
+                "(optimistic/pessimistic) baseline is not re-centred away.",
+            )
+            parser.add_argument(
+                "--ppo-baseline",
+                type=str,
+                choices=["value", "group", "max", "min", "delta"],
+                default="value",
+                help="PPO baseline b_t in A_t = R_t - b_t (see miles/utils/ppo_baseline.py). 'value' is "
+                "standard PPO; the others use the leave-one-out group mean g: 'group' = g, "
+                "'max' = max(g, V_t), 'min' = min(g, V_t), 'delta' = g + (V_t - V_0).",
+            )
+            parser.add_argument(
+                "--ppo-baseline-cap",
+                type=float,
+                default=None,
+                help="Bound on how far the critic may move the baseline away from g (max/min/delta).",
+            )
+            parser.add_argument(
                 "--disable-grpo-std-normalization",
                 action="store_false",
                 dest="grpo_std_normalization",
@@ -2129,6 +2151,17 @@ def miles_validate_args(args):
     apply_value_pretrain_args(args)
 
     args.use_critic = args.advantage_estimator == "ppo"
+    if args.ppo_baseline != "value":
+        if not args.use_critic:
+            raise ValueError("--ppo-baseline other than 'value' requires --advantage-estimator ppo")
+        if args.gamma != 1.0 or args.lambd != 1.0:
+            raise ValueError("--ppo-baseline other than 'value' assumes --gamma 1 --lambd 1 (A_t = R_t - b_t)")
+        if args.n_samples_per_prompt < 2:
+            raise ValueError("--ppo-baseline other than 'value' needs --n-samples-per-prompt >= 2")
+    if args.ppo_baseline_cap is not None and args.ppo_baseline_cap < 0:
+        raise ValueError("--ppo-baseline-cap must be >= 0")
+    if args.normalize_advantages_scale_only and not args.normalize_advantages:
+        raise ValueError("--normalize-advantages-scale-only requires --normalize-advantages")
     if args.use_critic and args.value_loss_type != "mse":
         if args.value_loss_type != "bernoulli":
             if args.value_num_bins < 2:

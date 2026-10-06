@@ -9,6 +9,7 @@ from torch.utils.checkpoint import checkpoint
 
 from miles.utils.distributed_utils import distributed_masked_whiten
 from miles.utils.misc import load_function
+from miles.utils.ppo_baseline import hybrid_advantages
 from miles.utils.ppo_utils import (
     calculate_log_probs_and_entropy,
     compute_approx_kl,
@@ -35,6 +36,7 @@ from .cp_utils import (
     all_gather_with_cp,
     get_logits_and_tokens_offset_with_cp,
     get_sum_of_sample_mean,
+    slice_log_prob_with_cp,
 )
 from .parallel import get_parallel_state
 
@@ -446,6 +448,58 @@ def get_value_logits(
     return chunks
 
 
+def _apply_hybrid_baseline(
+    args: Namespace,
+    rollout_data: RolloutBatch,
+    values: list[torch.Tensor],
+    returns: list[torch.Tensor],
+) -> list[torch.Tensor]:
+    """Replace PPO advantages by returns - b_t for `--ppo-baseline` != value.
+
+    Works on full responses: with CP > 1 each sample's values/returns are
+    all-gathered over the CP group (needed for V_0 in 'delta' mode) and the
+    advantages sliced back to this rank's chunks. Records per-sample
+    diagnostics `ppo_baseline` and `ppo_baseline_critic_frac` in rollout_data.
+    """
+    group_baselines = rollout_data.get("group_baseline")
+    group_valid = rollout_data.get("group_baseline_valid")
+    assert group_baselines is not None and group_valid is not None, (
+        "--ppo-baseline needs group_baseline from the rollout side "
+        "(not produced by a custom --custom-convert-samples-to-train-data-path)"
+    )
+    total_lengths = rollout_data["total_lengths"]
+    response_lengths = rollout_data["response_lengths"]
+    loss_masks = rollout_data["loss_masks"]
+    max_seq_lens = rollout_data.get("max_seq_lens", None)
+    cp_size = get_parallel_state().cp.size
+
+    advantages, mean_b, critic_frac = [], [], []
+    with torch.no_grad():
+        for i, (v, r) in enumerate(zip(values, returns, strict=True)):
+            total_len, resp_len = total_lengths[i], response_lengths[i]
+            max_seq_len = max_seq_lens[i] if max_seq_lens is not None else None
+            if cp_size > 1:
+                v = all_gather_with_cp(v, total_len, resp_len, args.qkv_format, max_seq_len)[:resp_len]
+                r = all_gather_with_cp(r, total_len, resp_len, args.qkv_format, max_seq_len)[:resp_len]
+            adv, b, frac = hybrid_advantages(
+                args.ppo_baseline,
+                v.float(),
+                r.float(),
+                loss_masks[i][:resp_len],
+                group_baselines[i],
+                bool(group_valid[i]),
+                args.ppo_baseline_cap,
+            )
+            if cp_size > 1:
+                adv = slice_log_prob_with_cp(adv, total_len, resp_len, args.qkv_format, max_seq_len)
+            advantages.append(adv.to(returns[i].dtype))
+            mean_b.append(b)
+            critic_frac.append(frac)
+    rollout_data["ppo_baseline"] = mean_b
+    rollout_data["ppo_baseline_critic_frac"] = critic_frac
+    return advantages
+
+
 def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) -> None:
     """Compute advantages and returns in-place based on `args.advantage_estimator`.
 
@@ -545,6 +599,8 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
             qkv_format=args.qkv_format,
             max_seq_lens=max_seq_lens,
         )
+        if getattr(args, "ppo_baseline", "value") != "value":
+            advantages = _apply_hybrid_baseline(args, rollout_data, values, returns)
 
     elif args.advantage_estimator == "reinforce_plus_plus":
         rewards = torch.tensor(rewards, dtype=torch.float32, device=kl[0].device)
@@ -640,6 +696,7 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
                 all_masks,
                 process_group=dp_group,
                 shift_mean=True,
+                center=not getattr(args, "normalize_advantages_scale_only", False),
             )
             chunk_lengths = [chunk.size(0) for chunk in advantages]
             advantages = list(torch.split(whitened_advs_flat, chunk_lengths))
