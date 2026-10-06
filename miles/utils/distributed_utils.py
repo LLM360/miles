@@ -97,6 +97,7 @@ def distributed_masked_whiten(
     process_group: dist.ProcessGroup | None = None,
     shift_mean: bool = True,
     epsilon: float = 1e-8,
+    center: bool = True,
 ):
     """
     Performs whitening on a tensor using global statistics from all participating GPUs.
@@ -111,6 +112,8 @@ def distributed_masked_whiten(
         process_group: The process group for all_reduce.
                       If None, uses the default world group.
         shift_mean (bool): If True, the output is zero-mean. Defaults to True.
+        center (bool): If False, only divide by the global std (values * rsqrt(var)),
+            leaving the mean in place. `shift_mean` is ignored then.
         epsilon (float): A small value for numerical stability.
 
     Returns:
@@ -144,6 +147,9 @@ def distributed_masked_whiten(
     if global_mask_sum.item() >= 2:
         bessel_correction = global_mask_sum / (global_mask_sum - 1)
         global_var = global_var * bessel_correction
+
+    if not center:
+        return values * torch.rsqrt(global_var + epsilon)
 
     # Whiten local data using global stats
     whitened_values = (values - global_mean) * torch.rsqrt(global_var + epsilon)

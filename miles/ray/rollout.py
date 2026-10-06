@@ -47,6 +47,7 @@ from miles.utils.metric_utils import (
     compute_statistics,
     dict_add_prefix,
 )
+from miles.utils.ppo_baseline import compute_group_loo_baselines
 from miles.utils.misc import load_function
 from miles.utils.ray_utils import Box
 from miles.utils.seqlen_balancing import get_seqlen_balanced_partitions
@@ -828,6 +829,14 @@ class RolloutManager:
             loss_masks.append(sample.loss_mask)
         train_data["loss_masks"] = loss_masks
 
+        # Leave-one-out group mean for --ppo-baseline (removed/infra-masked samples excluded).
+        if getattr(self.args, "ppo_baseline", "value") != "value":
+            n = self.args.n_samples_per_prompt
+            group_ids = [s.group_index if s.group_index is not None else s.index // n for s in samples]
+            train_data["group_baseline"], train_data["group_baseline_valid"] = compute_group_loo_baselines(
+                group_ids, [float(r) for r in rewards], [not s.remove_sample for s in samples]
+            )
+
         # overwriting the raw reward
         if samples[0].metadata and "raw_reward" in samples[0].metadata:
             train_data["raw_reward"] = [sample.metadata["raw_reward"] for sample in samples]
@@ -974,6 +983,8 @@ class RolloutManager:
                 "teacher_log_probs",
                 "weight_versions",
                 "domains",
+                "group_baseline",
+                "group_baseline_valid",
             ]:
                 if key not in data:
                     continue
