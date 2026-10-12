@@ -9,6 +9,7 @@ only the advantage changes.
     max    b_t = g + clamp(V_t - g, 0, cap)   optimistic
     min    b_t = g - clamp(g - V_t, 0, cap)   pessimistic
     delta  b_t = g + clamp(V_t - V_0, -cap, cap)
+    v0     b_t = V_0                      (critic at the prompt; ignores g and cap)
 
 g is the mean reward of the other valid samples of the same prompt, so it does
 not depend on the sample's own action. Samples without a valid g (no other
@@ -19,7 +20,7 @@ from collections import defaultdict
 
 import torch
 
-PPO_BASELINE_MODES = ("value", "group", "max", "min", "delta")
+PPO_BASELINE_MODES = ("value", "group", "max", "min", "delta", "v0")
 
 
 def compute_group_loo_baselines(
@@ -57,6 +58,8 @@ def hybrid_baseline(
     """Per-token baseline for one full (un-sliced) response."""
     if mode == "value":
         return values
+    if mode == "v0":
+        return values[:1].expand_as(values) if values.numel() else values
     g = torch.full_like(values, float(group_baseline))
     if mode == "group":
         return g
@@ -85,7 +88,11 @@ def hybrid_advantages(
     Returns (advantages, mean baseline, fraction of tokens where the critic
     moved the baseline away from g), both over loss-masked tokens.
     """
-    if not group_valid:
+    if mode == "v0":
+        # V_0 never uses g, so an invalid group needs no fallback; the critic sets every token.
+        b = hybrid_baseline(mode, values, group_baseline, cap)
+        moved = torch.ones_like(values, dtype=torch.bool)
+    elif not group_valid:
         b = values
         moved = torch.ones_like(values, dtype=torch.bool)
     else:

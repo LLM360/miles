@@ -1091,11 +1091,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             parser.add_argument(
                 "--ppo-baseline",
                 type=str,
-                choices=["value", "group", "max", "min", "delta"],
+                choices=["value", "group", "max", "min", "delta", "v0"],
                 default="value",
                 help="PPO baseline b_t in A_t = R_t - b_t (see miles/utils/ppo_baseline.py). 'value' is "
                 "standard PPO; the others use the leave-one-out group mean g: 'group' = g, "
-                "'max' = max(g, V_t), 'min' = min(g, V_t), 'delta' = g + (V_t - V_0).",
+                "'max' = max(g, V_t), 'min' = min(g, V_t), 'delta' = g + (V_t - V_0); "
+                "'v0' = V_0 (the critic at the prompt) for every token, without g.",
             )
             parser.add_argument(
                 "--ppo-baseline-cap",

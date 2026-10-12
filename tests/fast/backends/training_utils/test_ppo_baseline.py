@@ -52,6 +52,7 @@ V = torch.tensor([0.2, 0.6, 0.9])
         ("min", 0.1, [0.4, 0.5, 0.5]),
         ("delta", None, [0.5, 0.9, 1.2]),
         ("delta", 0.3, [0.5, 0.8, 0.8]),
+        ("v0", None, [0.2, 0.2, 0.2]),
     ],
 )
 def test_hybrid_baseline_modes(mode, cap, expected):
@@ -76,6 +77,12 @@ def test_hybrid_advantages_invalid_group_falls_back_to_value():
     adv, _, frac = hybrid_advantages("group", V, torch.ones(3), torch.ones(3), 0.0, False)
     assert adv.tolist() == pytest.approx([0.8, 0.4, 0.1])
     assert frac == pytest.approx(1.0)
+
+
+def test_hybrid_advantages_v0_ignores_group():
+    adv, mean_b, frac = hybrid_advantages("v0", V, torch.ones(3), torch.ones(3), 0.5, False)
+    assert adv.tolist() == pytest.approx([0.8, 0.8, 0.8])
+    assert (mean_b, frac) == pytest.approx((0.2, 1.0))
 
 
 def test_apply_hybrid_baseline_cp1():
