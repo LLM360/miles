@@ -9,7 +9,6 @@ from typing import Any
 
 import torch
 import torch.distributed as dist
-from megatron.core import mpu
 
 from miles.backends.training_utils.parallel import get_parallel_state
 
@@ -275,6 +274,8 @@ def save_lora_checkpoint(
 
     save_path = Path(save_dir)
     is_dp_rank_0 = get_parallel_state().intra_dp.rank == 0
+    from megatron.core import mpu
+
     tp_rank = mpu.get_tensor_model_parallel_rank()
     pp_rank = mpu.get_pipeline_model_parallel_rank()
 
@@ -385,6 +386,8 @@ def load_lora_adapter(
     if not adapter_dir.exists():
         logger.warning(f"LoRA adapter path does not exist: {adapter_dir}")
         return False, None
+
+    from megatron.core import mpu
 
     tp_rank = mpu.get_tensor_model_parallel_rank()
     pp_rank = mpu.get_pipeline_model_parallel_rank()

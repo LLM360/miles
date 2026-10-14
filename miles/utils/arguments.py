@@ -122,6 +122,8 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 parser, "--layernorm-num-groups", type=int, default=1,
                 help="Number of groups for Megatron RMSNorm (K2 uses 2).",
             )
+            parser.add_argument("--custom-train-actor-path", type=str, default=None,
+                                help="Explicit Ray trainer extension class (FSDP only).")
             parser.add_argument(
                 "--train-backend",
                 type=str,
@@ -691,6 +693,11 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             # mbs for the training, will be ignored if `use_dynamic_batch_size` is set.
             reset_arg(parser, "--micro-batch-size", type=int, default=1)
             parser.add_argument(
+                "--keep-prompt-groups-together",
+                action="store_true",
+                help="Assign complete sibling groups to DP ranks for exact DGCV calibration (RL360 extension).",
+            )
+            parser.add_argument(
                 "--balance-data",
                 action="store_true",
                 default=False,
@@ -1034,6 +1041,7 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                     "reinforce_plus_plus_baseline",
                     "ppo",
                     "on_policy_distillation",
+                    "dgcv",
                 ],
                 default="grpo",
             )
@@ -1936,7 +1944,7 @@ def parse_args(add_custom_arguments=None):
 
         assert args.context_parallel_size == 1, "Context parallelism is not supported for FSDP backend."
 
-        if not args.ci_test:
+        if not args.ci_test and args.custom_train_actor_path != "miles360.dgcv.recipe_actor.DRGroupActor":
             raise ValueError(
                 "The FSDP backend has known issues with SGLang v0.5.10 and is not actively maintained in the current version. It has been moved to miles.backends.experimental. Contributions are welcome if you are interested in improving it."
             )
@@ -2058,6 +2066,13 @@ def miles_validate_args(args):
             logger.info(
                 f"ref_load {args.ref_load} does not have latest_checkpointed_iteration.txt, please make sure it is a valid megatron checkpoint directory."
             )
+
+    if args.custom_train_actor_path == "miles360.dgcv.recipe_actor.DRGroupActor" and args.load is not None:
+        if not os.path.isfile(os.path.join(args.load, "latest_checkpointed_iteration.txt")):
+            raise FileNotFoundError("Explicit DGCV resume requires a native checkpoint tracker")
+
+    if args.advantage_estimator == "dgcv" and args.custom_train_actor_path != "miles360.dgcv.recipe_actor.DRGroupActor":
+        raise ValueError("DGCV requires its explicit scientific FSDP adapter")
 
     # TODO: During loading, we need to set the start_rollout_id here.
     if args.megatron_to_hf_mode == "bridge":

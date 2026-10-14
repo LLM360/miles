@@ -75,7 +75,12 @@ class RayTrainGroup:
             env_vars["TMS_INIT_ENABLE_CPU_BACKUP"] = "1"
 
         backend = self.args.train_backend
-        if backend == "megatron":
+        if getattr(self.args, "custom_train_actor_path", None):
+            if backend != "fsdp":
+                raise ValueError("Custom train actors require explicit FSDP backend")
+            from miles.utils.misc import load_function
+            actor_impl = load_function(self.args.custom_train_actor_path)
+        elif backend == "megatron":
             from miles.backends.megatron_utils.actor import MegatronTrainRayActor
 
             actor_impl = MegatronTrainRayActor

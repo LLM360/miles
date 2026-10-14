@@ -83,15 +83,20 @@ def load(actor: Any) -> dict[str, Any] | None:
     Loads model weights and optionally optimizer state from separate directories.
     This allows loading weights without optimizer or deleting optimizer before loading.
     """
+    strict = getattr(actor.args, "custom_train_actor_path", None) == "miles360.dgcv.recipe_actor.DRGroupActor"
     load_root = getattr(actor.args, "load", None)
     if load_root is None:
         return None
 
     root_path = Path(load_root).expanduser()
     if not root_path.exists():
+        if strict:
+            raise FileNotFoundError(root_path)
         logger.info(f"[FSDP] Checkpoint directory {root_path} not found; skipping load.")
         return None
 
+    if strict and not (root_path / "latest_checkpointed_iteration.txt").is_file():
+        raise FileNotFoundError("Explicit DGCV resume requires a native checkpoint tracker")
     target_step = getattr(actor.args, "ckpt_step", None)
     if target_step is None:
         tracker_file = root_path / "latest_checkpointed_iteration.txt"
@@ -106,6 +111,12 @@ def load(actor: Any) -> dict[str, Any] | None:
     optimizer_dir = checkpoint_dir / "optimizer"
     lr_scheduler_dir = checkpoint_dir / "lr_scheduler"
 
+    if strict:
+        required = [model_dir, optimizer_dir, lr_scheduler_dir, checkpoint_dir / "rng.pt",
+                    checkpoint_dir / "meta.json", checkpoint_dir / "dr_group_complete.json"]
+        if any(not p.exists() for p in required):
+            raise FileNotFoundError("Incomplete native DGCV checkpoint; refusing an optimizer reset")
+
     if not model_dir.exists():
         logger.info(f"[FSDP] Model checkpoint {model_dir} not found; skipping load.")
         return None
@@ -118,6 +129,8 @@ def load(actor: Any) -> dict[str, Any] | None:
         dcp.load(state_dict=state_dict, checkpoint_id=str(model_dir))
         logger.info(f"[FSDP] Loaded model from {model_dir}")
     except Exception as e:
+        if strict:
+            raise
         logger.error(f"[FSDP] Failed to load model from {model_dir}: {e}")
         return None
 
@@ -130,6 +143,8 @@ def load(actor: Any) -> dict[str, Any] | None:
             dcp.load(state_dict=optim_state_dict, checkpoint_id=str(optimizer_dir))
             logger.info(f"[FSDP] Loaded optimizer from {optimizer_dir}")
         except Exception as e:
+            if strict:
+                raise
             logger.warning(f"[FSDP] Failed to load optimizer from {optimizer_dir}: {e}")
     elif load_optimizer:
         logger.info(f"[FSDP] Optimizer checkpoint not found at {optimizer_dir}, skipping optimizer load.")
@@ -143,6 +158,8 @@ def load(actor: Any) -> dict[str, Any] | None:
             dcp.load(state_dict=lr_scheduler_state_dict, checkpoint_id=str(lr_scheduler_dir))
             logger.info(f"[FSDP] Loaded LR scheduler from {lr_scheduler_dir}")
         except Exception as e:
+            if strict:
+                raise
             logger.warning(f"[FSDP] Failed to load LR scheduler from {lr_scheduler_dir}: {e}")
     elif hasattr(actor, "lr_scheduler"):
         logger.info(f"[FSDP] LR scheduler checkpoint not found at {lr_scheduler_dir}, skipping LR scheduler load.")

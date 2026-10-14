@@ -829,6 +829,12 @@ class RolloutManager:
             loss_masks.append(sample.loss_mask)
         train_data["loss_masks"] = loss_masks
 
+        if getattr(self.args, "keep_prompt_groups_together", False):
+            n = self.args.n_samples_per_prompt
+            train_data["dgcv_group_ids"] = [
+                s.group_index if s.group_index is not None else s.index // n for s in samples
+            ]
+
         # Leave-one-out group mean for --ppo-baseline (removed/infra-masked samples excluded).
         if getattr(self.args, "ppo_baseline", "value") != "value":
             n = self.args.n_samples_per_prompt
@@ -952,7 +958,16 @@ class RolloutManager:
         data["total_lengths"] = total_lengths
 
         balance_by_flops = getattr(self.args, "balance_by_flops", False)
-        if balance_by_flops:
+        if getattr(self.args, "custom_train_actor_path", None) == "miles360.dgcv.recipe_actor.DRGroupActor":
+            from miles360.dgcv.recipe_data import original_partitions
+            partitions = original_partitions(data["dgcv_group_ids"], self.args.n_samples_per_prompt, dp_size)
+        elif getattr(self.args, "keep_prompt_groups_together", False):
+            from miles360.dgcv.core import prompt_group_partitions
+
+            partitions = prompt_group_partitions(
+                total_lengths, data["dgcv_group_ids"], self.args.n_samples_per_prompt, dp_size
+            )
+        elif balance_by_flops:
             workloads = calculate_workloads(total_lengths, self.args)
             partitions = get_seqlen_balanced_partitions(workloads, dp_size, equal_size=True)
         elif self.args.balance_data:
@@ -977,6 +992,7 @@ class RolloutManager:
                 "loss_masks",
                 "round_number",
                 "sample_indices",
+                "dgcv_group_ids",
                 "rollout_log_probs",
                 "rollout_routed_experts",
                 "prompt",

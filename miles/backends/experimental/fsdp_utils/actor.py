@@ -6,7 +6,6 @@ from argparse import Namespace
 import ray
 import torch
 import torch.distributed as dist
-from ring_flash_attn import update_ring_flash_attn_params
 from tqdm import tqdm
 from transformers import AutoConfig
 
@@ -105,6 +104,7 @@ class FSDPTrainRayActor(TrainRayActor):
                 self.args.hf_checkpoint,
                 trust_remote_code=True,
                 attn_implementation=self.args.attn_implementation,
+                **getattr(self, "model_init_kwargs", {}),
             )
 
         model.train()
@@ -631,6 +631,8 @@ class FSDPTrainRayActor(TrainRayActor):
                 cu_seqlens = batch["cu_seqlens"]
                 if not cu_seqlens.is_cuda:
                     cu_seqlens = cu_seqlens.cuda()
+                from ring_flash_attn import update_ring_flash_attn_params
+
                 update_ring_flash_attn_params(cu_seqlens, self.cp_group)
 
             input_ids = torch.chunk(input_ids, get_parallel_state().cp.size, dim=1)[get_parallel_state().cp.rank]
