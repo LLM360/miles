@@ -33,7 +33,7 @@ from ..training_utils.log_utils import (
     log_train_step,
     save_train_step_counter,
 )
-from ..training_utils.loss import get_values, loss_function
+from ..training_utils.loss import get_log_probs_and_entropy, get_values, loss_function
 from ..training_utils.parallel import get_parallel_state
 from .checkpoint import load_checkpoint, save_checkpoint, save_checkpoint_with_lora
 from .ci_utils import (
@@ -261,9 +261,13 @@ def forward_only(
         total_lengths = batch["total_lengths"]
         response_lengths = batch["response_lengths"]
         forward_kwargs = {}
-        if getattr(args, "value_pretrain", False) and collect_values:
-            # Offline value evaluation does not use full-vocabulary policy logits.
-            # Match critic-only training and avoid their unnecessary FP32 copy.
+        if (f is get_log_probs_and_entropy and args.rollout_temperature == 1.0) or (
+            getattr(args, "value_pretrain", False) and collect_values
+        ):
+            # At unit temperature, logprob chunks already promote logits to FP32.
+            # Avoid promoting the whole packed vocabulary tensor first (17 GiB
+            # for K2 at 36K tokens / TP2). Keep the previous non-unit-temperature
+            # path, where doing division in model precision would change rounding.
             forward_kwargs["fp32_output"] = not (args.fp16 or args.bf16)
         output_tensor = model(
             input_ids=tokens,
@@ -847,6 +851,7 @@ def save_hf_model(args, rollout_id: int, model: Sequence[DDP]) -> None:
     except Exception as e:
         if should_log:
             logger.error(f"Failed to save HuggingFace format: {e}")
+        raise
 
     # Additionally save adapter-only checkpoint for LoRA models
     if is_lora_model(model):

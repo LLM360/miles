@@ -6,6 +6,7 @@ from argparse import Namespace
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 
 @torch.compile(dynamic=True)
@@ -710,6 +711,16 @@ def chunked_gae(
     return advantages, returns
 
 
+def _log_probs_chunk(logits, tokens, tp_group):
+    # Keep the cast inside the checkpoint so backward retains only the original
+    # model-precision view, not one full-vocabulary FP32 buffer per chunk.
+    return compute_log_probs(logits.float().clone(), tokens, tp_group)
+
+
+def _entropy_chunk(logits, tp_group):
+    return compute_entropy_from_logits(logits.float().clone(), tp_group)
+
+
 def calculate_log_probs_and_entropy(
     logits, tokens, tp_group, with_entropy: bool = False, chunk_size: int = -1, true_on_policy: bool = False
 ):
@@ -732,17 +743,25 @@ def calculate_log_probs_and_entropy(
             logits_chunks = logits.chunk(num_chunks, dim=0)
             log_probs = []
             for tokens_chunk, logits_chunk in zip(tokens_chunks, logits_chunks, strict=True):
-                if logits_chunk.dtype != torch.float32:
-                    logits_chunk = logits_chunk.float()
-                log_prob = compute_log_probs(logits_chunk.clone(), tokens_chunk, tp_group)
+                if torch.is_grad_enabled() and logits_chunk.requires_grad:
+                    log_prob = checkpoint(
+                        _log_probs_chunk, logits_chunk, tokens_chunk, tp_group,
+                        use_reentrant=False, preserve_rng_state=False,
+                    )
+                else:
+                    log_prob = _log_probs_chunk(logits_chunk, tokens_chunk, tp_group)
                 log_probs.append(log_prob)
             log_prob = torch.cat(log_probs, dim=0)
             if with_entropy:
                 entropys = []
                 for _, logits_chunk in zip(tokens_chunks, logits_chunks, strict=True):
-                    if logits_chunk.dtype != torch.float32:
-                        logits_chunk = logits_chunk.float()
-                    entropy = compute_entropy_from_logits(logits_chunk.clone(), tp_group)
+                    if torch.is_grad_enabled() and logits_chunk.requires_grad:
+                        entropy = checkpoint(
+                            _entropy_chunk, logits_chunk, tp_group,
+                            use_reentrant=False, preserve_rng_state=False,
+                        )
+                    else:
+                        entropy = _entropy_chunk(logits_chunk, tp_group)
                     entropys.append(entropy)
                 entropy = torch.cat(entropys, dim=0)
         else:

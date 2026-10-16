@@ -175,7 +175,7 @@ def get_responses(
         assert max_seq_lens is not None
         logits = logits.view(-1, logits.size(-1))
 
-    if apply_temperature:
+    if apply_temperature and args.rollout_temperature != 1.0:
         logits = logits.div(args.rollout_temperature)
 
     cp_size = parallel_state.cp.size
@@ -1399,6 +1399,11 @@ def loss_function(
             # FSDP: normalize by num_tokens explicitly (FSDP ignores the normalizer)
             loss = loss / torch.clamp_min(num_tokens, 1) * parallel_state.intra_dp.size
         # token-sum on FSDP: no normalization (raw sum, legacy behavior)
+
+    if apply_megatron_loss_scaling and not share_critic_only:
+        from miles.utils.memory_utils import release_cache_for_large_backward
+
+        release_cache_for_large_backward(logits)
 
     return (
         loss,

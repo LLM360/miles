@@ -15,6 +15,32 @@ def clear_memory(clear_host_memory: bool = False):
         torch._C._host_emptyCache()
 
 
+def release_cache_for_large_backward(logits: torch.Tensor) -> bool:
+    """Release unused forward buffers before large dense logit gradients.
+
+    Long packed vocabulary logits can need another full-sized gradient plus an
+    accumulation buffer. Synchronize pending frees before releasing cache; no
+    live tensors or autograd state are modified.
+    """
+    size = logits.numel() * logits.element_size()
+    if not logits.is_cuda or not logits.requires_grad or size < 1024**3:
+        return False
+    device = logits.device
+    free, _ = torch.cuda.mem_get_info(device)
+    unused = torch.cuda.memory_reserved(device) - torch.cuda.memory_allocated(device)
+    if free >= 2 * size + 1024**3 or unused <= size:
+        return False
+    with torch.cuda.device(device):
+        torch.cuda.synchronize(device)
+        torch.cuda.empty_cache()
+    logger.info(
+        "Released unused cache before large-logit backward: logits_bytes=%d "
+        "free_before=%d free_after=%d",
+        size, free, torch.cuda.mem_get_info(device)[0],
+    )
+    return True
+
+
 def available_memory():
     device = torch.cuda.current_device()
     free, total = torch.cuda.mem_get_info(device)
