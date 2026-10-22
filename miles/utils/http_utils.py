@@ -228,8 +228,18 @@ def init_http_client(args):
 
     _client_concurrency = args.sglang_server_concurrency * args.rollout_num_gpus // args.rollout_num_gpus_per_engine
     if _http_client is None:
+        # max_keepalive_connections=0: defeat connection reuse so each /run
+        # opens a fresh TCP. A pooled httpx.AsyncClient against a uvicorn
+        # multi-worker server pins all traffic to the few workers that
+        # originally accept()-won the pooled connections (uvicorn shares a
+        # single listen socket across --workers; no SO_REUSEPORT, no
+        # work-stealing). With keepalive off, every request runs its own
+        # accept() race and spreads across all workers.
         _http_client = httpx.AsyncClient(
-            limits=httpx.Limits(max_connections=_client_concurrency),
+            limits=httpx.Limits(
+                max_connections=_client_concurrency,
+                max_keepalive_connections=0,
+            ),
             timeout=httpx.Timeout(None),
         )
 
