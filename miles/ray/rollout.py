@@ -560,6 +560,7 @@ class RolloutManager:
         if self.args.debug_train_only:
             # if debug train only, we don't generate evaluation data
             return
+        evaluation_started = time.perf_counter()
         self.health_monitoring_resume()
 
         if self.use_experimental_refactor:
@@ -570,7 +571,10 @@ class RolloutManager:
             )
         data = result.data
         self._save_debug_rollout_data(data, rollout_id=rollout_id, evaluation=True)
-        metrics = _log_eval_rollout_data(rollout_id, self.args, data, result.metrics)
+        extra_metrics = dict(result.metrics or {})
+        if getattr(self.args, "training_stage_timing", False):
+            extra_metrics["perf/evaluation_generation_seconds"] = time.perf_counter()-evaluation_started
+        metrics = _log_eval_rollout_data(rollout_id, self.args, data, extra_metrics)
         if self._metric_checker is not None:
             self._metric_checker.on_eval(metrics)
 

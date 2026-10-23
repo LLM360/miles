@@ -9,6 +9,7 @@ import torch
 import torch.distributed as dist
 
 from miles.utils import train_metric_utils
+from miles.utils.cb_diagnostics import collect_diagnostics
 from miles.utils.flops_utils import calculate_fwd_flops
 from miles.utils.metric_utils import compute_pass_rate, compute_rollout_step
 from miles.utils.types import RolloutBatch
@@ -194,6 +195,8 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
         max_seq_lens = rollout_data.get("max_seq_lens", None)
 
         for key, val in rollout_data.items():
+            if key.startswith("_cb_diag_") or key == "_actor_loss_token_scale":
+                continue
             if key in [
                 "tokens",
                 "multimodal_train_inputs",
@@ -249,6 +252,7 @@ def log_rollout_data(rollout_id: int, args: Namespace, rollout_data: RolloutBatc
                 raise ValueError(f"Unsupported type: {type(val)} for key: {key}")
             log_dict[key] = val.item() if isinstance(val, torch.Tensor) else val
 
+        log_dict.update(collect_diagnostics(args, rollout_data, parallel_state))
         reduced_log_dict = gather_log_data("rollout", args, rollout_id, log_dict)
         if args.ci_test and not args.ci_disable_logprobs_checker and reduced_log_dict is not None:
             if (

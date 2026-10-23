@@ -841,6 +841,24 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             reset_arg(parser, "--seed", type=int, default=1234)
             reset_arg(parser, "--clip-grad", type=float, default=1.0)
             reset_arg(parser, "--calculate-per-token-loss", action="store_true")
+            parser.add_argument("--actor-loss-agg-mode", choices=["token-mean"], default=None,
+                help="Global optimizer-batch token mean for actor only; retain native sequence-mean critic.")
+            parser.add_argument("--training-stage-timing", action="store_true",
+                help="Synchronize GPU stage boundaries and report exclusive training/DGCV stage wall times.")
+            parser.add_argument("--dgcv-query-chunk", type=int, default=None,
+                help="DGCV replay/JVP attention query tile; legacy environment/default if unset.")
+            parser.add_argument("--dgcv-compact-calibration", action="store_true",
+                help="Drop unrelated packed sequences from each complete-group DGCV replay.")
+            parser.add_argument("--dgcv-calibration-token-budget", type=int, default=0,
+                help="Optional token budget to repack one DGCV sibling group; 0 preserves native pack boundaries.")
+            parser.add_argument("--cb-diagnostics", action="store_true",
+                help="Log detached raw/normalized advantage and critic calibration diagnostics.")
+            parser.add_argument("--cb-total-context-len", type=int, default=16384,
+                help="Total prompt plus response context for the opt-in CB profile.")
+            parser.add_argument("--cb-sampler-reserved-tokens", type=int, default=0,
+                help="Internal sampler bookkeeping capacity; never added to the request budget.")
+            parser.add_argument("--cb-token-mean-16k", action="store_true",
+                help="Future K2 CB profile: actor token mean, diagnostics, shared 16384-token context.")
             parser.add_argument(
                 "--loss-agg-mode",
                 type=str,
@@ -1949,6 +1967,10 @@ def parse_args(add_custom_arguments=None):
                 "The FSDP backend has known issues with SGLang v0.5.10 and is not actively maintained in the current version. It has been moved to miles.backends.experimental. Contributions are welcome if you are interested in improving it."
             )
 
+    from miles.utils.cb_training_profile import apply_cb_profile
+    from miles.utils.actor_loss_reduction import validate_actor_reduction
+    apply_cb_profile(args)
+    validate_actor_reduction(args)
     miles_validate_args(args)
 
     if backend == "megatron":

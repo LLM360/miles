@@ -7,6 +7,7 @@ from typing import Any
 import torch
 from torch.utils.checkpoint import checkpoint
 
+from miles.utils.cb_diagnostics import capture_advantages
 from miles.utils.distributed_utils import distributed_masked_whiten
 from miles.utils.misc import load_function
 from miles.utils.ppo_baseline import hybrid_advantages
@@ -130,6 +131,30 @@ def _nan_dbg_warn_long_batch(args: Namespace, batch: RolloutBatch) -> None:
     _nan_dbg_flush_logs()
 
 
+class _ResponseLogits(torch.autograd.Function):
+    """Return response views with one packed gradient allocation in backward."""
+
+    @staticmethod
+    def forward(ctx, logits, spans):
+        ctx.shape = logits.shape
+        ctx.spans = spans
+        ctx.set_materialize_grads(False)
+        return tuple(logits[start:end] for start, end in spans)
+
+    @staticmethod
+    def backward(ctx, *grad_outputs):
+        # Independent SliceBackward nodes each allocate the full packed
+        # vocabulary tensor. The response spans do not overlap, so assemble
+        # their gradients directly into one buffer, leaving prompt/padding zero.
+        packed_grad = None
+        for (start, end), grad in zip(ctx.spans, grad_outputs, strict=True):
+            if grad is not None:
+                if packed_grad is None:
+                    packed_grad = grad.new_zeros(ctx.shape)
+                packed_grad[start:end].copy_(grad)
+        return packed_grad, None
+
+
 def get_responses(
     logits: torch.Tensor,
     *,
@@ -179,6 +204,19 @@ def get_responses(
         logits = logits.div(args.rollout_temperature)
 
     cp_size = parallel_state.cp.size
+    if cp_size == 1 and logits.requires_grad and torch.is_grad_enabled():
+        spans = []
+        end = 0
+        for i, (total_length, response_length) in enumerate(zip(total_lengths, response_lengths, strict=True)):
+            end = max_seq_lens[i] * i + total_length if qkv_format == "bshd" else end + total_length
+            spans.append((end - response_length - 1, end - 1))
+        response_logits = _ResponseLogits.apply(logits, tuple(spans))
+        for logits_chunk, tokens, response_length in zip(
+            response_logits, unconcat_tokens, response_lengths, strict=True
+        ):
+            yield logits_chunk, tokens[-response_length:]
+        return
+
     end = 0
     seq_start = 0
     for i, (tokens, total_length, response_length) in enumerate(
@@ -644,6 +682,8 @@ def compute_advantages_and_returns(args: Namespace, rollout_data: RolloutBatch) 
     else:
         raise NotImplementedError(f"advantage_estimator {args.advantage_estimator} is not supported. ")
 
+    capture_advantages(rollout_data, advantages, args)
+
     # TODO: OpenRLHF always does advantages normalization but veRL doesn't seem to do it.
     if args.normalize_advantages:
         all_advs = torch.cat(advantages)
@@ -1106,6 +1146,8 @@ def policy_loss_function(
                 max_seq_lens,
                 loss_agg_mode=getattr(args, "loss_agg_mode", None),
             )
+            from miles.utils.actor_loss_reduction import actor_reducer
+            reducer = actor_reducer(args, {**batch, "loss_masks": masked}, reducer)
             for name, t in per_token.items():
                 reported_loss[f"{name}/{d}"] = reducer(t).clone().detach()
             reported_loss[f"loss/{d}"] = (
@@ -1333,6 +1375,8 @@ def loss_function(
         case _:
             raise ValueError(f"Unknown loss type: {args.loss_type}")
 
+    from miles.utils.actor_loss_reduction import actor_reducer
+    policy_reducer = actor_reducer(args, batch, sum_of_sample_mean)
     share_backbone = getattr(args, "share_backbone_critic", False)
     share_critic_only = share_backbone and getattr(args, "share_backbone_critic_only", False)
     current_values = batch.get("current_values")
@@ -1348,11 +1392,11 @@ def loss_function(
             args,
             batch,
             logits,
-            sum_of_sample_mean,
+            policy_reducer,
         )
     else:
         # This is the usual path when not training only critic. 
-        loss, log = func(args, batch, logits, sum_of_sample_mean)
+        loss, log = func(args, batch, logits, policy_reducer)
 
     if share_backbone and current_values is not None and not share_critic_only:
         print("@dhawgupta: loss pg + value", flush=True)

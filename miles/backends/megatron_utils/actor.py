@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import random
 import socket
 from argparse import Namespace
@@ -564,6 +565,16 @@ class MegatronTrainRayActor(TrainRayActor):
             "dp_size": get_parallel_state().intra_dp.size,
         }
         dist.barrier(group=get_gloo_group())
+
+        # PyTorch 2.9 gates proactive cache reclamation on an explicitly set
+        # memory fraction. Keep the full device limit while enabling the GC
+        # threshold requested by the training worker's allocator configuration.
+        allocator_config = os.environ.get(
+            "PYTORCH_ALLOC_CONF", os.environ.get("PYTORCH_CUDA_ALLOC_CONF", "")
+        )
+        if any(option.strip().startswith("garbage_collection_threshold:") for option in allocator_config.split(",")):
+            torch.cuda.set_per_process_memory_fraction(1.0)
+            logger.info("Enabled configured allocator cache reclamation with full device memory limit")
 
         if args.offload_train:
             if (x := args.train_memory_margin_bytes) > 0:

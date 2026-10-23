@@ -119,6 +119,9 @@ def get_batch(
     has_domains = "domains" in data_iterator.rollout_data
     if has_domains and "domains" not in keys:
         keys = list(keys) + ["domains"]
+    from miles.utils.actor_loss_reduction import SCALE_KEY
+    if SCALE_KEY in data_iterator.rollout_data and SCALE_KEY not in keys:
+        keys = list(keys) + [SCALE_KEY]
     batch = data_iterator.get_next(keys)
 
     if "dynamic_global_batch_size" in data_iterator.rollout_data:
@@ -366,6 +369,8 @@ def get_data_iterator(
     global_batch_size = rollout_data.get("dynamic_global_batch_size", args.global_batch_size)
     num_local_gbs = global_batch_size // dp_size
     num_steps_per_rollout = num_local_samples // num_local_gbs
+    from miles.utils.actor_loss_reduction import attach_token_scales
+    attach_token_scales(args, rollout_data, parallel_state)
 
     if global_batch_size != args.global_batch_size:
         logger.info(

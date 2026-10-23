@@ -507,16 +507,19 @@ def train_one_step(
 
     # Forward pass.
     forward_backward_func = get_forward_backward_func()
-    losses_reduced = forward_backward_func(
-        forward_step_func=forward_step,
-        data_iterator=data_iterator,
-        model=model,
-        num_microbatches=num_microbatches,
-        seq_length=args.seq_length,
-        micro_batch_size=args.micro_batch_size,
-        decoder_seq_length=args.decoder_seq_length,
-        forward_only=False,
-    )
+    from miles.utils.stage_timing import StageTimes
+    stage_times = StageTimes(getattr(args, "training_stage_timing", False))
+    with stage_times.measure("native_forward_backward"):
+        losses_reduced = forward_backward_func(
+            forward_step_func=forward_step,
+            data_iterator=data_iterator,
+            model=model,
+            num_microbatches=num_microbatches,
+            seq_length=args.seq_length,
+            micro_batch_size=args.micro_batch_size,
+            decoder_seq_length=args.decoder_seq_length,
+            forward_only=False,
+        )
 
     valid_step = True
     if not getattr(args, "check_for_nan_in_loss_and_grad", True):
@@ -551,9 +554,11 @@ def train_one_step(
             # in the CUDA caching allocator. TransformerEngine's fused Adam lazily
             # creates optimizer state on first step, so release inactive blocks here
             # before tiny state allocations fail with reserved-but-free memory.
-            clear_memory()
+            with stage_times.measure("native_allocator_cleanup"):
+                clear_memory()
             print("@dhawgupta: optimizer.step", flush=True)
-            update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
+            with stage_times.measure("native_optimizer"):
+                update_successful, grad_norm, num_zeros_in_grad = optimizer.step()
 
             assert update_successful
             if not critic_only:
@@ -568,6 +573,7 @@ def train_one_step(
     optimizer.zero_grad()
 
     dumper_phase_util.finalize(model)
+    stage_times.publish()
 
     if mpu.is_pipeline_last_stage(ignore_virtual=True):
         loss_reduced = aggregate_train_losses(losses_reduced)
